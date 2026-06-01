@@ -12,6 +12,7 @@ export {
 	useResetPassword,
 	useVerifyEmail,
 } from "./authQuery";
+export * from "./folderSharesQuery";
 export * from "./healthQuery";
 export * from "./llmQuery";
 export * from "./notesQuery";

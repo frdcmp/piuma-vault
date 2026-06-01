@@ -85,6 +85,11 @@ pub struct NoteListItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[sqlx(default)]
     pub score: Option<f64>,
+    // Only populated by the trash listing; live listings omit the column and
+    // it serializes away. Set means the note is in the trash.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[sqlx(default)]
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 impl From<Note> for NoteListItem {
@@ -98,6 +103,7 @@ impl From<Note> for NoteListItem {
             updated_at: n.updated_at,
             headline: None,
             score: None,
+            deleted_at: None,
         }
     }
 }

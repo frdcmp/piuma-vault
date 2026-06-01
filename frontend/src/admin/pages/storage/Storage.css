@@ -139,7 +139,7 @@
 /* ── Tile grid ─────────────────────────────────────────────────── */
 .storage-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
 	gap: 10px;
 	margin-bottom: 18px;
 }
@@ -186,13 +186,9 @@
 
 .storage-tile.file .storage-tile-glyph {
 	color: var(--accent-4);
-	/* A compact type icon sitting to the left of the file name. */
-	width: 22px;
-	height: 22px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 16px;
+	/* A small type icon inline with the size/date meta row. */
+	font-size: 13px;
+	line-height: 1;
 }
 
 .storage-tile-thumb {
@@ -219,6 +215,7 @@
 
 .storage-tile-meta {
 	display: flex;
+	align-items: center;
 	gap: 8px;
 	flex-wrap: wrap;
 	color: var(--muted);
@@ -295,4 +292,134 @@
 	font-size: 9px;
 	letter-spacing: 0.4px;
 	margin-top: 2px;
+}
+
+/* ── Folder-share dialog + badges ──────────────────────────────── */
+.fshare-form {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 14px;
+}
+
+.fshare-label {
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	color: var(--accent-2);
+	margin-top: 6px;
+}
+
+.fshare-hint {
+	color: var(--muted);
+	font-weight: 400;
+	text-transform: none;
+	letter-spacing: 0;
+}
+
+.fshare-form .pixel-btn {
+	margin-top: 12px;
+}
+
+.fshare-section-label {
+	font-size: 10px;
+	font-weight: 900;
+	letter-spacing: 1.4px;
+	text-transform: uppercase;
+	color: var(--accent-2);
+	padding: 8px 0 6px;
+	border-bottom: 1px dashed var(--border);
+	margin-bottom: 8px;
+}
+
+.fshare-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-height: 240px;
+	overflow: auto;
+}
+
+.fshare-row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 8px 10px;
+	border: 1px solid var(--border-strong);
+	background: var(--bg);
+}
+
+.fshare-row.inactive {
+	opacity: 0.55;
+}
+
+.fshare-row-main {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.fshare-url {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	background: transparent;
+	border: 0;
+	color: var(--accent-4);
+	font: inherit;
+	font-size: 9pt;
+	text-align: left;
+	cursor: pointer;
+}
+
+.fshare-url:hover {
+	color: var(--accent);
+}
+
+.fshare-row-meta {
+	display: flex;
+	gap: 10px;
+	color: var(--muted);
+	font-size: 9px;
+}
+
+.fshare-off {
+	color: var(--accent-3);
+}
+
+.fshare-row-actions {
+	display: flex;
+	gap: 4px;
+	flex-wrap: wrap;
+}
+
+.fshare-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 6px;
+	border: 1px solid var(--border-strong);
+	font-size: 9px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.6px;
+	color: var(--muted);
+	flex: none;
+}
+
+.fshare-badge.edit {
+	color: var(--accent);
+	border-color: var(--accent);
+}
+
+.fshare-badge.view {
+	color: var(--accent-2);
+	border-color: var(--accent-2);
+}
+
+.fshare-badge.pwd {
+	border-color: var(--accent-4);
 }

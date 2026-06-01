@@ -1,0 +1,10 @@
+/* Trash page — leans on the shared .vp-* pixel language; only a couple of
+   local tweaks live here. */
+
+.vp-trash-title {
+	font-weight: 600;
+}
+
+.vp-trash-table-panel {
+	margin-top: 12px;
+}

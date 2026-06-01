@@ -28,14 +28,25 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             web::resource("/admin/notes/browse")
                 .route(web::get().to(handlers::browse_folder)),
         )
+        // Trash: list soft-deleted notes / permanently empty them. Registered
+        // before `/admin/notes/{id}` so "trash" isn't captured as an id.
         .service(
-            web::resource("/admin/notes/empty-trash")
+            web::resource("/admin/notes/trash")
+                .route(web::get().to(handlers::list_trash))
                 .route(web::delete().to(handlers::empty_trash)),
         )
         .service(
             web::resource("/admin/notes")
                 .route(web::get().to(handlers::list_notes))
                 .route(web::post().to(handlers::create_note)),
+        )
+        .service(
+            web::resource("/admin/notes/{id}/restore")
+                .route(web::put().to(handlers::restore_note)),
+        )
+        .service(
+            web::resource("/admin/notes/{id}/permanent")
+                .route(web::delete().to(handlers::permanently_delete_note)),
         )
         .service(
             web::resource("/admin/notes/{id}")

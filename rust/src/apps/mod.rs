@@ -6,4 +6,5 @@ pub mod api_keys;
 pub mod notes;
 pub mod shares;
 pub mod storage;
+pub mod storage_shares;
 pub mod settings;

@@ -85,8 +85,8 @@ pub async fn list_notes(
 	let limit = query.limit.unwrap_or(50).clamp(1, 10000);
     let offset = query.offset.unwrap_or(0).max(0);
 
-    // Count query
-    let count_sql = "SELECT COUNT(*) FROM notes WHERE user_id = $1";
+    // Count query (live notes only — trashed notes are excluded everywhere)
+    let count_sql = "SELECT COUNT(*) FROM notes WHERE user_id = $1 AND deleted_at IS NULL";
     let total: (i64,) = match sqlx::query_as(count_sql)
         .bind(&user.user_id)
         .fetch_one(pool.get_ref())
@@ -106,7 +106,7 @@ pub async fn list_notes(
         }
     }
 
-    let mut where_clauses = vec!["user_id = $1".to_string()];
+    let mut where_clauses = vec!["user_id = $1".to_string(), "deleted_at IS NULL".to_string()];
     let mut params: Vec<String> = vec![];
     let mut idx = 2u32;
 
@@ -188,8 +188,8 @@ async fn list_with_search(
         tsquery
     );
 
-    // ── Build filter clauses ──
-    let mut filter_clauses = vec!["n.user_id = $1".to_string()];
+    // ── Build filter clauses ── (shared by the FTS/vector/trigram CTE pools)
+    let mut filter_clauses = vec!["n.user_id = $1".to_string(), "n.deleted_at IS NULL".to_string()];
 
     if folder.is_some() {
         filter_clauses.push("n.folder = $2".to_string());
@@ -323,7 +323,7 @@ async fn list_with_search(
             Ok(rows) => {
                 total = rows.first().map(|r| r.8).unwrap_or(0);
                 data = rows.into_iter().map(|(id, title, tags, folder, created_at, updated_at, headline, score, _)| {
-                    NoteListItem { id, title, tags, folder, created_at, updated_at, headline, score: Some(score) }
+                    NoteListItem { id, title, tags, folder, created_at, updated_at, headline, score: Some(score), deleted_at: None }
                 }).collect();
             }
             Err(e) => {
@@ -335,6 +335,7 @@ async fn list_with_search(
         // ── Fallback: FTS-only (existing behavior) ──
         let mut where_clauses = vec![
             format!("user_id = $1"),
+            "deleted_at IS NULL".to_string(),
             format!("content_tsv @@ {}", tsquery),
         ];
         let mut idx = 2u32;
@@ -372,7 +373,7 @@ async fn list_with_search(
         match q.fetch_all(pool.get_ref()).await {
             Ok(rows) => {
                 data = rows.into_iter().map(|(id, title, tags, folder, created_at, updated_at, headline, score)| {
-                    NoteListItem { id, title, tags, folder, created_at, updated_at, headline, score: Some(score) }
+                    NoteListItem { id, title, tags, folder, created_at, updated_at, headline, score: Some(score), deleted_at: None }
                 }).collect();
             }
             Err(e) => {
@@ -402,7 +403,7 @@ pub async fn get_note(
     }
     let id = path.into_inner();
 
-    let sql = format!("SELECT {} FROM notes WHERE id = $1 AND user_id = $2", NOTE_FIELDS);
+    let sql = format!("SELECT {} FROM notes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL", NOTE_FIELDS);
     match sqlx::query_as::<_, Note>(&sql)
         .bind(id)
         .bind(&user.user_id)
@@ -492,7 +493,7 @@ pub async fn update_note(
     let id = path.into_inner();
 
     // Fetch existing
-    let existing_sql = format!("SELECT {} FROM notes WHERE id = $1 AND user_id = $2", NOTE_FIELDS);
+    let existing_sql = format!("SELECT {} FROM notes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL", NOTE_FIELDS);
     let existing: Option<Note> = match sqlx::query_as::<_, Note>(&existing_sql)
         .bind(id)
         .bind(&user.user_id)
@@ -523,7 +524,7 @@ pub async fn update_note(
 
     let sql = format!(
         "UPDATE notes SET title = $1, content = $2, tags = $3, folder = $4 \
-         WHERE id = $5 AND user_id = $6 \
+         WHERE id = $5 AND user_id = $6 AND deleted_at IS NULL \
          RETURNING {}",
         NOTE_FIELDS
     );
@@ -572,9 +573,90 @@ pub async fn update_note(
     }
 }
 
-// ── DELETE NOTE ──────────────────────────────────────────────────────────
+// ── DELETE NOTE (soft) ─────────────────────────────────────────────────────
+//
+// Default delete is a *soft* delete: stamp `deleted_at` so the note drops out of
+// every live listing but keeps its content, folder path and attachments intact
+// for restore from the Trash. Permanent removal is a separate endpoint.
 
 pub async fn delete_note(
+    user: AuthenticatedUser,
+    path: web::Path<Uuid>,
+    pool: web::Data<DbPool>,
+    bus: web::Data<NotesEventBus>,
+) -> impl Responder {
+    if let Some(r) = require_write(&user) {
+        return r;
+    }
+    let id = path.into_inner();
+
+    match sqlx::query(
+        "UPDATE notes SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .bind(&user.user_id)
+    .execute(pool.get_ref())
+    .await
+    {
+        Ok(res) if res.rows_affected() > 0 => {
+            // Listeners treat this like a removal — the note leaves live views.
+            bus.publish(NoteAction::Deleted, id);
+            HttpResponse::Ok().json(serde_json::json!({ "deleted": true, "id": id }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(err("Note not found")),
+        Err(e) => {
+            log::error!("notes soft-delete failed: {e}");
+            HttpResponse::InternalServerError().json(err("Failed to delete note"))
+        }
+    }
+}
+
+// ── RESTORE NOTE ───────────────────────────────────────────────────────────
+//
+// PUT /admin/notes/{id}/restore — clear `deleted_at`, bringing a trashed note
+// back to its original folder.
+
+pub async fn restore_note(
+    user: AuthenticatedUser,
+    path: web::Path<Uuid>,
+    pool: web::Data<DbPool>,
+    bus: web::Data<NotesEventBus>,
+) -> impl Responder {
+    if let Some(r) = require_write(&user) {
+        return r;
+    }
+    let id = path.into_inner();
+
+    match sqlx::query(
+        "UPDATE notes SET deleted_at = NULL WHERE id = $1 AND user_id = $2 AND deleted_at IS NOT NULL",
+    )
+    .bind(id)
+    .bind(&user.user_id)
+    .execute(pool.get_ref())
+    .await
+    {
+        Ok(res) if res.rows_affected() > 0 => {
+            // Reappears in live views — surface as a create so listeners re-add it.
+            bus.publish(NoteAction::Created, id);
+            HttpResponse::Ok().json(serde_json::json!({ "restored": true, "id": id }))
+        }
+        Ok(_) => HttpResponse::NotFound().json(err("Note not found in trash")),
+        Err(e) => {
+            log::error!("notes restore failed: {e}");
+            HttpResponse::InternalServerError().json(err("Failed to restore note"))
+        }
+    }
+}
+
+// ── PERMANENTLY DELETE NOTE ────────────────────────────────────────────────
+//
+// DELETE /admin/notes/{id}/permanent — hard delete. The DB row goes (cascading
+// its embedding jobs and shares), then we best-effort purge the note's uploaded
+// attachments from S3 under `notes-attachments/{id}/`. The row is removed first:
+// an orphaned object is less harmful than a note whose files vanished while it
+// still exists.
+
+pub async fn permanently_delete_note(
     user: AuthenticatedUser,
     path: web::Path<Uuid>,
     pool: web::Data<DbPool>,
@@ -592,13 +674,85 @@ pub async fn delete_note(
         .await
     {
         Ok(res) if res.rows_affected() > 0 => {
+            purge_note_attachments(pool.get_ref(), id).await;
             bus.publish(NoteAction::Deleted, id);
-            HttpResponse::Ok().json(serde_json::json!({ "deleted": true, "id": id }))
+            HttpResponse::Ok().json(serde_json::json!({ "deleted": true, "permanent": true, "id": id }))
         }
         Ok(_) => HttpResponse::NotFound().json(err("Note not found")),
         Err(e) => {
-            log::error!("notes delete failed: {e}");
+            log::error!("notes permanent-delete failed: {e}");
             HttpResponse::InternalServerError().json(err("Failed to delete note"))
+        }
+    }
+}
+
+// Best-effort removal of a note's uploaded attachments from S3. Attachments live
+// under the `notes-attachments/{note_id}/` prefix (see frontend `attachments.js`).
+// Cleanup failures (e.g. store not configured) are logged, never fatal — the DB
+// row is already gone by the time we get here.
+async fn purge_note_attachments(pool: &DbPool, id: Uuid) {
+    let prefix = format!("notes-attachments/{id}/");
+    match crate::apps::storage::handlers::purge_prefix(pool, &prefix).await {
+        Ok(n) if n > 0 => log::info!("purged {n} attachment object(s) for note {id}"),
+        Ok(_) => {}
+        Err(e) => log::warn!("attachment cleanup skipped for note {id}: {e}"),
+    }
+}
+
+// ── LIST TRASH ──────────────────────────────────────────────────────────────
+//
+// GET /admin/notes/trash — soft-deleted notes, newest-trashed first. Returns the
+// standard list shape, with `deleted_at` populated so the UI can show age.
+
+pub async fn list_trash(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    query: web::Query<ListNotesQuery>,
+) -> impl Responder {
+    if let Some(r) = require_read(&user) {
+        return r;
+    }
+
+    let limit = query.limit.unwrap_or(200).clamp(1, 10000);
+    let offset = query.offset.unwrap_or(0).max(0);
+
+    let total: (i64,) = match sqlx::query_as(
+        "SELECT COUNT(*) FROM notes WHERE user_id = $1 AND deleted_at IS NOT NULL",
+    )
+    .bind(&user.user_id)
+    .fetch_one(pool.get_ref())
+    .await
+    {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("trash count failed: {e}");
+            return HttpResponse::InternalServerError().json(err("Failed to count trash"));
+        }
+    };
+
+    let sql = format!(
+        "SELECT {}, deleted_at FROM notes \
+         WHERE user_id = $1 AND deleted_at IS NOT NULL \
+         ORDER BY deleted_at DESC LIMIT $2 OFFSET $3",
+        LIST_FIELDS
+    );
+
+    match sqlx::query_as::<_, NoteListItem>(&sql)
+        .bind(&user.user_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool.get_ref())
+        .await
+    {
+        Ok(data) => HttpResponse::Ok().json(NoteListResponse {
+            data,
+            total: total.0,
+            limit,
+            offset,
+        }),
+        Err(e) => {
+            log::error!("trash list failed: {e}");
+            HttpResponse::InternalServerError().json(err("Failed to fetch trash"))
         }
     }
 }
@@ -652,7 +806,7 @@ pub async fn rename_folder(
     let from_len = from.chars().count() as i32;
     let sql = "UPDATE notes \
          SET folder = $1 || substring(folder FROM $2) \
-         WHERE user_id = $3 AND (folder = $4 OR folder LIKE $5) \
+         WHERE user_id = $3 AND deleted_at IS NULL AND (folder = $4 OR folder LIKE $5) \
          RETURNING id";
 
     match sqlx::query_as::<_, (Uuid,)>(sql)
@@ -693,7 +847,7 @@ pub async fn list_tags(
         return r;
     }
 
-    let sql = "SELECT DISTINCT UNNEST(tags) AS tag FROM notes WHERE user_id = $1 ORDER BY tag";
+    let sql = "SELECT DISTINCT UNNEST(tags) AS tag FROM notes WHERE user_id = $1 AND deleted_at IS NULL ORDER BY tag";
     match sqlx::query_as::<_, (String,)>(sql)
         .bind(&user.user_id)
         .fetch_all(pool.get_ref())
@@ -720,7 +874,7 @@ pub async fn list_folders(
         return r;
     }
 
-    let sql = "SELECT DISTINCT folder FROM notes WHERE user_id = $1 AND folder IS NOT NULL ORDER BY folder";
+    let sql = "SELECT DISTINCT folder FROM notes WHERE user_id = $1 AND deleted_at IS NULL AND folder IS NOT NULL ORDER BY folder";
     match sqlx::query_as::<_, (String,)>(sql)
         .bind(&user.user_id)
         .fetch_all(pool.get_ref())
@@ -762,7 +916,7 @@ pub async fn search_folders(
     // every ancestor path in Rust so that a folder like "/projects" surfaces
     // even when only "/projects/example/acp/plan" exists in notes.folder.
     let sql = "SELECT folder, COUNT(*)::BIGINT FROM notes \
-               WHERE user_id = $1 AND folder IS NOT NULL AND folder <> '' \
+               WHERE user_id = $1 AND deleted_at IS NULL AND folder IS NOT NULL AND folder <> '' \
                GROUP BY folder";
     let rows: Vec<(String, i64)> = match sqlx::query_as(sql)
         .bind(&user.user_id)
@@ -850,7 +1004,7 @@ pub async fn browse_folder(
 
     // ── Files directly in this folder ──
     let files_sql = "SELECT id, title, tags, folder, created_at, updated_at \
-                     FROM notes WHERE user_id = $1 AND folder = $2 \
+                     FROM notes WHERE user_id = $1 AND deleted_at IS NULL AND folder = $2 \
                      ORDER BY updated_at DESC";
 
     let files: Vec<NoteListItem> = match sqlx::query_as::<_, NoteListItem>(files_sql)
@@ -871,12 +1025,12 @@ pub async fn browse_folder(
     // and we escape single quotes for the regex/pattern, then use bind for the full condition.
     let subfolder_sql = if path == "/" {
         "SELECT DISTINCT SUBSTRING(folder FROM '^/([^/]+)') AS name \
-         FROM notes WHERE user_id = $1 AND folder LIKE '/%' AND folder != '/'"
+         FROM notes WHERE user_id = $1 AND deleted_at IS NULL AND folder LIKE '/%' AND folder != '/'"
             .to_string()
     } else {
         format!(
             "SELECT DISTINCT SUBSTRING(folder FROM '^{}/?([^/]+)') AS name \
-             FROM notes WHERE user_id = $1 AND folder LIKE $2 AND folder != $3",
+             FROM notes WHERE user_id = $1 AND deleted_at IS NULL AND folder LIKE $2 AND folder != $3",
             path.replace('\'', "''"),
         )
     };
@@ -912,6 +1066,9 @@ pub async fn browse_folder(
     })
 }
 
+// DELETE /admin/notes/trash — permanently remove every trashed note for the
+// user. Collect the ids first so we can purge each note's S3 attachments after
+// the rows (and their cascaded jobs/shares) are gone.
 pub async fn empty_trash(
     user: AuthenticatedUser,
     pool: web::Data<DbPool>,
@@ -920,23 +1077,42 @@ pub async fn empty_trash(
         return resp;
     }
 
-    let result = sqlx::query(
-        r#"
-        DELETE FROM notes 
-        WHERE user_id = $1 
-          AND folder = '/.trash' 
-          AND updated_at < NOW() - INTERVAL '7 days'
-        "#
+    let ids: Vec<(Uuid,)> = match sqlx::query_as(
+        "SELECT id FROM notes WHERE user_id = $1 AND deleted_at IS NOT NULL",
     )
-    .bind(user.user_id)
-    .execute(pool.get_ref())
-    .await;
+    .bind(&user.user_id)
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            log::error!("empty trash lookup failed: {e}");
+            return HttpResponse::InternalServerError().json(err("Failed to empty trash"));
+        }
+    };
+
+    if ids.is_empty() {
+        return HttpResponse::Ok().json(serde_json::json!({
+            "message": "Trash already empty",
+            "deleted_count": 0
+        }));
+    }
+
+    let result = sqlx::query("DELETE FROM notes WHERE user_id = $1 AND deleted_at IS NOT NULL")
+        .bind(&user.user_id)
+        .execute(pool.get_ref())
+        .await;
 
     match result {
-        Ok(res) => HttpResponse::Ok().json(serde_json::json!({
-            "message": "Trash emptied successfully",
-            "deleted_count": res.rows_affected()
-        })),
+        Ok(res) => {
+            for (id,) in &ids {
+                purge_note_attachments(pool.get_ref(), *id).await;
+            }
+            HttpResponse::Ok().json(serde_json::json!({
+                "message": "Trash emptied successfully",
+                "deleted_count": res.rows_affected()
+            }))
+        }
         Err(e) => {
             log::error!("empty trash failed: {e}");
             HttpResponse::InternalServerError().json(err("Failed to empty trash"))

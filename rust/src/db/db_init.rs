@@ -189,7 +189,8 @@ const TABLES: &[TableDefinition] = &[
                 folder TEXT DEFAULT '/',
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW(),
-                embedding vector(1536)
+                embedding vector(1536),
+                deleted_at TIMESTAMPTZ
             )
         "#,
         indices: &[
@@ -201,6 +202,7 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_notes_title_trgm ON notes USING gin (title gin_trgm_ops)",
             "CREATE INDEX IF NOT EXISTS idx_notes_folder_trgm ON notes USING gin (folder gin_trgm_ops)",
             "CREATE INDEX IF NOT EXISTS idx_notes_embedding ON notes USING hnsw (embedding vector_cosine_ops)",
+            "CREATE INDEX IF NOT EXISTS idx_notes_deleted_at ON notes USING btree (deleted_at)",
         ],
     },
     TableDefinition {
@@ -208,7 +210,7 @@ const TABLES: &[TableDefinition] = &[
         sql: r#"
             CREATE TABLE embedding_jobs (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                note_id UUID NOT NULL,
+                note_id UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
                 content TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 started_at TIMESTAMPTZ,
@@ -265,6 +267,28 @@ const TABLES: &[TableDefinition] = &[
             )
         "#,
         indices: &[],
+    },
+    TableDefinition {
+        name: "db_folder_shares",
+        sql: r#"
+            CREATE TABLE db_folder_shares (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                prefix TEXT NOT NULL,
+                slug TEXT UNIQUE NOT NULL,
+                access_level TEXT NOT NULL DEFAULT 'view'
+                    CHECK (access_level IN ('view', 'edit')),
+                password_hash TEXT,
+                is_active BOOLEAN DEFAULT TRUE,
+                expires_at TIMESTAMPTZ,
+                max_upload_bytes BIGINT,
+                created_by TEXT NOT NULL REFERENCES db_users(id) ON DELETE CASCADE,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                last_accessed_at TIMESTAMPTZ
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_db_folder_shares_prefix ON db_folder_shares (prefix)",
+        ],
     },
 ];
 

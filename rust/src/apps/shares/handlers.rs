@@ -121,7 +121,7 @@ pub async fn create_share(
 
     // Verify note exists and belongs to user
     let note_exists: Option<(String,)> = sqlx::query_as(
-        "SELECT user_id FROM notes WHERE id = $1"
+        "SELECT user_id FROM notes WHERE id = $1 AND deleted_at IS NULL"
     )
     .bind(note_id)
     .fetch_optional(pool.get_ref())
@@ -452,7 +452,7 @@ pub async fn get_shared_note(
 
     // Fetch note
     let note: Option<(uuid::Uuid, String, String, Vec<String>, Option<String>, Option<DateTime<Utc>>)> = sqlx::query_as(
-        "SELECT id, title, content, tags, folder, updated_at FROM notes WHERE id = $1"
+        "SELECT id, title, content, tags, folder, updated_at FROM notes WHERE id = $1 AND deleted_at IS NULL"
     )
     .bind(share.note_id)
     .fetch_optional(pool.get_ref())
@@ -635,7 +635,7 @@ pub async fn update_shared_note(
 
     // Fetch current note
     let current: Option<(String, String, Vec<String>, Option<String>)> = sqlx::query_as(
-        "SELECT title, content, tags, folder FROM notes WHERE id = $1"
+        "SELECT title, content, tags, folder FROM notes WHERE id = $1 AND deleted_at IS NULL"
     )
     .bind(share.note_id)
     .fetch_optional(pool.get_ref())
@@ -662,7 +662,7 @@ pub async fn update_shared_note(
     // Update note
     let updated: Option<(uuid::Uuid, String, String, Vec<String>, Option<String>, Option<DateTime<Utc>>)> = sqlx::query_as(
         "UPDATE notes SET title = $1, content = $2, tags = $3, folder = $4, updated_at = NOW()
-         WHERE id = $5
+         WHERE id = $5 AND deleted_at IS NULL
          RETURNING id, title, content, tags, folder, updated_at"
     )
     .bind(&final_title)

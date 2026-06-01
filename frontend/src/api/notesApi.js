@@ -31,11 +31,43 @@ export const updateNote = async ({ id, ...payload }) => {
 	return data;
 };
 
+// Soft delete — moves the note to the trash (sets deleted_at server-side). The
+// note keeps its content, folder and attachments and can be restored.
 export const deleteNote = async (id) => {
 	if (!UUID_RE.test(id)) {
 		throw new Error(`Invalid note ID for delete: ${id}`);
 	}
 	const { data } = await axiosInstance.delete(`/admin/notes/${id}`);
+	return data;
+};
+
+// ── Trash ─────────────────────────────────────────────────────────────────
+
+export const fetchTrash = async (params = {}) => {
+	const { data } = await axiosInstance.get("/admin/notes/trash", { params });
+	return data;
+};
+
+export const restoreNote = async (id) => {
+	if (!UUID_RE.test(id)) {
+		throw new Error(`Invalid note ID for restore: ${id}`);
+	}
+	const { data } = await axiosInstance.put(`/admin/notes/${id}/restore`);
+	return data;
+};
+
+// Permanent delete — removes the note for good and purges its S3 attachments.
+export const permanentlyDeleteNote = async (id) => {
+	if (!UUID_RE.test(id)) {
+		throw new Error(`Invalid note ID for permanent delete: ${id}`);
+	}
+	const { data } = await axiosInstance.delete(`/admin/notes/${id}/permanent`);
+	return data;
+};
+
+// Permanently delete every note currently in the trash.
+export const emptyTrash = async () => {
+	const { data } = await axiosInstance.delete("/admin/notes/trash");
 	return data;
 };
 

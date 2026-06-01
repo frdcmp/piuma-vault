@@ -2,6 +2,7 @@ import {
 	ApiOutlined,
 	AppstoreOutlined,
 	BookOutlined,
+	DeleteOutlined,
 	DownOutlined,
 	FolderOpenOutlined,
 	HomeOutlined,
@@ -29,6 +30,7 @@ const NAVIGATION = [
 const RESOURCES = [
 	{ key: "/admin/api-keys", icon: <KeyOutlined />, label: "API Keys" },
 	{ key: "/admin/services", icon: <ApiOutlined />, label: "Services" },
+	{ key: "/admin/trash", icon: <DeleteOutlined />, label: "Trash" },
 	{ key: "/admin/settings", icon: <SettingOutlined />, label: "Settings" },
 ];
 

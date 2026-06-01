@@ -1,0 +1,34 @@
+.sfshare-main {
+	height: 100vh;
+}
+
+/* Gate / error screens */
+.sfshare-screen {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 100vh;
+	background: var(--bg, #0f1115);
+	padding: 24px;
+}
+
+.sfshare-card {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	width: 320px;
+	max-width: 90vw;
+	padding: 22px;
+	border: 2px solid var(--border-strong, #3a4150);
+	background: var(--bg-soft, #15171c);
+	box-shadow: 3px 3px 0 0 #000;
+	color: var(--text, #d6dbe5);
+	font-family:
+		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+	text-align: center;
+}
+
+.sfshare-card h2 {
+	margin: 0;
+	font-size: 13pt;
+}
