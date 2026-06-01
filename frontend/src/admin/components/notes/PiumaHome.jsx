@@ -21,23 +21,51 @@ const QUIPS = [
 export default function PiumaHome({ onBack, onOpenChat }) {
 	const navigate = useNavigate();
 	const logout = useLogout();
-	const [quip, setQuip] = useState(0);
-	const [quipShown, setQuipShown] = useState(true);
+	const [typed, setTyped] = useState("");
 	// Holds the tapped feature ({ label, quip }) while the placeholder modal is
 	// open, or null.
 	const [comingSoon, setComingSoon] = useState(null);
 	const [confirmLogout, setConfirmLogout] = useState(false);
 
-	// Cycle the quip every few seconds with a quick cross-fade.
+	// Terminal-style typewriter: type a quip out char by char, hold, backspace
+	// it, then move to the next one. A single recursive timeout chain drives the
+	// whole cycle so the speeds stay independent of React's render cadence.
 	useEffect(() => {
-		const id = setInterval(() => {
-			setQuipShown(false);
-			setTimeout(() => {
-				setQuip((q) => (q + 1) % QUIPS.length);
-				setQuipShown(true);
-			}, 250);
-		}, 3800);
-		return () => clearInterval(id);
+		const TYPE_MS = 55; // per character typed
+		const DELETE_MS = 25; // per character erased
+		const HOLD_MS = 2400; // pause on the full line
+		const GAP_MS = 500; // pause on the empty line before the next quip
+		let quipIndex = 0;
+		let charIndex = 0;
+		let deleting = false;
+		let timeout;
+
+		const tick = () => {
+			const full = QUIPS[quipIndex];
+			if (!deleting) {
+				charIndex += 1;
+				setTyped(full.slice(0, charIndex));
+				if (charIndex >= full.length) {
+					deleting = true;
+					timeout = setTimeout(tick, HOLD_MS);
+				} else {
+					timeout = setTimeout(tick, TYPE_MS);
+				}
+			} else {
+				charIndex -= 1;
+				setTyped(full.slice(0, charIndex));
+				if (charIndex <= 0) {
+					deleting = false;
+					quipIndex = (quipIndex + 1) % QUIPS.length;
+					timeout = setTimeout(tick, GAP_MS);
+				} else {
+					timeout = setTimeout(tick, DELETE_MS);
+				}
+			}
+		};
+
+		timeout = setTimeout(tick, GAP_MS);
+		return () => clearTimeout(timeout);
 	}, []);
 
 	return (
@@ -58,8 +86,11 @@ export default function PiumaHome({ onBack, onOpenChat }) {
 				</button>
 			) : null}
 			<PiumaPixelArt pixelSize={8} />
-			<div className={`piuma-home-text ${quipShown ? "" : "is-hidden"}`}>
-				{QUIPS[quip]}
+			<div className="piuma-home-text">
+				<span className="piuma-home-typed">
+					{typed}
+					<span className="piuma-home-cursor" aria-hidden="true" />
+				</span>
 			</div>
 
 			{/* notes ← | → chat */}
