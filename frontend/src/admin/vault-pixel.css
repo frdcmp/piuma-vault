@@ -1,0 +1,451 @@
+/* =============================================================================
+   vault-pixel.css — shared pixel design system for the admin area.
+
+   All admin layout + pages opt into this language by living under a
+   `.vault-pixel` root (applied once on the app shell, and on full-screen auth
+   pages). The palette/tokens mirror the existing pixel components
+   (PvModal.css, PiumaEmptyState.css) so everything stays consistent.
+
+   Usage from a page:
+     <div className="vp-page"> ... </div>
+     <section className="vp-panel"> <header className="vp-panel-bar">…</header> … </section>
+     <button className="vp-btn vp-btn--primary">…</button>
+   ============================================================================= */
+
+/* Tokens are defined on :root (not just .vault-pixel) so they also resolve in
+   portaled DOM — AntD Drawer/Modal/Dropdown render outside the .vault-pixel
+   shell, and would otherwise fall back to black. */
+:root {
+	/* Surfaces */
+	--vp-bg: #14171c;
+	--vp-bg-soft: #15171c;
+	--vp-panel: #1b1e25;
+	--vp-panel-alt: #1f232b;
+
+	/* Lines */
+	--vp-border: #3a4150;
+	--vp-border-soft: #2a2f39;
+
+	/* Ink */
+	--vp-text: #d6dbe5;
+	--vp-muted: #8a93a3;
+	--vp-faint: #5b6373;
+
+	/* Accents */
+	--vp-accent: #f7c948; /* yellow — primary brand */
+	--vp-accent-2: #5cd0a9; /* green — confirm / success */
+	--vp-accent-3: #ff6b6b; /* red — danger */
+	--vp-accent-4: #6ab0ff; /* blue — info / links */
+
+	/* Pixel primitives */
+	--vp-shadow: 2px 2px 0 0 #000;
+	--vp-shadow-lg: 4px 4px 0 0 #000;
+	--vp-radius: 0px;
+	--vp-font:
+		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+}
+
+.vault-pixel {
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+}
+
+/* A subtly tiled scanline grid — the signature vault backdrop. */
+.vault-pixel,
+.vp-scanlines {
+	background-color: var(--vp-bg);
+	background-image:
+		linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+	background-size: 8px 8px;
+}
+
+/* ---- Page scaffold --------------------------------------------------------- */
+.vp-page {
+	width: 100%;
+	max-width: 1200px;
+	margin: 0 auto;
+	padding: 24px 20px 64px;
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+	text-align: left;
+	box-sizing: border-box;
+}
+
+.vp-page--wide {
+	max-width: 1480px;
+}
+
+.vp-page--narrow {
+	max-width: 760px;
+}
+
+/* Page header block (title + optional subtitle/actions) */
+.vp-page-head {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 16px;
+	flex-wrap: wrap;
+	margin-bottom: 24px;
+	padding-bottom: 14px;
+	border-bottom: 2px dashed var(--vp-border);
+}
+
+.vp-page-title {
+	margin: 0;
+	font-family: var(--vp-font);
+	font-size: 22px;
+	font-weight: 800;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: var(--vp-accent);
+	text-shadow: 2px 2px 0 #000;
+}
+
+.vp-page-subtitle {
+	margin: 6px 0 0;
+	font-size: 13px;
+	color: var(--vp-muted);
+	letter-spacing: 0.3px;
+}
+
+/* ---- Headings & text ------------------------------------------------------- */
+.vp-h1,
+.vp-h2,
+.vp-h3 {
+	font-family: var(--vp-font);
+	color: var(--vp-text);
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	margin: 0 0 12px;
+}
+.vp-h1 {
+	font-size: 32px;
+	font-weight: 800;
+	text-shadow: 3px 3px 0 #000;
+}
+.vp-h2 {
+	font-size: 18px;
+	font-weight: 800;
+	text-shadow: 2px 2px 0 #000;
+}
+.vp-h3 {
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--vp-muted);
+}
+
+.vp-text {
+	color: var(--vp-text);
+	font-size: 13px;
+	line-height: 1.7;
+}
+.vp-muted {
+	color: var(--vp-muted);
+}
+.vp-accent {
+	color: var(--vp-accent);
+}
+
+/* ---- Panel (the workhorse container) --------------------------------------- */
+.vp-panel {
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow-lg);
+	image-rendering: pixelated;
+}
+
+/* Title bar with the three pixel "traffic light" dots, matching PvModal. */
+.vp-panel-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px 6px 12px;
+	background: var(--vp-bg-soft);
+	border-bottom: 2px solid var(--vp-border);
+}
+
+.vp-dots {
+	display: inline-flex;
+	gap: 4px;
+	margin-right: 4px;
+}
+.vp-dots span {
+	width: 8px;
+	height: 8px;
+	display: block;
+	background: var(--vp-border);
+}
+.vp-dots span:nth-child(1) {
+	background: var(--vp-accent-3);
+}
+.vp-dots span:nth-child(2) {
+	background: var(--vp-accent);
+}
+.vp-dots span:nth-child(3) {
+	background: var(--vp-accent-2);
+}
+
+.vp-panel-title {
+	margin: 0;
+	font-size: 11px;
+	font-weight: 700;
+	color: var(--vp-accent);
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.vp-panel-body {
+	padding: 16px;
+}
+
+/* ---- Card (compact, hoverable tile) ---------------------------------------- */
+.vp-card {
+	display: block;
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	padding: 16px;
+	color: var(--vp-text);
+	text-decoration: none;
+	transition:
+		transform 0.12s steps(2, end),
+		box-shadow 0.12s steps(2, end),
+		border-color 0.12s;
+}
+.vp-card--link:hover,
+a.vp-card:hover {
+	transform: translate(-1px, -1px);
+	box-shadow: var(--vp-shadow-lg);
+	border-color: var(--vp-accent);
+}
+.vp-card-title {
+	margin: 0 0 6px;
+	font-size: 14px;
+	font-weight: 800;
+	letter-spacing: 0.5px;
+	color: var(--vp-text);
+}
+.vp-card-desc {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.6;
+	color: var(--vp-muted);
+}
+
+/* Grid helper for laying out cards */
+.vp-grid {
+	display: grid;
+	gap: 16px;
+	grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+/* ---- Buttons --------------------------------------------------------------- */
+.vp-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	color: var(--vp-text);
+	padding: 7px 16px;
+	font-family: var(--vp-font);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	text-decoration: none;
+	cursor: pointer;
+	transition:
+		transform 0.1s steps(2, end),
+		box-shadow 0.1s steps(2, end),
+		border-color 0.1s,
+		color 0.1s;
+}
+.vp-btn:hover {
+	border-color: var(--vp-accent);
+	color: var(--vp-accent);
+	transform: translate(-1px, -1px);
+	box-shadow: var(--vp-shadow-lg);
+}
+.vp-btn:active {
+	transform: translate(2px, 2px);
+	box-shadow: 0 0 0 0 #000;
+}
+.vp-btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+	transform: none;
+	box-shadow: var(--vp-shadow);
+	border-color: var(--vp-border);
+	color: var(--vp-muted);
+}
+.vp-btn--primary {
+	color: var(--vp-accent-2);
+	border-color: var(--vp-accent-2);
+}
+.vp-btn--primary:hover {
+	background: var(--vp-accent-2);
+	color: var(--vp-bg);
+	border-color: var(--vp-accent-2);
+}
+.vp-btn--danger {
+	color: var(--vp-accent-3);
+	border-color: var(--vp-accent-3);
+}
+.vp-btn--danger:hover {
+	background: var(--vp-accent-3);
+	color: var(--vp-bg);
+	border-color: var(--vp-accent-3);
+}
+.vp-btn--accent {
+	color: var(--vp-accent);
+	border-color: var(--vp-accent);
+}
+.vp-btn--accent:hover {
+	background: var(--vp-accent);
+	color: var(--vp-bg);
+	border-color: var(--vp-accent);
+}
+.vp-btn--ghost {
+	box-shadow: none;
+	background: transparent;
+	border-color: var(--vp-border-soft);
+}
+.vp-btn--block {
+	width: 100%;
+}
+.vp-btn--sm {
+	padding: 4px 10px;
+	font-size: 11px;
+}
+
+/* ---- Inputs ---------------------------------------------------------------- */
+.vp-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 14px;
+}
+.vp-label {
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-muted);
+}
+.vp-input,
+.vp-textarea,
+.vp-select {
+	width: 100%;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+	font-size: 13px;
+	padding: 8px 10px;
+	box-sizing: border-box;
+	outline: none;
+	transition: border-color 0.1s;
+}
+.vp-input:focus,
+.vp-textarea:focus,
+.vp-select:focus {
+	border-color: var(--vp-accent);
+}
+.vp-input::placeholder,
+.vp-textarea::placeholder {
+	color: var(--vp-faint);
+}
+.vp-textarea {
+	min-height: 96px;
+	resize: vertical;
+	line-height: 1.6;
+}
+
+/* ---- Tags / chips ---------------------------------------------------------- */
+.vp-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	color: var(--vp-muted);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	padding: 2px 8px;
+	text-transform: uppercase;
+}
+.vp-tag--accent {
+	color: var(--vp-accent);
+	border-color: var(--vp-accent);
+}
+.vp-tag--green {
+	color: var(--vp-accent-2);
+	border-color: var(--vp-accent-2);
+}
+.vp-tag--blue {
+	color: var(--vp-accent-4);
+	border-color: var(--vp-accent-4);
+}
+.vp-tag--red {
+	color: var(--vp-accent-3);
+	border-color: var(--vp-accent-3);
+}
+
+/* ---- Misc helpers ---------------------------------------------------------- */
+.vp-divider {
+	height: 0;
+	border: 0;
+	border-top: 2px dashed var(--vp-border);
+	margin: 20px 0;
+}
+.vp-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+.vp-row--wrap {
+	flex-wrap: wrap;
+}
+.vp-spread {
+	justify-content: space-between;
+}
+.vp-stack {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+.vp-pixelated {
+	image-rendering: pixelated;
+}
+.vp-link {
+	color: var(--vp-accent-4);
+	text-decoration: none;
+	border-bottom: 1px dotted var(--vp-accent-4);
+	cursor: pointer;
+}
+.vp-link:hover {
+	color: var(--vp-accent);
+	border-bottom-color: var(--vp-accent);
+}
+
+/* Pixel float used by sprites / empty states */
+@keyframes vp-float {
+	0%,
+	100% {
+		transform: translateY(0);
+	}
+	50% {
+		transform: translateY(-6px);
+	}
+}

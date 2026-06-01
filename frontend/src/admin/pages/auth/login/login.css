@@ -1,0 +1,96 @@
+/* Login — vault pixel auth chrome */
+
+.vp-auth-layout {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	min-height: 100vh;
+	padding: 16px;
+	box-sizing: border-box;
+}
+
+.vp-auth-panel {
+	width: 100%;
+	max-width: 360px;
+	box-shadow: var(--vp-shadow-lg);
+}
+
+.vp-auth-title {
+	text-align: center;
+	color: var(--vp-accent);
+	margin-bottom: 6px;
+}
+
+.vp-auth-subtitle {
+	text-align: center;
+	margin-bottom: 20px;
+}
+
+.vp-auth-alert {
+	border: 2px solid var(--vp-accent-3);
+	background: rgba(255, 107, 107, 0.1);
+	color: var(--vp-text);
+	padding: 12px;
+	margin-bottom: 20px;
+	font-size: 13px;
+	line-height: 1.6;
+}
+
+.vp-auth-alert--warning {
+	border-color: var(--vp-accent);
+	background: rgba(247, 201, 72, 0.1);
+}
+
+.vp-auth-alert-title {
+	font-weight: 700;
+	margin-bottom: 6px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--vp-accent-3);
+}
+
+.vp-auth-alert--warning .vp-auth-alert-title {
+	color: var(--vp-accent);
+}
+
+.vp-auth-forgot {
+	text-align: right;
+	margin-bottom: 18px;
+	font-size: 12px;
+}
+
+.vp-auth-checkbox {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12px;
+	color: var(--vp-muted);
+	margin-bottom: 16px;
+	cursor: pointer;
+}
+
+.vp-auth-back {
+	text-align: center;
+	margin-top: 14px;
+	font-size: 12px;
+}
+
+.vp-auth-back-btn {
+	background: none;
+	border: none;
+	padding: 0;
+	font-family: var(--vp-font);
+	font-size: 12px;
+}
+
+/* Fix WebKit autofill styling breaking dark theme */
+.vp-input:-webkit-autofill,
+.vp-input:-webkit-autofill:hover,
+.vp-input:-webkit-autofill:focus,
+.vp-input:-webkit-autofill:active {
+	/* biome-ignore lint/complexity/noImportantStyles: override UA autofill styling */
+	-webkit-box-shadow: 0 0 0 30px var(--vp-bg-soft) inset !important;
+	/* biome-ignore lint/complexity/noImportantStyles: override UA autofill styling */
+	-webkit-text-fill-color: var(--vp-text) !important;
+	transition: background-color 5000s ease-in-out 0s;
+}

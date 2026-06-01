@@ -1,0 +1,46 @@
+/* Services page — small extras on top of the shared vault-pixel classes. */
+
+.vp-svc-chip {
+	margin-left: 6px;
+	padding: 0 6px;
+	vertical-align: middle;
+}
+
+.vp-svc-test {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 16px;
+	padding-top: 14px;
+	border-top: 2px dashed var(--vp-border);
+}
+
+.vp-svc-result {
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.3px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.vp-svc-result.is-ok {
+	color: var(--vp-accent-2);
+}
+.vp-svc-result.is-err {
+	color: var(--vp-accent-3);
+}
+
+/* Clickable vendor preset in the storage panel title (AWS ⇄ Bunny). */
+.vp-svc-vendor {
+	font: inherit;
+	color: var(--vp-accent-2);
+	background: none;
+	border: none;
+	padding: 0;
+	cursor: pointer;
+	text-decoration: underline dotted;
+	text-underline-offset: 3px;
+}
+.vp-svc-vendor:hover {
+	color: var(--vp-accent);
+}

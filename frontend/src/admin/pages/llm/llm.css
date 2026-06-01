@@ -1,0 +1,273 @@
+/* llm — vault pixel LLM chat page. Tokens come from vault-pixel.css. */
+
+/* ---- Layout ---------------------------------------------------------------- */
+.vp-llm-layout {
+	display: flex;
+	gap: 16px;
+	height: calc(100vh - 230px);
+	min-height: 420px;
+}
+
+.vp-llm-side {
+	width: 280px;
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.vp-llm-main {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+
+/* ---- Sidebar / conversation list ------------------------------------------- */
+.vp-llm-conv-list {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.vp-llm-empty {
+	font-size: 12px;
+	padding: 8px;
+	margin: 0;
+}
+
+.vp-llm-conv {
+	display: flex;
+	align-items: stretch;
+	border: 2px solid transparent;
+	background: var(--vp-bg-soft);
+	transition: border-color 0.1s;
+}
+.vp-llm-conv:hover {
+	border-color: var(--vp-border);
+}
+.vp-llm-conv--active {
+	border-color: var(--vp-accent);
+}
+
+.vp-llm-conv-main {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 10px;
+	background: transparent;
+	border: 0;
+	cursor: pointer;
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+	text-align: left;
+}
+.vp-llm-conv-icon {
+	color: var(--vp-muted);
+	font-size: 12px;
+	flex-shrink: 0;
+}
+.vp-llm-conv-label {
+	flex: 1;
+	min-width: 0;
+	font-size: 12px;
+	font-weight: 700;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.vp-llm-conv-group {
+	font-size: 9px;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-faint);
+	flex-shrink: 0;
+}
+.vp-llm-conv--active .vp-llm-conv-label {
+	color: var(--vp-accent);
+}
+
+.vp-llm-conv-del {
+	flex-shrink: 0;
+	background: transparent;
+	border: 0;
+	border-left: 2px solid var(--vp-border-soft);
+	color: var(--vp-faint);
+	cursor: pointer;
+	padding: 0 10px;
+	font-size: 12px;
+	transition: color 0.1s;
+}
+.vp-llm-conv-del:hover {
+	color: var(--vp-accent-3);
+}
+
+/* ---- Header selects -------------------------------------------------------- */
+.vp-llm-selects {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+.vp-llm-select {
+	width: auto;
+	padding: 4px 8px;
+	font-size: 11px;
+	box-shadow: none;
+}
+
+/* ---- Chat area ------------------------------------------------------------- */
+.vp-llm-chat {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	background: var(--vp-bg);
+}
+
+.vp-llm-bubbles {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 14px;
+}
+
+/* ---- Message bubbles ------------------------------------------------------- */
+.vp-llm-bubble {
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	padding: 12px 14px;
+	font-size: 13px;
+	line-height: 1.7;
+	color: var(--vp-text);
+	image-rendering: pixelated;
+}
+.vp-llm-bubble--ai {
+	background: var(--vp-panel);
+	width: 100%;
+	box-sizing: border-box;
+}
+.vp-llm-bubble--user {
+	background: var(--vp-bg-soft);
+	border-color: var(--vp-accent);
+	display: inline-block;
+	text-align: left;
+}
+
+.vp-llm-bubble-foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 2px dashed var(--vp-border);
+}
+
+.vp-llm-thinking {
+	font-size: 12px;
+}
+
+/* User avatar */
+.vp-llm-avatar.ant-avatar {
+	background: var(--vp-accent);
+	color: var(--vp-bg);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	font-family: var(--vp-font);
+	font-weight: 800;
+	font-size: 12px;
+	border-radius: 0;
+}
+
+/* ---- Icon buttons ---------------------------------------------------------- */
+.vp-llm-iconbtn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: transparent;
+	border: 0;
+	color: var(--vp-muted);
+	cursor: pointer;
+	padding: 2px 4px;
+	font-size: 13px;
+	transition: color 0.1s;
+}
+.vp-llm-iconbtn:hover {
+	color: var(--vp-accent);
+}
+
+/* ---- Inline code / pre ----------------------------------------------------- */
+.vp-llm-code {
+	background: var(--vp-bg-soft);
+	color: var(--vp-accent-2);
+	border: 1px solid var(--vp-border);
+	padding: 1px 5px;
+	font-family: var(--vp-font);
+	font-size: 12px;
+}
+.vp-llm-pre {
+	background: var(--vp-bg-soft);
+	color: var(--vp-text);
+	border: 2px solid var(--vp-border);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+	padding: 12px;
+	overflow: auto;
+	margin-bottom: 8px;
+	font-family: var(--vp-font);
+	font-size: 12px;
+	line-height: 1.6;
+}
+.vp-llm-pre .vp-llm-code {
+	background: transparent;
+	border: 0;
+	padding: 0;
+	color: inherit;
+}
+
+/* ---- Sender (input bar) ---------------------------------------------------- */
+.vp-llm-sender {
+	padding: 14px;
+	border-top: 2px solid var(--vp-border);
+	background: var(--vp-bg-soft);
+}
+.vp-llm-sender .ant-sender {
+	background: var(--vp-bg);
+	border: 2px solid var(--vp-border);
+	border-radius: 0;
+	box-shadow: var(--vp-shadow);
+}
+.vp-llm-sender .ant-sender:focus-within {
+	border-color: var(--vp-accent);
+}
+.vp-llm-sender .ant-sender textarea,
+.vp-llm-sender .ant-input {
+	background: transparent;
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+	font-size: 13px;
+}
+.vp-llm-sender .ant-sender textarea::placeholder {
+	color: var(--vp-faint);
+}
+
+/* ---- Responsive ------------------------------------------------------------ */
+@media (max-width: 860px) {
+	.vp-llm-layout {
+		flex-direction: column;
+		height: auto;
+	}
+	.vp-llm-side {
+		width: 100%;
+		max-height: 220px;
+	}
+	.vp-llm-main {
+		height: calc(100vh - 320px);
+		min-height: 380px;
+	}
+}

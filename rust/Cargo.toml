@@ -1,0 +1,54 @@
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2021"
+default-run = "backend"
+
+[[bin]]
+name = "backend"
+path = "src/main.rs"
+
+[[bin]]
+name = "embedding-worker"
+path = "src/bin/embedding-worker.rs"
+
+[dependencies]
+actix-web = "4.3"
+actix-cors = "0.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "chrono", "uuid"] }
+tokio = { version = "1.0", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
+dotenv = "0.15"
+num_cpus = "1.16"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+log = "0.4"
+env_logger = "0.10"
+jsonwebtoken = "8.3"
+actix-web-httpauth = "0.8"
+bitflags = "2.4.2"
+futures = "0.3"
+futures-util = "0.3"
+reqwest = { version = "0.11", features = ["json", "multipart", "stream"] }
+aws-config = { version = "1.1", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1.15"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+bytes = "1.5"
+actix-multipart = "0.6"
+argon2 = "0.5"
+rand = "0.8"
+hmac = "0.12"
+sha1 = "0.10"
+urlencoding = "2.1"
+lettre = { version = "0.11", features = ["tokio1", "tokio1-native-tls", "builder"] }
+sha2 = "0.10"
+base64 = "0.22"
+pgvector = { version = "0.4", features = ["sqlx"] }
+moka = { version = "0.12", features = ["future"] }
+serde_yaml = "0.9"
+
+[build-dependencies]
+rand = "0.8"
+rsa = { version = "0.9.10", features = ["pem"] }

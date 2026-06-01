@@ -1,0 +1,73 @@
+/* health — vault pixel skin for the health DB page.
+   Tokens come from vault-pixel.css; this only restyles the page-local
+   wrappers and the antd Table living inside the panel. */
+
+.vp-health-stat .vp-health-stat-value {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	margin-top: 6px;
+	font-size: 32px;
+	font-weight: 800;
+	letter-spacing: 1px;
+	text-shadow: 2px 2px 0 #000;
+}
+.vp-health-stat-suffix {
+	font-size: 13px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	text-shadow: none;
+}
+
+.vp-health-id {
+	font-weight: 800;
+	letter-spacing: 0.5px;
+}
+
+.vp-health-actions {
+	justify-content: center;
+	gap: 8px;
+}
+
+/* Drop the antd Table chrome into the pixel palette. */
+.vp-health-table {
+	padding: 0;
+}
+.vp-health-table .ant-table {
+	background: transparent;
+	font-family: var(--vp-font);
+	color: var(--vp-text);
+}
+.vp-health-table .ant-table-thead > tr > th {
+	background: var(--vp-bg-soft);
+	color: var(--vp-muted);
+	border-bottom: 2px solid var(--vp-border);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+}
+.vp-health-table .ant-table-thead > tr > th::before {
+	display: none;
+}
+.vp-health-table .ant-table-tbody > tr > td {
+	background: var(--vp-panel);
+	border-bottom: 1px solid var(--vp-border-soft);
+	color: var(--vp-text);
+}
+.vp-health-table .ant-table-tbody > tr:hover > td {
+	background: var(--vp-panel-alt);
+}
+.vp-health-table .ant-table-cell-fix-right,
+.vp-health-table .ant-table-cell-fix-left {
+	background: var(--vp-panel);
+}
+.vp-health-table .ant-pagination,
+.vp-health-table .ant-pagination * {
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+}
+.vp-health-table .ant-empty-description {
+	color: var(--vp-muted);
+}

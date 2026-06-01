@@ -1,0 +1,69 @@
+# Deployment note:
+#   TLS is terminated at Cloudflare. The origin only serves HTTP on :80; the
+#   browser ↔ Cloudflare hop is always HTTPS, so HSTS is safe to emit from here
+#   and any "https" decisions should honor what Cloudflare put in
+#   X-Forwarded-Proto, not the local $scheme.
+
+server {
+    listen 80;
+    server_name localhost;
+
+    # Increase maximum upload size to 10MB
+    client_max_body_size 600M;
+
+    # Add timeout settings to prevent 504 errors
+    proxy_connect_timeout 300s;
+    proxy_send_timeout 300s;
+    proxy_read_timeout 300s;
+    send_timeout 300s;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # ── H4: baseline security headers ──
+    # HSTS is safe because the public edge (Cloudflare) is always HTTPS.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # Permissive CSP — relaxes 'unsafe-inline' for now because the SPA build
+    # ships inline bootstrap CSS/JS. Tighten with a nonce strategy in a follow-up.
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' https: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
+
+    # Inject debug banner into all HTML responses
+    # sub_filter '<body>' '<body><div style="position:fixed;top:0;left:0;width:100%;background:#c00;color:#fff;font-family:monospace;font-size:14px;padding:6px 12px;z-index:99999;text-align:center;">SERVER: ${SERVER_NAME}</div><div style="height:32px;"></div>';
+    sub_filter_once on;
+
+    # Static Files for main frontend
+    location ${BASE_URL} {
+        alias /usr/share/nginx/html/;
+        try_files $uri $uri/ ${BASE_URL}index.html;
+    }
+
+    # Rust API Backend API Proxy
+    location ${BASE_URL}api/v1/ {
+        add_header x-backend-server "${SERVER_NAME}" always;
+        # Re-assert security headers at this location since `add_header`
+        # inherits only when no `add_header` is defined here.
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        proxy_pass http://${COMPOSE_NAME}-rust:8080/;
+        proxy_set_header Host $host;
+        # Cloudflare puts the real client IP in CF-Connecting-IP. Forward it
+        # along with the standard X-Forwarded-For / X-Real-IP that downstream
+        # code (rate limiter, audit logs) already reads.
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        proxy_set_header X-Real-IP $http_cf_connecting_ip;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # Honor the scheme Cloudflare saw at its edge, not nginx's $scheme
+        # (which is always "http" here since TLS terminates at CF).
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        # Also set client_max_body_size here to ensure it applies to this location
+        client_max_body_size 600M;
+        # Add timeout settings to this location
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+    }
+}

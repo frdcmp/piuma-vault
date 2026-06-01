@@ -1,0 +1,387 @@
+/*
+ * Pixel-art storage explorer. Reuses the Notes vault primitives (accent/panel/
+ * border CSS vars, .pixel-btn, .pixel-input, .ftree-* tree rows, .notes-pixel-*
+ * layout) which are imported alongside this file from ../notes/NotesSidebar.css.
+ * Only explorer-specific bits (breadcrumb, toolbar, drop-zone, tile grid,
+ * preview) live here.
+ */
+
+.storage-main {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+/* ── Top bar: breadcrumb + actions ─────────────────────────────── */
+.storage-topbar {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	padding: 10px 14px;
+	background: var(--panel);
+	border-bottom: 2px dashed var(--border-strong);
+}
+
+.storage-breadcrumb {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 2px;
+	font-size: 11pt;
+}
+
+.storage-crumb {
+	border: 0;
+	background: transparent;
+	color: var(--accent-4);
+	font-family: inherit;
+	font-size: inherit;
+	cursor: pointer;
+	padding: 2px 4px;
+}
+
+.storage-crumb:hover {
+	color: var(--accent);
+	text-decoration: underline;
+}
+
+.storage-crumb.current {
+	color: var(--accent);
+	font-weight: 700;
+	cursor: default;
+	text-decoration: none;
+}
+
+.storage-crumb-sep {
+	color: var(--muted);
+	opacity: 0.7;
+}
+
+.storage-topbar-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+}
+
+/* ── Scrollable body ───────────────────────────────────────────── */
+.storage-body {
+	flex: 1;
+	overflow: auto;
+	padding: 12px 14px 24px;
+}
+
+/* ── Drag-and-drop upload ──────────────────────────────────────── */
+/* Dropping files on the body uploads to the current prefix; dropping on a
+   folder tile uploads into that folder. Both highlight while dragging over. */
+.storage-body.drag-over {
+	outline: 2px dashed var(--accent);
+	outline-offset: -6px;
+	background: rgba(247, 201, 72, 0.05);
+}
+
+.storage-tile.folder.drag-over {
+	border-color: var(--accent);
+	background: rgba(247, 201, 72, 0.1);
+	box-shadow: 2px 2px 0 0 var(--accent);
+}
+
+/* ── File rows in the left tree ────────────────────────────────── */
+.ftree-file-glyph {
+	flex: none;
+	margin-left: 6px;
+}
+
+.ftree-file-name {
+	flex: 1;
+	color: var(--accent-4);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	margin-left: 6px;
+}
+
+/* ── Bulk-selection bar ────────────────────────────────────────── */
+.storage-bulkbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	flex-wrap: wrap;
+	padding: 8px 10px;
+	margin-bottom: 12px;
+	border: 2px solid var(--accent-2);
+	background: rgba(92, 208, 169, 0.08);
+}
+
+.storage-bulkbar-label {
+	color: var(--accent-2);
+	font-weight: 700;
+	font-size: 10pt;
+}
+
+.storage-bulkbar-actions {
+	display: flex;
+	gap: 6px;
+}
+
+/* ── Section headings (Folders / Files) ────────────────────────── */
+.storage-section-label {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	color: var(--accent-2);
+	font-size: 10px;
+	font-weight: 900;
+	letter-spacing: 1.4px;
+	text-transform: uppercase;
+	padding: 10px 2px 6px;
+	border-bottom: 1px dashed var(--border);
+	margin-bottom: 8px;
+}
+
+.storage-selectall {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--muted);
+	font-size: 9pt;
+	cursor: pointer;
+	text-transform: none;
+	letter-spacing: 0;
+	font-weight: 400;
+}
+
+/* ── Tile grid ─────────────────────────────────────────────────── */
+.storage-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+	gap: 10px;
+	margin-bottom: 18px;
+}
+
+.storage-tile {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 12px 12px 10px;
+	border: 2px solid var(--border-strong);
+	background: var(--bg-soft);
+	box-shadow: 2px 2px 0 0 #000;
+	cursor: pointer;
+	min-width: 0;
+}
+
+.storage-tile:hover {
+	border-color: var(--accent);
+}
+
+.storage-tile.selected {
+	border-color: var(--accent-2);
+	background: rgba(92, 208, 169, 0.08);
+}
+
+.storage-tile-top {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+}
+
+.storage-tile-glyph {
+	font-size: 26px;
+	line-height: 1;
+	flex: none;
+}
+
+.storage-tile.folder .storage-tile-glyph {
+	color: var(--accent);
+}
+
+.storage-tile.file .storage-tile-glyph {
+	color: var(--accent-4);
+	/* Match the action-button footprint so the name gets the rest of the row. */
+	width: 26px;
+	height: 24px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 16px;
+}
+
+.storage-tile-thumb {
+	width: 32px;
+	height: 32px;
+	flex: none;
+	object-fit: cover;
+	border: 1px solid var(--border);
+	image-rendering: pixelated;
+}
+
+.storage-tile-name {
+	flex: 1;
+	min-width: 0;
+	color: var(--text);
+	font-size: 10pt;
+	font-weight: 700;
+	word-break: break-word;
+	overflow: hidden;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+}
+
+.storage-tile-meta {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	color: var(--muted);
+	font-size: 9px;
+}
+
+.storage-tile-size {
+	color: var(--accent-2);
+}
+
+/* Per-tile checkbox (pixel box) */
+.storage-check {
+	width: 16px;
+	height: 16px;
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: 2px solid var(--border-strong);
+	background: var(--bg);
+	color: var(--accent-2);
+	font-size: 11px;
+	line-height: 1;
+	cursor: pointer;
+	user-select: none;
+}
+
+.storage-check.on {
+	border-color: var(--accent-2);
+}
+
+/* On a file tile the selection box is pinned to the top-right corner; the
+   tile-top reserves room so the name never slides underneath it. */
+.storage-tile.file .storage-tile-top .storage-check {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	z-index: 1;
+}
+
+.storage-tile.file .storage-tile-top {
+	padding-right: 22px;
+}
+
+.storage-tile-actions {
+	display: flex;
+	gap: 2px;
+	flex-wrap: wrap;
+	margin-top: 2px;
+}
+
+.storage-act {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 24px;
+	padding: 0;
+	border: 1px solid var(--border-strong);
+	background: var(--bg);
+	color: var(--muted);
+	font-family: inherit;
+	font-size: 12px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.storage-act:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.storage-act.danger:hover {
+	border-color: var(--accent-3);
+	color: var(--accent-3);
+	background: rgba(255, 107, 107, 0.15);
+}
+
+/* ── Preview modal image ───────────────────────────────────────── */
+.storage-preview-img {
+	max-width: 100%;
+	max-height: 60vh;
+	display: block;
+	margin: 0 auto;
+	image-rendering: auto;
+	border: 1px solid var(--border);
+}
+
+.storage-share-url {
+	display: flex;
+	gap: 6px;
+	margin-top: 8px;
+}
+
+.storage-share-url .pixel-input {
+	flex: 1;
+	min-width: 0;
+}
+
+/* Blocking loading overlay (downloads / zips) */
+.storage-busy-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 1200;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.55);
+}
+
+.storage-busy-card {
+	display: inline-flex;
+	align-items: center;
+	gap: 12px;
+	padding: 16px 22px;
+	background: var(--panel);
+	border: 2px solid var(--border-strong);
+	box-shadow: 4px 4px 0 0 #000;
+	color: var(--text);
+	font-size: 11pt;
+	font-weight: 700;
+}
+
+/* Refresh-button glyph spins while a list query is fetching. */
+.storage-spin {
+	display: inline-block;
+	animation: storage-spin 0.8s linear infinite;
+}
+
+@keyframes storage-spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* Header brand block in the sidebar (mirrors notes header) */
+.storage-sidebar-sub {
+	color: var(--muted);
+	font-size: 9px;
+	letter-spacing: 0.4px;
+	margin-top: 2px;
+}

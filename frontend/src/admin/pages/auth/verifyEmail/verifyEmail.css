@@ -1,0 +1,54 @@
+/* Verify email — vault pixel auth chrome */
+
+.vp-auth-layout {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	min-height: 100vh;
+	padding: 16px;
+	box-sizing: border-box;
+}
+
+.vp-auth-panel {
+	width: 100%;
+	max-width: 400px;
+	box-shadow: var(--vp-shadow-lg);
+}
+
+.vp-auth-title {
+	text-align: center;
+	color: var(--vp-accent);
+	margin: 8px 0 6px;
+}
+
+.vp-auth-center {
+	text-align: center;
+}
+
+.vp-auth-footnote {
+	margin-top: 18px;
+	font-size: 12px;
+}
+
+.vp-auth-actions {
+	margin-top: 24px;
+	display: flex;
+	justify-content: center;
+}
+
+.vp-auth-status-icon {
+	font-size: 48px;
+	margin-bottom: 8px;
+}
+
+.vp-auth-status-icon--success {
+	color: var(--vp-accent-2);
+}
+
+.vp-auth-status-icon--error {
+	color: var(--vp-accent-3);
+}
+
+.vp-auth-status-icon--info {
+	color: var(--vp-accent);
+}

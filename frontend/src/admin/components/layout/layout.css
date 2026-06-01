@@ -1,0 +1,314 @@
+/* =============================================================================
+   layout.css — pixel styling for the admin app shell (PageLayout / Sidebar /
+   Header / Breadcrumbs). Relies on the tokens defined in vault-pixel.css.
+   ============================================================================= */
+
+/* ---- Shell ----------------------------------------------------------------- */
+.vp-shell {
+	min-height: 100vh;
+}
+
+.vp-shell-main {
+	transition: margin-left 0.2s steps(4, end);
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+}
+.vp-shell-main--desktop {
+	margin-left: 240px;
+}
+
+.vp-shell-content {
+	flex: 1;
+	overflow-y: auto;
+	min-width: 0;
+}
+.vp-shell-content-inner {
+	width: 100%;
+	display: flex;
+	justify-content: center;
+}
+
+.vp-shell-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.6);
+	z-index: 10;
+}
+
+/* ---- Sidebar --------------------------------------------------------------- */
+.vp-sidebar {
+	position: fixed;
+	left: 0;
+	top: 0;
+	height: 100%;
+	width: 240px;
+	display: flex;
+	flex-direction: column;
+	background: var(--vp-panel);
+	border-right: 2px solid var(--vp-border);
+	z-index: 11;
+}
+/* When rendered inside the mobile drawer, drop the fixed positioning. */
+.vp-sidebar--drawer {
+	position: relative;
+	width: 100%;
+	border-right: none;
+}
+
+.vp-sidebar-brand {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 14px 14px;
+	border-bottom: 2px solid var(--vp-border);
+	background: var(--vp-bg-soft);
+}
+.vp-sidebar-brand-left {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+.vp-sidebar-logo {
+	height: 32px;
+	width: 32px;
+	object-fit: contain;
+	image-rendering: auto;
+}
+.vp-sidebar-wordmark {
+	font-family: var(--vp-font);
+	font-size: 15px;
+	font-weight: 800;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: var(--vp-accent);
+	text-shadow: 2px 2px 0 #000;
+}
+
+.vp-icon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	color: var(--vp-muted);
+	font-size: 15px;
+	cursor: pointer;
+	transition:
+		transform 0.1s steps(2, end),
+		box-shadow 0.1s steps(2, end),
+		border-color 0.1s,
+		color 0.1s;
+}
+.vp-icon-btn:hover {
+	border-color: var(--vp-accent);
+	color: var(--vp-accent);
+	transform: translate(-1px, -1px);
+	box-shadow: var(--vp-shadow-lg);
+}
+.vp-icon-btn:active {
+	transform: translate(2px, 2px);
+	box-shadow: none;
+}
+
+.vp-sidebar-nav {
+	flex: 1;
+	overflow-y: auto;
+	padding: 12px;
+}
+.vp-nav-section {
+	margin-bottom: 18px;
+}
+.vp-nav-section-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	padding: 6px 8px;
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	color: var(--vp-muted);
+	font-family: var(--vp-font);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+}
+.vp-nav-section-head:hover {
+	color: var(--vp-accent);
+}
+.vp-nav-caret {
+	font-size: 9px;
+}
+
+.vp-nav-list {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	margin-top: 6px;
+}
+
+.vp-nav-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 7px 10px;
+	font-family: var(--vp-font);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	color: var(--vp-muted);
+	background: transparent;
+	border: 2px solid transparent;
+	text-decoration: none;
+	cursor: pointer;
+	transition:
+		color 0.1s,
+		border-color 0.1s,
+		background 0.1s;
+}
+.vp-nav-item:hover {
+	color: var(--vp-text);
+	border-color: var(--vp-border-soft);
+	background: var(--vp-bg-soft);
+}
+.vp-nav-item--active {
+	color: var(--vp-accent);
+	border-color: var(--vp-accent);
+	background: var(--vp-bg-soft);
+}
+.vp-nav-item-icon {
+	font-size: 15px;
+	display: inline-flex;
+}
+.vp-nav-item-count {
+	margin-left: auto;
+	font-size: 11px;
+	color: var(--vp-faint);
+}
+
+.vp-sidebar-footer {
+	padding: 12px;
+	border-top: 2px solid var(--vp-border);
+	background: var(--vp-bg-soft);
+}
+.vp-support-btn {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 8px 10px;
+	background: transparent;
+	border: 2px solid var(--vp-border-soft);
+	color: var(--vp-muted);
+	font-family: var(--vp-font);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	cursor: pointer;
+	transition:
+		color 0.1s,
+		border-color 0.1s;
+}
+.vp-support-btn:hover {
+	color: var(--vp-accent);
+	border-color: var(--vp-accent);
+}
+.vp-online {
+	margin-left: auto;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 10px;
+	color: var(--vp-faint);
+	text-transform: uppercase;
+}
+.vp-online-dot {
+	width: 8px;
+	height: 8px;
+	background: var(--vp-accent-2);
+	display: inline-block;
+}
+
+/* ---- Header ---------------------------------------------------------------- */
+.vp-header {
+	position: sticky;
+	top: 0;
+	z-index: 9;
+	background: var(--vp-panel);
+	border-bottom: 2px solid var(--vp-border);
+	padding: 8px 18px;
+}
+.vp-header-inner {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+.vp-header-left,
+.vp-header-right {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+.vp-header-logo {
+	height: 28px;
+	width: 28px;
+	object-fit: contain;
+	display: block;
+	image-rendering: auto;
+}
+
+/* ---- Breadcrumbs ----------------------------------------------------------- */
+.vp-crumbs {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-family: var(--vp-font);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	flex-wrap: wrap;
+}
+.vp-crumb {
+	color: var(--vp-muted);
+	text-decoration: none;
+}
+.vp-crumb:hover {
+	color: var(--vp-accent);
+}
+.vp-crumb--current {
+	color: var(--vp-text);
+}
+.vp-crumb-sep {
+	color: var(--vp-faint);
+}
+
+/* ---- User avatar (header) -------------------------------------------------- */
+.vp-avatar {
+	width: 34px;
+	height: 34px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-accent);
+	box-shadow: var(--vp-shadow);
+	color: var(--vp-accent);
+	font-family: var(--vp-font);
+	font-size: 12px;
+	font-weight: 800;
+	text-transform: uppercase;
+	cursor: pointer;
+}
+.vp-avatar:hover {
+	background: var(--vp-accent);
+	color: var(--vp-bg);
+}
