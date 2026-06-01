@@ -1,5 +1,10 @@
-import { useMemo, useState } from "react";
-import { PvModal, pvMessage, pvToast } from "@/admin/components/ui";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+	PvMenu,
+	PvModal,
+	pvMessage,
+	pvToast,
+} from "@/admin/components/ui";
 import UserMenu from "../../../components/UserMenu";
 import {
 	useStorageBulkDelete,
@@ -49,7 +54,7 @@ const fileGlyph = (key) => {
  * action modals (share / preview / new folder / confirm). Storage mutations
  * invalidate the whole `storage` query key, so the left tree refreshes too.
  */
-export default function StorageGrid({ prefix, onNavigate }) {
+export default function StorageGrid({ prefix, onNavigate, pickedFile }) {
 	const list = useStorageList({ prefix });
 	const upload = useStorageUpload();
 	const deleteObject = useStorageDeleteObject();
@@ -79,10 +84,18 @@ export default function StorageGrid({ prefix, onNavigate }) {
 							? "Preparing link…"
 							: null;
 
+	// `selected` holds both folder keys (trailing "/") and file keys — they never
+	// collide, so one Set covers both.
 	const [selected, setSelected] = useState(() => new Set());
 	const [dragOver, setDragOver] = useState(false);
 	// Folder key currently being hovered with a drag, so its tile can highlight.
 	const [dragFolder, setDragFolder] = useState(null);
+	// Marquee (rubber-band) rectangle in viewport coords while dragging on empty
+	// space; null when not marquee-selecting.
+	const [marquee, setMarquee] = useState(null);
+	const bodyRef = useRef(null);
+	// Right-click context menu anchor: { x, y } in viewport coords, or null.
+	const [menu, setMenu] = useState(null);
 
 	// Modal state.
 	const [shareKey, setShareKey] = useState(null);
@@ -94,6 +107,20 @@ export default function StorageGrid({ prefix, onNavigate }) {
 	const [confirm, setConfirm] = useState(null); // { title, body, onConfirm }
 
 	const clearSelection = () => setSelected(new Set());
+
+	// When a file is picked in the left tree, select it here once its folder's
+	// contents have loaded, and scroll it into view. Keyed on the nonce so it
+	// applies once per click and never clobbers a later in-grid selection.
+	const pickedNonceRef = useRef(null);
+	useEffect(() => {
+		if (!pickedFile?.key || pickedNonceRef.current === pickedFile.nonce) return;
+		if (!files.some((f) => f.key === pickedFile.key)) return; // wait for listing
+		pickedNonceRef.current = pickedFile.nonce;
+		setSelected(new Set([pickedFile.key]));
+		bodyRef.current
+			?.querySelector(`[data-sel-key="${CSS.escape(pickedFile.key)}"]`)
+			?.scrollIntoView({ block: "nearest" });
+	}, [pickedFile, files]);
 
 	const crumbs = useMemo(() => {
 		const trimmed = prefix.replace(/\/$/, "");
@@ -117,12 +144,75 @@ export default function StorageGrid({ prefix, onNavigate }) {
 			return next;
 		});
 
-	const allFilesSelected =
-		files.length > 0 && files.every((f) => selected.has(f.key));
-	const toggleAll = () =>
-		setSelected(
-			allFilesSelected ? new Set() : new Set(files.map((f) => f.key)),
-		);
+	const selectOnly = (key) => setSelected(new Set([key]));
+
+	// A tile was clicked. Ctrl/⌘-click toggles it into the selection (multi);
+	// a plain click selects just that one item.
+	const onTileClick = (key, e) =>
+		e.ctrlKey || e.metaKey ? toggleOne(key) : selectOnly(key);
+
+	// Right-clicking a tile that isn't already part of the selection selects just
+	// it first (like a file explorer), then opens the context menu at the cursor.
+	const onTileContextMenu = (key, e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		if (!selected.has(key)) selectOnly(key);
+		setMenu({ x: e.clientX, y: e.clientY });
+	};
+
+	// ── Marquee (rubber-band) selection ──────────────────────────
+	// Drag on empty body space to sweep a rectangle; every folder/file tile it
+	// touches gets selected. A plain click on empty space clears the selection.
+	const rectsIntersect = (a, b) =>
+		a.left < b.right &&
+		a.right > b.left &&
+		a.top < b.bottom &&
+		a.bottom > b.top;
+
+	const applyMarquee = (rect) => {
+		const root = bodyRef.current;
+		if (!root) return;
+		const hit = new Set();
+		for (const el of root.querySelectorAll("[data-sel-key]")) {
+			if (rectsIntersect(rect, el.getBoundingClientRect()))
+				hit.add(el.dataset.selKey);
+		}
+		setSelected(hit);
+	};
+
+	const onBodyMouseDown = (e) => {
+		// Only a left-press on genuinely empty space starts a marquee. Clicks that
+		// land on a tile or a control are left to their own handlers.
+		if (e.button !== 0) return;
+		if (e.target.closest(".storage-tile, button, input, select, a")) return;
+		e.preventDefault();
+		const startX = e.clientX;
+		const startY = e.clientY;
+		let moved = false;
+
+		const onMove = (ev) => {
+			if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 5)
+				return;
+			moved = true;
+			const rect = {
+				left: Math.min(startX, ev.clientX),
+				top: Math.min(startY, ev.clientY),
+				right: Math.max(startX, ev.clientX),
+				bottom: Math.max(startY, ev.clientY),
+			};
+			setMarquee(rect);
+			applyMarquee(rect);
+		};
+		const onUp = () => {
+			window.removeEventListener("mousemove", onMove);
+			window.removeEventListener("mouseup", onUp);
+			setMarquee(null);
+			// A click with no drag clears the selection, like an empty-space click.
+			if (!moved) clearSelection();
+		};
+		window.addEventListener("mousemove", onMove);
+		window.addEventListener("mouseup", onUp);
+	};
 
 	// ── Uploads ──────────────────────────────────────────────────
 	// Files are uploaded by dropping them on the body (→ current prefix) or on a
@@ -186,54 +276,38 @@ export default function StorageGrid({ prefix, onNavigate }) {
 	};
 
 	// ── Deletes ──────────────────────────────────────────────────
-	const handleDeleteFile = (key) =>
-		setConfirm({
-			title: "Delete file",
-			body: key,
-			danger: true,
-			onConfirm: async () => {
-				try {
-					await deleteObject.mutateAsync(key);
-					setSelected((prev) => {
-						const next = new Set(prev);
-						next.delete(key);
-						return next;
-					});
-					pvMessage.success("Deleted");
-				} catch (e) {
-					pvMessage.error(`Delete failed: ${e.message}`);
-				}
-			},
-		});
-
-	const handleDeleteFolder = (folderKey) =>
-		setConfirm({
-			title: "Delete folder and all contents",
-			body: folderKey,
-			danger: true,
-			onConfirm: async () => {
-				try {
-					await deleteFolder.mutateAsync(folderKey);
-					pvMessage.success("Folder deleted");
-				} catch (e) {
-					pvMessage.error(`Delete failed: ${e.message}`);
-				}
-			},
-		});
-
+	// All deletion (single or many, files and/or folders) goes through the
+	// context menu and this one handler, operating on the current selection.
 	const handleBulkDelete = () => {
 		const keys = Array.from(selected);
 		if (keys.length === 0) return;
+		// Folder keys carry a trailing slash and need the recursive folder delete;
+		// everything else is a plain object.
+		const folderKeys = keys.filter((k) => k.endsWith("/"));
+		const fileKeys = keys.filter((k) => !k.endsWith("/"));
 		setConfirm({
-			title: `Delete ${keys.length} file${keys.length === 1 ? "" : "s"}`,
+			title: `Delete ${keys.length} item${keys.length === 1 ? "" : "s"}`,
 			body: keys.join("\n"),
 			danger: true,
 			onConfirm: async () => {
 				try {
-					const res = await bulkDelete.mutateAsync(keys);
-					pvMessage.success(`Deleted ${res.deleted?.length ?? 0}`);
-					if (res.failed?.length)
-						pvMessage.warning(`${res.failed.length} failed`);
+					let deleted = 0;
+					let failed = 0;
+					if (fileKeys.length) {
+						const res = await bulkDelete.mutateAsync(fileKeys);
+						deleted += res.deleted?.length ?? 0;
+						failed += res.failed?.length ?? 0;
+					}
+					for (const folderKey of folderKeys) {
+						try {
+							await deleteFolder.mutateAsync(folderKey);
+							deleted += 1;
+						} catch {
+							failed += 1;
+						}
+					}
+					pvMessage.success(`Deleted ${deleted}`);
+					if (failed) pvMessage.warning(`${failed} failed`);
 					clearSelection();
 				} catch (e) {
 					pvMessage.error(`Bulk delete failed: ${e.message}`);
@@ -241,6 +315,28 @@ export default function StorageGrid({ prefix, onNavigate }) {
 			},
 		});
 	};
+
+	// The Delete key deletes the current selection (folders + files), so multi
+	// selection stays useful without an on-screen bulk bar. A ref keeps the
+	// listener pointed at the latest closure without re-subscribing each render.
+	const bulkDeleteRef = useRef(handleBulkDelete);
+	bulkDeleteRef.current = handleBulkDelete;
+	useEffect(() => {
+		const onKey = (e) => {
+			if (e.key !== "Delete") return;
+			const t = e.target;
+			if (
+				t &&
+				(t.tagName === "INPUT" ||
+					t.tagName === "TEXTAREA" ||
+					t.isContentEditable)
+			)
+				return;
+			bulkDeleteRef.current?.();
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, []);
 
 	// ── Folder download (zipped automatically) ───────────────────
 	// Folders can't be downloaded as-is, so we zip them server-side (staged to
@@ -255,6 +351,74 @@ export default function StorageGrid({ prefix, onNavigate }) {
 		} catch (e) {
 			pvMessage.error(`Folder download failed: ${e.message}`);
 		}
+	};
+
+	// Download the current selection. A lone file streams directly; a lone folder
+	// or any multi-selection is bundled into a single zip server-side.
+	const downloadSelection = async () => {
+		const keys = Array.from(selected);
+		if (keys.length === 0) return;
+		const folderKeys = keys.filter((k) => k.endsWith("/"));
+		const fileKeys = keys.filter((k) => !k.endsWith("/"));
+		if (keys.length === 1 && fileKeys.length === 1) {
+			download.mutate(fileKeys[0]);
+			return;
+		}
+		if (keys.length === 1 && folderKeys.length === 1) {
+			downloadFolder(folderKeys[0]);
+			return;
+		}
+		try {
+			await zip.mutateAsync({
+				keys: fileKeys,
+				prefixes: folderKeys,
+				filename: "selection",
+			});
+		} catch (e) {
+			pvMessage.error(`Download failed: ${e.message}`);
+		}
+	};
+
+	const openShare = (key) => {
+		setShareKey(key);
+		setShareExpiry(3600);
+		setShareUrl("");
+	};
+
+	// Context-menu rows for the current selection: download (zips when it's a
+	// folder or a multi-selection), share (single file only), delete.
+	const buildMenuItems = () => {
+		const keys = Array.from(selected);
+		const count = keys.length;
+		const single = count === 1;
+		const singleFile = single && !keys[0].endsWith("/");
+		const zips = count > 1 || (single && keys[0].endsWith("/"));
+		return [
+			...(singleFile && isImage(keys[0])
+				? [{ label: "Preview", icon: "👁", onClick: () => openPreview(keys[0]) }]
+				: []),
+			{
+				label: zips ? "Download as zip" : "Download",
+				icon: "⬇",
+				onClick: downloadSelection,
+			},
+			...(singleFile
+				? [
+						{
+							label: "Share link",
+							icon: "🔗",
+							onClick: () => openShare(keys[0]),
+						},
+					]
+				: []),
+			{ type: "separator" },
+			{
+				label: count > 1 ? `Delete ${count} items` : "Delete",
+				icon: "✕",
+				danger: true,
+				onClick: handleBulkDelete,
+			},
+		];
 	};
 
 	// ── Share signed link ────────────────────────────────────────
@@ -289,6 +453,21 @@ export default function StorageGrid({ prefix, onNavigate }) {
 		} catch (e) {
 			pvMessage.error(`Preview unavailable: ${e.message}`);
 			setPreview(null);
+		}
+	};
+
+	// Double-clicking a file previews it: images open in the in-app modal,
+	// everything else opens in a new browser tab via a short-lived signed URL.
+	const previewFile = async (key) => {
+		if (isImage(key)) {
+			openPreview(key);
+			return;
+		}
+		try {
+			const res = await signed.mutateAsync({ key, expiresInSecs: 300 });
+			window.open(res.url, "_blank", "noopener");
+		} catch (e) {
+			pvMessage.error(`Preview unavailable: ${e.message}`);
 		}
 	};
 
@@ -353,9 +532,13 @@ export default function StorageGrid({ prefix, onNavigate }) {
 			</div>
 
 			{/* Scrollable body */}
-			{/* biome-ignore lint/a11y/noStaticElementInteractions: drop target for file uploads */}
+			{/* biome-ignore lint/a11y/noStaticElementInteractions: drop target for file uploads + marquee selection surface */}
 			<div
-				className={`storage-body ${dragOver ? "drag-over" : ""}`}
+				ref={bodyRef}
+				className={`storage-body ${dragOver ? "drag-over" : ""} ${
+					marquee ? "marqueeing" : ""
+				}`}
+				onMouseDown={onBodyMouseDown}
 				onDragOver={(e) => {
 					e.preventDefault();
 					if (!dragOver) setDragOver(true);
@@ -365,32 +548,18 @@ export default function StorageGrid({ prefix, onNavigate }) {
 				}}
 				onDrop={onDrop}
 			>
-				{/* Bulk-selection bar */}
-				{selected.size > 0 && (
-					<div className="storage-bulkbar">
-						<span className="storage-bulkbar-label">
-							{selected.size} selected
-						</span>
-						<div className="storage-bulkbar-actions">
-							<button
-								type="button"
-								className="pixel-btn danger"
-								onClick={handleBulkDelete}
-								disabled={bulkDelete.isPending}
-							>
-								✕ Delete
-							</button>
-							<button
-								type="button"
-								className="pixel-btn"
-								onClick={clearSelection}
-							>
-								Clear
-							</button>
-						</div>
-					</div>
+				{marquee && (
+					<div
+						className="storage-marquee"
+						style={{
+							position: "fixed",
+							left: marquee.left,
+							top: marquee.top,
+							width: marquee.right - marquee.left,
+							height: marquee.bottom - marquee.top,
+						}}
+					/>
 				)}
-
 				{list.isLoading ? (
 					<div className="notes-sidebar-status notes-sidebar-status-loading">
 						<output className="ftree-dog-spinner" aria-label="Loading">
@@ -411,57 +580,39 @@ export default function StorageGrid({ prefix, onNavigate }) {
 									<span>Folders ({folders.length})</span>
 								</div>
 								<div className="storage-grid">
-									{folders.map((f) => (
-										// biome-ignore lint/a11y/noStaticElementInteractions: tile click navigates into the folder
-										// biome-ignore lint/a11y/useKeyWithClickEvents: actions are reachable via the tile buttons
-										<div
-											key={f}
-											className={`storage-tile folder ${
-												dragFolder === f ? "drag-over" : ""
-											}`}
-											onClick={() => navigate(f)}
-											onDragOver={(e) => {
-												e.preventDefault();
-												e.stopPropagation();
-												if (dragFolder !== f) setDragFolder(f);
-											}}
-											onDragLeave={(e) => {
-												if (e.currentTarget === e.target) setDragFolder(null);
-											}}
-											onDrop={(e) => onFolderDrop(e, f)}
-										>
-											<div className="storage-tile-top">
-												<span className="storage-tile-glyph">📁</span>
-												<span className="storage-tile-name">
-													{folderLeaf(f)}
-												</span>
+									{folders.map((f) => {
+										const sel = selected.has(f);
+										return (
+											// biome-ignore lint/a11y/noStaticElementInteractions: single click selects, double click enters
+											// biome-ignore lint/a11y/useKeyWithClickEvents: actions are reachable via the tile buttons
+											<div
+												key={f}
+												data-sel-key={f}
+												className={`storage-tile folder ${sel ? "selected" : ""} ${
+													dragFolder === f ? "drag-over" : ""
+												}`}
+												onClick={(e) => onTileClick(f, e)}
+												onDoubleClick={() => navigate(f)}
+												onContextMenu={(e) => onTileContextMenu(f, e)}
+												onDragOver={(e) => {
+													e.preventDefault();
+													e.stopPropagation();
+													if (dragFolder !== f) setDragFolder(f);
+												}}
+												onDragLeave={(e) => {
+													if (e.currentTarget === e.target) setDragFolder(null);
+												}}
+												onDrop={(e) => onFolderDrop(e, f)}
+											>
+												<div className="storage-tile-top">
+													<span className="storage-tile-glyph">📁</span>
+													<span className="storage-tile-name">
+														{folderLeaf(f)}
+													</span>
+												</div>
 											</div>
-											<div className="storage-tile-actions">
-												<button
-													type="button"
-													className="storage-act"
-													title="Download folder (zipped)"
-													onClick={(e) => {
-														e.stopPropagation();
-														downloadFolder(f);
-													}}
-												>
-													⬇
-												</button>
-												<button
-													type="button"
-													className="storage-act danger"
-													title="Delete folder"
-													onClick={(e) => {
-														e.stopPropagation();
-														handleDeleteFolder(f);
-													}}
-												>
-													✕
-												</button>
-											</div>
-										</div>
-									))}
+										);
+									})}
 								</div>
 							</>
 						)}
@@ -471,34 +622,24 @@ export default function StorageGrid({ prefix, onNavigate }) {
 							<>
 								<div className="storage-section-label">
 									<span>Files ({files.length})</span>
-									{/* biome-ignore lint/a11y/noStaticElementInteractions: pixel select-all toggle */}
-									{/* biome-ignore lint/a11y/useKeyWithClickEvents: cosmetic toggle, files selectable per-tile */}
-									<span className="storage-selectall" onClick={toggleAll}>
-										<span
-											className={`storage-check ${allFilesSelected ? "on" : ""}`}
-										>
-											{allFilesSelected ? "✓" : ""}
-										</span>
-										select all
-									</span>
 								</div>
 								<div className="storage-grid">
 									{files.map((file) => {
 										const sel = selected.has(file.key);
 										return (
-											// biome-ignore lint/a11y/noStaticElementInteractions: tile click toggles selection
-											// biome-ignore lint/a11y/useKeyWithClickEvents: actions are reachable via the tile buttons
+											// biome-ignore lint/a11y/noStaticElementInteractions: single click selects, double click previews
+											// biome-ignore lint/a11y/useKeyWithClickEvents: actions are reachable from the context menu
 											<div
 												key={file.key}
+												data-sel-key={file.key}
 												className={`storage-tile file ${sel ? "selected" : ""}`}
-												onClick={() => toggleOne(file.key)}
+												onClick={(e) => onTileClick(file.key, e)}
+												onDoubleClick={() => previewFile(file.key)}
+												onContextMenu={(e) => onTileContextMenu(file.key, e)}
 											>
 												<div className="storage-tile-top">
-													<span
-														className={`storage-check ${sel ? "on" : ""}`}
-														title="Select"
-													>
-														{sel ? "✓" : ""}
+													<span className="storage-tile-glyph">
+														{fileGlyph(file.key)}
 													</span>
 													<span className="storage-tile-name">
 														{fileLeaf(file.key)}
@@ -512,59 +653,6 @@ export default function StorageGrid({ prefix, onNavigate }) {
 														<span>{formatDate(file.last_modified)}</span>
 													)}
 												</div>
-												<div className="storage-tile-actions">
-													<span className="storage-tile-glyph">
-														{fileGlyph(file.key)}
-													</span>
-													{isImage(file.key) && (
-														<button
-															type="button"
-															className="storage-act"
-															title="Preview"
-															onClick={(e) => {
-																e.stopPropagation();
-																openPreview(file.key);
-															}}
-														>
-															👁
-														</button>
-													)}
-													<button
-														type="button"
-														className="storage-act"
-														title="Download"
-														onClick={(e) => {
-															e.stopPropagation();
-															download.mutate(file.key);
-														}}
-													>
-														⬇
-													</button>
-													<button
-														type="button"
-														className="storage-act"
-														title="Share"
-														onClick={(e) => {
-															e.stopPropagation();
-															setShareKey(file.key);
-															setShareExpiry(3600);
-															setShareUrl("");
-														}}
-													>
-														🔗
-													</button>
-													<button
-														type="button"
-														className="storage-act danger"
-														title="Delete"
-														onClick={(e) => {
-															e.stopPropagation();
-															handleDeleteFile(file.key);
-														}}
-													>
-														✕
-													</button>
-												</div>
 											</div>
 										);
 									})}
@@ -574,6 +662,15 @@ export default function StorageGrid({ prefix, onNavigate }) {
 					</>
 				)}
 			</div>
+
+			{/* Right-click context menu for the current selection */}
+			<PvMenu
+				open={!!menu}
+				x={menu?.x ?? 0}
+				y={menu?.y ?? 0}
+				items={menu ? buildMenuItems() : []}
+				onClose={() => setMenu(null)}
+			/>
 
 			{/* New-folder modal */}
 			<PvModal

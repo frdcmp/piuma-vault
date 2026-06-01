@@ -702,10 +702,20 @@ pub async fn zip_bundle(
         Err(e) => return err(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, e),
     };
 
-    // Gather the target key list.
+    // Gather the target key list. Every prefix — the single `prefix` plus any in
+    // `prefixes` — is expanded to its (non-marker) objects.
     let mut keys: Vec<String> = body.keys.clone();
-    if let Some(p) = &body.prefix {
+    let prefixes = body
+        .prefix
+        .iter()
+        .cloned()
+        .chain(body.prefixes.iter().cloned())
+        .collect::<Vec<_>>();
+    for p in &prefixes {
         let prefix = normalize_folder(p);
+        if prefix.is_empty() {
+            continue;
+        }
         match collect_objects_under_prefix(&client, &bucket, &prefix).await {
             // Skip directory markers — only real files go into the archive.
             Ok(more) => keys.extend(more.into_iter().filter(|(_, is_dir)| !is_dir).map(|(k, _)| k)),

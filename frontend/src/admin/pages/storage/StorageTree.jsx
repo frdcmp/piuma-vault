@@ -52,6 +52,7 @@ const TreeFolder = ({
 	isLast = false,
 	currentPrefix,
 	onNavigate,
+	onSelectFile,
 	expanded: expandedMap,
 	toggleExpand,
 }) => {
@@ -120,6 +121,7 @@ const TreeFolder = ({
 							isLast={files.length === 0 && idx === subfolders.length - 1}
 							currentPrefix={currentPrefix}
 							onNavigate={onNavigate}
+							onSelectFile={onSelectFile}
 							expanded={expandedMap}
 							toggleExpand={toggleExpand}
 						/>
@@ -130,7 +132,7 @@ const TreeFolder = ({
 						<div
 							key={file.key}
 							className="ftree-row ftree-file"
-							onClick={() => onNavigate(path)}
+							onClick={() => onSelectFile(file.key)}
 						>
 							<TreePrefix
 								parentLines={childParentLines}
@@ -163,6 +165,7 @@ const TreeFolder = ({
 export default function StorageTree({
 	currentPrefix,
 	onNavigate,
+	onSelectFile,
 	expanded,
 	toggleExpand,
 	onBack,
@@ -208,6 +211,7 @@ export default function StorageTree({
 						depth={0}
 						currentPrefix={currentPrefix}
 						onNavigate={onNavigate}
+						onSelectFile={onSelectFile}
 						expanded={expanded}
 						toggleExpand={toggleExpand}
 					/>

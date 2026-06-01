@@ -75,6 +75,20 @@
 	flex: 1;
 	overflow: auto;
 	padding: 12px 14px 24px;
+	position: relative;
+}
+
+/* While sweeping a marquee, suppress text selection across the panel. */
+.storage-body.marqueeing {
+	user-select: none;
+}
+
+/* Rubber-band selection rectangle (positioned inline, fixed to the viewport). */
+.storage-marquee {
+	border: 1px solid var(--accent-2);
+	background: rgba(92, 208, 169, 0.12);
+	pointer-events: none;
+	z-index: 50;
 }
 
 /* ── Drag-and-drop upload ──────────────────────────────────────── */
@@ -107,30 +121,6 @@
 	margin-left: 6px;
 }
 
-/* ── Bulk-selection bar ────────────────────────────────────────── */
-.storage-bulkbar {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-	flex-wrap: wrap;
-	padding: 8px 10px;
-	margin-bottom: 12px;
-	border: 2px solid var(--accent-2);
-	background: rgba(92, 208, 169, 0.08);
-}
-
-.storage-bulkbar-label {
-	color: var(--accent-2);
-	font-weight: 700;
-	font-size: 10pt;
-}
-
-.storage-bulkbar-actions {
-	display: flex;
-	gap: 6px;
-}
-
 /* ── Section headings (Folders / Files) ────────────────────────── */
 .storage-section-label {
 	display: flex;
@@ -144,18 +134,6 @@
 	padding: 10px 2px 6px;
 	border-bottom: 1px dashed var(--border);
 	margin-bottom: 8px;
-}
-
-.storage-selectall {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	color: var(--muted);
-	font-size: 9pt;
-	cursor: pointer;
-	text-transform: none;
-	letter-spacing: 0;
-	font-weight: 400;
 }
 
 /* ── Tile grid ─────────────────────────────────────────────────── */
@@ -177,6 +155,8 @@
 	box-shadow: 2px 2px 0 0 #000;
 	cursor: pointer;
 	min-width: 0;
+	/* Double-click selects/opens — never let it highlight the tile's text. */
+	user-select: none;
 }
 
 .storage-tile:hover {
@@ -206,9 +186,9 @@
 
 .storage-tile.file .storage-tile-glyph {
 	color: var(--accent-4);
-	/* Match the action-button footprint so the name gets the rest of the row. */
-	width: 26px;
-	height: 24px;
+	/* A compact type icon sitting to the left of the file name. */
+	width: 22px;
+	height: 22px;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -247,75 +227,6 @@
 
 .storage-tile-size {
 	color: var(--accent-2);
-}
-
-/* Per-tile checkbox (pixel box) */
-.storage-check {
-	width: 16px;
-	height: 16px;
-	flex: none;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border: 2px solid var(--border-strong);
-	background: var(--bg);
-	color: var(--accent-2);
-	font-size: 11px;
-	line-height: 1;
-	cursor: pointer;
-	user-select: none;
-}
-
-.storage-check.on {
-	border-color: var(--accent-2);
-}
-
-/* On a file tile the selection box is pinned to the top-right corner; the
-   tile-top reserves room so the name never slides underneath it. */
-.storage-tile.file .storage-tile-top .storage-check {
-	position: absolute;
-	top: 8px;
-	right: 8px;
-	z-index: 1;
-}
-
-.storage-tile.file .storage-tile-top {
-	padding-right: 22px;
-}
-
-.storage-tile-actions {
-	display: flex;
-	gap: 2px;
-	flex-wrap: wrap;
-	margin-top: 2px;
-}
-
-.storage-act {
-	flex: none;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 26px;
-	height: 24px;
-	padding: 0;
-	border: 1px solid var(--border-strong);
-	background: var(--bg);
-	color: var(--muted);
-	font-family: inherit;
-	font-size: 12px;
-	line-height: 1;
-	cursor: pointer;
-}
-
-.storage-act:hover {
-	border-color: var(--accent);
-	color: var(--accent);
-}
-
-.storage-act.danger:hover {
-	border-color: var(--accent-3);
-	color: var(--accent-3);
-	background: rgba(255, 107, 107, 0.15);
 }
 
 /* ── Preview modal image ───────────────────────────────────────── */

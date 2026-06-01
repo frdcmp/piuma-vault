@@ -1,0 +1,93 @@
+.pv-menu-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 10001;
+}
+
+.pv-menu {
+	--menu-bg: #1b1e25;
+	--menu-bg-soft: #15171c;
+	--menu-border: #3a4150;
+	--menu-text: #d6dbe5;
+	--menu-muted: #8b93a3;
+	--menu-accent: #f7c948;
+	--menu-danger: #ff6b6b;
+
+	position: fixed;
+	min-width: 184px;
+	max-width: 280px;
+	padding: 4px;
+	background: var(--menu-bg);
+	border: 2px solid var(--menu-border);
+	box-shadow:
+		3px 3px 0 0 #000,
+		inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+	font-family:
+		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+	image-rendering: pixelated;
+	animation: pv-menu-pop 90ms steps(3, end);
+}
+
+@keyframes pv-menu-pop {
+	0% {
+		transform: scale(0.97);
+		opacity: 0.3;
+	}
+	100% {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+
+.pv-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 7px 10px;
+	border: 0;
+	background: transparent;
+	color: var(--menu-text);
+	font: inherit;
+	font-size: 10pt;
+	text-align: left;
+	cursor: pointer;
+}
+
+.pv-menu-item:hover:not(:disabled) {
+	background: var(--menu-bg-soft);
+	color: var(--menu-accent);
+}
+
+.pv-menu-item.danger:hover:not(:disabled) {
+	color: var(--menu-danger);
+	background: rgba(255, 107, 107, 0.12);
+}
+
+.pv-menu-item:disabled {
+	color: var(--menu-muted);
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.pv-menu-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	flex: none;
+	font-size: 11pt;
+}
+
+.pv-menu-label {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pv-menu-sep {
+	height: 0;
+	margin: 4px 6px;
+	border-top: 1px dashed var(--menu-border);
+}
