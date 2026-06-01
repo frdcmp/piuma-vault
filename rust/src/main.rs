@@ -91,6 +91,7 @@ async fn main() -> io::Result<()> {
             .configure(apps::notes::routes::configure_routes)
             .configure(apps::shares::routes::configure_routes)
             .configure(apps::storage::routes::configure_routes)
+            .configure(apps::storage_shares::routes::configure_routes)
             .configure(apps::settings::routes::configure_routes)
     })
     .workers(num_cpus::get() * 2)  // 2 workers per CPU core for high concurrency

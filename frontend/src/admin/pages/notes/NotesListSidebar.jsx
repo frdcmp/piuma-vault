@@ -1015,14 +1015,15 @@ export default function NotesListSidebar({
 
 			<PvModal
 				open={pendingDeleteId != null}
-				title="Delete Note"
-				confirmText="Delete"
+				title="Move to Trash"
+				confirmText="Move to Trash"
 				cancelText="Cancel"
 				danger
 				onConfirm={confirmDelete}
 				onCancel={() => setPendingDeleteId(null)}
 			>
-				Permanently delete this note? This action cannot be undone.
+				Move this note to the trash? You can restore it later from the Trash
+				page in the admin panel.
 			</PvModal>
 
 			<PvModal

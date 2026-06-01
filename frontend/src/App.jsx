@@ -19,7 +19,9 @@ import Projects from "./admin/pages/projects";
 import Services from "./admin/pages/services";
 import Settings from "./admin/pages/settings";
 import StorageExplorer from "./admin/pages/storage/StorageExplorer";
+import TrashPage from "./admin/pages/trash";
 import { queryClient } from "./api/queryClient";
+import SharedFolderPage from "./share/SharedFolderPage";
 import SharedNotePage from "./share/SharedNotePage";
 
 function AppContent() {
@@ -43,6 +45,9 @@ function AppContent() {
 
 				{/* Public shared note viewer */}
 				<Route path="/share/v/:slug" element={<SharedNotePage />} />
+
+				{/* Public shared folder viewer */}
+				<Route path="/s/:slug" element={<SharedFolderPage />} />
 
 				{/* Admin auth routes (no layout) */}
 				<Route path="/admin/login" element={<Login />} />
@@ -69,6 +74,7 @@ function AppContent() {
 					<Route path="settings" element={<Settings />} />
 					<Route path="settings/:tab" element={<Settings />} />
 					<Route path="services" element={<Services />} />
+					<Route path="trash" element={<TrashPage />} />
 					<Route path="test" element={<ApiTest />} />
 				</Route>
 

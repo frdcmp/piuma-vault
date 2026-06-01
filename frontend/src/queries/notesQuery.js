@@ -4,11 +4,15 @@ import {
 	browseFolder,
 	createNote,
 	deleteNote,
+	emptyTrash,
 	fetchFolders,
 	fetchNote,
 	fetchNotes,
 	fetchTags,
+	fetchTrash,
+	permanentlyDeleteNote,
 	renameFolder,
+	restoreNote,
 	searchFolders,
 	updateNote,
 } from "../api/notesApi";
@@ -20,6 +24,7 @@ export const notesKeys = {
 	tags: () => ["notes", "tags"],
 	folders: () => ["notes", "folders"],
 	browse: (path) => ["notes", "browse", path],
+	trash: () => ["notes", "trash"],
 };
 
 // ── List ──────────────────────────────────────────────────────────────────
@@ -83,9 +88,51 @@ export const useDeleteNote = () => {
 	return useMutation({
 		mutationFn: deleteNote,
 		onSuccess: (_data, id) => {
-			// Remove the deleted note from cache so no stale fetches
+			// Soft delete — drop the detail cache and refresh lists + trash.
 			qc.removeQueries({ queryKey: notesKeys.detail(id) });
 			qc.invalidateQueries({ queryKey: notesKeys.all });
+		},
+	});
+};
+
+// ── Trash ─────────────────────────────────────────────────────────────────
+
+export const useTrash = (params = {}, options = {}) =>
+	useQuery({
+		queryKey: notesKeys.trash(),
+		queryFn: () => fetchTrash(params),
+		staleTime: 30_000,
+		...options,
+	});
+
+export const useRestoreNote = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: restoreNote,
+		onSuccess: () => {
+			// Note is live again — refresh the tree/lists and the trash list.
+			qc.invalidateQueries({ queryKey: notesKeys.all });
+		},
+	});
+};
+
+export const usePermanentlyDeleteNote = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: permanentlyDeleteNote,
+		onSuccess: (_data, id) => {
+			qc.removeQueries({ queryKey: notesKeys.detail(id) });
+			qc.invalidateQueries({ queryKey: notesKeys.trash() });
+		},
+	});
+};
+
+export const useEmptyTrash = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: emptyTrash,
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: notesKeys.trash() });
 		},
 	});
 };
@@ -195,6 +242,8 @@ export const useNotesLiveUpdates = (activeNoteId) => {
 			}
 
 			qc.invalidateQueries({ queryKey: ["notes", "list"] });
+			// A delete/restore/purge anywhere changes the trash too.
+			qc.invalidateQueries({ queryKey: notesKeys.trash() });
 
 			if (!payload?.id) return;
 

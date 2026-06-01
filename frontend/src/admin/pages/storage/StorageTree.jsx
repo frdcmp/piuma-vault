@@ -1,4 +1,8 @@
 import { useStorageList } from "../../../queries";
+import {
+	selectSingleFileKey,
+	useStorageWorkspace,
+} from "../../../store/storageWorkspaceStore";
 
 // Folder prefixes from the backend look like "docs/2026/"; show just the leaf.
 const folderLeaf = (path) => {
@@ -56,6 +60,9 @@ const TreeFolder = ({
 	expanded: expandedMap,
 	toggleExpand,
 }) => {
+	// The single selected file (shared with the grid). Subscribing to the derived
+	// key means this node only re-renders when that key actually changes.
+	const treeSelectedKey = useStorageWorkspace(selectSingleFileKey);
 	const isExpanded = depth === 0 || !!expandedMap[path];
 	const { data, isLoading } = useStorageList(
 		{ prefix: path },
@@ -65,7 +72,9 @@ const TreeFolder = ({
 	const subfolders = data?.folders || [];
 	const files = data?.files || [];
 	const childParentLines = depth > 0 ? [...parentLines, !isLast] : parentLines;
-	const isCurrent = currentPrefix === path;
+	// Single highlight: the current folder lights up only when no file is picked
+	// (picking a file highlights the file row instead).
+	const isCurrent = currentPrefix === path && !treeSelectedKey;
 
 	return (
 		<div>
@@ -131,7 +140,7 @@ const TreeFolder = ({
 						// biome-ignore lint/a11y/useKeyWithClickEvents: file also reachable from the main grid
 						<div
 							key={file.key}
-							className="ftree-row ftree-file"
+							className={`ftree-row ftree-file ${treeSelectedKey === file.key ? "selected" : ""}`}
 							onClick={() => onSelectFile(file.key)}
 						>
 							<TreePrefix

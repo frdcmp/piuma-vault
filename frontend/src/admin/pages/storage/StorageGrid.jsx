@@ -16,7 +16,9 @@ import {
 	useStorageUpload,
 	useStorageZip,
 } from "../../../queries";
+import { useStorageWorkspace } from "../../../store/storageWorkspaceStore";
 import { formatDate } from "../../../utils/dateTime";
+import FolderShareModal from "./FolderShareModal";
 
 const formatBytes = (n) => {
 	if (!n) return "0 B";
@@ -54,7 +56,7 @@ const fileGlyph = (key) => {
  * action modals (share / preview / new folder / confirm). Storage mutations
  * invalidate the whole `storage` query key, so the left tree refreshes too.
  */
-export default function StorageGrid({ prefix, onNavigate, pickedFile }) {
+export default function StorageGrid({ prefix, onNavigate }) {
 	const list = useStorageList({ prefix });
 	const upload = useStorageUpload();
 	const deleteObject = useStorageDeleteObject();
@@ -84,9 +86,13 @@ export default function StorageGrid({ prefix, onNavigate, pickedFile }) {
 							? "Preparing link…"
 							: null;
 
-	// `selected` holds both folder keys (trailing "/") and file keys — they never
-	// collide, so one Set covers both.
-	const [selected, setSelected] = useState(() => new Set());
+	// Selection is shared with the tree via the workspace store. It holds both
+	// folder keys (trailing "/") and file keys — they never collide.
+	const selected = useStorageWorkspace((s) => s.selection);
+	const setSelection = useStorageWorkspace((s) => s.setSelection);
+	const selectOne = useStorageWorkspace((s) => s.selectOne);
+	const toggleOne = useStorageWorkspace((s) => s.toggle);
+	const clearSelection = useStorageWorkspace((s) => s.clearSelection);
 	const [dragOver, setDragOver] = useState(false);
 	// Folder key currently being hovered with a drag, so its tile can highlight.
 	const [dragFolder, setDragFolder] = useState(null);
@@ -96,6 +102,8 @@ export default function StorageGrid({ prefix, onNavigate, pickedFile }) {
 	const bodyRef = useRef(null);
 	// Right-click context menu anchor: { x, y } in viewport coords, or null.
 	const [menu, setMenu] = useState(null);
+	// Folder key whose public-share dialog is open, or null.
+	const [shareFolder, setShareFolder] = useState(null);
 
 	// Modal state.
 	const [shareKey, setShareKey] = useState(null);
@@ -106,21 +114,18 @@ export default function StorageGrid({ prefix, onNavigate, pickedFile }) {
 	const [newFolderName, setNewFolderName] = useState("");
 	const [confirm, setConfirm] = useState(null); // { title, body, onConfirm }
 
-	const clearSelection = () => setSelected(new Set());
-
-	// When a file is picked in the left tree, select it here once its folder's
-	// contents have loaded, and scroll it into view. Keyed on the nonce so it
-	// applies once per click and never clobbers a later in-grid selection.
-	const pickedNonceRef = useRef(null);
+	// When exactly one file is selected (e.g. picked from the tree), scroll it
+	// into view once the folder's contents have rendered. No-op if already visible.
+	// `files` is a trigger so this re-runs after the listing loads.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: files triggers re-scroll on load
 	useEffect(() => {
-		if (!pickedFile?.key || pickedNonceRef.current === pickedFile.nonce) return;
-		if (!files.some((f) => f.key === pickedFile.key)) return; // wait for listing
-		pickedNonceRef.current = pickedFile.nonce;
-		setSelected(new Set([pickedFile.key]));
+		if (selected.size !== 1) return;
+		const [key] = selected;
+		if (key.endsWith("/")) return;
 		bodyRef.current
-			?.querySelector(`[data-sel-key="${CSS.escape(pickedFile.key)}"]`)
+			?.querySelector(`[data-sel-key="${CSS.escape(key)}"]`)
 			?.scrollIntoView({ block: "nearest" });
-	}, [pickedFile, files]);
+	}, [selected, files]);
 
 	const crumbs = useMemo(() => {
 		const trimmed = prefix.replace(/\/$/, "");
@@ -137,26 +142,17 @@ export default function StorageGrid({ prefix, onNavigate, pickedFile }) {
 		onNavigate(p);
 	};
 
-	const toggleOne = (key) =>
-		setSelected((prev) => {
-			const next = new Set(prev);
-			next.has(key) ? next.delete(key) : next.add(key);
-			return next;
-		});
-
-	const selectOnly = (key) => setSelected(new Set([key]));
-
 	// A tile was clicked. Ctrl/⌘-click toggles it into the selection (multi);
 	// a plain click selects just that one item.
 	const onTileClick = (key, e) =>
-		e.ctrlKey || e.metaKey ? toggleOne(key) : selectOnly(key);
+		e.ctrlKey || e.metaKey ? toggleOne(key) : selectOne(key);
 
 	// Right-clicking a tile that isn't already part of the selection selects just
 	// it first (like a file explorer), then opens the context menu at the cursor.
 	const onTileContextMenu = (key, e) => {
 		e.preventDefault();
 		e.stopPropagation();
-		if (!selected.has(key)) selectOnly(key);
+		if (!selected.has(key)) selectOne(key);
 		setMenu({ x: e.clientX, y: e.clientY });
 	};
 
@@ -172,12 +168,12 @@ export default function StorageGrid({ prefix, onNavigate, pickedFile }) {
 	const applyMarquee = (rect) => {
 		const root = bodyRef.current;
 		if (!root) return;
-		const hit = new Set();
+		const hit = [];
 		for (const el of root.querySelectorAll("[data-sel-key]")) {
 			if (rectsIntersect(rect, el.getBoundingClientRect()))
-				hit.add(el.dataset.selKey);
+				hit.push(el.dataset.selKey);
 		}
-		setSelected(hit);
+		setSelection(hit);
 	};
 
 	const onBodyMouseDown = (e) => {
@@ -392,7 +388,8 @@ export default function StorageGrid({ prefix, onNavigate, pickedFile }) {
 		const count = keys.length;
 		const single = count === 1;
 		const singleFile = single && !keys[0].endsWith("/");
-		const zips = count > 1 || (single && keys[0].endsWith("/"));
+		const singleFolder = single && keys[0].endsWith("/");
+		const zips = count > 1 || singleFolder;
 		return [
 			...(singleFile && isImage(keys[0])
 				? [{ label: "Preview", icon: "👁", onClick: () => openPreview(keys[0]) }]
@@ -408,6 +405,15 @@ export default function StorageGrid({ prefix, onNavigate, pickedFile }) {
 							label: "Share link",
 							icon: "🔗",
 							onClick: () => openShare(keys[0]),
+						},
+					]
+				: []),
+			...(singleFolder
+				? [
+						{
+							label: "Share folder…",
+							icon: "🌐",
+							onClick: () => setShareFolder(keys[0]),
 						},
 					]
 				: []),
@@ -638,14 +644,14 @@ export default function StorageGrid({ prefix, onNavigate, pickedFile }) {
 												onContextMenu={(e) => onTileContextMenu(file.key, e)}
 											>
 												<div className="storage-tile-top">
-													<span className="storage-tile-glyph">
-														{fileGlyph(file.key)}
-													</span>
 													<span className="storage-tile-name">
 														{fileLeaf(file.key)}
 													</span>
 												</div>
 												<div className="storage-tile-meta">
+													<span className="storage-tile-glyph">
+														{fileGlyph(file.key)}
+													</span>
 													<span className="storage-tile-size">
 														{formatBytes(file.size)}
 													</span>
@@ -670,6 +676,13 @@ export default function StorageGrid({ prefix, onNavigate, pickedFile }) {
 				y={menu?.y ?? 0}
 				items={menu ? buildMenuItems() : []}
 				onClose={() => setMenu(null)}
+			/>
+
+			{/* Public folder-share dialog */}
+			<FolderShareModal
+				open={!!shareFolder}
+				prefix={shareFolder}
+				onClose={() => setShareFolder(null)}
 			/>
 
 			{/* New-folder modal */}

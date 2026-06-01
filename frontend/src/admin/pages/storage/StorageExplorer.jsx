@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useStorageWorkspace } from "../../../store/storageWorkspaceStore";
 import "../notes/NotesSidebar.css";
 import "./Storage.css";
 import StorageGrid from "./StorageGrid";
@@ -41,17 +42,16 @@ export default function StorageExplorer() {
 	const [expanded, setExpanded] = useState({});
 	const [sidebarWidth, setSidebarWidth] = useState(readStoredWidth);
 	const [isResizing, setIsResizing] = useState(false);
-	// A file picked in the left tree: { key, nonce }. The nonce makes re-clicking
-	// the same file re-trigger selection in the grid.
-	const [pickedFile, setPickedFile] = useState(null);
+	// Selection lives in the shared store so the tree and grid stay in sync.
+	const selectOne = useStorageWorkspace((s) => s.selectOne);
+	const clearSelection = useStorageWorkspace((s) => s.clearSelection);
 
 	const toggleExpand = useCallback((path) => {
 		setExpanded((prev) => ({ ...prev, [path]: !prev[path] }));
 	}, []);
 
-	// Navigate to a folder by pushing it onto the URL; the prefix is then
-	// derived from the ?path= query param.
-	const handleNavigate = useCallback(
+	// Push a folder onto the URL; the prefix derives from the ?path= query param.
+	const pushFolder = useCallback(
 		(p) => {
 			const clean = p ? p.replace(/\/+$/, "") : "";
 			navigate(
@@ -63,19 +63,25 @@ export default function StorageExplorer() {
 		[navigate],
 	);
 
-	// A file was clicked in the tree: navigate to its folder and flag it so the
-	// grid selects it once that folder's contents render.
+	// Navigating to a folder clears the selection (fresh folder, fresh selection).
+	const handleNavigate = useCallback(
+		(p) => {
+			clearSelection();
+			pushFolder(p);
+		},
+		[clearSelection, pushFolder],
+	);
+
+	// A file clicked in the tree: select it (store → grid + tree both highlight)
+	// and navigate to its folder. Selection is NOT cleared, so it survives the nav.
 	const handleSelectFile = useCallback(
 		(fileKey) => {
 			const slash = fileKey.lastIndexOf("/");
 			const parent = slash === -1 ? "" : fileKey.slice(0, slash + 1);
-			handleNavigate(parent);
-			setPickedFile((prev) => ({
-				key: fileKey,
-				nonce: (prev?.nonce ?? 0) + 1,
-			}));
+			selectOne(fileKey);
+			pushFolder(parent);
 		},
-		[handleNavigate],
+		[selectOne, pushFolder],
 	);
 
 	// Keep all ancestors of the current folder expanded so it stays visible.
@@ -166,11 +172,7 @@ export default function StorageExplorer() {
 				title="Drag to resize · double-click to reset"
 			/>
 
-			<StorageGrid
-				prefix={prefix}
-				onNavigate={handleNavigate}
-				pickedFile={pickedFile}
-			/>
+			<StorageGrid prefix={prefix} onNavigate={handleNavigate} />
 		</div>
 	);
 }

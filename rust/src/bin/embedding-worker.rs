@@ -69,7 +69,7 @@ async fn main() {
                 Ok(embedding) => {
                     let pg_vec = pgvector::Vector::from(embedding);
                     match sqlx::query(
-                        "UPDATE notes SET embedding = $1 WHERE id = $2 AND embedding IS NULL",
+                        "UPDATE notes SET embedding = $1 WHERE id = $2 AND embedding IS NULL AND deleted_at IS NULL",
                     )
                     .bind(&pg_vec)
                     .bind(note_id)

@@ -41,7 +41,7 @@ fn err(status: actix_web::http::StatusCode, msg: impl Into<String>) -> HttpRespo
 // Normalizes a folder path to "a/b/" (no leading slash, single trailing slash,
 // empty for root). Keeps the S3 key shape consistent regardless of how the
 // client formats the input.
-fn normalize_folder(input: &str) -> String {
+pub(crate) fn normalize_folder(input: &str) -> String {
     let trimmed = input.trim().trim_matches('/');
     if trimmed.is_empty() {
         String::new()
@@ -56,7 +56,7 @@ fn normalize_folder(input: &str) -> String {
 // empty ones. This is the single source of truth for telling folders from files.
 // Internal folder used to stage generated zip archives so they can be served
 // directly from the CDN. Hidden from listings.
-const TEMP_PREFIX: &str = "__temp/";
+pub(crate) const TEMP_PREFIX: &str = "__temp/";
 
 // Optional CDN base URL (no trailing slash); empty string when unset. Used to
 // build public/object URLs where a missing CDN is not an error.
@@ -72,7 +72,7 @@ async fn cdn_base(pool: &DbPool) -> String {
 // accelerator — S3-only setups fall back to the bucket's own public URL (which
 // requires the bucket/object to allow public reads). Empty only if S3 itself is
 // unconfigured.
-async fn public_base(pool: &DbPool) -> String {
+pub(crate) async fn public_base(pool: &DbPool) -> String {
     let cdn = cdn_base(pool).await;
     if !cdn.is_empty() {
         return cdn;
@@ -103,7 +103,7 @@ fn sign_cdn_url(cdn_base: &str, security_key: &str, key: &str, expires_at: i64) 
 // Time-limited URL to fetch an object directly from the client. Uses a signed
 // CDN URL when a CDN is configured; otherwise falls back to an S3 presigned GET
 // (works on private buckets, no CDN required). Returns `(url, expires_at)`.
-async fn download_url(
+pub(crate) async fn download_url(
     pool: &DbPool,
     client: &Client,
     bucket: &str,
@@ -135,7 +135,7 @@ async fn download_url(
     Ok((presigned.uri().to_string(), chrono::Utc::now().timestamp() + secs as i64))
 }
 
-fn is_dir_marker(o: &aws_sdk_s3::types::Object) -> bool {
+pub(crate) fn is_dir_marker(o: &aws_sdk_s3::types::Object) -> bool {
     let etag_blank = o
         .e_tag()
         .map(|e| e.trim_matches('"').is_empty())
@@ -146,7 +146,7 @@ fn is_dir_marker(o: &aws_sdk_s3::types::Object) -> bool {
 // Builds an S3 client + bucket name from the saved S3 settings (Services
 // dashboard). Works with any S3-compatible endpoint (AWS S3, Bunny, R2, MinIO,
 // …); path-style URLs keep the widest compatibility.
-async fn s3_client(pool: &DbPool) -> Result<(Client, String), String> {
+pub(crate) async fn s3_client(pool: &DbPool) -> Result<(Client, String), String> {
     Ok(client_from(store::s3_config(pool).await?))
 }
 
@@ -434,7 +434,7 @@ pub async fn delete_object(
 // Lists every object under a prefix, paginating through all pages, returning
 // each key paired with whether it is a Bunny directory marker. Used for
 // recursive folder operations (delete-folder, zip-by-prefix).
-async fn collect_objects_under_prefix(
+pub(crate) async fn collect_objects_under_prefix(
     client: &Client,
     bucket: &str,
     prefix: &str,
@@ -473,7 +473,7 @@ async fn collect_objects_under_prefix(
 // A folder marker is addressed by its trailing-slash key (e.g. "docs/"), which
 // is the only form Bunny's S3 gateway will actually delete. Stops at the first
 // ancestor that still holds a file or subfolder.
-async fn prune_empty_parents(client: &Client, bucket: &str, key: &str) {
+pub(crate) async fn prune_empty_parents(client: &Client, bucket: &str, key: &str) {
     let mut cur = key.trim_end_matches('/').to_string();
     while let Some(idx) = cur.rfind('/') {
         let parent = cur[..=idx].to_string(); // includes the trailing slash
@@ -585,7 +585,7 @@ pub async fn bulk_delete(
 // Deletes each key with its own request (Bunny has no batch delete), reporting
 // per-key success/failure. A delete that errors is recorded but doesn't abort
 // the rest.
-async fn delete_keys_individually(
+pub(crate) async fn delete_keys_individually(
     client: &Client,
     bucket: &str,
     keys: Vec<String>,
@@ -602,6 +602,40 @@ async fn delete_keys_individually(
         }
     }
     HttpResponse::Ok().json(DeleteResponse { deleted, failed })
+}
+
+// Best-effort recursive purge of every object under `prefix`, used by other
+// apps (e.g. notes deleting a note's attachments) rather than by an HTTP route.
+// Resolves the S3 client from saved settings, deletes each object individually
+// (Bunny has no batch delete), drops the prefix's own folder marker, then prunes
+// now-empty ancestors. Per-object failures are logged, not fatal; returns the
+// count deleted. An unconfigured/unreachable store surfaces as `Err`.
+pub(crate) async fn purge_prefix(pool: &DbPool, prefix: &str) -> Result<usize, String> {
+    let (client, bucket) = s3_client(pool).await?;
+    let objects = collect_objects_under_prefix(&client, &bucket, prefix).await?;
+    let mut deleted = 0usize;
+    for (k, is_dir) in objects {
+        // Nested directory markers must be addressed by their trailing-slash key.
+        let key = if is_dir && !k.ends_with('/') {
+            format!("{k}/")
+        } else {
+            k
+        };
+        match client.delete_object().bucket(&bucket).key(&key).send().await {
+            Ok(_) => deleted += 1,
+            Err(e) => log::warn!("purge_prefix: failed to delete {key}: {e}"),
+        }
+    }
+    // The prefix's own folder marker sits at the no-slash key and isn't returned
+    // under its own listing, so remove it explicitly, then tidy ancestors.
+    let _ = client
+        .delete_object()
+        .bucket(&bucket)
+        .key(prefix.trim_end_matches('/'))
+        .send()
+        .await;
+    prune_empty_parents(&client, &bucket, prefix).await;
+    Ok(deleted)
 }
 
 // POST /storage/bulk/move — server-side copy + delete for each item.
@@ -702,44 +736,64 @@ pub async fn zip_bundle(
         Err(e) => return err(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, e),
     };
 
-    // Gather the target key list. Every prefix — the single `prefix` plus any in
-    // `prefixes` — is expanded to its (non-marker) objects.
-    let mut keys: Vec<String> = body.keys.clone();
     let prefixes = body
         .prefix
         .iter()
         .cloned()
         .chain(body.prefixes.iter().cloned())
         .collect::<Vec<_>>();
+    match zip_to_signed_url(
+        pool.get_ref(),
+        &client,
+        &bucket,
+        body.keys.clone(),
+        prefixes,
+        body.filename.clone(),
+    )
+    .await
+    {
+        Ok((url, key)) => HttpResponse::Ok().json(ZipBundleResponse { url, key }),
+        Err(e) if e == "nothing to bundle" => err(actix_web::http::StatusCode::BAD_REQUEST, e),
+        Err(e) => err(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+// Builds a zip of `explicit_keys` plus every (non-marker) object under each of
+// `prefixes`, stages it under the internal `__temp/` folder, and returns a
+// signed CDN URL plus the staged key. Shared by the authed `zip_bundle` handler
+// and the public folder-share download. `Err("nothing to bundle")` when empty.
+pub(crate) async fn zip_to_signed_url(
+    pool: &DbPool,
+    client: &Client,
+    bucket: &str,
+    explicit_keys: Vec<String>,
+    prefixes: Vec<String>,
+    filename: Option<String>,
+) -> Result<(String, String), String> {
+    let mut keys: Vec<String> = explicit_keys;
     for p in &prefixes {
         let prefix = normalize_folder(p);
         if prefix.is_empty() {
             continue;
         }
-        match collect_objects_under_prefix(&client, &bucket, &prefix).await {
-            // Skip directory markers — only real files go into the archive.
-            Ok(more) => keys.extend(more.into_iter().filter(|(_, is_dir)| !is_dir).map(|(k, _)| k)),
-            Err(e) => return err(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, e),
-        }
+        let more = collect_objects_under_prefix(client, bucket, &prefix).await?;
+        keys.extend(more.into_iter().filter(|(_, is_dir)| !is_dir).map(|(k, _)| k));
     }
     keys.sort();
     keys.dedup();
     let keys: Vec<String> = keys.into_iter().filter(|k| !k.ends_with('/')).collect();
     if keys.is_empty() {
-        return err(actix_web::http::StatusCode::BAD_REQUEST, "nothing to bundle");
+        return Err("nothing to bundle".into());
     }
 
-    // Build the zip in memory. Each entry inside the archive is the full
-    // object key, preserving the folder structure.
-    let buf: Vec<u8> = Vec::new();
-    let cursor = Cursor::new(buf);
+    // Build the zip in memory; each entry is the full object key, preserving structure.
+    let cursor = Cursor::new(Vec::<u8>::new());
     let mut zip = ZipWriter::new(cursor);
     let opts: SimpleFileOptions = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Deflated)
         .unix_permissions(0o644);
-
     for key in &keys {
-        let obj = match client.get_object().bucket(&bucket).key(key).send().await {
+        let obj = match client.get_object().bucket(bucket).key(key).send().await {
             Ok(o) => o,
             Err(e) => {
                 log::warn!("[storage/zip] skipping {key}: {e}");
@@ -753,31 +807,16 @@ pub async fn zip_bundle(
                 continue;
             }
         };
-        if let Err(e) = zip.start_file::<_, ()>(key, opts) {
-            log::warn!("[storage/zip] start_file failed for {key}: {e}");
+        if zip.start_file::<_, ()>(key, opts).is_err() {
             continue;
         }
-        if let Err(e) = zip.write_all(&bytes) {
-            log::warn!("[storage/zip] write failed for {key}: {e}");
-            continue;
-        }
+        let _ = zip.write_all(&bytes);
     }
-
-    let cursor = match zip.finish() {
-        Ok(c) => c,
-        Err(e) => {
-            return err(
-                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!("zip finalize: {e}"),
-            )
-        }
-    };
+    let cursor = zip.finish().map_err(|e| format!("zip finalize: {e}"))?;
     let zipped = cursor.into_inner();
 
-    // Stage the archive in the internal __temp/ folder so it can be pulled
-    // straight from the CDN. Name is sanitised; same folder name overwrites in
-    // place so __temp doesn't grow without bound.
-    let filename = body.filename.clone().unwrap_or_else(|| "bundle".into());
+    // Stage in __temp/ so it can be pulled straight from the CDN. Name is sanitised.
+    let filename = filename.unwrap_or_else(|| "bundle".into());
     let safe: String = filename
         .chars()
         .map(|c| {
@@ -794,28 +833,15 @@ pub async fn zip_bundle(
         safe
     };
     let temp_key = format!("{TEMP_PREFIX}{safe}.zip");
-
-    if let Err(e) = client
+    client
         .put_object()
-        .bucket(&bucket)
+        .bucket(bucket)
         .key(&temp_key)
         .body(ByteStream::from(zipped))
         .content_type("application/zip")
         .send()
         .await
-    {
-        return err(
-            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            format!("store zip: {e}"),
-        );
-    }
-
-    let url = match download_url(pool.get_ref(), &client, &bucket, &temp_key, 3600).await {
-        Ok((url, _)) => url,
-        Err(e) => return err(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, e),
-    };
-    HttpResponse::Ok().json(ZipBundleResponse {
-        url,
-        key: temp_key,
-    })
+        .map_err(|e| format!("store zip: {e}"))?;
+    let (url, _) = download_url(pool, client, bucket, &temp_key, 3600).await?;
+    Ok((url, temp_key))
 }
