@@ -5,7 +5,7 @@ import { useNotesLiveUpdates } from "../../../queries/notesQuery";
 import useNoteControlsStore from "../../../store/noteControlsStore";
 import useNotesWorkspaceStore from "../../../store/notesWorkspaceStore";
 import useUiStore from "../../../store/uiStore";
-import PiumaEmptyState from "../../components/notes/PiumaEmptyState";
+import PiumaHome from "../../components/notes/PiumaHome";
 import NoteControls from "./NoteControls";
 import NotesListSidebar from "./NotesListSidebar";
 import NoteTabs from "./NoteTabs";
@@ -243,7 +243,7 @@ export default function NotesLayout() {
 
 			{mobileEmptyInline && (
 				<div className="notes-pixel-sidebar mobile">
-					<PiumaEmptyState
+					<PiumaHome
 						onBack={() => setMobileShowEmpty(false)}
 						onOpenChat={openChat}
 					/>
@@ -305,7 +305,7 @@ export default function NotesLayout() {
 					{!isRoot ? (
 						<Outlet context={{ openChat, closeChat, chatOpen }} />
 					) : (
-						<PiumaEmptyState onOpenChat={openChat} />
+						<PiumaHome onOpenChat={openChat} />
 					)}
 				</div>
 			)}
