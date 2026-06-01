@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
@@ -22,6 +22,7 @@ import BottomSheet, { BottomSheetItem } from "../components/BottomSheet";
 import FolderShareSheet from "../components/FolderShareSheet";
 import { BottomBar, useTopInset } from "../components/SystemBars";
 import {
+	useStorageBulkDelete,
 	useStorageDeleteFolder,
 	useStorageDeleteObject,
 	useStorageList,
@@ -103,11 +104,16 @@ export default function StorageScreen({ navigation }) {
 	// Non-null while a blocking op (download/upload) is in flight — drives the
 	// loading overlay. Holds the label to show.
 	const [busy, setBusy] = useState(null);
+	// Multi-select: long-press a row to enter. `selected` holds keys — folder
+	// keys end in "/", file keys don't, so one Set covers both (like the web).
+	const [selectMode, setSelectMode] = useState(false);
+	const [selected, setSelected] = useState(() => new Set());
 
 	const list = useStorageList({ prefix });
 	const upload = useStorageUpload();
 	const deleteObject = useStorageDeleteObject();
 	const deleteFolder = useStorageDeleteFolder();
+	const bulkDelete = useStorageBulkDelete();
 	const signed = useStorageSignedUrl();
 	const zip = useStorageZip();
 
@@ -161,6 +167,13 @@ export default function StorageScreen({ navigation }) {
 		[folders, files],
 	);
 
+	// Leaving a folder drops any selection from it (and exits select mode).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only on folder change
+	useEffect(() => {
+		setSelectMode(false);
+		setSelected(new Set());
+	}, [prefix]);
+
 	// ── Actions ──────────────────────────────────────────────────
 	// Download = open a short-lived signed CDN URL in the browser, which saves
 	// the file (no extra native modules needed).
@@ -197,6 +210,82 @@ export default function StorageScreen({ navigation }) {
 			Alert.alert(
 				"Download failed",
 				e?.response?.data?.message || e.message || "Could not zip the folder.",
+			);
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	// ── Multi-select ─────────────────────────────────────────────
+	const enterSelect = (key) => {
+		setSelectMode(true);
+		setSelected(new Set([key]));
+	};
+	const toggleSelect = (key) =>
+		setSelected((prev) => {
+			const next = new Set(prev);
+			next.has(key) ? next.delete(key) : next.add(key);
+			return next;
+		});
+	const exitSelect = () => {
+		setSelectMode(false);
+		setSelected(new Set());
+	};
+	const selectAll = () => setSelected(new Set(rows.map((r) => r.key)));
+
+	// Download the selection: a lone file opens directly; anything else is zipped
+	// (files as keys, folders expanded server-side via prefixes).
+	const downloadSelection = async () => {
+		const keys = Array.from(selected);
+		if (keys.length === 0) return;
+		const folderKeys = keys.filter((k) => k.endsWith("/"));
+		const fileKeys = keys.filter((k) => !k.endsWith("/"));
+		if (keys.length === 1 && fileKeys.length === 1) {
+			downloadFile(fileKeys[0]);
+			return;
+		}
+		if (keys.length === 1 && folderKeys.length === 1) {
+			downloadFolder(folderKeys[0]);
+			return;
+		}
+		setBusy("Zipping…");
+		try {
+			const { url } = await zip.mutateAsync({
+				keys: fileKeys,
+				prefixes: folderKeys,
+				filename: "selection",
+			});
+			const ok = await Linking.canOpenURL(url);
+			if (ok) Linking.openURL(url);
+			else Alert.alert("Cannot open", "No app available to open this link.");
+		} catch (e) {
+			Alert.alert(
+				"Download failed",
+				e?.response?.data?.message ||
+					e.message ||
+					"Could not zip the selection.",
+			);
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	// Delete the whole selection (files via bulk endpoint, folders recursively).
+	const deleteSelection = async () => {
+		const keys = Array.from(selected);
+		setPendingDelete(null);
+		if (keys.length === 0) return;
+		const folderKeys = keys.filter((k) => k.endsWith("/"));
+		const fileKeys = keys.filter((k) => !k.endsWith("/"));
+		setBusy("Deleting…");
+		try {
+			if (fileKeys.length) await bulkDelete.mutateAsync(fileKeys);
+			for (const f of folderKeys) await deleteFolder.mutateAsync(f);
+			exitSelect();
+		} catch (e) {
+			Alert.alert(
+				"Delete failed",
+				e?.response?.data?.message || e.message || "Unknown error",
 			);
 		} finally {
 			setBusy(null);
@@ -319,33 +408,74 @@ export default function StorageScreen({ navigation }) {
 		}
 	};
 
+	// A small pixel checkbox shown on the left of each row in select mode.
+	const Checkbox = ({ on }) => (
+		<View style={[styles.checkbox, on && styles.checkboxOn]}>
+			{on ? (
+				<Ionicons name="checkmark" size={14} color={colors.accent2} />
+			) : null}
+		</View>
+	);
+
 	const renderRow = ({ item }) => {
+		const isSel = selected.has(item.key);
+		// In select mode a tap toggles; otherwise folder=enter, file=sheet. A
+		// long-press always enters select mode with this row selected.
+		const onPress = () => {
+			if (selectMode) toggleSelect(item.key);
+			else if (item.type === "folder") setPrefix(item.key);
+			else openSheet(item);
+		};
+		const onLongPress = () => {
+			if (!selectMode) enterSelect(item.key);
+		};
+
 		if (item.type === "folder") {
 			return (
 				<Pressable
-					style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-					onPress={() => setPrefix(item.key)}
+					style={({ pressed }) => [
+						styles.row,
+						pressed && styles.rowPressed,
+						isSel && styles.rowSelected,
+					]}
+					onPress={onPress}
+					onLongPress={onLongPress}
+					delayLongPress={300}
 				>
+					{selectMode ? <Checkbox on={isSel} /> : null}
 					<Text style={styles.glyph}>📁</Text>
 					<Text style={styles.folderName} numberOfLines={1}>
 						{folderLeaf(item.key)}
 						<Text style={styles.slash}>/</Text>
 					</Text>
-					<Pressable
-						style={styles.dotsBtn}
-						hitSlop={12}
-						onPress={() => openSheet(item)}
-					>
-						<Ionicons name="ellipsis-vertical" size={18} color={colors.muted} />
-					</Pressable>
+					{!selectMode ? (
+						<Pressable
+							style={styles.dotsBtn}
+							hitSlop={12}
+							onPress={() => openSheet(item)}
+						>
+							<Ionicons
+								name="ellipsis-vertical"
+								size={18}
+								color={colors.muted}
+							/>
+						</Pressable>
+					) : null}
 				</Pressable>
 			);
 		}
 		return (
 			<Pressable
-				style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-				onPress={() => openSheet(item)}
+				style={({ pressed }) => [
+					styles.row,
+					pressed && styles.rowPressed,
+					isSel && styles.rowSelected,
+				]}
+				onPress={onPress}
+				onLongPress={onLongPress}
+				delayLongPress={300}
 			>
+				{selectMode ? <Checkbox on={isSel} /> : null}
 				<Ionicons
 					name={fileIcon(item.key)}
 					size={24}
@@ -361,13 +491,15 @@ export default function StorageScreen({ navigation }) {
 						{item.last_modified ? `  ·  ${fmtDate(item.last_modified)}` : ""}
 					</Text>
 				</View>
-				<Pressable
-					style={styles.dotsBtn}
-					hitSlop={12}
-					onPress={() => openSheet(item)}
-				>
-					<Ionicons name="ellipsis-vertical" size={18} color={colors.muted} />
-				</Pressable>
+				{!selectMode ? (
+					<Pressable
+						style={styles.dotsBtn}
+						hitSlop={12}
+						onPress={() => openSheet(item)}
+					>
+						<Ionicons name="ellipsis-vertical" size={18} color={colors.muted} />
+					</Pressable>
+				) : null}
 			</Pressable>
 		);
 	};
@@ -377,62 +509,110 @@ export default function StorageScreen({ navigation }) {
 			style={[styles.root, { paddingTop: topInset }]}
 			{...edgeSwipe.panHandlers}
 		>
-			{/* Header */}
-			<View style={styles.header}>
-				<TouchableOpacity
-					onPress={handleBack}
-					style={styles.headerBtn}
-					hitSlop={10}
-				>
-					<Ionicons name="arrow-back" size={22} color={colors.text} />
-				</TouchableOpacity>
-				<View style={{ flex: 1 }}>
-					<Text style={styles.title}>Storage</Text>
-					<Text style={styles.subtitle}>bunny · zone pv</Text>
+			{/* Header — swaps to a selection action bar while in select mode. */}
+			{selectMode ? (
+				<View style={styles.header}>
+					<TouchableOpacity
+						onPress={exitSelect}
+						style={styles.headerBtn}
+						hitSlop={10}
+					>
+						<Ionicons name="close" size={22} color={colors.text} />
+					</TouchableOpacity>
+					<Text style={[styles.title, { flex: 1 }]}>
+						{selected.size} selected
+					</Text>
+					<TouchableOpacity
+						onPress={selectAll}
+						style={styles.headerBtn}
+						hitSlop={10}
+					>
+						<Ionicons
+							name="checkmark-done-outline"
+							size={22}
+							color={colors.text}
+						/>
+					</TouchableOpacity>
+					<TouchableOpacity
+						onPress={downloadSelection}
+						style={styles.headerBtn}
+						hitSlop={10}
+						disabled={selected.size === 0}
+					>
+						<Ionicons
+							name="download-outline"
+							size={22}
+							color={colors.accent2}
+						/>
+					</TouchableOpacity>
+					<TouchableOpacity
+						onPress={() =>
+							selected.size > 0 && setPendingDelete({ bulk: true })
+						}
+						style={styles.headerBtn}
+						hitSlop={10}
+						disabled={selected.size === 0}
+					>
+						<Ionicons name="trash-outline" size={22} color={colors.accent3} />
+					</TouchableOpacity>
 				</View>
-				{/* Manual refresh — also reachable when a folder is empty (no
-				    FlatList pull-to-refresh there). Bunny's listing is eventually
-				    consistent, so a re-fetch after a write may be needed. */}
-				<TouchableOpacity
-					onPress={() => list.refetch()}
-					style={styles.headerBtn}
-					hitSlop={10}
-					disabled={list.isFetching}
-				>
-					{list.isFetching ? (
-						<ActivityIndicator size="small" color={colors.muted} />
-					) : (
-						<Ionicons name="refresh" size={20} color={colors.text} />
-					)}
-				</TouchableOpacity>
-				<TouchableOpacity
-					onPress={() => setNewFolderOpen(true)}
-					style={styles.folderBtn}
-					hitSlop={10}
-				>
-					<Ionicons name="folder-outline" size={16} color={colors.accent} />
-					<Text style={styles.folderBtnPlus}>+</Text>
-				</TouchableOpacity>
-				<TouchableOpacity
-					onPress={pickAndUpload}
-					style={styles.uploadBtn}
-					hitSlop={10}
-					disabled={upload.isPending}
-				>
-					{upload.isPending ? (
-						<ActivityIndicator size="small" color={colors.accent2} />
-					) : (
-						<>
-							<Ionicons
-								name="cloud-upload-outline"
-								size={16}
-								color={colors.accent2}
-							/>
-							<Text style={styles.uploadText}>UPLOAD</Text>
-						</>
-					)}
-				</TouchableOpacity>
-			</View>
+			) : (
+				<View style={styles.header}>
+					<TouchableOpacity
+						onPress={handleBack}
+						style={styles.headerBtn}
+						hitSlop={10}
+					>
+						<Ionicons name="arrow-back" size={22} color={colors.text} />
+					</TouchableOpacity>
+					<View style={{ flex: 1 }}>
+						<Text style={styles.title}>Storage</Text>
+						<Text style={styles.subtitle}>bunny · zone pv</Text>
+					</View>
+					{/* Manual refresh — also reachable when a folder is empty (no
+					    FlatList pull-to-refresh there). Bunny's listing is eventually
+					    consistent, so a re-fetch after a write may be needed. */}
+					<TouchableOpacity
+						onPress={() => list.refetch()}
+						style={styles.headerBtn}
+						hitSlop={10}
+						disabled={list.isFetching}
+					>
+						{list.isFetching ? (
+							<ActivityIndicator size="small" color={colors.muted} />
+						) : (
+							<Ionicons name="refresh" size={20} color={colors.text} />
+						)}
+					</TouchableOpacity>
+					<TouchableOpacity
+						onPress={() => setNewFolderOpen(true)}
+						style={styles.folderBtn}
+						hitSlop={10}
+					>
+						<Ionicons name="folder-outline" size={16} color={colors.accent} />
+						<Text style={styles.folderBtnPlus}>+</Text>
+					</TouchableOpacity>
+					<TouchableOpacity
+						onPress={pickAndUpload}
+						style={styles.uploadBtn}
+						hitSlop={10}
+						disabled={upload.isPending}
+					>
+						{upload.isPending ? (
+							<ActivityIndicator size="small" color={colors.accent2} />
+						) : (
+							<>
+								<Ionicons
+									name="cloud-upload-outline"
+									size={16}
+									color={colors.accent2}
+								/>
+								<Text style={styles.uploadText}>UPLOAD</Text>
+							</>
+						)}
+					</TouchableOpacity>
+				</View>
+			)}
 
 			{/* Breadcrumb */}
 			<ScrollView
@@ -608,14 +788,18 @@ export default function StorageScreen({ navigation }) {
 				>
 					<Pressable style={styles.modalCard} onPress={() => {}}>
 						<Text style={styles.modalTitle}>
-							{pendingDelete?.type === "file"
-								? "Delete file?"
-								: "Delete folder?"}
+							{pendingDelete?.bulk
+								? `Delete ${selected.size} item${selected.size === 1 ? "" : "s"}?`
+								: pendingDelete?.type === "file"
+									? "Delete file?"
+									: "Delete folder?"}
 						</Text>
 						<Text style={styles.modalHint} numberOfLines={3}>
-							{pendingDelete?.type === "file"
-								? pendingDelete?.key
-								: `${pendingDelete?.key || ""} and all its contents`}
+							{pendingDelete?.bulk
+								? "The selected files and folders will be permanently deleted."
+								: pendingDelete?.type === "file"
+									? pendingDelete?.key
+									: `${pendingDelete?.key || ""} and all its contents`}
 						</Text>
 						<View style={styles.modalActions}>
 							<TouchableOpacity
@@ -626,7 +810,7 @@ export default function StorageScreen({ navigation }) {
 							</TouchableOpacity>
 							<TouchableOpacity
 								style={[styles.modalBtn, styles.modalBtnDanger]}
-								onPress={confirmDelete}
+								onPress={pendingDelete?.bulk ? deleteSelection : confirmDelete}
 							>
 								<Text style={[styles.modalBtnText, styles.modalBtnTextDanger]}>
 									Delete
@@ -742,6 +926,18 @@ const styles = StyleSheet.create({
 		borderBottomColor: colors.border,
 	},
 	rowPressed: { backgroundColor: colors.bgSoft },
+	rowSelected: { backgroundColor: "rgba(92, 208, 169, 0.10)" },
+	checkbox: {
+		width: 18,
+		height: 18,
+		borderWidth: 2,
+		borderColor: colors.borderStrong,
+		backgroundColor: colors.bg,
+		alignItems: "center",
+		justifyContent: "center",
+		marginRight: 2,
+	},
+	checkboxOn: { borderColor: colors.accent2 },
 	glyph: { fontSize: 20, width: 26, textAlign: "center" },
 	fileIcon: { width: 28, textAlign: "center" },
 	dotsBtn: {

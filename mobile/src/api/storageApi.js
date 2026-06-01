@@ -1,7 +1,4 @@
-import {
-	FileSystemUploadType,
-	uploadAsync,
-} from "expo-file-system/legacy";
+import { FileSystemUploadType, uploadAsync } from "expo-file-system/legacy";
 import { sanitizeKeyName } from "../utils/attachments";
 import axiosInstance from "./axiosInstance";
 
@@ -70,13 +67,26 @@ export const uploadAttachment = async ({ file, noteId }) => {
 	return { key, publicUrl, filename: original };
 };
 
-// Zip a folder server-side (staged to __temp on Bunny); returns `{ url, key }` —
-// a signed CDN URL the client opens/downloads directly.
-export const zipBundle = async ({ keys = [], prefix, filename } = {}) => {
+// Zip files/folders server-side (staged to __temp on Bunny); returns
+// `{ url, key }` — a signed CDN URL the client opens/downloads directly.
+// `keys` are explicit files; `prefixes` are folders expanded server-side.
+export const zipBundle = async ({
+	keys = [],
+	prefix,
+	prefixes = [],
+	filename,
+} = {}) => {
 	const body = { keys };
 	if (prefix) body.prefix = prefix;
+	if (prefixes.length) body.prefixes = prefixes;
 	if (filename) body.filename = filename;
 	const { data } = await axiosInstance.post("/storage/zip", body);
+	return data;
+};
+
+// Delete a list of object keys in one request (per-key on the server).
+export const bulkDelete = async (keys) => {
+	const { data } = await axiosInstance.post("/storage/bulk/delete", { keys });
 	return data;
 };
 

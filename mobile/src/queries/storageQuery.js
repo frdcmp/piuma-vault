@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+	bulkDelete,
 	deleteFolder,
 	deleteObject,
 	listObjects,
@@ -41,6 +42,14 @@ export const useStorageDeleteFolder = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: deleteFolder,
+		onSuccess: () => qc.invalidateQueries({ queryKey: storageKeys.all }),
+	});
+};
+
+export const useStorageBulkDelete = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: bulkDelete,
 		onSuccess: () => qc.invalidateQueries({ queryKey: storageKeys.all }),
 	});
 };

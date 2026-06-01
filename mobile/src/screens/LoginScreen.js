@@ -204,67 +204,79 @@ export default function LoginScreen() {
 						<View style={styles.cardShadow} />
 
 						<View style={styles.card}>
-							{/* Yellow corner pixels */}
-							<View style={[styles.cornerPixel, styles.cornerTopLeft]} />
-							<View style={[styles.cornerPixel, styles.cornerBottomRight]} />
-
-							<Text style={styles.title}>Login</Text>
-							<Text style={styles.subtitle}>
-								Welcome back! Please login to your account.
-							</Text>
-
-							{formError ? (
-								<View style={styles.alert}>
-									<Text style={styles.alertTitle}>⚠ Login Failed</Text>
-									<Text style={styles.alertText}>{formError}</Text>
+							{/* Window-chrome title bar (matches the web auth panel) */}
+							<View style={styles.panelBar}>
+								<View style={styles.dots}>
+									<View
+										style={[styles.dot, { backgroundColor: colors.accent3 }]}
+									/>
+									<View
+										style={[styles.dot, { backgroundColor: colors.accent }]}
+									/>
+									<View
+										style={[styles.dot, { backgroundColor: colors.accent2 }]}
+									/>
 								</View>
-							) : null}
+								<Text style={styles.panelTitle}>auth — login</Text>
+							</View>
 
-							{unverifiedEmail ? (
-								<View style={[styles.alert, styles.alertWarning]}>
-									<Text style={[styles.alertTitle, styles.alertTitleWarning]}>
-										⚠ Email not verified
-									</Text>
-									<Text style={[styles.alertText, { marginBottom: 12 }]}>
-										Please verify your email address before logging in.
-									</Text>
-									{resendSuccess ? (
-										<Text style={styles.resendSuccess}>
-											Verification email sent! Check your inbox.
-										</Text>
-									) : null}
-									<Pressable
-										onPress={handleResend}
-										disabled={cooldown > 0 || resendPending}
-										style={({ pressed }) => [
-											styles.btn,
-											styles.btnSmall,
-											(cooldown > 0 || resendPending) && styles.btnDisabled,
-											pressed &&
-												!cooldown &&
-												!resendPending &&
-												styles.btnPressed,
-										]}
-									>
-										<Text style={[styles.btnText, styles.btnTextSmall]}>
-											{resendPending
-												? "Sending..."
-												: cooldown > 0
-													? `Resend in ${cooldown}s`
-													: "Resend verification email"}
-										</Text>
-									</Pressable>
-								</View>
-							) : null}
+							<View style={styles.panelBody}>
+								<Text style={styles.title}>Login</Text>
+								<Text style={styles.subtitle}>
+									Welcome back! Please login to your account.
+								</Text>
 
-							{!otpSession ? (
-								<>
-									<View style={styles.formGroup}>
-										<View style={styles.inputWrapper}>
-											<Text style={styles.inputIcon}>@</Text>
+								{formError ? (
+									<View style={styles.alert}>
+										<Text style={styles.alertTitle}>⚠ Login Failed</Text>
+										<Text style={styles.alertText}>{formError}</Text>
+									</View>
+								) : null}
+
+								{unverifiedEmail ? (
+									<View style={[styles.alert, styles.alertWarning]}>
+										<Text style={[styles.alertTitle, styles.alertTitleWarning]}>
+											⚠ Email not verified
+										</Text>
+										<Text style={[styles.alertText, { marginBottom: 12 }]}>
+											Please verify your email address before logging in.
+										</Text>
+										{resendSuccess ? (
+											<Text style={styles.resendSuccess}>
+												Verification email sent! Check your inbox.
+											</Text>
+										) : null}
+										<Pressable
+											onPress={handleResend}
+											disabled={cooldown > 0 || resendPending}
+											style={({ pressed }) => [
+												styles.btn,
+												styles.btnSmall,
+												(cooldown > 0 || resendPending) && styles.btnDisabled,
+												pressed &&
+													!cooldown &&
+													!resendPending &&
+													styles.btnPressed,
+											]}
+										>
+											<Text style={[styles.btnText, styles.btnTextSmall]}>
+												{resendPending
+													? "Sending..."
+													: cooldown > 0
+														? `Resend in ${cooldown}s`
+														: "Resend verification email"}
+											</Text>
+										</Pressable>
+									</View>
+								) : null}
+
+								{!otpSession ? (
+									<>
+										<View style={styles.field}>
+											<Text style={styles.label}>Email</Text>
 											<TextInput
 												style={styles.input}
-												placeholder="Email"
+												placeholder="you@example.com"
 												placeholderTextColor={colors.muted}
 												value={email}
 												onChangeText={setEmail}
@@ -273,14 +285,12 @@ export default function LoginScreen() {
 												autoComplete="email"
 											/>
 										</View>
-									</View>
 
-									<View style={[styles.formGroup, { marginBottom: 12 }]}>
-										<View style={styles.inputWrapper}>
-											<Text style={styles.inputIcon}>**</Text>
+										<View style={[styles.field, { marginBottom: 10 }]}>
+											<Text style={styles.label}>Password</Text>
 											<TextInput
 												style={styles.input}
-												placeholder="Password"
+												placeholder="••••••••"
 												placeholderTextColor={colors.muted}
 												value={password}
 												onChangeText={setPassword}
@@ -288,43 +298,41 @@ export default function LoginScreen() {
 												autoComplete="password"
 											/>
 										</View>
-									</View>
 
-									<View style={styles.forgotRow}>
-										<Text style={styles.forgotLink}>Forgot password?</Text>
-									</View>
+										<View style={styles.forgotRow}>
+											<Text style={styles.forgotLink}>Forgot password?</Text>
+										</View>
 
-									<Pressable
-										onPress={handleLogin}
-										disabled={loading}
-										style={({ pressed }) => [
-											styles.btn,
-											styles.btnPrimary,
-											loading && styles.btnDisabled,
-											pressed && !loading && styles.btnPressed,
-										]}
-									>
-										{loading ? (
-											<ActivityIndicator color={colors.accent2} />
-										) : (
-											<Text style={[styles.btnText, styles.btnTextPrimary]}>
-												Log in
-											</Text>
-										)}
-									</Pressable>
-								</>
-							) : null}
+										<Pressable
+											onPress={handleLogin}
+											disabled={loading}
+											style={({ pressed }) => [
+												styles.btn,
+												styles.btnPrimary,
+												loading && styles.btnDisabled,
+												pressed && !loading && styles.btnPressed,
+											]}
+										>
+											{loading ? (
+												<ActivityIndicator color={colors.accent2} />
+											) : (
+												<Text style={[styles.btnText, styles.btnTextPrimary]}>
+													Log in
+												</Text>
+											)}
+										</Pressable>
+									</>
+								) : null}
 
-							{otpSession ? (
-								<>
-									<Text style={[styles.subtitle, { marginBottom: 16 }]}>
-										Enter the 6-digit code from your authenticator app, or a
-										backup code if you've lost the device.
-									</Text>
+								{otpSession ? (
+									<>
+										<Text style={[styles.subtitle, { marginBottom: 16 }]}>
+											Enter the 6-digit code from your authenticator app, or a
+											backup code if you've lost the device.
+										</Text>
 
-									<View style={styles.formGroup}>
-										<View style={styles.inputWrapper}>
-											<Text style={styles.inputIcon}>#</Text>
+										<View style={styles.field}>
+											<Text style={styles.label}>Code</Text>
 											<TextInput
 												style={styles.input}
 												placeholder="123456"
@@ -338,44 +346,47 @@ export default function LoginScreen() {
 												maxLength={20}
 											/>
 										</View>
-									</View>
 
-									<View style={styles.trustRow}>
-										<Switch
-											value={trustDevice}
-											onValueChange={setTrustDevice}
-											thumbColor={trustDevice ? colors.accent : "#666"}
-											trackColor={{ true: "#5a4a1f", false: "#333" }}
-										/>
-										<Text style={styles.trustLabel}>
-											Trust this device for 30 days
-										</Text>
-									</View>
-
-									<Pressable
-										onPress={handleOtp}
-										disabled={loading}
-										style={({ pressed }) => [
-											styles.btn,
-											styles.btnPrimary,
-											loading && styles.btnDisabled,
-											pressed && !loading && styles.btnPressed,
-										]}
-									>
-										{loading ? (
-											<ActivityIndicator color={colors.accent2} />
-										) : (
-											<Text style={[styles.btnText, styles.btnTextPrimary]}>
-												Verify
+										<View style={styles.trustRow}>
+											<Switch
+												value={trustDevice}
+												onValueChange={setTrustDevice}
+												thumbColor={trustDevice ? colors.accent : "#666"}
+												trackColor={{ true: "#5a4a1f", false: "#333" }}
+											/>
+											<Text style={styles.trustLabel}>
+												Trust this device for 30 days
 											</Text>
-										)}
-									</Pressable>
+										</View>
 
-									<Pressable onPress={resetToCreds} style={styles.backLinkWrap}>
-										<Text style={styles.backLink}>← Back to login</Text>
-									</Pressable>
-								</>
-							) : null}
+										<Pressable
+											onPress={handleOtp}
+											disabled={loading}
+											style={({ pressed }) => [
+												styles.btn,
+												styles.btnPrimary,
+												loading && styles.btnDisabled,
+												pressed && !loading && styles.btnPressed,
+											]}
+										>
+											{loading ? (
+												<ActivityIndicator color={colors.accent2} />
+											) : (
+												<Text style={[styles.btnText, styles.btnTextPrimary]}>
+													Verify
+												</Text>
+											)}
+										</Pressable>
+
+										<Pressable
+											onPress={resetToCreds}
+											style={styles.backLinkWrap}
+										>
+											<Text style={styles.backLink}>← Back to login</Text>
+										</Pressable>
+									</>
+								) : null}
+							</View>
 						</View>
 					</View>
 				</ScrollView>
@@ -419,23 +430,33 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.panel,
 		borderWidth: 2,
 		borderColor: colors.borderStrong,
-		padding: 24,
-		paddingVertical: 32,
 		position: "relative",
 	},
-	cornerPixel: {
-		position: "absolute",
-		width: 6,
-		height: 6,
-		backgroundColor: colors.accent,
+	panelBar: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		paddingVertical: 6,
+		paddingLeft: 12,
+		paddingRight: 10,
+		backgroundColor: colors.bgSoft,
+		borderBottomWidth: 2,
+		borderBottomColor: colors.borderStrong,
 	},
-	cornerTopLeft: {
-		top: -4,
-		left: -4,
+	dots: { flexDirection: "row", gap: 4, marginRight: 4 },
+	dot: { width: 8, height: 8 },
+	panelTitle: {
+		flex: 1,
+		fontFamily: MONO,
+		fontSize: 11,
+		fontWeight: "700",
+		color: colors.accent,
+		textTransform: "uppercase",
+		letterSpacing: 1,
 	},
-	cornerBottomRight: {
-		bottom: -4,
-		right: -4,
+	panelBody: {
+		padding: 24,
+		paddingVertical: 28,
 	},
 	title: {
 		fontFamily: MONO,
@@ -487,28 +508,25 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		marginBottom: 12,
 	},
-	formGroup: {
-		marginBottom: 16,
+	field: {
+		marginBottom: 14,
 	},
-	inputWrapper: {
-		flexDirection: "row",
-		alignItems: "center",
-		backgroundColor: colors.bg,
-		borderWidth: 2,
-		borderColor: colors.borderStrong,
-		paddingHorizontal: 12,
-	},
-	inputIcon: {
+	label: {
 		fontFamily: MONO,
+		fontSize: 11,
+		fontWeight: "700",
+		letterSpacing: 0.5,
+		textTransform: "uppercase",
 		color: colors.muted,
-		marginRight: 8,
-		fontSize: 14,
+		marginBottom: 6,
 	},
 	input: {
-		flex: 1,
-		backgroundColor: "transparent",
+		backgroundColor: colors.bgSoft,
+		borderWidth: 2,
+		borderColor: colors.border,
 		color: colors.text,
-		paddingVertical: 12,
+		paddingVertical: 10,
+		paddingHorizontal: 10,
 		fontFamily: MONO,
 		fontSize: 14,
 	},

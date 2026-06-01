@@ -133,13 +133,12 @@ const TreeFolder = ({
 					{isLoading && depth > 0 && (
 						<div className="ftree-row ftree-meta">
 							<TreePrefix parentLines={childParentLines} isLast={true} />
-							<span
+							<output
 								className="ftree-dog-spinner"
-								role="status"
 								aria-label="Loading folders"
 							>
 								<span className="ftree-dog-face">🐶</span>
-							</span>
+							</output>
 							<span className="ftree-dog-label">listing…</span>
 						</div>
 					)}
@@ -354,7 +353,7 @@ export default function StorageTree({
 
 	return (
 		<div className="notes-sidebar-container">
-			<div className="notes-sidebar-header">
+			<div className="notes-sidebar-header storage-tree-header">
 				<div className="notes-sidebar-header-row">
 					<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 						<button
