@@ -128,6 +128,10 @@ pub struct ZipBundleRequest {
     /// Optionally include every object under this prefix.
     #[serde(default)]
     pub prefix: Option<String>,
+    /// Optionally include every object under each of these prefixes (used when a
+    /// multi-selection spans several folders).
+    #[serde(default)]
+    pub prefixes: Vec<String>,
     /// Zip download filename (without extension); defaults to `bundle`.
     #[serde(default)]
     pub filename: Option<String>,

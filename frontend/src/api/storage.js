@@ -122,9 +122,15 @@ export const signedUrl = async ({ key, expiresInSecs = 3600 }) => {
 // Build a zip of everything under `prefix` (and/or explicit `keys`) server-side,
 // staged to the internal `__temp/` folder on Bunny. Returns `{ url, key }` — a
 // signed CDN URL the client downloads directly. No archive bytes pass through us.
-export const zipBundle = async ({ keys = [], prefix, filename } = {}) => {
+export const zipBundle = async ({
+	keys = [],
+	prefix,
+	prefixes = [],
+	filename,
+} = {}) => {
 	const body = { keys };
 	if (prefix) body.prefix = prefix;
+	if (prefixes.length) body.prefixes = prefixes;
 	if (filename) body.filename = filename;
 	const { data } = await axiosInstance.post("/storage/zip", body);
 	return data;

@@ -41,6 +41,9 @@ export default function StorageExplorer() {
 	const [expanded, setExpanded] = useState({});
 	const [sidebarWidth, setSidebarWidth] = useState(readStoredWidth);
 	const [isResizing, setIsResizing] = useState(false);
+	// A file picked in the left tree: { key, nonce }. The nonce makes re-clicking
+	// the same file re-trigger selection in the grid.
+	const [pickedFile, setPickedFile] = useState(null);
 
 	const toggleExpand = useCallback((path) => {
 		setExpanded((prev) => ({ ...prev, [path]: !prev[path] }));
@@ -58,6 +61,21 @@ export default function StorageExplorer() {
 			);
 		},
 		[navigate],
+	);
+
+	// A file was clicked in the tree: navigate to its folder and flag it so the
+	// grid selects it once that folder's contents render.
+	const handleSelectFile = useCallback(
+		(fileKey) => {
+			const slash = fileKey.lastIndexOf("/");
+			const parent = slash === -1 ? "" : fileKey.slice(0, slash + 1);
+			handleNavigate(parent);
+			setPickedFile((prev) => ({
+				key: fileKey,
+				nonce: (prev?.nonce ?? 0) + 1,
+			}));
+		},
+		[handleNavigate],
 	);
 
 	// Keep all ancestors of the current folder expanded so it stays visible.
@@ -110,6 +128,7 @@ export default function StorageExplorer() {
 				<StorageTree
 					currentPrefix={prefix}
 					onNavigate={handleNavigate}
+					onSelectFile={handleSelectFile}
 					expanded={expanded}
 					toggleExpand={toggleExpand}
 					onBack={() => navigate(-1)}
@@ -147,7 +166,11 @@ export default function StorageExplorer() {
 				title="Drag to resize · double-click to reset"
 			/>
 
-			<StorageGrid prefix={prefix} onNavigate={handleNavigate} />
+			<StorageGrid
+				prefix={prefix}
+				onNavigate={handleNavigate}
+				pickedFile={pickedFile}
+			/>
 		</div>
 	);
 }

@@ -98,8 +98,8 @@ export const useStorageSignedUrl = () => useMutation({ mutationFn: signedUrl });
 // archive DIRECTLY from the CDN — the zip bytes never pass through our backend.
 export const useStorageZip = () =>
 	useMutation({
-		mutationFn: async ({ keys, prefix, filename }) => {
-			const { url } = await zipBundle({ keys, prefix, filename });
+		mutationFn: async ({ keys, prefix, prefixes, filename }) => {
+			const { url } = await zipBundle({ keys, prefix, prefixes, filename });
 			const a = document.createElement("a");
 			a.href = url;
 			a.download = `${filename || "bundle"}.zip`;
