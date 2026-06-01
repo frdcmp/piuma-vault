@@ -1,8 +1,17 @@
-import { useStorageList } from "../../../queries";
+import { useState } from "react";
+import { PvMenu, PvModal, pvMessage } from "@/admin/components/ui";
+import {
+	useStorageDeleteFolder,
+	useStorageDeleteObject,
+	useStorageList,
+	useStorageSignedUrl,
+	useStorageZip,
+} from "../../../queries";
 import {
 	selectSingleFileKey,
 	useStorageWorkspace,
 } from "../../../store/storageWorkspaceStore";
+import FolderShareModal from "./FolderShareModal";
 
 // Folder prefixes from the backend look like "docs/2026/"; show just the leaf.
 const folderLeaf = (path) => {
@@ -15,6 +24,7 @@ const fileLeaf = (key) => key.split("/").pop() || key;
 
 // A glyph picked from the file extension, mirroring the grid's icons.
 const IMAGE_RE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i;
+const isImage = (key) => IMAGE_RE.test(key);
 const fileGlyph = (key) => {
 	const ext = key.split(".").pop()?.toLowerCase();
 	if (IMAGE_RE.test(key)) return "🖼";
@@ -57,6 +67,7 @@ const TreeFolder = ({
 	currentPrefix,
 	onNavigate,
 	onSelectFile,
+	onContext,
 	expanded: expandedMap,
 	toggleExpand,
 }) => {
@@ -92,6 +103,11 @@ const TreeFolder = ({
 							onNavigate(path);
 							toggleExpand(path);
 						}
+					}}
+					onContextMenu={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						onContext({ type: "folder", key: path }, e.clientX, e.clientY);
 					}}
 				>
 					<TreePrefix parentLines={parentLines} isLast={isLast} />
@@ -137,6 +153,7 @@ const TreeFolder = ({
 							currentPrefix={currentPrefix}
 							onNavigate={onNavigate}
 							onSelectFile={onSelectFile}
+							onContext={onContext}
 							expanded={expandedMap}
 							toggleExpand={toggleExpand}
 						/>
@@ -148,6 +165,15 @@ const TreeFolder = ({
 							key={file.key}
 							className={`ftree-row ftree-file ${treeSelectedKey === file.key ? "selected" : ""}`}
 							onClick={() => onSelectFile(file.key)}
+							onContextMenu={(e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								onContext(
+									{ type: "file", key: file.key },
+									e.clientX,
+									e.clientY,
+								);
+							}}
 						>
 							<TreePrefix
 								parentLines={childParentLines}
@@ -185,6 +211,147 @@ export default function StorageTree({
 	toggleExpand,
 	onBack,
 }) {
+	const signed = useStorageSignedUrl();
+	const zip = useStorageZip();
+	const deleteObject = useStorageDeleteObject();
+	const deleteFolder = useStorageDeleteFolder();
+
+	// Right-click menu: { x, y, item } where item is { type, key }, or null.
+	const [menu, setMenu] = useState(null);
+	const [shareFolder, setShareFolder] = useState(null);
+	const [confirm, setConfirm] = useState(null); // { title, body, onConfirm }
+	const [preview, setPreview] = useState(null); // { key, url, loading }
+	// Signed-link share modal state (mirrors the grid).
+	const [shareKey, setShareKey] = useState(null);
+	const [shareExpiry, setShareExpiry] = useState(3600);
+	const [shareUrl, setShareUrl] = useState("");
+
+	const openContext = (item, x, y) => setMenu({ x, y, item });
+
+	const downloadFile = async (key) => {
+		try {
+			const { url } = await signed.mutateAsync({ key, expiresInSecs: 300 });
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = fileLeaf(key);
+			a.rel = "noopener";
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+		} catch (e) {
+			pvMessage.error(`Download failed: ${e.message}`);
+		}
+	};
+
+	const openPreview = async (key) => {
+		setPreview({ key, loading: true });
+		try {
+			const res = await signed.mutateAsync({ key, expiresInSecs: 300 });
+			setPreview({ key, url: res.url });
+		} catch (e) {
+			pvMessage.error(`Preview unavailable: ${e.message}`);
+			setPreview(null);
+		}
+	};
+
+	const openShare = (key) => {
+		setShareKey(key);
+		setShareExpiry(3600);
+		setShareUrl("");
+	};
+
+	const generateShareLink = async () => {
+		try {
+			const res = await signed.mutateAsync({
+				key: shareKey,
+				expiresInSecs: shareExpiry,
+			});
+			setShareUrl(res.url);
+		} catch (e) {
+			pvMessage.error(`Failed to generate link: ${e.message}`);
+		}
+	};
+
+	const copyShareLink = async () => {
+		if (!shareUrl) return;
+		try {
+			await navigator.clipboard.writeText(shareUrl);
+			pvMessage.success("Share link copied");
+		} catch {
+			pvMessage.error("Could not copy to clipboard");
+		}
+	};
+
+	const downloadFolderZip = async (key) => {
+		try {
+			await zip.mutateAsync({ prefix: key, filename: folderLeaf(key) });
+		} catch (e) {
+			pvMessage.error(`Folder download failed: ${e.message}`);
+		}
+	};
+
+	const requestDelete = (item) =>
+		setConfirm({
+			title: item.type === "file" ? "Delete file" : "Delete folder",
+			body:
+				item.type === "file" ? item.key : `${item.key} and all its contents`,
+			onConfirm: async () => {
+				try {
+					if (item.type === "file") await deleteObject.mutateAsync(item.key);
+					else await deleteFolder.mutateAsync(item.key);
+					pvMessage.success("Deleted");
+				} catch (e) {
+					pvMessage.error(`Delete failed: ${e.message}`);
+				}
+			},
+		});
+
+	const menuItems = () => {
+		const item = menu?.item;
+		if (!item) return [];
+		if (item.type === "file") {
+			return [
+				...(isImage(item.key)
+					? [
+							{
+								label: "Preview",
+								icon: "👁",
+								onClick: () => openPreview(item.key),
+							},
+						]
+					: []),
+				{ label: "Download", icon: "⬇", onClick: () => downloadFile(item.key) },
+				{ label: "Share link", icon: "🔗", onClick: () => openShare(item.key) },
+				{ type: "separator" },
+				{
+					label: "Delete",
+					icon: "✕",
+					danger: true,
+					onClick: () => requestDelete(item),
+				},
+			];
+		}
+		return [
+			{
+				label: "Download as zip",
+				icon: "⬇",
+				onClick: () => downloadFolderZip(item.key),
+			},
+			{
+				label: "Share folder…",
+				icon: "🌐",
+				onClick: () => setShareFolder(item.key),
+			},
+			{ type: "separator" },
+			{
+				label: "Delete folder",
+				icon: "✕",
+				danger: true,
+				onClick: () => requestDelete(item),
+			},
+		];
+	};
+
 	return (
 		<div className="notes-sidebar-container">
 			<div className="notes-sidebar-header">
@@ -227,11 +394,113 @@ export default function StorageTree({
 						currentPrefix={currentPrefix}
 						onNavigate={onNavigate}
 						onSelectFile={onSelectFile}
+						onContext={openContext}
 						expanded={expanded}
 						toggleExpand={toggleExpand}
 					/>
 				</div>
 			</div>
+
+			{/* Right-click context menu for tree files & folders */}
+			<PvMenu
+				open={!!menu}
+				x={menu?.x ?? 0}
+				y={menu?.y ?? 0}
+				items={menu ? menuItems() : []}
+				onClose={() => setMenu(null)}
+			/>
+
+			{/* Public folder-share dialog */}
+			<FolderShareModal
+				open={!!shareFolder}
+				prefix={shareFolder}
+				onClose={() => setShareFolder(null)}
+			/>
+
+			{/* Delete confirmation */}
+			<PvModal
+				open={!!confirm}
+				title={confirm?.title || "Confirm"}
+				confirmText="Delete"
+				danger
+				onConfirm={() => {
+					confirm?.onConfirm?.();
+					setConfirm(null);
+				}}
+				onCancel={() => setConfirm(null)}
+			>
+				<div style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+					{confirm?.body}
+				</div>
+			</PvModal>
+
+			{/* Share modal (signed link with expiry) */}
+			<PvModal
+				open={!!shareKey}
+				title="Share file"
+				showClose
+				onCancel={() => {
+					setShareKey(null);
+					setShareUrl("");
+				}}
+			>
+				<div style={{ marginBottom: 10, wordBreak: "break-all" }}>
+					<b>{shareKey}</b>
+				</div>
+				<label
+					htmlFor="tree-share-expiry"
+					style={{ display: "block", marginBottom: 6, fontSize: 12 }}
+				>
+					Expires in
+				</label>
+				<select
+					id="tree-share-expiry"
+					className="pixel-input"
+					style={{ width: "100%", boxSizing: "border-box" }}
+					value={shareExpiry}
+					onChange={(e) => setShareExpiry(Number(e.target.value))}
+				>
+					<option value={300}>5 minutes</option>
+					<option value={3600}>1 hour</option>
+					<option value={86400}>1 day</option>
+					<option value={604800}>7 days</option>
+				</select>
+				<button
+					type="button"
+					className="pixel-btn primary"
+					style={{ marginTop: 12 }}
+					onClick={generateShareLink}
+					disabled={signed.isPending}
+				>
+					⤴ Generate share link
+				</button>
+				{shareUrl && (
+					<div className="storage-share-url">
+						<input className="pixel-input" value={shareUrl} readOnly />
+						<button type="button" className="pixel-btn" onClick={copyShareLink}>
+							Copy
+						</button>
+					</div>
+				)}
+			</PvModal>
+
+			{/* Preview modal (image) */}
+			<PvModal
+				open={!!preview}
+				title={preview ? fileLeaf(preview.key) : "Preview"}
+				showClose
+				onCancel={() => setPreview(null)}
+			>
+				{preview?.loading ? (
+					<div className="notes-sidebar-status">loading preview…</div>
+				) : preview?.url ? (
+					<img
+						className="storage-preview-img"
+						src={preview.url}
+						alt={fileLeaf(preview.key)}
+					/>
+				) : null}
+			</PvModal>
 		</div>
 	);
 }
