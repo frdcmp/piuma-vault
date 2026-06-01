@@ -1,0 +1,580 @@
+/* OpenClaw chat — terminal/pixel look that matches the resume theme */
+.chat-root {
+	--bg: #0e0f12;
+	--bg-soft: #15171c;
+	--panel: #1b1e25;
+	--border: #2a2f3a;
+	--border-strong: #3a4150;
+	--text: #d6dbe5;
+	--muted: #8a93a3;
+	--accent: #f7c948;
+	--accent-2: #5cd0a9;
+	--accent-3: #ff6b6b;
+	--accent-4: #6cb6ff;
+
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	container-type: inline-size;
+	background: var(--bg);
+	background-image:
+		linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+	background-size: 8px 8px;
+	color: var(--text);
+	font-family:
+		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+	font-size: 11pt;
+	line-height: 1.5;
+}
+
+.chat-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 18px;
+	border-bottom: 2px dashed var(--border-strong);
+	background: var(--panel);
+}
+.chat-back {
+	color: var(--text);
+	text-decoration: none;
+	padding: 4px 10px;
+	border: 2px solid var(--border-strong);
+	background: var(--bg-soft);
+	font-weight: 700;
+	font-family: inherit;
+	cursor: pointer;
+}
+.chat-back:hover {
+	border-color: var(--accent-2);
+}
+.chat-title {
+	flex: 1;
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	min-width: 0;
+}
+.chat-eyebrow {
+	color: var(--muted);
+	font-size: 9pt;
+	font-weight: 800;
+	letter-spacing: 1.2px;
+	text-transform: uppercase;
+}
+.chat-name {
+	color: var(--accent);
+	font-size: 12pt;
+	font-weight: 900;
+}
+/* Header controls — status, clear, close all share one square box so they
+   line up as a matched set (modeled on the close button). */
+.chat-status,
+.chat-clear,
+.chat-close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	width: 32px;
+	height: 32px;
+	border: 2px solid var(--border-strong);
+	background: var(--bg-soft);
+	color: var(--text);
+	font-family: inherit;
+	line-height: 1;
+}
+.chat-status-dot {
+	width: 10px;
+	height: 10px;
+	background: var(--muted);
+}
+.chat-status.streaming .chat-status-dot {
+	background: var(--accent-2);
+}
+.chat-clear {
+	color: var(--accent-3);
+	font-size: 14pt;
+	cursor: pointer;
+}
+.chat-clear:hover {
+	border-color: var(--accent-3);
+	background: rgba(255, 107, 107, 0.12);
+}
+.chat-close {
+	text-decoration: none;
+	font-weight: 900;
+	font-size: 18pt;
+	cursor: pointer;
+}
+.chat-close:hover {
+	border-color: var(--accent-3);
+	color: var(--accent-3);
+}
+
+/* Narrow panel: tighten the header so the controls keep fitting on one row. */
+@container (max-width: 460px) {
+	.chat-header {
+		gap: 8px;
+		padding: 10px 12px;
+	}
+	.chat-eyebrow {
+		display: none;
+	}
+	.chat-name {
+		font-size: 11pt;
+	}
+	.chat-status,
+	.chat-clear,
+	.chat-close {
+		width: 28px;
+		height: 28px;
+	}
+	.chat-close {
+		font-size: 15pt;
+	}
+}
+
+.chat-messages {
+	flex: 1;
+	overflow-y: auto;
+	padding: 24px 18px;
+	display: flex;
+	flex-direction: column;
+	gap: 22px;
+}
+.chat-messages-inner {
+	max-width: 880px;
+	width: 100%;
+	margin: 0 auto;
+	display: flex;
+	flex-direction: column;
+	gap: 22px;
+}
+
+.chat-empty {
+	margin: 64px auto 0;
+	max-width: 480px;
+	text-align: center;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.chat-empty-title {
+	color: var(--accent);
+	font-weight: 900;
+	font-size: 14pt;
+	text-shadow: 2px 2px 0 #000;
+}
+.chat-empty-sub {
+	color: var(--muted);
+	font-size: 10pt;
+}
+
+.chat-user-row {
+	display: flex;
+	justify-content: flex-end;
+}
+.chat-user-card {
+	max-width: 82%;
+	padding: 10px 14px;
+	border: 1px solid rgba(247, 201, 72, 0.32);
+	background: rgba(247, 201, 72, 0.08);
+	color: var(--text);
+}
+.chat-user-text {
+	white-space: pre-wrap;
+	word-wrap: break-word;
+}
+
+.chat-assistant-row {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.chat-role {
+	color: var(--muted);
+	font-size: 9pt;
+	font-weight: 800;
+	letter-spacing: 1.2px;
+	text-transform: uppercase;
+}
+.chat-assistant-body {
+	color: var(--text);
+}
+/* Tool activity — which plugins the agent ran this turn. Persists after the
+   answer streams in, so it doubles as a record of what the agent did. */
+.chat-tools {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-bottom: 10px;
+}
+.chat-tool {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 6px;
+	max-width: 100%;
+	padding: 3px 8px;
+	font-size: 9pt;
+	border: 1px solid var(--border);
+	background: var(--bg-soft);
+}
+.chat-tool-icon {
+	flex: none;
+	font-size: 8pt;
+}
+.chat-tool-name {
+	font-weight: 800;
+	letter-spacing: 0.3px;
+}
+.chat-tool-args {
+	color: var(--muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.chat-tool--running {
+	border-color: rgba(131, 255, 146, 0.42);
+}
+.chat-tool--running .chat-tool-icon {
+	color: var(--accent-2);
+	animation: chat-blink 1s steps(2, start) infinite;
+}
+.chat-tool--done .chat-tool-icon {
+	color: var(--accent-2);
+}
+.chat-tool--error {
+	border-color: rgba(255, 107, 107, 0.4);
+}
+.chat-tool--error .chat-tool-icon {
+	color: var(--accent-3, #ff6b6b);
+}
+.chat-assistant-body p {
+	margin: 0 0 10px;
+}
+.chat-assistant-body p:last-child {
+	margin-bottom: 0;
+}
+.chat-assistant-body code {
+	background: var(--bg-soft);
+	border: 1px solid var(--border);
+	padding: 1px 4px;
+	font-size: 0.95em;
+}
+.chat-assistant-body pre {
+	position: relative;
+	background: var(--bg-soft);
+	border: 1px solid var(--border);
+	border-left: 3px solid var(--accent-2);
+	border-radius: 8px;
+	padding: 28px 14px 14px 14px;
+	margin: 0.75em 0;
+	overflow-x: auto;
+	white-space: pre;
+	box-shadow:
+		0 1px 0 rgba(0, 0, 0, 0.3),
+		inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+.chat-assistant-body pre::before {
+	content: "";
+	position: absolute;
+	top: 10px;
+	left: 12px;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--accent-3);
+	box-shadow:
+		14px 0 0 var(--accent),
+		28px 0 0 var(--accent-2);
+	opacity: 0.75;
+	pointer-events: none;
+}
+.chat-assistant-body pre code {
+	display: block;
+	border: 0;
+	padding: 0;
+	background: transparent;
+	white-space: pre;
+}
+.chat-assistant-body pre::-webkit-scrollbar {
+	height: 6px;
+}
+.chat-assistant-body pre::-webkit-scrollbar-track {
+	background: transparent;
+}
+.chat-assistant-body pre::-webkit-scrollbar-thumb {
+	background: var(--border-strong);
+	border-radius: 3px;
+}
+.chat-assistant-body pre::-webkit-scrollbar-thumb:hover {
+	background: var(--accent-2);
+}
+.chat-assistant-body a {
+	color: var(--accent-4);
+}
+.chat-cursor {
+	display: inline-block;
+	width: 8px;
+	height: 1em;
+	margin-left: 2px;
+	background: var(--accent-2);
+	vertical-align: middle;
+	animation: chat-blink 1s steps(2, start) infinite;
+}
+@keyframes chat-blink {
+	to {
+		visibility: hidden;
+	}
+}
+.chat-thinking {
+	display: inline-flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 220px;
+}
+.chat-thinking-body {
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+}
+.chat-thinking-label {
+	color: var(--muted);
+	font-weight: 800;
+	font-size: 10pt;
+	letter-spacing: 0.4px;
+}
+.chat-thinking-dots {
+	display: inline-flex;
+	gap: 5px;
+}
+.chat-thinking-dots i {
+	width: 6px;
+	height: 6px;
+	background: var(--accent-2);
+	animation: chat-dot 0.84s ease-in-out infinite;
+}
+.chat-thinking-dots i:nth-child(2) {
+	animation-delay: 0.16s;
+}
+.chat-thinking-dots i:nth-child(3) {
+	animation-delay: 0.32s;
+}
+@keyframes chat-dot {
+	0%,
+	60%,
+	100% {
+		transform: translateY(0);
+		opacity: 0.45;
+	}
+	30% {
+		transform: translateY(-4px);
+		opacity: 1;
+	}
+}
+.piuma-run {
+	display: inline-flex;
+	border: 1px solid rgba(131, 255, 146, 0.42);
+	background: rgba(131, 255, 146, 0.08);
+	padding: 5px;
+	animation: piuma-bounce 0.28s ease-in-out infinite alternate;
+}
+@keyframes piuma-bounce {
+	from {
+		transform: translateY(0) rotate(-2deg);
+	}
+	to {
+		transform: translateY(-2px) rotate(2deg);
+	}
+}
+
+.chat-composer {
+	display: flex;
+	gap: 10px;
+	padding: 12px 18px 16px;
+	border-top: 2px dashed var(--border-strong);
+	background: var(--panel);
+}
+.chat-composer-inner {
+	max-width: 880px;
+	width: 100%;
+	margin: 0 auto;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.chat-composer-row {
+	display: flex;
+	gap: 10px;
+	align-items: flex-end;
+}
+
+/* Context chips — small pixel tags above the input (note paths the gateway
+   will load in). Click × to drop one before sending. */
+.chat-context-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+/* Same chips, read-only, sitting at the top of a sent user bubble. A dashed
+   divider separates them from the message text below. */
+.chat-context-tags--bubble {
+	margin-bottom: 8px;
+	padding-bottom: 8px;
+	border-bottom: 1px dashed rgba(247, 201, 72, 0.32);
+}
+.chat-context-tag {
+	display: inline-flex;
+	align-items: center;
+	max-width: 240px;
+	padding: 0 3px 0 0;
+	border: 1px solid var(--border-strong);
+	background: var(--bg-soft);
+	color: var(--text);
+	font-size: 8.5pt;
+	font-weight: 700;
+	line-height: 1;
+}
+/* Locked (pinned) chips are solid + accent-tinted; these are the notes sent
+   as context. Transient chips (derived from open tabs) are dimmed — click to
+   lock them in. */
+.chat-context-tag.locked {
+	border-color: var(--accent-2);
+	background: rgba(92, 208, 169, 0.12);
+}
+.chat-context-tag.transient {
+	border-style: dashed;
+	opacity: 0.6;
+}
+.chat-context-tag.transient:hover {
+	opacity: 1;
+}
+/* Preview-tab chip: italic, mirroring the editor's transient tab. Only applies
+   while the chip is still transient (not yet locked into context). */
+.chat-context-tag.preview .chat-context-tag-label {
+	font-style: italic;
+}
+.chat-context-tag-main {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	padding: 4px 4px 4px 7px;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+}
+button.chat-context-tag-main {
+	cursor: pointer;
+}
+.chat-context-tag-icon {
+	color: var(--accent-2);
+	font-size: 7pt;
+}
+.chat-context-tag-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.chat-context-tag-x {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 14px;
+	padding: 0;
+	border: 1px solid transparent;
+	background: transparent;
+	color: var(--muted);
+	font-family: inherit;
+	font-size: 11pt;
+	font-weight: 900;
+	line-height: 1;
+	cursor: pointer;
+}
+.chat-context-tag-x:hover {
+	border-color: var(--accent-3);
+	color: var(--accent-3);
+}
+.chat-context-tags--bubble .chat-context-tag {
+	border-color: rgba(247, 201, 72, 0.4);
+	background: rgba(247, 201, 72, 0.1);
+}
+.chat-input {
+	flex: 1;
+	box-sizing: border-box;
+	/* one line + padding + border; auto-grows up to 5 lines (~1.45em each) */
+	min-height: 46px;
+	max-height: calc(5 * 1.45em + 20px + 4px);
+	resize: none;
+	overflow-y: auto;
+	background: var(--bg);
+	border: 2px solid var(--border-strong);
+	padding: 10px 12px;
+	color: var(--text);
+	font-family: inherit;
+	font-size: 11pt;
+	line-height: 1.45;
+}
+.chat-input:focus {
+	outline: none;
+	border-color: var(--accent-2);
+}
+.chat-send {
+	min-width: 110px;
+	height: 46px;
+	padding: 0 14px;
+	background: var(--bg-soft);
+	border: 2px solid var(--accent-2);
+	color: var(--accent-2);
+	font-family: inherit;
+	font-weight: 900;
+	font-size: 10pt;
+	letter-spacing: 0.8px;
+	text-transform: uppercase;
+	cursor: pointer;
+}
+.chat-send:hover:not(:disabled) {
+	transform: translate(-1px, -1px);
+}
+.chat-send:active:not(:disabled) {
+	transform: translate(1px, 1px);
+}
+.chat-send:disabled {
+	border-color: var(--border-strong);
+	color: var(--muted);
+	cursor: not-allowed;
+}
+
+/* "OpenClaw not configured" banner — shown when the gateway URL is unset. */
+.chat-config-alert {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin: 10px 12px 0;
+	padding: 10px 12px;
+	background: var(--vp-bg-soft, #15171c);
+	border: 2px solid var(--vp-accent-3, #ff6b6b);
+	box-shadow: 2px 2px 0 0 #000;
+}
+.chat-config-alert-text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+.chat-config-alert-text strong {
+	font-size: 12px;
+	font-weight: 800;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-accent-3, #ff6b6b);
+}
+.chat-config-alert-text span {
+	font-size: 12px;
+	color: var(--vp-muted, #8a93a3);
+}

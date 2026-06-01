@@ -1,0 +1,232 @@
+.shared-note-root {
+	min-height: 100vh;
+	background: var(--bg, #0f1115);
+	color: var(--fg, #e6e6e6);
+	padding: 32px 16px;
+	display: flex;
+	justify-content: center;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+.shared-note-card {
+	width: 100%;
+	max-width: 820px;
+	background: var(--card, #161922);
+	border: 1px solid var(--border, #2a2f3a);
+	border-radius: 8px;
+	padding: 32px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.shared-note-header {
+	border-bottom: 1px solid var(--border, #2a2f3a);
+	padding-bottom: 16px;
+	margin-bottom: 20px;
+}
+
+.shared-note-title {
+	margin: 0 0 8px 0;
+	font-size: 28px;
+	font-weight: 700;
+	color: var(--fg, #e6e6e6);
+}
+
+.shared-note-sub {
+	margin: 0 0 16px 0;
+	color: var(--muted, #8a93a3);
+	font-size: 14px;
+}
+
+.shared-note-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	font-size: 12px;
+	color: var(--muted, #8a93a3);
+}
+
+.shared-note-folder,
+.shared-note-access {
+	background: var(--border, #2a2f3a);
+	padding: 2px 8px;
+	border-radius: 4px;
+	font-family: monospace;
+}
+
+.shared-note-tags {
+	margin-top: 10px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.shared-note-tag {
+	font-size: 12px;
+	color: var(--accent, #7aa2f7);
+	font-family: monospace;
+}
+
+.shared-note-body {
+	line-height: 1.6;
+	font-size: 15px;
+	color: var(--fg, #e6e6e6);
+	overflow-wrap: anywhere;
+}
+
+.shared-note-body h1,
+.shared-note-body h2,
+.shared-note-body h3 {
+	margin-top: 24px;
+	margin-bottom: 12px;
+}
+
+.shared-note-body pre {
+	background: var(--bg, #0f1115);
+	border: 1px solid var(--border, #2a2f3a);
+	border-radius: 6px;
+	padding: 12px;
+	overflow-x: auto;
+}
+
+.shared-note-body code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 13px;
+}
+
+.shared-note-body :not(pre) > code {
+	background: var(--border, #2a2f3a);
+	padding: 2px 6px;
+	border-radius: 3px;
+}
+
+.shared-note-body a {
+	color: var(--accent, #7aa2f7);
+}
+
+.shared-note-body blockquote {
+	border-left: 3px solid var(--accent, #7aa2f7);
+	padding-left: 12px;
+	margin-left: 0;
+	color: var(--muted, #8a93a3);
+}
+
+.shared-note-img {
+	max-width: 100%;
+	height: auto;
+	border-radius: 6px;
+	display: block;
+	margin: 12px 0;
+}
+
+.shared-note-video {
+	max-width: 100%;
+	border-radius: 6px;
+	display: block;
+	margin: 12px 0;
+	background: #000;
+}
+
+.shared-note-audio {
+	width: 100%;
+	margin: 12px 0;
+	display: block;
+}
+
+.shared-note-pdf {
+	width: 100%;
+	height: 600px;
+	border: 1px solid var(--border, #2a2f3a);
+	border-radius: 6px;
+	margin: 12px 0;
+	background: #fff;
+}
+
+.attachment-box {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 10px 0;
+	padding: 10px 14px;
+	background: var(--bg, #0f1115);
+	border: 1px solid var(--border, #2a2f3a);
+	border-radius: 8px;
+	text-decoration: none;
+	color: var(--fg, #e6e6e6) !important;
+	transition: border-color 0.15s ease;
+}
+
+.attachment-box:hover {
+	border-color: var(--accent, #7aa2f7);
+}
+
+.attachment-box-icon {
+	font-size: 22px;
+	line-height: 1;
+}
+
+.attachment-box-info {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.attachment-box-name {
+	font-weight: 600;
+	font-size: 14px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.attachment-box-hint {
+	font-size: 12px;
+	color: var(--muted, #8a93a3);
+	text-transform: capitalize;
+}
+
+.shared-note-loading {
+	text-align: center;
+	color: var(--muted, #8a93a3);
+	padding: 40px 0;
+}
+
+.shared-note-error {
+	color: #e06c75;
+	margin-top: 12px;
+}
+
+.shared-note-pwd-form {
+	display: flex;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.shared-note-pwd-input {
+	flex: 1;
+	padding: 10px 12px;
+	background: var(--bg, #0f1115);
+	color: var(--fg, #e6e6e6);
+	border: 1px solid var(--border, #2a2f3a);
+	border-radius: 4px;
+	font-size: 14px;
+}
+
+.shared-note-pwd-input:focus {
+	outline: none;
+	border-color: var(--accent, #7aa2f7);
+}
+
+.shared-note-pwd-btn {
+	padding: 10px 18px;
+	background: var(--accent, #7aa2f7);
+	color: #0f1115;
+	border: none;
+	border-radius: 4px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.shared-note-pwd-btn:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}

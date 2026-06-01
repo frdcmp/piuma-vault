@@ -1,0 +1,110 @@
+.pv-message-stack {
+	--msg-bg: #1b1e25;
+	--msg-bg-soft: #15171c;
+	--msg-border: #3a4150;
+	--msg-text: #d6dbe5;
+	--msg-success: #5cd0a9;
+	--msg-error: #ff6b6b;
+	--msg-info: #f7c948;
+	--msg-warning: #ffa94d;
+
+	position: fixed;
+	top: 24px;
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	z-index: 10000;
+	pointer-events: none;
+}
+
+.pv-message {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	background: var(--msg-bg);
+	border: 2px solid var(--msg-border);
+	box-shadow:
+		3px 3px 0 0 #000,
+		inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+	color: var(--msg-text);
+	padding: 6px 14px 6px 8px;
+	font-family:
+		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+	font-size: 10pt;
+	image-rendering: pixelated;
+	cursor: pointer;
+	pointer-events: auto;
+	animation: pv-message-pop 110ms steps(3, end);
+	max-width: min(86vw, 520px);
+}
+
+@keyframes pv-message-pop {
+	0% {
+		transform: translateY(-6px) scale(0.96);
+		opacity: 0.2;
+	}
+	100% {
+		transform: translateY(0) scale(1);
+		opacity: 1;
+	}
+}
+
+.pv-message:hover {
+	border-color: var(--msg-text);
+}
+
+.pv-message-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	font-size: 11pt;
+	font-weight: 700;
+	background: var(--msg-bg-soft);
+	border: 2px solid var(--msg-border);
+}
+
+.pv-message-icon-success {
+	color: var(--msg-success);
+	border-color: var(--msg-success);
+}
+
+.pv-message-icon-error {
+	color: var(--msg-error);
+	border-color: var(--msg-error);
+}
+
+.pv-message-icon-info {
+	color: var(--msg-info);
+	border-color: var(--msg-info);
+	font-style: italic;
+}
+
+.pv-message-icon-warning {
+	color: var(--msg-warning);
+	border-color: var(--msg-warning);
+}
+
+.pv-message-success {
+	border-color: var(--msg-success);
+}
+
+.pv-message-error {
+	border-color: var(--msg-error);
+}
+
+.pv-message-info {
+	border-color: var(--msg-info);
+}
+
+.pv-message-warning {
+	border-color: var(--msg-warning);
+}
+
+.pv-message-text {
+	white-space: pre-wrap;
+	line-height: 1.4;
+}

@@ -1,0 +1,142 @@
+/* apiTest — vault pixel API testing page. Tokens come from vault-pixel.css. */
+
+.vp-test-response-panel {
+	margin-bottom: 32px;
+}
+.vp-test-panel-title {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+/* ---- Loading --------------------------------------------------------------- */
+.vp-test-loading {
+	text-align: center;
+	padding: 40px 0;
+}
+.vp-test-loading-text {
+	margin: 16px 0 0;
+	font-size: 12px;
+}
+
+/* ---- Alerts (success / error) ---------------------------------------------- */
+.vp-test-alert {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	padding: 12px 14px;
+}
+.vp-test-alert--success {
+	border-color: var(--vp-accent-2);
+}
+.vp-test-alert--error {
+	border-color: var(--vp-accent-3);
+}
+.vp-test-alert-icon {
+	font-size: 18px;
+	margin-top: 2px;
+}
+.vp-test-alert--success .vp-test-alert-icon {
+	color: var(--vp-accent-2);
+}
+.vp-test-alert--error .vp-test-alert-icon {
+	color: var(--vp-accent-3);
+}
+.vp-test-alert-title {
+	display: block;
+	font-size: 13px;
+	letter-spacing: 0.5px;
+	color: var(--vp-text);
+}
+.vp-test-alert-desc {
+	margin: 4px 0 0;
+	font-size: 12px;
+	color: var(--vp-muted);
+	line-height: 1.6;
+}
+
+/* ---- Descriptions list ----------------------------------------------------- */
+.vp-test-descriptions {
+	margin: 0;
+	border: 2px solid var(--vp-border);
+}
+.vp-test-desc-row {
+	display: grid;
+	grid-template-columns: 180px 1fr;
+}
+.vp-test-desc-row:not(:last-child) {
+	border-bottom: 1px solid var(--vp-border-soft);
+}
+.vp-test-desc-row dt {
+	background: var(--vp-bg-soft);
+	border-right: 2px solid var(--vp-border);
+	padding: 10px 12px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-muted);
+}
+.vp-test-desc-row dd {
+	margin: 0;
+	padding: 10px 12px;
+	font-size: 13px;
+	color: var(--vp-text);
+	display: flex;
+	align-items: center;
+}
+@media (max-width: 520px) {
+	.vp-test-desc-row {
+		grid-template-columns: 1fr;
+	}
+	.vp-test-desc-row dt {
+		border-right: none;
+		border-bottom: 1px solid var(--vp-border-soft);
+	}
+}
+
+.vp-test-code {
+	font-family: var(--vp-font);
+	font-size: 12px;
+	color: var(--vp-accent-4);
+	background: var(--vp-bg-soft);
+	border: 1px solid var(--vp-border);
+	padding: 1px 6px;
+	word-break: break-all;
+}
+
+/* ---- Endpoints grid -------------------------------------------------------- */
+.vp-test-section-head {
+	margin: 0 0 16px;
+}
+.vp-test-card-head {
+	margin-bottom: 12px;
+}
+.vp-test-card-endpoint {
+	display: inline-block;
+	margin: 0 0 10px;
+}
+
+/* ---- Info panel ------------------------------------------------------------ */
+.vp-test-info-panel {
+	margin-top: 32px;
+}
+.vp-test-info {
+	text-align: center;
+	padding: 24px 16px;
+}
+.vp-test-info-icon {
+	font-size: 40px;
+	color: var(--vp-accent);
+	margin-bottom: 12px;
+}
+.vp-test-info-text {
+	max-width: 600px;
+	margin: 0 auto;
+	font-size: 13px;
+	line-height: 1.8;
+	color: var(--vp-muted);
+}

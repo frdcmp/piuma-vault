@@ -1,0 +1,32 @@
+/* settings — vault pixel settings page. Tokens come from vault-pixel.css. */
+
+.vp-settings {
+	min-height: 600px;
+}
+
+/* Restyle the antd Tabs nav to match the pixel language. */
+.vp-settings-tabs .ant-tabs-nav {
+	margin-bottom: 20px;
+}
+.vp-settings-tabs .ant-tabs-nav::before {
+	border-bottom: 2px solid var(--vp-border) !important;
+}
+.vp-settings-tabs .ant-tabs-tab {
+	font-family: var(--vp-font);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-muted);
+}
+.vp-settings-tabs .ant-tabs-tab:hover {
+	color: var(--vp-accent);
+}
+.vp-settings-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+	color: var(--vp-accent) !important;
+	text-shadow: 1px 1px 0 #000;
+}
+.vp-settings-tabs .ant-tabs-ink-bar {
+	background: var(--vp-accent) !important;
+	height: 3px !important;
+}

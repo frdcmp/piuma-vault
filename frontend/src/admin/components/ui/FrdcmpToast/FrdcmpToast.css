@@ -1,0 +1,152 @@
+.pv-toast-stack {
+	--toast-bg: #1b1e25;
+	--toast-bg-soft: #15171c;
+	--toast-border: #3a4150;
+	--toast-text: #d6dbe5;
+	--toast-muted: #8b93a3;
+	--toast-accent: #f7c948;
+	--toast-success: #5cd0a9;
+	--toast-error: #ff6b6b;
+
+	position: fixed;
+	right: 20px;
+	bottom: 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	z-index: 10000;
+	pointer-events: none;
+}
+
+.pv-toast {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	width: 300px;
+	max-width: 86vw;
+	background: var(--toast-bg);
+	border: 2px solid var(--toast-border);
+	box-shadow:
+		3px 3px 0 0 #000,
+		inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+	color: var(--toast-text);
+	padding: 10px 12px;
+	font-family:
+		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+	font-size: 10pt;
+	image-rendering: pixelated;
+	cursor: pointer;
+	pointer-events: auto;
+	animation: pv-toast-pop 120ms steps(3, end);
+}
+
+.pv-toast-success {
+	border-color: var(--toast-success);
+}
+
+.pv-toast-error {
+	border-color: var(--toast-error);
+}
+
+@keyframes pv-toast-pop {
+	0% {
+		transform: translateY(8px) scale(0.96);
+		opacity: 0.2;
+	}
+	100% {
+		transform: translateY(0) scale(1);
+		opacity: 1;
+	}
+}
+
+.pv-toast-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.pv-toast-glyph {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	font-size: 11pt;
+	font-weight: 700;
+	background: var(--toast-bg-soft);
+	border: 2px solid var(--toast-border);
+	flex: none;
+}
+
+.pv-toast-glyph-success {
+	color: var(--toast-success);
+	border-color: var(--toast-success);
+}
+
+.pv-toast-glyph-error {
+	color: var(--toast-error);
+	border-color: var(--toast-error);
+}
+
+.pv-toast-dog {
+	display: inline-block;
+	animation: pv-toast-wag 480ms steps(2, end) infinite;
+}
+
+@keyframes pv-toast-wag {
+	0% {
+		transform: rotate(-8deg);
+	}
+	100% {
+		transform: rotate(8deg);
+	}
+}
+
+.pv-toast-label {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pv-toast-pct {
+	color: var(--toast-muted);
+	font-size: 9pt;
+	flex: none;
+}
+
+.pv-toast-track {
+	height: 8px;
+	background: var(--toast-bg-soft);
+	border: 1px solid var(--toast-border);
+	overflow: hidden;
+}
+
+.pv-toast-bar {
+	height: 100%;
+	background: var(--toast-accent);
+	transition: width 120ms steps(4, end);
+}
+
+.pv-toast-bar-success {
+	background: var(--toast-success);
+}
+
+.pv-toast-bar-error {
+	background: var(--toast-error);
+}
+
+/* Indeterminate: a sliding chunk while we have no byte count yet. */
+.pv-toast-bar.indeterminate {
+	width: 40%;
+	animation: pv-toast-slide 900ms steps(8, end) infinite;
+}
+
+@keyframes pv-toast-slide {
+	0% {
+		transform: translateX(-110%);
+	}
+	100% {
+		transform: translateX(260%);
+	}
+}

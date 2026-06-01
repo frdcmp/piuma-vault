@@ -1,0 +1,68 @@
+use serde::{Deserialize, Serialize};
+
+/// Service config returned to the admin dashboard. URLs are returned in plain;
+/// secrets are never returned — only a `*_set` flag indicating whether a value
+/// is stored.
+#[derive(Debug, Serialize)]
+pub struct ServiceConfigResponse {
+    pub azure_embedding_url: String,
+    pub azure_embedding_api_key_set: bool,
+    pub openclaw_url: String,
+    pub openclaw_gateway_token_set: bool,
+    // Generic S3 / AWS object storage. Endpoint/region/bucket/access-key-id are
+    // identifiers (returned plain); the secret access key and CDN token-auth key
+    // are secrets, masked behind `*_set` flags.
+    pub s3_endpoint: String,
+    pub s3_region: String,
+    pub s3_bucket: String,
+    pub s3_access_key_id: String,
+    pub s3_secret_access_key_set: bool,
+    pub s3_cdn_url: String,
+    pub s3_cdn_token_key_set: bool,
+}
+
+/// Partial update. Any omitted field is left unchanged; a secret sent as an
+/// empty string clears it, a non-empty string replaces it.
+#[derive(Debug, Deserialize)]
+pub struct UpdateServiceConfig {
+    pub azure_embedding_url: Option<String>,
+    pub azure_embedding_api_key: Option<String>,
+    pub openclaw_url: Option<String>,
+    pub openclaw_gateway_token: Option<String>,
+    pub s3_endpoint: Option<String>,
+    pub s3_region: Option<String>,
+    pub s3_bucket: Option<String>,
+    pub s3_access_key_id: Option<String>,
+    pub s3_secret_access_key: Option<String>,
+    pub s3_cdn_url: Option<String>,
+    pub s3_cdn_token_key: Option<String>,
+}
+
+/// Optional embedding field overrides for a "try now" check, so unsaved form
+/// values can be tested without persisting. Blank fields fall back to saved config.
+#[derive(Debug, Default, Deserialize)]
+pub struct TestEmbeddingRequest {
+    pub azure_embedding_url: Option<String>,
+    pub azure_embedding_api_key: Option<String>,
+}
+
+/// Optional OpenClaw field overrides for a "try now" check. Blank fields fall
+/// back to saved config.
+#[derive(Debug, Default, Deserialize)]
+pub struct TestOpenclawRequest {
+    pub openclaw_url: Option<String>,
+    pub openclaw_gateway_token: Option<String>,
+}
+
+/// Optional S3 field overrides for a "try now" check, so unsaved form values can
+/// be tested without persisting. Omitted/blank fields fall back to saved config.
+#[derive(Debug, Default, Deserialize)]
+pub struct TestStorageRequest {
+    pub s3_endpoint: Option<String>,
+    pub s3_region: Option<String>,
+    pub s3_bucket: Option<String>,
+    pub s3_access_key_id: Option<String>,
+    pub s3_secret_access_key: Option<String>,
+    pub s3_cdn_url: Option<String>,
+    pub s3_cdn_token_key: Option<String>,
+}

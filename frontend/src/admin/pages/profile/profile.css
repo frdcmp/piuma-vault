@@ -1,0 +1,58 @@
+/* profile — vault pixel profile page. Tokens come from vault-pixel.css. */
+
+.vp-profile-center {
+	text-align: center;
+	padding: 50px;
+}
+
+.vp-profile-grid {
+	display: grid;
+	gap: 24px;
+	grid-template-columns: 1fr 2fr;
+	align-items: start;
+}
+
+@media (max-width: 768px) {
+	.vp-profile-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+.vp-profile-overview {
+	text-align: center;
+}
+.vp-profile-avatar-wrap {
+	position: relative;
+	display: inline-block;
+	margin-bottom: 16px;
+}
+.vp-profile-avatar-btn {
+	position: absolute;
+	bottom: 0;
+	right: 0;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+}
+.vp-profile-name {
+	margin: 0 0 8px;
+}
+.vp-profile-email {
+	margin: 0 0 16px;
+}
+.vp-profile-bio {
+	font-style: italic;
+	margin: 0;
+}
+
+.vp-profile-info-grid {
+	display: grid;
+	gap: 16px;
+	grid-template-columns: 1fr 1fr;
+}
+
+@media (max-width: 540px) {
+	.vp-profile-info-grid {
+		grid-template-columns: 1fr;
+	}
+}

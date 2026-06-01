@@ -1,0 +1,81 @@
+/* homepage — vault pixel landing page. Tokens come from vault-pixel.css. */
+
+.vp-home-hero {
+	text-align: center;
+	padding: 48px 0 8px;
+}
+.vp-home-hero-title {
+	margin: 0 0 16px;
+	font-family: var(--vp-font);
+	font-size: 46px;
+	font-weight: 800;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: var(--vp-accent);
+	text-shadow: 4px 4px 0 #000;
+	line-height: 1.1;
+}
+.vp-home-hero-sub {
+	max-width: 680px;
+	margin: 0 auto 24px;
+	font-size: 14px;
+	line-height: 1.8;
+	color: var(--vp-muted);
+}
+.vp-home-cta {
+	display: flex;
+	gap: 12px;
+	justify-content: center;
+	flex-wrap: wrap;
+}
+
+.vp-home-stack-label {
+	text-align: center;
+	margin: 36px 0 12px;
+	font-size: 11px;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: var(--vp-faint);
+}
+.vp-home-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	justify-content: center;
+}
+
+.vp-home-section-head {
+	text-align: center;
+	margin: 48px 0 24px;
+}
+.vp-home-feature-icon {
+	width: 40px;
+	height: 40px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-bottom: 12px;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	color: var(--vp-accent);
+	font-size: 20px;
+}
+
+.vp-home-closing {
+	margin-top: 56px;
+	text-align: center;
+	padding: 40px 24px;
+}
+.vp-home-closing-icon {
+	font-size: 40px;
+	color: var(--vp-accent);
+	margin-bottom: 12px;
+}
+.vp-home-closing-text {
+	max-width: 560px;
+	margin: 0 auto 20px;
+	font-size: 13px;
+	line-height: 1.8;
+	color: var(--vp-muted);
+}

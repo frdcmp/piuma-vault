@@ -1,0 +1,224 @@
+/* projects — vault pixel admin page. Tokens come from vault-pixel.css. */
+
+.vp-projects {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.vp-page-meta {
+	font-size: 11px;
+	letter-spacing: 0.3px;
+	color: var(--vp-muted);
+}
+
+/* ---- Stat cards ------------------------------------------------------------ */
+.vp-stats-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 14px;
+}
+
+.vp-stat {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	padding: 14px 16px;
+	image-rendering: pixelated;
+}
+
+.vp-stat-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.vp-stat-label {
+	display: block;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-muted);
+	margin-bottom: 4px;
+}
+
+.vp-stat-value {
+	display: block;
+	font-size: 22px;
+	font-weight: 800;
+	letter-spacing: 0.5px;
+	color: var(--vp-text);
+	text-shadow: 2px 2px 0 #000;
+}
+
+.vp-stat-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	border: 2px solid var(--vp-border);
+	background: var(--vp-bg-soft);
+	box-shadow: var(--vp-shadow);
+	font-size: 18px;
+	color: var(--vp-accent);
+}
+
+.vp-stat-sub {
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	color: var(--vp-muted);
+}
+
+/* Accent variants tint the icon + value glow */
+.vp-stat[data-accent="green"] .vp-stat-icon {
+	color: var(--vp-accent-2);
+	border-color: var(--vp-accent-2);
+}
+.vp-stat[data-accent="red"] .vp-stat-icon {
+	color: var(--vp-accent-3);
+	border-color: var(--vp-accent-3);
+}
+.vp-stat[data-accent="blue"] .vp-stat-icon {
+	color: var(--vp-accent-4);
+	border-color: var(--vp-accent-4);
+}
+.vp-stat[data-accent="accent"] .vp-stat-icon {
+	color: var(--vp-accent);
+	border-color: var(--vp-accent);
+}
+
+/* ---- Panel extras ---------------------------------------------------------- */
+.vp-panel-count {
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-muted);
+}
+
+/* ---- Table cells ----------------------------------------------------------- */
+.vp-cell-strong {
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--vp-text);
+}
+.vp-cell-sub {
+	font-size: 11px;
+	color: var(--vp-muted);
+}
+.vp-cell-center {
+	align-items: center;
+}
+.vp-cell-green {
+	color: var(--vp-accent-2);
+}
+.vp-cell-accent {
+	color: var(--vp-accent);
+}
+.vp-cell-blue {
+	color: var(--vp-accent-4);
+}
+
+.vp-linguist-avatar {
+	background-color: var(--vp-bg-soft) !important;
+	color: var(--vp-accent) !important;
+	border: 2px solid var(--vp-border) !important;
+	border-radius: 0 !important;
+	font-family: var(--vp-font);
+	font-weight: 700;
+	cursor: pointer;
+}
+
+/* ---- Restyle the antd Table to the pixel language -------------------------- */
+.vp-table .ant-table {
+	background: transparent;
+	font-family: var(--vp-font);
+	color: var(--vp-text);
+}
+.vp-table .ant-table-thead > tr > th {
+	background: var(--vp-bg-soft);
+	color: var(--vp-muted);
+	border-bottom: 2px solid var(--vp-border);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+}
+.vp-table .ant-table-thead > tr > th::before {
+	display: none !important;
+}
+.vp-table .ant-table-tbody > tr > td {
+	background: var(--vp-panel);
+	border-bottom: 1px solid var(--vp-border-soft);
+	color: var(--vp-text);
+	font-size: 13px;
+}
+.vp-table .ant-table-tbody > tr:hover > td {
+	background: var(--vp-panel-alt) !important;
+}
+.vp-table .ant-table-cell-fix-right,
+.vp-table .ant-table-cell-fix-left {
+	background: var(--vp-panel) !important;
+}
+
+/* Pagination */
+.vp-table .ant-pagination {
+	color: var(--vp-text);
+	padding: 12px 16px;
+}
+.vp-table .ant-pagination-item,
+.vp-table .ant-pagination-prev .ant-pagination-item-link,
+.vp-table .ant-pagination-next .ant-pagination-item-link,
+.vp-table .ant-select-selector {
+	background: var(--vp-bg-soft) !important;
+	border: 2px solid var(--vp-border) !important;
+	border-radius: 0 !important;
+	color: var(--vp-text) !important;
+}
+.vp-table .ant-pagination-item a {
+	color: var(--vp-text);
+}
+.vp-table .ant-pagination-item-active {
+	border-color: var(--vp-accent) !important;
+}
+.vp-table .ant-pagination-item-active a {
+	color: var(--vp-accent);
+}
+.vp-table .ant-pagination-total-text {
+	color: var(--vp-muted);
+}
+
+/* Segmented control in the header */
+.vp-projects .ant-segmented {
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	border-radius: 0;
+	color: var(--vp-muted);
+	font-family: var(--vp-font);
+	padding: 2px;
+}
+.vp-projects .ant-segmented .ant-segmented-item {
+	border-radius: 0;
+	color: var(--vp-muted);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+}
+.vp-projects .ant-segmented .ant-segmented-item-selected {
+	background: var(--vp-panel);
+	border: 1px solid var(--vp-accent);
+	border-radius: 0;
+	color: var(--vp-accent);
+	box-shadow: none;
+}
+.vp-projects .ant-segmented .ant-segmented-thumb {
+	border-radius: 0;
+	background: var(--vp-panel);
+}

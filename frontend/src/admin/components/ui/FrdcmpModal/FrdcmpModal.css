@@ -1,0 +1,176 @@
+.pv-modal-overlay {
+	--modal-bg: #1b1e25;
+	--modal-bg-soft: #15171c;
+	--modal-border: #3a4150;
+	--modal-text: #d6dbe5;
+	--modal-muted: #8a93a3;
+	--modal-accent: #f7c948;
+	--modal-accent-2: #5cd0a9;
+	--modal-accent-3: #ff6b6b;
+
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.55);
+	background-image:
+		linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+	background-size: 8px 8px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 9999;
+	animation: pv-fade-in 90ms steps(3, end);
+}
+
+@keyframes pv-fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes pv-pop-in {
+	0% {
+		transform: translateY(-4px) scale(0.96);
+	}
+	100% {
+		transform: translateY(0) scale(1);
+	}
+}
+
+.pv-modal {
+	background: var(--modal-bg);
+	border: 2px solid var(--modal-border);
+	box-shadow:
+		4px 4px 0 0 #000,
+		inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+	min-width: 320px;
+	max-width: min(90vw, 480px);
+	color: var(--modal-text);
+	font-family:
+		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+	image-rendering: pixelated;
+	animation: pv-pop-in 90ms steps(3, end);
+}
+
+.pv-modal-titlebar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px 6px 12px;
+	background: var(--modal-bg-soft);
+	border-bottom: 2px solid var(--modal-border);
+}
+
+.pv-modal-titlebar-dots {
+	display: inline-flex;
+	gap: 4px;
+	margin-right: 4px;
+}
+
+.pv-modal-titlebar-dots span {
+	width: 8px;
+	height: 8px;
+	background: var(--modal-border);
+	display: block;
+}
+
+.pv-modal-titlebar-dots span:nth-child(1) {
+	background: var(--modal-accent-3);
+}
+
+.pv-modal-titlebar-dots span:nth-child(2) {
+	background: var(--modal-accent);
+}
+
+.pv-modal-titlebar-dots span:nth-child(3) {
+	background: var(--modal-accent-2);
+}
+
+.pv-modal-title {
+	margin: 0;
+	font-size: 10pt;
+	font-weight: 700;
+	color: var(--modal-accent);
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pv-modal-close {
+	background: none;
+	border: none;
+	color: var(--modal-muted);
+	cursor: pointer;
+	font-size: 14px;
+	font-family: inherit;
+	padding: 0 6px;
+	line-height: 1;
+}
+
+.pv-modal-close:hover {
+	color: var(--modal-accent-3);
+}
+
+.pv-modal-body {
+	padding: 20px 16px;
+	font-size: 11pt;
+	line-height: 1.6;
+	white-space: pre-wrap;
+}
+
+.pv-modal-actions {
+	padding: 10px 12px;
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	border-top: 2px dashed var(--modal-border);
+	background: var(--modal-bg-soft);
+}
+
+.pv-modal-btn {
+	background: var(--modal-bg-soft);
+	border: 2px solid var(--modal-border);
+	box-shadow: 2px 2px 0 0 #000;
+	color: var(--modal-text);
+	padding: 4px 14px;
+	font-family: inherit;
+	font-size: 10pt;
+	cursor: pointer;
+	min-width: 72px;
+}
+
+.pv-modal-btn:hover {
+	border-color: var(--modal-accent);
+	color: var(--modal-accent);
+}
+
+.pv-modal-btn:active {
+	transform: translate(2px, 2px);
+	box-shadow: 0 0 0 0 #000;
+}
+
+.pv-modal-btn.primary {
+	color: var(--modal-accent-2);
+	border-color: var(--modal-accent-2);
+}
+
+.pv-modal-btn.primary:hover {
+	background: var(--modal-accent-2);
+	color: var(--modal-bg);
+}
+
+.pv-modal-btn.danger {
+	color: var(--modal-accent-3);
+	border-color: var(--modal-accent-3);
+}
+
+.pv-modal-btn.danger:hover {
+	background: var(--modal-accent-3);
+	color: var(--modal-bg);
+}

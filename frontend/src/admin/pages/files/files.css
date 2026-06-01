@@ -1,0 +1,207 @@
+/* files — vault pixel skin for the file storage browser.
+   Tokens come from vault-pixel.css. Behavior-heavy antd pieces (Upload,
+   List, Modal, Select, Input, Checkbox, Spin, Empty) are kept and restyled. */
+
+/* ---- Stats ----------------------------------------------------------------- */
+.vp-files-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 14px;
+}
+.vp-files-stat {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 8px;
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	padding: 12px 14px;
+}
+.vp-files-stat-label {
+	display: block;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-muted);
+}
+.vp-files-stat-value {
+	margin-top: 4px;
+	font-size: 18px;
+	font-weight: 800;
+	letter-spacing: 0.5px;
+	color: var(--vp-text);
+	text-shadow: 2px 2px 0 #000;
+}
+.vp-files-stat-icon {
+	display: inline-flex;
+}
+.vp-files-stat-glyph {
+	font-size: 24px;
+	color: var(--vp-accent-4);
+}
+.vp-files-stat-glyph--green {
+	color: var(--vp-accent-2);
+}
+.vp-files-stat-glyph--accent {
+	color: var(--vp-accent);
+}
+
+/* ---- Upload dragger -------------------------------------------------------- */
+.vp-files-upload .ant-upload-wrapper,
+.vp-files-upload .ant-upload.ant-upload-drag {
+	background: var(--vp-bg-soft);
+	border: 2px dashed var(--vp-border);
+	border-radius: 0;
+}
+.vp-files-upload .ant-upload.ant-upload-drag:hover {
+	border-color: var(--vp-accent);
+}
+.vp-files-upload .ant-upload-drag-icon,
+.vp-files-upload .ant-upload-text,
+.vp-files-upload .ant-upload-hint {
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+}
+.vp-files-upload .ant-upload-drag-icon .anticon {
+	color: var(--vp-accent);
+}
+.vp-files-upload .ant-upload-hint {
+	color: var(--vp-muted);
+}
+
+/* ---- Breadcrumb ------------------------------------------------------------ */
+.vp-files-crumbs {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 12px;
+}
+.vp-files-crumb-wrap {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.vp-files-crumb {
+	background: none;
+	border: none;
+	padding: 2px 4px;
+	font-family: var(--vp-font);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-muted);
+	cursor: pointer;
+}
+.vp-files-crumb:hover {
+	color: var(--vp-accent);
+}
+.vp-files-crumb-sep {
+	color: var(--vp-faint);
+}
+
+/* ---- Bulk toolbar ---------------------------------------------------------- */
+.vp-files-bulkbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-bottom: 12px;
+	padding: 8px 12px;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+}
+
+/* ---- Loading / empty ------------------------------------------------------- */
+.vp-files-center {
+	text-align: center;
+	padding: 40px;
+}
+.vp-files-list .ant-empty-description {
+	color: var(--vp-muted);
+}
+
+/* ---- Select-all ------------------------------------------------------------ */
+.vp-files-selectall {
+	padding: 4px 0 8px;
+	margin-bottom: 4px;
+	border-bottom: 1px solid var(--vp-border-soft);
+}
+.vp-files-selectall .ant-checkbox-wrapper {
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+	font-size: 12px;
+}
+
+/* ---- List items ------------------------------------------------------------ */
+.vp-files-list .ant-list-item {
+	border-bottom: 1px solid var(--vp-border-soft);
+	padding: 12px 8px;
+}
+.vp-files-item--folder {
+	cursor: pointer;
+}
+.vp-files-item--folder:hover {
+	background: var(--vp-panel-alt);
+}
+.vp-files-avatar {
+	font-size: 22px;
+	color: var(--vp-accent-4);
+}
+.vp-files-avatar--folder {
+	color: var(--vp-accent);
+}
+.vp-files-title {
+	gap: 8px;
+}
+.vp-files-name {
+	font-weight: 800;
+	letter-spacing: 0.5px;
+	color: var(--vp-text);
+}
+.vp-files-meta-stack {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.vp-files-meta {
+	font-size: 12px;
+	color: var(--vp-muted);
+	word-break: break-all;
+}
+.vp-files-list .ant-list-item-meta-title,
+.vp-files-list .ant-list-item-meta-description {
+	color: var(--vp-text);
+}
+.vp-files-list .ant-list-item-action {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.vp-files-list .ant-list-item-action > li {
+	padding: 0;
+}
+.vp-files-list .ant-list-item-action-split {
+	display: none;
+}
+
+/* ---- Share modal ----------------------------------------------------------- */
+.vp-files-sharekey {
+	margin-top: 4px;
+	word-break: break-all;
+}
+.vp-files-shareurl {
+	gap: 8px;
+}
+.vp-files-shareurl .ant-input {
+	flex: 1;
+}
+.vp-files-shareexpiry {
+	display: block;
+	margin-top: 8px;
+	font-size: 12px;
+}

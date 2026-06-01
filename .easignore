@@ -1,0 +1,34 @@
+# EAS Build - Only include mobile/ directory
+# Exclude everything at root level except mobile/
+mysql_data
+mysql_data/**
+postgres_data
+postgres_data/**
+redis_data
+redis_data/**
+data
+data/**
+rust
+rust/**
+frontend
+frontend/**
+nginx
+nginx/**
+python
+python/**
+md
+md/**
+mobile_EXAMPLE
+mobile_EXAMPLE/**
+secrets.yaml
+.git
+.github
+docker-compose.yml
+generate_keys.py
+update_servers.sh
+README.md
+requirements.txt
+
+# Keep mobile directory included
+!mobile
+!mobile/**

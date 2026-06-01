@@ -1,0 +1,120 @@
+/* about — vault pixel "about / portal" page. Tokens from vault-pixel.css. */
+
+.vp-about-lead {
+	max-width: 680px;
+	margin: 0 0 16px;
+	font-size: 14px;
+	line-height: 1.8;
+}
+
+.vp-about-tags {
+	margin-top: 12px;
+}
+
+/* Architecture cards */
+.vp-about-card-head {
+	margin-bottom: 10px;
+	gap: 10px;
+}
+.vp-about-icon {
+	width: 32px;
+	height: 32px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	color: var(--vp-accent);
+	font-size: 16px;
+}
+.vp-about-card-title {
+	margin: 0;
+}
+
+/* Backend modules — two-column stacked list of cards */
+.vp-about-modules {
+	display: grid;
+	gap: 12px;
+	grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+.vp-about-module {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px;
+}
+.vp-about-module-tag {
+	flex-shrink: 0;
+}
+
+/* H2 with a leading icon */
+.vp-about-h2-icon {
+	margin-right: 8px;
+	color: var(--vp-accent);
+}
+
+/* Inline code chips */
+.vp-about-code {
+	font-family: var(--vp-font);
+	font-size: 12px;
+	background: var(--vp-bg-soft);
+	border: 1px solid var(--vp-border);
+	color: var(--vp-accent);
+	padding: 1px 6px;
+}
+
+/* Info alert */
+.vp-about-alert {
+	display: flex;
+	gap: 12px;
+	margin-top: 16px;
+	padding: 14px;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-accent-4);
+	box-shadow: var(--vp-shadow);
+}
+.vp-about-alert-icon {
+	color: var(--vp-accent-4);
+	font-size: 16px;
+	line-height: 1.4;
+}
+.vp-about-alert-title {
+	margin: 0 0 4px;
+	font-size: 12px;
+	font-weight: 800;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-text);
+}
+.vp-about-alert-desc {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.6;
+	color: var(--vp-muted);
+}
+
+/* Terminal-style command block */
+.vp-about-codeblock {
+	margin: 0;
+	padding: 14px 16px;
+	background: var(--vp-bg);
+	border: 2px solid var(--vp-border-soft);
+	color: var(--vp-accent-2);
+	font-family: var(--vp-font);
+	font-size: 12.5px;
+	line-height: 1.7;
+	white-space: pre;
+	overflow-x: auto;
+}
+
+.vp-about-footer {
+	text-align: center;
+	font-size: 12px;
+	letter-spacing: 1px;
+	color: var(--vp-faint);
+}
+.vp-about-footer .anticon {
+	margin-right: 6px;
+}
