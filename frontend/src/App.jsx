@@ -8,6 +8,7 @@ import ApiTest from "./admin/pages/apiTest";
 import ForgotPassword from "./admin/pages/auth/forgotPassword";
 import Login from "./admin/pages/auth/login";
 import VerifyEmail from "./admin/pages/auth/verifyEmail";
+import DbDump from "./admin/pages/dbDump";
 import Files from "./admin/pages/files";
 import Health from "./admin/pages/health";
 import Homepage from "./admin/pages/homepage";
@@ -75,6 +76,7 @@ function AppContent() {
 					<Route path="settings/:tab" element={<Settings />} />
 					<Route path="services" element={<Services />} />
 					<Route path="trash" element={<TrashPage />} />
+					<Route path="db-backups" element={<DbDump />} />
 					<Route path="test" element={<ApiTest />} />
 				</Route>
 
