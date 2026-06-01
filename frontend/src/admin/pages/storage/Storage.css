@@ -423,3 +423,22 @@
 .fshare-badge.pwd {
 	border-color: var(--accent-4);
 }
+
+/* ── Compact storage tree header ───────────────────────────────── */
+/* The shared notes header reserves room below its row for a search box; the
+   storage tree has none, so tighten the padding and drop that gap. */
+.storage-tree-header {
+	padding: 8px 12px;
+}
+
+.storage-tree-header .notes-sidebar-header-row {
+	margin-bottom: 0;
+}
+
+.storage-tree-header .notes-sidebar-title {
+	font-size: 12pt;
+}
+
+.storage-tree-header .storage-sidebar-sub {
+	margin-top: 0;
+}

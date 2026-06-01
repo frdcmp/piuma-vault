@@ -1,0 +1,58 @@
+/* PvTable — plain HTML table in the vault pixel language. */
+
+.pv-table-wrap {
+	width: 100%;
+	overflow-x: auto;
+}
+
+.pv-table {
+	width: 100%;
+	border-collapse: collapse;
+	background: transparent;
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+}
+
+.pv-table thead th {
+	padding: 12px 16px;
+	background: var(--vp-bg-soft);
+	color: var(--vp-muted);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	text-align: left;
+	white-space: nowrap;
+	border-bottom: 2px solid var(--vp-border);
+}
+
+.pv-table tbody td {
+	padding: 12px 16px;
+	font-size: 13px;
+	color: var(--vp-text);
+	border-bottom: 1px solid var(--vp-border-soft);
+	vertical-align: middle;
+}
+
+.pv-table tbody tr:last-child td {
+	border-bottom: none;
+}
+
+.pv-table tbody tr:hover td {
+	background: var(--vp-panel-alt);
+}
+
+.pv-table-row--clickable {
+	cursor: pointer;
+}
+
+/* Loading / empty placeholder row */
+.pv-table tbody tr.pv-table-state td {
+	padding: 40px 16px;
+	text-align: center;
+	color: var(--vp-faint);
+	font-size: 13px;
+}
+.pv-table tbody tr.pv-table-state:hover td {
+	background: transparent;
+}

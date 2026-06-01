@@ -1,10 +1,21 @@
-/* Trash page — leans on the shared .vp-* pixel language; only a couple of
-   local tweaks live here. */
+/* Trash page — leans on the shared .vp-* pixel language + PvTable. */
+
+.vp-trash-table-panel {
+	margin-top: 12px;
+}
 
 .vp-trash-title {
 	font-weight: 600;
 }
 
-.vp-trash-table-panel {
-	margin-top: 12px;
+.vp-trash-folder {
+	font-family: var(--vp-font);
+	font-size: 12px;
+	color: var(--vp-muted);
+}
+
+.vp-trash-actions {
+	display: inline-flex;
+	gap: 8px;
+	justify-content: flex-end;
 }

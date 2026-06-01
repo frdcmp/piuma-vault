@@ -61,7 +61,7 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 8px;
-	padding: 14px 14px;
+	padding: 9px 14px;
 	border-bottom: 2px solid var(--vp-border);
 	background: var(--vp-bg-soft);
 }
