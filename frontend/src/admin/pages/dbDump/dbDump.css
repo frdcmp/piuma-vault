@@ -1,0 +1,42 @@
+.vp-dump-table-panel {
+	margin-top: 1rem;
+}
+
+.vp-dump-name {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-weight: 600;
+}
+
+.vp-dump-size {
+	font-size: 0.85em;
+	opacity: 0.85;
+}
+
+.vp-dump-actions {
+	display: inline-flex;
+	gap: 0.4rem;
+	justify-content: flex-end;
+}
+
+.vp-dump-warn {
+	margin-top: 0;
+}
+
+.vp-dump-confirm-input {
+	width: 100%;
+	margin-top: 0.5rem;
+	padding: 0.5rem 0.65rem;
+	font-family: inherit;
+	font-size: 0.95rem;
+	border: 2px solid var(--vp-border, #2a2a2a);
+	border-radius: 6px;
+	background: var(--vp-input-bg, #11131a);
+	color: inherit;
+}
+
+.vp-dump-confirm-input:focus {
+	outline: none;
+	border-color: var(--vp-accent, #6c8cff);
+}

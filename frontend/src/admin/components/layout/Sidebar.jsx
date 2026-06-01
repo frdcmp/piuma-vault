@@ -2,6 +2,7 @@ import {
 	ApiOutlined,
 	AppstoreOutlined,
 	BookOutlined,
+	DatabaseOutlined,
 	DeleteOutlined,
 	DownOutlined,
 	FolderOpenOutlined,
@@ -31,6 +32,7 @@ const RESOURCES = [
 	{ key: "/admin/api-keys", icon: <KeyOutlined />, label: "API Keys" },
 	{ key: "/admin/services", icon: <ApiOutlined />, label: "Services" },
 	{ key: "/admin/trash", icon: <DeleteOutlined />, label: "Trash" },
+	{ key: "/admin/db-backups", icon: <DatabaseOutlined />, label: "Backups" },
 	{ key: "/admin/settings", icon: <SettingOutlined />, label: "Settings" },
 ];
 

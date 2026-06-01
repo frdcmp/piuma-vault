@@ -8,3 +8,4 @@ pub mod shares;
 pub mod storage;
 pub mod storage_shares;
 pub mod settings;
+pub mod db_dump;

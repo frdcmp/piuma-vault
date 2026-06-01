@@ -11,8 +11,10 @@
 	overflow: hidden;
 }
 
-/* Keep the foreground content above the decorative starfield canvas. */
-.piuma-home-container > *:not(.piuma-starfield) {
+/* Keep the foreground content above the decorative starfield canvas, without
+   disturbing the absolutely-positioned corner controls (user menu / back). */
+.piuma-home-container
+> *:not(.piuma-starfield):not(.piuma-home-usermenu):not(.piuma-home-back) {
 	position: relative;
 	z-index: 1;
 }
@@ -28,6 +30,7 @@
 	position: absolute;
 	top: 12px;
 	left: 12px;
+	z-index: 10;
 	width: 40px;
 	height: 40px;
 	padding: 0;
