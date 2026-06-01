@@ -59,7 +59,7 @@ function Dot({ delay }) {
   );
 }
 
-export default function ThinkingLoader({ label = 'openclaw is sniffing the trail' }) {
+export default function ThinkingLoader({ label = 'piuma is sniffing the trail' }) {
   return (
     <View style={styles.row}>
       <View style={styles.avatarBox}>

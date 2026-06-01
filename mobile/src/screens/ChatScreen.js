@@ -37,9 +37,9 @@ const MONO = Platform.select({
 	default: "monospace",
 });
 
-const ASSISTANT_LABEL = "openclaw stream";
-const AGENT_LABEL = "openclaw";
-const SUBMIT_LABEL = "ask claw";
+const ASSISTANT_LABEL = "assistant stream";
+const AGENT_LABEL = "assistant";
+const SUBMIT_LABEL = "send";
 
 // Composer auto-grow bounds: one line on start, expand up to ~5 lines, then
 // the input scrolls internally. Mirrors the frontend composer behaviour.
@@ -392,7 +392,7 @@ export default function ChatScreen({ onClose, notePath }) {
 							<Ionicons name="chevron-back" size={16} color={colors.text} />
 						</Pressable>
 						<View style={styles.headerText}>
-							<Text style={styles.headerEyebrow}>llm brief /</Text>
+							<Text style={styles.headerEyebrow}>chat /</Text>
 							<Text style={styles.headerTitle}>OpenClaw</Text>
 						</View>
 						<View style={styles.headerStatus}>
@@ -444,7 +444,7 @@ export default function ChatScreen({ onClose, notePath }) {
 									<View style={styles.emptyAvatar}>
 										<PiumaAvatar pixelSize={3} />
 									</View>
-									<Text style={styles.emptyTitle}>Claw is on the leash.</Text>
+									<Text style={styles.emptyTitle}>Ready when you are.</Text>
 									<Text style={styles.emptySub}>
 										Ask anything — markdown, code, plans. Streams back token by
 										token.
@@ -538,7 +538,7 @@ export default function ChatScreen({ onClose, notePath }) {
 								onContentSizeChange={(e) =>
 									setInputHeight(e.nativeEvent.contentSize.height)
 								}
-								placeholder="Ask Claw…"
+								placeholder="Ask anything…"
 								placeholderTextColor={colors.muted}
 								multiline
 								scrollEnabled={inputHeight > INPUT_MAX_H}

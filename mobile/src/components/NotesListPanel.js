@@ -340,7 +340,6 @@ export default function NotesListPanel({
 	selectedNoteId,
 	onSelectNote,
 	onNewNote,
-	onLogout,
 }) {
 	const queryClient = useQueryClient();
 	const insets = useSafeAreaInsets();
@@ -622,9 +621,6 @@ export default function NotesListPanel({
 				<View style={styles.headerActions}>
 					<TouchableOpacity onPress={onNewNote} style={styles.newBtn}>
 						<Text style={styles.newBtnText}>+ New</Text>
-					</TouchableOpacity>
-					<TouchableOpacity onPress={onLogout} style={styles.iconBtn}>
-						<Ionicons name="log-out-outline" size={18} color={colors.muted} />
 					</TouchableOpacity>
 				</View>
 			</View>

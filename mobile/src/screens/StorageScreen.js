@@ -629,12 +629,17 @@ export default function StorageScreen({ navigation }) {
 				{crumbs.map((c, i) => (
 					<View key={c.path} style={styles.crumbItem}>
 						<Text style={styles.crumbSep}>/</Text>
-						<Pressable onPress={() => setPrefix(c.path)}>
+						<Pressable
+							onPress={() => setPrefix(c.path)}
+							style={styles.crumbBtn}
+						>
 							<Text
 								style={[
 									styles.crumb,
 									i === crumbs.length - 1 && styles.crumbCurrent,
 								]}
+								numberOfLines={1}
+								ellipsizeMode="middle"
 							>
 								{c.name}
 							</Text>
@@ -647,11 +652,15 @@ export default function StorageScreen({ navigation }) {
 			{list.isLoading ? (
 				<View style={styles.center}>
 					<ActivityIndicator color={colors.accent2} />
-					<Text style={styles.dim}>listing {prefix || "/"}…</Text>
+					<Text style={styles.dim} numberOfLines={1} ellipsizeMode="middle">
+						listing {folderLeaf(prefix) || "/"}…
+					</Text>
 				</View>
 			) : isEmpty ? (
 				<View style={styles.center}>
-					<Text style={styles.dim}>Nothing in {prefix || "/"} yet.</Text>
+					<Text style={styles.dim} numberOfLines={1} ellipsizeMode="middle">
+						Nothing in {folderLeaf(prefix) || "/"} yet.
+					</Text>
 					<Text style={styles.dimSmall}>
 						Tap UPLOAD to add a file, or 📁+ to make a folder.
 					</Text>
@@ -908,6 +917,9 @@ const styles = StyleSheet.create({
 		paddingVertical: 8,
 	},
 	crumbItem: { flexDirection: "row", alignItems: "center" },
+	// Cap a single crumb's width so long names (e.g. UUID folders) clip with an
+	// ellipsis instead of stretching the breadcrumb off-screen.
+	crumbBtn: { maxWidth: 180 },
 	crumb: {
 		color: colors.accent4,
 		fontFamily: MONO,
@@ -971,8 +983,15 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		gap: 8,
+		paddingHorizontal: 24,
 	},
-	dim: { color: colors.muted, fontFamily: MONO, fontSize: 14 },
+	dim: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 14,
+		maxWidth: "100%",
+		textAlign: "center",
+	},
 	dimSmall: {
 		color: colors.muted,
 		fontFamily: MONO,

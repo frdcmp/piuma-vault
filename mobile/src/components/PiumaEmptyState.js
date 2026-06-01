@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
 	Animated,
 	Easing,
+	Modal,
 	Platform,
 	Pressable,
 	StyleSheet,
@@ -9,7 +10,9 @@ import {
 	View,
 } from "react-native";
 import { colors } from "../utils/theme";
+import ComingSoonModal from "./ComingSoonModal";
 import PixelStarfield from "./PixelStarfield";
+import { BottomBar } from "./SystemBars";
 
 const MONO = Platform.select({
 	ios: "Menlo",
@@ -124,13 +127,23 @@ function SwipeChevrons({ dir }) {
 	);
 }
 
-export default function PiumaEmptyState({ onFiles, onChat, onStorage }) {
+export default function PiumaEmptyState({
+	onFiles,
+	onChat,
+	onStorage,
+	onLogout,
+}) {
 	// fall: entrance drop from above the layout. float: idle bob after landing.
 	const fall = useRef(new Animated.Value(-400)).current;
 	const float = useRef(new Animated.Value(0)).current;
 	const quipFade = useRef(new Animated.Value(1)).current;
 	const [dims, setDims] = useState({ width: 0, height: 0 });
 	const [quip, setQuip] = useState(0);
+	// Placeholder for not-yet-built features: holds the tapped feature's label
+	// (and a quip index) while the "coming soon" modal is open, or null.
+	const [comingSoon, setComingSoon] = useState(null);
+	// Whether the logout confirmation dialog is showing.
+	const [confirmLogout, setConfirmLogout] = useState(false);
 
 	useEffect(() => {
 		let loop;
@@ -220,7 +233,7 @@ export default function PiumaEmptyState({ onFiles, onChat, onStorage }) {
 					]}
 				>
 					<SwipeChevrons dir="left" />
-					<Text style={styles.hintText}>files</Text>
+					<Text style={styles.hintText}>notes</Text>
 				</Pressable>
 				<Text style={styles.hintPaw}>🐾</Text>
 				<Pressable
@@ -234,16 +247,105 @@ export default function PiumaEmptyState({ onFiles, onChat, onStorage }) {
 					<SwipeChevrons dir="right" />
 				</Pressable>
 			</View>
-			<Pressable
-				onPress={onStorage}
-				style={({ pressed }) => [
-					styles.storagePill,
-					pressed && styles.hintPillPressed,
-				]}
+			{/* Vertical menu — Storage is live; Tasks/Calendar are placeholders. */}
+			<View style={styles.menuList}>
+				<Pressable
+					onPress={onStorage}
+					style={({ pressed }) => [
+						styles.menuItem,
+						pressed && styles.menuItemPressed,
+					]}
+				>
+					<Text style={styles.storageGlyph}>▦</Text>
+					<Text style={styles.hintText}>storage</Text>
+				</Pressable>
+				<Pressable
+					onPress={() => setComingSoon({ label: "Tasks & alarms", quip: 0 })}
+					style={({ pressed }) => [
+						styles.menuItem,
+						styles.menuItemSoon,
+						pressed && styles.menuItemPressed,
+					]}
+				>
+					<Text style={styles.futureGlyph}>☑</Text>
+					<Text style={styles.hintText}>tasks</Text>
+				</Pressable>
+				<Pressable
+					onPress={() => setComingSoon({ label: "Calendar", quip: 1 })}
+					style={({ pressed }) => [
+						styles.menuItem,
+						styles.menuItemSoon,
+						pressed && styles.menuItemPressed,
+					]}
+				>
+					<Text style={styles.futureGlyph}>▤</Text>
+					<Text style={styles.hintText}>calendar</Text>
+				</Pressable>
+				<Pressable
+					onPress={() => setConfirmLogout(true)}
+					style={({ pressed }) => [
+						styles.menuItem,
+						pressed && styles.menuItemPressed,
+					]}
+				>
+					<Text style={styles.logoutGlyph}>⏻</Text>
+					<Text style={[styles.hintText, styles.logoutText]}>logout</Text>
+				</Pressable>
+			</View>
+
+			<ComingSoonModal
+				visible={!!comingSoon}
+				feature={comingSoon?.label}
+				quip={comingSoon?.quip || 0}
+				onClose={() => setComingSoon(null)}
+			/>
+
+			{/* Logout confirmation */}
+			<Modal
+				visible={confirmLogout}
+				transparent
+				animationType="fade"
+				onRequestClose={() => setConfirmLogout(false)}
 			>
-				<Text style={styles.storageGlyph}>▦</Text>
-				<Text style={styles.hintText}>storage</Text>
-			</Pressable>
+				<Pressable
+					style={styles.confirmOverlay}
+					onPress={() => setConfirmLogout(false)}
+				>
+					<Pressable style={styles.confirmCard} onPress={() => {}}>
+						<Text style={styles.confirmTitle}>Log out?</Text>
+						<Text style={styles.confirmHint}>
+							Piuma will miss you. You'll need to sign back in.
+						</Text>
+						<View style={styles.confirmActions}>
+							<Pressable
+								style={({ pressed }) => [
+									styles.confirmBtn,
+									pressed && styles.menuItemPressed,
+								]}
+								onPress={() => setConfirmLogout(false)}
+							>
+								<Text style={styles.confirmBtnText}>Cancel</Text>
+							</Pressable>
+							<Pressable
+								style={({ pressed }) => [
+									styles.confirmBtn,
+									styles.confirmBtnDanger,
+									pressed && styles.menuItemPressed,
+								]}
+								onPress={() => {
+									setConfirmLogout(false);
+									onLogout?.();
+								}}
+							>
+								<Text style={[styles.confirmBtnText, styles.confirmBtnTextDanger]}>
+									Log out
+								</Text>
+							</Pressable>
+						</View>
+					</Pressable>
+				</Pressable>
+				<BottomBar />
+			</Modal>
 		</View>
 	);
 }
@@ -287,23 +389,100 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.bg,
 		borderColor: colors.accent,
 	},
-	storagePill: {
+	menuList: {
+		alignItems: "center",
+		marginTop: 8,
+		gap: 16,
+	},
+	menuItem: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 8,
-		marginTop: -24,
-		paddingHorizontal: 16,
-		paddingVertical: 8,
-		borderWidth: 1,
-		borderColor: colors.borderStrong,
-		backgroundColor: colors.bgSoft,
+		justifyContent: "center",
+		gap: 10,
+		paddingVertical: 4,
+	},
+	menuItemSoon: {
+		opacity: 0.6,
+	},
+	menuItemPressed: {
+		opacity: 0.45,
 	},
 	storageGlyph: {
 		color: colors.accent,
 		fontFamily: MONO,
 		fontSize: 14,
 		fontWeight: "700",
+		width: 18,
+		textAlign: "center",
 	},
+	futureGlyph: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 14,
+		fontWeight: "700",
+		width: 18,
+		textAlign: "center",
+	},
+	logoutGlyph: {
+		color: colors.accent3,
+		fontFamily: MONO,
+		fontSize: 14,
+		fontWeight: "700",
+		width: 18,
+		textAlign: "center",
+	},
+	logoutText: {
+		color: colors.accent3,
+	},
+	confirmOverlay: {
+		flex: 1,
+		backgroundColor: "rgba(0,0,0,0.6)",
+		alignItems: "center",
+		justifyContent: "center",
+		paddingHorizontal: 28,
+	},
+	confirmCard: {
+		width: "100%",
+		backgroundColor: colors.panel,
+		borderWidth: 2,
+		borderColor: colors.borderStrong,
+		borderStyle: "dashed",
+		padding: 18,
+	},
+	confirmTitle: {
+		color: colors.accent,
+		fontFamily: MONO,
+		fontSize: 16,
+		fontWeight: "700",
+	},
+	confirmHint: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 11,
+		marginTop: 4,
+		marginBottom: 12,
+	},
+	confirmActions: {
+		flexDirection: "row",
+		justifyContent: "flex-end",
+		gap: 8,
+		marginTop: 8,
+	},
+	confirmBtn: {
+		paddingHorizontal: 14,
+		paddingVertical: 8,
+		borderWidth: 2,
+		borderColor: colors.borderStrong,
+		backgroundColor: colors.bgSoft,
+	},
+	confirmBtnDanger: { borderColor: colors.accent3 },
+	confirmBtnText: {
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 12,
+		fontWeight: "700",
+	},
+	confirmBtnTextDanger: { color: colors.accent3 },
 	hintText: {
 		color: colors.accent2,
 		fontFamily: MONO,

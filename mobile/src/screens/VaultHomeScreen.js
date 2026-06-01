@@ -288,6 +288,7 @@ export default function VaultHomeScreen({ navigation }) {
 							onFiles={openLeft}
 							onChat={openRight}
 							onStorage={() => navigation.navigate("Storage")}
+							onLogout={logout}
 						/>
 					</View>
 				)}
@@ -316,7 +317,6 @@ export default function VaultHomeScreen({ navigation }) {
 					selectedNoteId={isEditingExisting ? selection.id : null}
 					onSelectNote={handleSelectNote}
 					onNewNote={handleNewNote}
-					onLogout={logout}
 				/>
 			</Animated.View>
 
