@@ -84,8 +84,14 @@ const TreeFolder = ({
 				<div
 					className={`ftree-row ftree-folder ${isCurrent ? "selected" : ""}`}
 					onClick={() => {
-						onNavigate(path);
-						if (!expandedMap[path]) toggleExpand(path);
+						// Click toggles like a file explorer: an open folder collapses
+						// in place; a closed one expands and navigates into it.
+						if (isExpanded) {
+							toggleExpand(path);
+						} else {
+							onNavigate(path);
+							toggleExpand(path);
+						}
 					}}
 				>
 					<TreePrefix parentLines={parentLines} isLast={isLast} />
