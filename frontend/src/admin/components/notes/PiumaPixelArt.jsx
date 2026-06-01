@@ -1,5 +1,5 @@
 import React from "react";
-import "./PiumaEmptyState.css";
+import "./PiumaPixelArt.css";
 
 const RAW_DOG_SPRITE = [
 	"................",
@@ -45,7 +45,7 @@ export default function PiumaPixelArt({ pixelSize = 8 }) {
 
 	return (
 		<div
-			className="piuma-pixel-art piuma-empty-img"
+			className="piuma-pixel-art"
 			style={{
 				display: "grid",
 				gridTemplateColumns: `repeat(${cols}, ${pixelSize}px)`,

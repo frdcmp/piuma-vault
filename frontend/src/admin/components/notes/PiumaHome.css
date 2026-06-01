@@ -1,0 +1,183 @@
+.piuma-home-container {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	color: var(--muted);
+	font-size: 14pt;
+	gap: 20px;
+	overflow: hidden;
+}
+
+/* Keep the foreground content above the decorative starfield canvas. */
+.piuma-home-container > *:not(.piuma-starfield) {
+	position: relative;
+	z-index: 1;
+}
+
+.piuma-home-usermenu {
+	position: absolute;
+	top: 12px;
+	right: 12px;
+	z-index: 10;
+}
+
+.piuma-home-back {
+	position: absolute;
+	top: 12px;
+	left: 12px;
+	width: 40px;
+	height: 40px;
+	padding: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--bg-soft, #15171c);
+	border: 2px solid var(--border-strong, #3a4150);
+	color: var(--text, #d6dbe5);
+	font-family: inherit;
+	font-size: 16pt;
+	font-weight: 900;
+	line-height: 1;
+	cursor: pointer;
+	box-shadow: 2px 2px 0 #000;
+}
+
+.piuma-home-back:hover {
+	border-color: var(--accent, #f7c948);
+	color: var(--accent, #f7c948);
+}
+
+.piuma-home-text {
+	color: var(--muted);
+	font-weight: 600;
+	letter-spacing: 0.5px;
+	text-shadow: 2px 2px 0 #000;
+	text-align: center;
+	max-width: 280px;
+	min-height: 22px;
+	opacity: 1;
+	transition: opacity 0.25s ease;
+}
+.piuma-home-text.is-hidden {
+	opacity: 0;
+}
+
+/* notes ← | → chat hint row */
+.piuma-home-hints {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+}
+
+.piuma-hint-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 12px;
+	background: var(--bg-soft, #15171c);
+	border: 1px solid var(--border-strong, #3a4150);
+	color: var(--accent-2, #5cd0a9);
+	font-family: inherit;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	cursor: pointer;
+	transition:
+		background 0.15s,
+		border-color 0.15s;
+}
+.piuma-hint-pill:hover {
+	background: var(--bg, #0e0f12);
+	border-color: var(--accent, #f7c948);
+}
+
+.piuma-chevrons {
+	display: inline-flex;
+	color: var(--accent, #f7c948);
+	font-weight: 700;
+}
+.piuma-chevrons span {
+	animation: piuma-chevron-pulse 1.4s ease-in-out infinite;
+}
+.piuma-chevrons.left span:nth-child(1) {
+	animation-delay: 0.28s;
+}
+.piuma-chevrons.left span:nth-child(2) {
+	animation-delay: 0.14s;
+}
+.piuma-chevrons.right span:nth-child(2) {
+	animation-delay: 0.14s;
+}
+.piuma-chevrons.right span:nth-child(3) {
+	animation-delay: 0.28s;
+}
+
+.piuma-hint-paw {
+	font-size: 14px;
+	opacity: 0.8;
+}
+
+/* Vertical feature menu — storage / tasks / calendar / logout */
+.piuma-home-menu {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 16px;
+	margin-top: -16px;
+}
+
+.piuma-menu-item {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	padding: 4px 6px;
+	background: none;
+	border: none;
+	color: var(--accent-2, #5cd0a9);
+	font-family: inherit;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	cursor: pointer;
+	transition: opacity 0.15s;
+}
+.piuma-menu-item:hover {
+	opacity: 0.6;
+}
+.piuma-menu-item.is-soon {
+	opacity: 0.6;
+}
+.piuma-menu-item.is-soon:hover {
+	opacity: 0.85;
+}
+.piuma-menu-item.is-logout {
+	color: var(--accent-3, #ff6b6b);
+}
+
+.piuma-menu-glyph {
+	width: 18px;
+	text-align: center;
+	color: var(--muted, #8a93a3);
+}
+.piuma-menu-glyph.storage {
+	color: var(--accent, #f7c948);
+}
+.piuma-menu-item.is-logout .piuma-menu-glyph {
+	color: var(--accent-3, #ff6b6b);
+}
+
+@keyframes piuma-chevron-pulse {
+	0%,
+	100% {
+		opacity: 0.25;
+	}
+	30% {
+		opacity: 1;
+	}
+}
