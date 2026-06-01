@@ -100,7 +100,10 @@ export default function StorageGrid({ prefix, onNavigate }) {
 	// space; null when not marquee-selecting.
 	const [marquee, setMarquee] = useState(null);
 	const bodyRef = useRef(null);
-	// Right-click context menu anchor: { x, y } in viewport coords, or null.
+	// Hidden file picker for the "Upload files…" menu action.
+	const fileInputRef = useRef(null);
+	// Right-click context menu anchor: { x, y, bg? } in viewport coords, or null.
+	// `bg: true` means it was opened on empty space (the new/upload menu).
 	const [menu, setMenu] = useState(null);
 	// Folder key whose public-share dialog is open, or null.
 	const [shareFolder, setShareFolder] = useState(null);
@@ -112,6 +115,8 @@ export default function StorageGrid({ prefix, onNavigate }) {
 	const [preview, setPreview] = useState(null); // { key, url, loading }
 	const [newFolderOpen, setNewFolderOpen] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
+	const [newFileOpen, setNewFileOpen] = useState(false);
+	const [newFileName, setNewFileName] = useState("");
 	const [confirm, setConfirm] = useState(null); // { title, body, onConfirm }
 
 	// When exactly one file is selected (e.g. picked from the tree), scroll it
@@ -487,6 +492,47 @@ export default function StorageGrid({ prefix, onNavigate }) {
 		pvMessage.info("Upload a file here to save the folder");
 	};
 
+	// Create an empty file in the current folder. A 0-byte object carries a real
+	// (non-blank) ETag, so it lists as a file — not mistaken for a folder marker.
+	const createFile = async () => {
+		const name = newFileName.trim().replace(/^\/+|\/+$/g, "");
+		setNewFileOpen(false);
+		setNewFileName("");
+		if (!name || name.endsWith("/")) return;
+		await uploadFiles([new File([""], name, { type: "text/plain" })]);
+	};
+
+	// ── Empty-space (background) context menu ────────────────────
+	const openFilePicker = () => fileInputRef.current?.click();
+
+	const selectAll = () =>
+		setSelection([...folders, ...files.map((f) => f.key)]);
+
+	const buildBgMenuItems = () => [
+		{ label: "Upload files…", icon: "⬆", onClick: openFilePicker },
+		{ label: "New folder…", icon: "📁", onClick: () => setNewFolderOpen(true) },
+		{ label: "New file…", icon: "📄", onClick: () => setNewFileOpen(true) },
+		...(folders.length + files.length > 0
+			? [
+					{ type: "separator" },
+					{ label: "Select all", icon: "✓", onClick: selectAll },
+				]
+			: []),
+		{ type: "separator" },
+		{
+			label: "Refresh",
+			icon: "⟳",
+			onClick: () => list.refetch(),
+		},
+	];
+
+	// Right-click on empty grid space opens the background menu. Tile right-clicks
+	// stopPropagation, so this only fires on the empty area.
+	const onBgContextMenu = (e) => {
+		e.preventDefault();
+		setMenu({ x: e.clientX, y: e.clientY, bg: true });
+	};
+
 	return (
 		<div className="storage-main">
 			{/* Top bar: breadcrumb + global actions */}
@@ -515,24 +561,6 @@ export default function StorageGrid({ prefix, onNavigate }) {
 					))}
 				</div>
 				<div className="storage-topbar-actions">
-					<button
-						type="button"
-						className="pixel-btn"
-						onClick={() => setNewFolderOpen(true)}
-					>
-						+ Folder
-					</button>
-					<button
-						type="button"
-						className="pixel-btn icon-only"
-						onClick={() => list.refetch()}
-						title="Refresh"
-						disabled={list.isFetching}
-					>
-						<span className={list.isFetching ? "storage-spin" : undefined}>
-							⟳
-						</span>
-					</button>
 					<UserMenu size={34} />
 				</div>
 			</div>
@@ -545,6 +573,7 @@ export default function StorageGrid({ prefix, onNavigate }) {
 					marquee ? "marqueeing" : ""
 				}`}
 				onMouseDown={onBodyMouseDown}
+				onContextMenu={onBgContextMenu}
 				onDragOver={(e) => {
 					e.preventDefault();
 					if (!dragOver) setDragOver(true);
@@ -674,7 +703,7 @@ export default function StorageGrid({ prefix, onNavigate }) {
 				open={!!menu}
 				x={menu?.x ?? 0}
 				y={menu?.y ?? 0}
-				items={menu ? buildMenuItems() : []}
+				items={menu ? (menu.bg ? buildBgMenuItems() : buildMenuItems()) : []}
 				onClose={() => setMenu(null)}
 			/>
 
@@ -711,6 +740,45 @@ export default function StorageGrid({ prefix, onNavigate }) {
 					placeholder="my-folder"
 				/>
 			</PvModal>
+
+			{/* New-file modal */}
+			<PvModal
+				open={newFileOpen}
+				title="New file"
+				confirmText="Create"
+				onConfirm={createFile}
+				onCancel={() => {
+					setNewFileOpen(false);
+					setNewFileName("");
+				}}
+			>
+				<label
+					htmlFor="storage-new-file"
+					style={{ display: "block", marginBottom: 6, fontSize: 12 }}
+				>
+					File name (created under {prefix || "/"})
+				</label>
+				<input
+					id="storage-new-file"
+					className="pixel-input"
+					style={{ width: "100%", boxSizing: "border-box" }}
+					value={newFileName}
+					onChange={(e) => setNewFileName(e.target.value)}
+					placeholder="notes.txt"
+				/>
+			</PvModal>
+
+			{/* Hidden picker for the "Upload files…" menu action */}
+			<input
+				ref={fileInputRef}
+				type="file"
+				multiple
+				style={{ display: "none" }}
+				onChange={(e) => {
+					uploadFiles(e.target.files);
+					e.target.value = "";
+				}}
+			/>
 
 			{/* Confirm (delete) modal */}
 			<PvModal
