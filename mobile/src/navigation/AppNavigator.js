@@ -52,7 +52,14 @@ export default function AppNavigator() {
 				{token ? (
 					<>
 						<Stack.Screen name="VaultHome" component={VaultHomeScreen} />
-						<Stack.Screen name="Storage" component={StorageScreen} />
+						{/* Storage handles its own left-edge back-swipe (folder-aware),
+						    so the native pop gesture is disabled to avoid the two
+						    competing. */}
+						<Stack.Screen
+							name="Storage"
+							component={StorageScreen}
+							options={{ gestureEnabled: false }}
+						/>
 					</>
 				) : (
 					<Stack.Screen name="Login" component={LoginScreen} />

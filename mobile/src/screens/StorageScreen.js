@@ -1,14 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
 	FlatList,
 	Linking,
 	Modal,
+	PanResponder,
 	Platform,
 	Pressable,
 	ScrollView,
+	Share,
 	StyleSheet,
 	Text,
 	TextInput,
@@ -17,6 +19,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import BottomSheet, { BottomSheetItem } from "../components/BottomSheet";
+import FolderShareSheet from "../components/FolderShareSheet";
 import { BottomBar, useTopInset } from "../components/SystemBars";
 import {
 	useStorageDeleteFolder,
@@ -59,16 +62,19 @@ const fileLeaf = (key) => key.split("/").pop() || key;
 
 const IMAGE_RE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i;
 
-const fileGlyph = (key) => {
+// Vector icon per file type — coloured + sized via props, so it stays crisp and
+// legible instead of relying on the platform's (often dim, monochrome) emoji.
+const fileIcon = (key) => {
 	const ext = key.split(".").pop()?.toLowerCase();
-	if (IMAGE_RE.test(key)) return "🖼";
-	if (["zip", "tar", "gz", "rar", "7z"].includes(ext)) return "🗜";
-	if (["mp4", "mov", "webm", "mkv", "avi"].includes(ext)) return "🎞";
-	if (["mp3", "wav", "flac", "ogg", "m4a"].includes(ext)) return "🎵";
-	if (ext === "pdf") return "📕";
+	if (IMAGE_RE.test(key)) return "image-outline";
+	if (["zip", "tar", "gz", "rar", "7z"].includes(ext)) return "archive-outline";
+	if (["mp4", "mov", "webm", "mkv", "avi"].includes(ext)) return "film-outline";
+	if (["mp3", "wav", "flac", "ogg", "m4a"].includes(ext))
+		return "musical-notes-outline";
+	if (ext === "pdf") return "document-text-outline";
 	if (["md", "txt", "json", "csv", "log", "yml", "yaml"].includes(ext))
-		return "📄";
-	return "▦";
+		return "document-outline";
+	return "document-outline";
 };
 
 const fmtDate = (iso) => {
@@ -92,6 +98,8 @@ export default function StorageScreen({ navigation }) {
 	// Uses Modals (not Alert) so it works on web/react-native-web too.
 	const [sheet, setSheet] = useState(null);
 	const [pendingDelete, setPendingDelete] = useState(null);
+	// Folder key whose public-share sheet is open, or null.
+	const [shareFolder, setShareFolder] = useState(null);
 	// Non-null while a blocking op (download/upload) is in flight — drives the
 	// loading overlay. Holds the label to show.
 	const [busy, setBusy] = useState(null);
@@ -106,6 +114,34 @@ export default function StorageScreen({ navigation }) {
 	const folders = list.data?.folders || [];
 	const files = list.data?.files || [];
 	const isEmpty = !list.isLoading && folders.length === 0 && files.length === 0;
+
+	// Back: step up one folder level; only leave the screen at the root. Shared
+	// by the header arrow and the left-edge swipe gesture.
+	const handleBack = useCallback(() => {
+		if (prefix === "") {
+			navigation.goBack();
+		} else {
+			const parts = prefix.replace(/\/$/, "").split("/");
+			parts.pop();
+			setPrefix(parts.length ? `${parts.join("/")}/` : "");
+		}
+	}, [prefix, navigation]);
+
+	// A right-swipe from the left edge goes back, mirroring the arrow. PanResponder
+	// (built-in, no native module) is created once, so route through a ref to keep
+	// `handleBack` fresh. It only claims left-edge, horizontal, rightward drags, so
+	// vertical list scrolling and the breadcrumb strip are left untouched.
+	const handleBackRef = useRef(handleBack);
+	handleBackRef.current = handleBack;
+	const edgeSwipe = useRef(
+		PanResponder.create({
+			onMoveShouldSetPanResponder: (_e, g) =>
+				g.x0 <= 36 && g.dx > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.8,
+			onPanResponderRelease: (_e, g) => {
+				if (g.dx > 64 && g.vx > 0.05) handleBackRef.current?.();
+			},
+		}),
+	).current;
 
 	const crumbs = useMemo(() => {
 		const trimmed = prefix.replace(/\/$/, "");
@@ -178,16 +214,44 @@ export default function StorageScreen({ navigation }) {
 		else setPrefix(sheet.key);
 	};
 
-	// Stash the target; the confirm modal opens via the sheet's onClosed once it
-	// has finished closing (RN can't show two modals at once).
-	const pendingDeleteRef = useRef(null);
+	// Stash a follow-up action; it runs via the sheet's onClosed once the sheet
+	// has finished closing (RN can't show two modals — or a modal + the OS share
+	// sheet — at once).
+	const pendingActionRef = useRef(null);
 	const requestDelete = () => {
-		pendingDeleteRef.current = sheet;
+		pendingActionRef.current = { kind: "delete", item: sheet };
+	};
+	const requestShareFile = () => {
+		pendingActionRef.current = { kind: "shareFile", key: sheet?.key };
+	};
+	const requestShareFolder = () => {
+		pendingActionRef.current = { kind: "shareFolder", key: sheet?.key };
 	};
 	const handleSheetClosed = () => {
-		const target = pendingDeleteRef.current;
-		pendingDeleteRef.current = null;
-		if (target) setPendingDelete(target);
+		const action = pendingActionRef.current;
+		pendingActionRef.current = null;
+		if (!action) return;
+		if (action.kind === "delete") setPendingDelete(action.item);
+		else if (action.kind === "shareFile") shareFile(action.key);
+		else if (action.kind === "shareFolder") setShareFolder(action.key);
+	};
+
+	// Share a single file: mint a short-lived signed CDN URL and hand it to the
+	// OS share sheet so it can be copied or sent anywhere.
+	const shareFile = async (key) => {
+		setBusy("Preparing link…");
+		try {
+			const res = await signed.mutateAsync({ key, expiresInSecs: 3600 });
+			await Share.share({ message: res.url });
+		} catch (e) {
+			if (e?.message !== "User did not share")
+				Alert.alert(
+					"Share unavailable",
+					e?.response?.data?.message || e.message || "Could not sign a link.",
+				);
+		} finally {
+			setBusy(null);
+		}
 	};
 
 	const confirmDelete = async () => {
@@ -282,7 +346,12 @@ export default function StorageScreen({ navigation }) {
 				style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
 				onPress={() => openSheet(item)}
 			>
-				<Text style={styles.glyph}>{fileGlyph(item.key)}</Text>
+				<Ionicons
+					name={fileIcon(item.key)}
+					size={24}
+					color={colors.accent4}
+					style={styles.fileIcon}
+				/>
 				<View style={styles.fileBody}>
 					<Text style={styles.fileName} numberOfLines={1}>
 						{fileLeaf(item.key)}
@@ -304,20 +373,14 @@ export default function StorageScreen({ navigation }) {
 	};
 
 	return (
-		<View style={[styles.root, { paddingTop: topInset }]}>
+		<View
+			style={[styles.root, { paddingTop: topInset }]}
+			{...edgeSwipe.panHandlers}
+		>
 			{/* Header */}
 			<View style={styles.header}>
 				<TouchableOpacity
-					onPress={() => {
-						// Step up one folder level; only leave the screen at the root.
-						if (prefix === "") {
-							navigation.goBack();
-						} else {
-							const parts = prefix.replace(/\/$/, "").split("/");
-							parts.pop();
-							setPrefix(parts.length ? `${parts.join("/")}/` : "");
-						}
-					}}
+					onPress={handleBack}
 					style={styles.headerBtn}
 					hitSlop={10}
 				>
@@ -501,6 +564,22 @@ export default function StorageScreen({ navigation }) {
 						onPress={() => sheet && downloadFolder(sheet.key)}
 					/>
 				)}
+				{sheet?.type === "file" && (
+					<BottomSheetItem
+						icon="share-outline"
+						label="Share link"
+						color={colors.accent4}
+						onPress={requestShareFile}
+					/>
+				)}
+				{sheet?.type === "folder" && (
+					<BottomSheetItem
+						icon="globe-outline"
+						label="Share folder…"
+						color={colors.accent4}
+						onPress={requestShareFolder}
+					/>
+				)}
 				<BottomSheetItem
 					icon="trash-outline"
 					label="Delete"
@@ -508,6 +587,13 @@ export default function StorageScreen({ navigation }) {
 					onPress={requestDelete}
 				/>
 			</BottomSheet>
+
+			{/* Public folder-share manager */}
+			<FolderShareSheet
+				visible={!!shareFolder}
+				prefix={shareFolder}
+				onClose={() => setShareFolder(null)}
+			/>
 
 			{/* Delete confirmation */}
 			<Modal
@@ -657,6 +743,7 @@ const styles = StyleSheet.create({
 	},
 	rowPressed: { backgroundColor: colors.bgSoft },
 	glyph: { fontSize: 20, width: 26, textAlign: "center" },
+	fileIcon: { width: 28, textAlign: "center" },
 	dotsBtn: {
 		paddingHorizontal: 6,
 		paddingVertical: 4,
