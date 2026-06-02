@@ -2,12 +2,12 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	useDeleteRecurringTask,
-	useDeleteTask,
 	useRecurringTasks,
 	useTasks,
 	useToggleTask,
 } from "../../../queries";
 import { formatDate, timeAgo } from "../../../utils/dateTime";
+import { tagColor } from "../../../utils/tagColor";
 import { PvButton } from "../../components/ui";
 import RecurringTaskModal from "./RecurringTaskModal";
 import TaskModal from "./TaskModal";
@@ -20,16 +20,40 @@ export default function TasksPage() {
 	const { data: tasks = [] } = useTasks();
 	const { data: recurring = [] } = useRecurringTasks();
 	const toggleTask = useToggleTask();
-	const deleteTask = useDeleteTask();
 	const deleteRecurring = useDeleteRecurringTask();
 
 	const [taskModal, setTaskModal] = useState(null); // { task } | {} | null
 	const [recModal, setRecModal] = useState(null);
+	const [selectedTag, setSelectedTag] = useState(null); // tag string | null (= all)
+	const [showRecurring, setShowRecurring] = useState(false); // sidebar view toggle
+	const [tagQuery, setTagQuery] = useState(""); // filters the tag list
 
 	// One-off tasks only (materialized recurring occurrences are history, hidden here).
 	const oneOff = tasks.filter((t) => !t.recurrence_id);
-	const pending = oneOff.filter((t) => !t.done);
-	const done = oneOff.filter((t) => t.done);
+
+	// Tags-as-groups: tally every tag in use across one-off tasks.
+	const tagCounts = new Map();
+	for (const t of oneOff) {
+		for (const tag of t.tags ?? []) {
+			tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+		}
+	}
+	const tagList = [...tagCounts.entries()]
+		.map(([tag, count]) => ({ tag, count }))
+		.sort((a, b) => a.tag.localeCompare(b.tag));
+	const tagFilter = tagQuery.trim().toLowerCase();
+	const shownTags = tagFilter
+		? tagList.filter(({ tag }) => tag.includes(tagFilter))
+		: tagList;
+
+	// A removed/emptied tag may still be selected — fall back to "all".
+	const activeTag =
+		selectedTag && tagCounts.has(selectedTag) ? selectedTag : null;
+	const visible = activeTag
+		? oneOff.filter((t) => t.tags?.includes(activeTag))
+		: oneOff;
+	const pending = visible.filter((t) => !t.done);
+	const done = visible.filter((t) => t.done);
 
 	return (
 		<div className="tasks-page">
@@ -56,142 +80,215 @@ export default function TasksPage() {
 				</div>
 			</header>
 
-			<div className="tasks-cols">
-				{/* ── To-do ── */}
-				<section className="tasks-panel">
-					<h2 className="tasks-panel-title">To do · {pending.length}</h2>
-					<ul className="tasks-list">
-						{pending.map((t) => (
-							<li key={t.id} className="task-row">
+			<div className="tasks-body">
+				{/* ── Tag groups ── */}
+				<aside className="tasks-sidebar">
+					<h2 className="tasks-panel-title">Tags</h2>
+					<input
+						className="tag-search"
+						type="text"
+						value={tagQuery}
+						onChange={(e) => setTagQuery(e.target.value)}
+						placeholder="Filter tags…"
+						aria-label="Filter tags"
+					/>
+					<ul className="tag-nav">
+						<li>
+							<button
+								type="button"
+								className={`tag-nav-btn${!showRecurring && activeTag === null ? " is-active" : ""}`}
+								onClick={() => {
+									setShowRecurring(false);
+									setSelectedTag(null);
+								}}
+							>
+								<span className="tag-nav-name">all</span>
+								<span className="tag-nav-count">{oneOff.length}</span>
+							</button>
+						</li>
+						{shownTags.map(({ tag, count }) => (
+							<li key={tag}>
 								<button
 									type="button"
-									className="task-check"
-									onClick={() => toggleTask.mutate(t.id)}
-									aria-label="Complete task"
+									className={`tag-nav-btn${!showRecurring && activeTag === tag ? " is-active" : ""}`}
+									onClick={() => {
+										setShowRecurring(false);
+										setSelectedTag(tag);
+									}}
 								>
-									☐
-								</button>
-								<button
-									type="button"
-									className="task-main"
-									onClick={() => setTaskModal({ task: t })}
-								>
-									<span className="task-title">{t.title}</span>
-									<span className="task-meta">
-										{t.priority ? (
-											<span className={`task-prio prio-${t.priority}`}>
-												{PRIORITY[t.priority]}
-											</span>
-										) : null}
-										{t.due_at ? (
-											<span className="task-due">due {timeAgo(t.due_at)}</span>
-										) : null}
-										{t.tags?.map((tag) => (
-											<span key={tag} className="task-tag">
-												#{tag}
-											</span>
-										))}
+									<span
+										className="tag-nav-name"
+										style={{ color: tagColor(tag) }}
+									>
+										#{tag}
 									</span>
-								</button>
-								<button
-									type="button"
-									className="task-del"
-									onClick={() => deleteTask.mutate(t.id)}
-									aria-label="Delete task"
-								>
-									✕
+									<span className="tag-nav-count">{count}</span>
 								</button>
 							</li>
 						))}
-						{pending.length === 0 ? (
-							<li className="tasks-empty">Nothing to do. Piuma approves.</li>
+						{tagList.length === 0 ? (
+							<li className="tasks-empty">No tags yet.</li>
+						) : shownTags.length === 0 ? (
+							<li className="tasks-empty">No matching tags.</li>
 						) : null}
 					</ul>
 
-					{done.length ? (
-						<details className="tasks-done">
-							<summary>Done · {done.length}</summary>
+					<div className="tag-nav-divider" aria-hidden="true" />
+
+					<ul className="tag-nav">
+						<li>
+							<button
+								type="button"
+								className={`tag-nav-btn${showRecurring ? " is-active" : ""}`}
+								onClick={() => setShowRecurring(true)}
+							>
+								<span className="tag-nav-name">⟳ recurring</span>
+								<span className="tag-nav-count">{recurring.length}</span>
+							</button>
+						</li>
+					</ul>
+				</aside>
+
+				<div className="tasks-cols">
+					{!showRecurring ? (
+						<>
+							{/* ── To-do ── */}
+							<section className="tasks-panel">
+								<h2 className="tasks-panel-title">
+									{activeTag ? `#${activeTag} · ` : "To do · "}
+									{pending.length}
+								</h2>
+								<ul className="tasks-list">
+									{pending.map((t) => (
+										<li key={t.id} className="task-row">
+											<button
+												type="button"
+												className="task-check"
+												onClick={() => toggleTask.mutate(t.id)}
+												aria-label="Complete task"
+											>
+												☐
+											</button>
+											<button
+												type="button"
+												className="task-main"
+												onClick={() => setTaskModal({ task: t })}
+											>
+												<span className="task-title">{t.title}</span>
+												<span className="task-meta">
+													{t.priority ? (
+														<span className={`task-prio prio-${t.priority}`}>
+															{PRIORITY[t.priority]}
+														</span>
+													) : null}
+													{t.due_at ? (
+														<span className="task-due">
+															due {timeAgo(t.due_at)}
+														</span>
+													) : null}
+													{t.tags?.map((tag) => (
+														<span
+															key={tag}
+															className="task-tag"
+															style={{ color: tagColor(tag) }}
+														>
+															#{tag}
+														</span>
+													))}
+												</span>
+											</button>
+										</li>
+									))}
+									{pending.length === 0 ? (
+										<li className="tasks-empty">
+											Nothing to do. Piuma approves.
+										</li>
+									) : null}
+								</ul>
+
+								{done.length ? (
+									<details className="tasks-done">
+										<summary>Done · {done.length}</summary>
+										<ul className="tasks-list">
+											{done.map((t) => (
+												<li key={t.id} className="task-row is-done">
+													<button
+														type="button"
+														className="task-check"
+														onClick={() => toggleTask.mutate(t.id)}
+														aria-label="Reopen task"
+													>
+														☑
+													</button>
+													<button
+														type="button"
+														className="task-main"
+														onClick={() => setTaskModal({ task: t })}
+													>
+														<span className="task-title">{t.title}</span>
+													</button>
+												</li>
+											))}
+										</ul>
+									</details>
+								) : null}
+							</section>
+						</>
+					) : (
+						/* ── Recurring ── */
+						<section className="tasks-panel">
+							<div className="tasks-panel-head">
+								<h2 className="tasks-panel-title">
+									Recurring · {recurring.length}
+								</h2>
+								<PvButton onClick={() => setRecModal({})}>
+									+ recurring
+								</PvButton>
+							</div>
 							<ul className="tasks-list">
-								{done.map((t) => (
-									<li key={t.id} className="task-row is-done">
-										<button
-											type="button"
-											className="task-check"
-											onClick={() => toggleTask.mutate(t.id)}
-											aria-label="Reopen task"
-										>
-											☑
-										</button>
-										<span className="task-main">
-											<span className="task-title">{t.title}</span>
+								{recurring.map((r) => (
+									<li
+										key={r.id}
+										className={`task-row${r.active ? "" : " is-paused"}`}
+									>
+										<span className="task-check" aria-hidden="true">
+											⟳
 										</span>
 										<button
 											type="button"
+											className="task-main"
+											onClick={() => setRecModal({ recurring: r })}
+										>
+											<span className="task-title">{r.title}</span>
+											<span className="task-meta">
+												<span className="task-rrule">{r.rrule}</span>
+												<span className="task-due">
+													from {formatDate(r.dtstart)}
+												</span>
+												{!r.active ? (
+													<span className="task-tag">paused</span>
+												) : null}
+											</span>
+										</button>
+										<button
+											type="button"
 											className="task-del"
-											onClick={() => deleteTask.mutate(t.id)}
-											aria-label="Delete task"
+											onClick={() => deleteRecurring.mutate(r.id)}
+											aria-label="Delete recurring task"
 										>
 											✕
 										</button>
 									</li>
 								))}
+								{recurring.length === 0 ? (
+									<li className="tasks-empty">
+										No recurring tasks. Add a workout plan?
+									</li>
+								) : null}
 							</ul>
-						</details>
-					) : null}
-				</section>
-
-				{/* ── Recurring ── */}
-				<section className="tasks-panel">
-					<div className="tasks-panel-head">
-						<h2 className="tasks-panel-title">
-							Recurring · {recurring.length}
-						</h2>
-						<PvButton onClick={() => setRecModal({})}>
-							+ recurring
-						</PvButton>
-					</div>
-					<ul className="tasks-list">
-						{recurring.map((r) => (
-							<li
-								key={r.id}
-								className={`task-row${r.active ? "" : " is-paused"}`}
-							>
-								<span className="task-check" aria-hidden="true">
-									⟳
-								</span>
-								<button
-									type="button"
-									className="task-main"
-									onClick={() => setRecModal({ recurring: r })}
-								>
-									<span className="task-title">{r.title}</span>
-									<span className="task-meta">
-										<span className="task-rrule">{r.rrule}</span>
-										<span className="task-due">
-											from {formatDate(r.dtstart)}
-										</span>
-										{!r.active ? (
-											<span className="task-tag">paused</span>
-										) : null}
-									</span>
-								</button>
-								<button
-									type="button"
-									className="task-del"
-									onClick={() => deleteRecurring.mutate(r.id)}
-									aria-label="Delete recurring task"
-								>
-									✕
-								</button>
-							</li>
-						))}
-						{recurring.length === 0 ? (
-							<li className="tasks-empty">
-								No recurring tasks. Add a workout plan?
-							</li>
-						) : null}
-					</ul>
-				</section>
+						</section>
+					)}
+				</div>
 			</div>
 
 			{taskModal ? (
