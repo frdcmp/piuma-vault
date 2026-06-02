@@ -85,11 +85,21 @@ export default function TasksScreen({ navigation }) {
 	const visible = activeTag
 		? oneOff.filter((t) => t.tags?.includes(activeTag))
 		: oneOff;
-	// Highest priority first; stable sort keeps the backend order within a tier.
+	// Highest priority first; within a priority tier, cluster tasks that share
+	// tags (by normalized tag signature). Untagged tasks (→ "￿") trail.
 	const pending = visible
 		.filter((t) => !t.done)
-		.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+		.sort((a, b) => {
+			const byPriority = (b.priority ?? 0) - (a.priority ?? 0);
+			if (byPriority !== 0) return byPriority;
+			const ka = (a.tags ?? []).slice().sort().join(",") || "￿";
+			const kb = (b.tags ?? []).slice().sort().join(",") || "￿";
+			return ka.localeCompare(kb);
+		});
 	const done = visible.filter((t) => t.done);
+
+	// The id of the task whose toggle is in flight, so we can spin just its box.
+	const togglingId = toggleTask.isPending ? toggleTask.variables : null;
 
 	return (
 		<View style={[s.root, { paddingTop: insets.top }]}>
@@ -204,10 +214,24 @@ export default function TasksScreen({ navigation }) {
 					) : null}
 					{pending.map((t) => (
 						<View key={t.id} style={s.taskRow}>
-							<Pressable onPress={() => toggleTask.mutate(t.id)} hitSlop={8}>
-								<Text style={[s.check, { color: PRIORITY_COLOR[t.priority] }]}>
-									☐
-								</Text>
+							<Pressable
+								onPress={() => toggleTask.mutate(t.id)}
+								hitSlop={8}
+								disabled={togglingId === t.id}
+							>
+								{togglingId === t.id ? (
+									<ActivityIndicator
+										size="small"
+										color={PRIORITY_COLOR[t.priority]}
+										style={s.checkSpin}
+									/>
+								) : (
+									<Text
+										style={[s.check, { color: PRIORITY_COLOR[t.priority] }]}
+									>
+										☐
+									</Text>
+								)}
 							</Pressable>
 							<Pressable
 								style={s.taskMain}
@@ -248,8 +272,17 @@ export default function TasksScreen({ navigation }) {
 									<Pressable
 										onPress={() => toggleTask.mutate(t.id)}
 										hitSlop={8}
+										disabled={togglingId === t.id}
 									>
-										<Text style={s.check}>☑</Text>
+										{togglingId === t.id ? (
+											<ActivityIndicator
+												size="small"
+												color={colors.accent2}
+												style={s.checkSpin}
+											/>
+										) : (
+											<Text style={s.check}>☑</Text>
+										)}
 									</Pressable>
 									<Pressable
 										style={s.taskMain}
@@ -651,6 +684,8 @@ const s = StyleSheet.create({
 	},
 	dim: { opacity: 0.55 },
 	check: { color: colors.accent2, fontFamily: MONO, fontSize: 18 },
+	// Match the ☐ glyph footprint so swapping in the spinner doesn't shift the row.
+	checkSpin: { width: 18, height: 18 },
 	taskMain: { flex: 1 },
 	taskTitle: { color: colors.text, fontFamily: MONO, fontSize: 14 },
 	strike: { textDecorationLine: "line-through", flex: 1 },

@@ -214,6 +214,25 @@
 	line-height: 1;
 }
 
+/* Spinner shown in the checkbox while a toggle is in flight. Inherits the
+   checkbox's (priority) color via currentColor. */
+.task-spin {
+	display: inline-block;
+	width: 0.9em;
+	height: 0.9em;
+	border: 2px solid currentColor;
+	border-top-color: transparent;
+	border-radius: 50%;
+	animation: task-spin 0.6s linear infinite;
+	vertical-align: middle;
+}
+
+@keyframes task-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
 .task-main {
 	flex: 1;
 	min-width: 0;
