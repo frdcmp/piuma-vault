@@ -242,6 +242,9 @@ export const useNotesLiveUpdates = (activeNoteId) => {
 			}
 
 			qc.invalidateQueries({ queryKey: ["notes", "list"] });
+			// The sidebar tree is driven by browse(path) queries — invalidate
+			// the whole browse family so create/rename/move/delete refresh it.
+			qc.invalidateQueries({ queryKey: ["notes", "browse"] });
 			// A delete/restore/purge anywhere changes the trash too.
 			qc.invalidateQueries({ queryKey: notesKeys.trash() });
 
@@ -275,6 +278,7 @@ export const useNotesLiveUpdates = (activeNoteId) => {
 					// Reconnected after a drop — events fired during the gap are
 					// gone, so refetch what the user is actually looking at.
 					qc.invalidateQueries({ queryKey: ["notes", "list"] });
+					qc.invalidateQueries({ queryKey: ["notes", "browse"] });
 					if (activeNoteId) {
 						qc.invalidateQueries({
 							queryKey: notesKeys.detail(activeNoteId),

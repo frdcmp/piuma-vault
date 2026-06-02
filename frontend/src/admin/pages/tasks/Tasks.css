@@ -1,0 +1,311 @@
+/* Tasks — pixel/terminal aesthetic, matching the Calendar + PiumaHome. */
+
+.tasks-page {
+	/* Pixel palette — kept local so the page is self-contained (the shared
+	   tokens are scoped to .notes-pixel-layout / .chat-root, not :root). */
+	--bg: #0e0f12;
+	--bg-soft: #15171c;
+	--panel: #1b1e25;
+	--border: #2a2f3a;
+	--border-strong: #3a4150;
+	--text: #d6dbe5;
+	--muted: #8a93a3;
+	--accent: #f7c948;
+	--accent-2: #5cd0a9;
+	--accent-3: #ff6b6b;
+	--accent-4: #6cb6ff;
+
+	min-height: 100vh;
+	background: var(--bg);
+	color: var(--text);
+	padding: 16px clamp(12px, 4vw, 40px);
+	font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+.tasks-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	flex-wrap: wrap;
+	margin-bottom: 16px;
+}
+
+.tasks-title {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.tasks-title h1 {
+	margin: 0;
+	font-size: 1.25rem;
+	letter-spacing: 0.04em;
+}
+
+.tasks-glyph {
+	color: var(--accent-2);
+	font-size: 1.4rem;
+}
+
+.tasks-actions {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.tasks-cols {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+	gap: 16px;
+}
+
+.tasks-panel {
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--panel);
+	padding: 12px;
+}
+
+.tasks-panel-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.tasks-panel-title {
+	margin: 0 0 8px;
+	font-size: 0.8rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--muted);
+}
+
+.tasks-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.task-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: var(--bg-soft);
+}
+
+.task-row.is-done,
+.task-row.is-paused {
+	opacity: 0.55;
+}
+
+.task-check {
+	background: none;
+	border: none;
+	color: var(--accent-2);
+	font-size: 1rem;
+	cursor: pointer;
+	padding: 0;
+	line-height: 1;
+}
+
+.task-main {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	background: none;
+	border: none;
+	text-align: left;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+
+.task-title {
+	color: var(--text);
+	font-size: 0.85rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.task-row.is-done .task-title {
+	text-decoration: line-through;
+}
+
+.task-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	font-size: 0.68rem;
+	color: var(--muted);
+	align-items: center;
+}
+
+.task-due {
+	color: var(--accent);
+}
+
+.task-rrule {
+	color: var(--accent-4);
+	font-size: 0.64rem;
+}
+
+.task-tag {
+	color: var(--accent-2);
+}
+
+.task-prio {
+	padding: 0 4px;
+	border-radius: 3px;
+	font-size: 0.62rem;
+	text-transform: uppercase;
+}
+
+.prio-1 {
+	color: var(--accent-2);
+}
+.prio-2 {
+	color: var(--accent);
+}
+.prio-3 {
+	color: var(--accent-3);
+}
+
+.task-del {
+	background: none;
+	border: none;
+	color: var(--muted);
+	cursor: pointer;
+	font-size: 0.8rem;
+	padding: 2px 4px;
+}
+
+.task-del:hover {
+	color: var(--accent-3);
+}
+
+.tasks-empty {
+	color: var(--muted);
+	font-size: 0.78rem;
+	padding: 8px;
+	font-style: italic;
+}
+
+.tasks-done {
+	margin-top: 10px;
+}
+
+.tasks-done summary {
+	cursor: pointer;
+	color: var(--muted);
+	font-size: 0.74rem;
+	margin-bottom: 6px;
+}
+
+/* Forms (shared by both modals) — rendered through a portal (outside
+   .tasks-page), so they redeclare the palette tokens to stay themed. */
+.tasks-form {
+	--bg: #0e0f12;
+	--bg-soft: #15171c;
+	--panel: #1b1e25;
+	--border: #2a2f3a;
+	--text: #d6dbe5;
+	--muted: #8a93a3;
+	--accent: #f7c948;
+	--accent-2: #5cd0a9;
+	--accent-3: #ff6b6b;
+	--accent-4: #6cb6ff;
+
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.tasks-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 0.8rem;
+	color: var(--muted);
+}
+
+.tasks-field--inline {
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+}
+
+.tasks-field input,
+.tasks-field textarea,
+.tasks-field select {
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	color: var(--text);
+	padding: 6px 8px;
+	font: inherit;
+	/* Render native controls (date/time popup + spinners) in dark mode. */
+	color-scheme: dark;
+}
+
+/* Tint the native calendar/clock indicator so it's visible on the dark field. */
+.tasks-field input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.tasks-field input[type="date"]::-webkit-calendar-picker-indicator {
+	filter: invert(85%) sepia(40%) saturate(600%) hue-rotate(350deg);
+	cursor: pointer;
+}
+
+.tasks-field input:focus,
+.tasks-field textarea:focus,
+.tasks-field select:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+
+.dow-picker {
+	display: flex;
+	gap: 4px;
+}
+
+.dow-btn {
+	width: 30px;
+	height: 30px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: var(--bg);
+	color: var(--muted);
+	cursor: pointer;
+	font: inherit;
+}
+
+.dow-btn.is-on {
+	background: var(--accent-2);
+	color: #000;
+	border-color: var(--accent-2);
+}
+
+.tasks-hint {
+	font-size: 0.72rem;
+	color: var(--muted);
+	margin: 0;
+}
+
+.tasks-hint code {
+	color: var(--accent-4);
+}
+
+.tasks-error {
+	color: var(--accent-3);
+	font-size: 0.78rem;
+	margin: 0;
+}

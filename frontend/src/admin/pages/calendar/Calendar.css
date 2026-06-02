@@ -1,0 +1,251 @@
+/* Calendar — pixel/terminal aesthetic, matching PiumaHome / StorageExplorer. */
+
+.cal-page {
+	/* Pixel palette — kept local so the page is self-contained (the shared
+	   tokens are scoped to .notes-pixel-layout / .chat-root, not :root). */
+	--bg: #0e0f12;
+	--bg-soft: #15171c;
+	--panel: #1b1e25;
+	--border: #2a2f3a;
+	--border-strong: #3a4150;
+	--text: #d6dbe5;
+	--muted: #8a93a3;
+	--accent: #f7c948;
+	--accent-2: #5cd0a9;
+	--accent-3: #ff6b6b;
+	--accent-4: #6cb6ff;
+
+	min-height: 100vh;
+	background: var(--bg);
+	color: var(--text);
+	padding: 16px clamp(12px, 4vw, 40px);
+	font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+.cal-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	flex-wrap: wrap;
+	margin-bottom: 16px;
+}
+
+.cal-title {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.cal-title h1 {
+	margin: 0;
+	font-size: 1.25rem;
+	letter-spacing: 0.04em;
+	color: var(--text);
+}
+
+.cal-glyph {
+	color: var(--accent);
+	font-size: 1.4rem;
+}
+
+.cal-nav {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+/* Grid */
+.cal-grid {
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	overflow: hidden;
+	background: var(--panel);
+}
+
+.cal-weekdays,
+.cal-week {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+}
+
+.cal-weekday {
+	padding: 6px 8px;
+	font-size: 0.7rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--muted);
+	background: var(--bg-soft);
+	border-bottom: 1px solid var(--border);
+	text-align: left;
+}
+
+.cal-cell {
+	min-height: 96px;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 3px;
+	padding: 4px;
+	border-right: 1px solid var(--border);
+	border-bottom: 1px solid var(--border);
+	background: transparent;
+	text-align: left;
+	cursor: pointer;
+	color: inherit;
+	font: inherit;
+}
+
+.cal-cell:hover {
+	background: var(--bg-soft);
+}
+
+.cal-cell.is-other {
+	background: rgba(0, 0, 0, 0.18);
+	color: var(--muted);
+}
+
+.cal-cell.is-today .cal-daynum {
+	background: var(--accent);
+	color: #000;
+	border-radius: 4px;
+	padding: 0 5px;
+}
+
+.cal-daynum {
+	font-size: 0.72rem;
+	color: var(--muted);
+	align-self: flex-start;
+}
+
+/* Pills */
+.cal-pill {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	width: 100%;
+	border: none;
+	border-left: 3px solid var(--accent-4);
+	background: var(--bg-soft);
+	color: var(--text);
+	font: inherit;
+	font-size: 0.68rem;
+	padding: 2px 5px;
+	border-radius: 3px;
+	cursor: pointer;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.cal-pill:hover {
+	filter: brightness(1.25);
+}
+
+.cal-pill--event {
+	border-left-color: var(--accent-4);
+}
+
+.cal-pill--task {
+	border-left-color: var(--accent-2);
+}
+
+.cal-pill.is-done {
+	opacity: 0.55;
+}
+
+.cal-pill-time {
+	color: var(--muted);
+	font-size: 0.62rem;
+}
+
+.cal-pill-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.cal-pill.is-done .cal-pill-label {
+	text-decoration: line-through;
+}
+
+.cal-check {
+	color: var(--accent-2);
+}
+
+/* Event modal form — rendered through a portal (outside .cal-page), so it
+   redeclares the palette tokens to stay themed. */
+.cal-form {
+	--bg: #0e0f12;
+	--bg-soft: #15171c;
+	--panel: #1b1e25;
+	--border: #2a2f3a;
+	--text: #d6dbe5;
+	--muted: #8a93a3;
+	--accent: #f7c948;
+	--accent-3: #ff6b6b;
+
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.cal-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 0.8rem;
+	color: var(--muted);
+}
+
+.cal-field--inline {
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+}
+
+.cal-field input,
+.cal-field textarea {
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	color: var(--text);
+	padding: 6px 8px;
+	font: inherit;
+	/* Render native controls (date/time popup + spinners) in dark mode. */
+	color-scheme: dark;
+}
+
+/* The native calendar/clock indicator icon — tint it to the accent so it's
+   visible on the dark field instead of rendering near-black. */
+.cal-field input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.cal-field input[type="date"]::-webkit-calendar-picker-indicator {
+	filter: invert(85%) sepia(40%) saturate(600%) hue-rotate(350deg);
+	cursor: pointer;
+}
+
+.cal-field input[type="color"] {
+	padding: 2px;
+	height: 32px;
+	width: 56px;
+}
+
+.cal-field input:focus,
+.cal-field textarea:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+
+.cal-error {
+	color: var(--accent-3);
+	font-size: 0.78rem;
+	margin: 0;
+}
+
+@media (max-width: 640px) {
+	.cal-cell {
+		min-height: 72px;
+	}
+	.cal-pill-label {
+		display: none;
+	}
+}

@@ -1,0 +1,202 @@
+/* PvDateTimePicker — themed date/time selector. Inherits the pixel palette
+   tokens from its host (modals declare them; falls back to literals if absent). */
+
+.fdt {
+	position: relative;
+	width: 100%;
+	font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+.fdt-field {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	width: 100%;
+	background: var(--bg, #0e0f12);
+	border: 1px solid var(--border, #2a2f3a);
+	border-radius: 4px;
+	color: var(--text, #d6dbe5);
+	padding: 6px 8px;
+	font: inherit;
+	cursor: pointer;
+	text-align: left;
+}
+
+.fdt-field:hover {
+	border-color: var(--border-strong, #3a4150);
+}
+
+.fdt-field.is-empty .fdt-value {
+	color: var(--muted, #8a93a3);
+}
+
+.fdt-glyph {
+	color: var(--accent, #f7c948);
+	flex-shrink: 0;
+}
+
+/* Popover */
+.fdt-pop {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 0;
+	z-index: 50;
+	display: flex;
+	gap: 10px;
+	background: var(--panel, #1b1e25);
+	border: 1px solid var(--border-strong, #3a4150);
+	border-radius: 6px;
+	padding: 10px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	flex-wrap: wrap;
+}
+
+/* Calendar */
+.fdt-cal {
+	min-width: 224px;
+}
+
+.fdt-cal-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 6px;
+}
+
+.fdt-month {
+	font-size: 0.82rem;
+	color: var(--text, #d6dbe5);
+	letter-spacing: 0.03em;
+}
+
+.fdt-nav {
+	background: none;
+	border: 1px solid var(--border, #2a2f3a);
+	border-radius: 4px;
+	color: var(--text, #d6dbe5);
+	cursor: pointer;
+	width: 26px;
+	height: 26px;
+	font: inherit;
+}
+
+.fdt-nav:hover {
+	border-color: var(--accent, #f7c948);
+	color: var(--accent, #f7c948);
+}
+
+.fdt-weekdays,
+.fdt-row {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+}
+
+.fdt-weekday {
+	text-align: center;
+	font-size: 0.62rem;
+	color: var(--muted, #8a93a3);
+	padding: 2px 0;
+}
+
+.fdt-day {
+	aspect-ratio: 1;
+	background: none;
+	border: none;
+	border-radius: 4px;
+	color: var(--text, #d6dbe5);
+	cursor: pointer;
+	font: inherit;
+	font-size: 0.74rem;
+}
+
+.fdt-day:hover {
+	background: var(--bg-soft, #15171c);
+}
+
+.fdt-day.is-other {
+	color: var(--muted, #8a93a3);
+	opacity: 0.5;
+}
+
+.fdt-day.is-today {
+	outline: 1px solid var(--accent-4, #6cb6ff);
+	outline-offset: -1px;
+}
+
+.fdt-day.is-sel {
+	background: var(--accent, #f7c948);
+	color: #000;
+}
+
+/* Time columns */
+.fdt-time {
+	display: flex;
+	align-items: stretch;
+	gap: 2px;
+}
+
+.fdt-time-sep {
+	align-self: center;
+	color: var(--muted, #8a93a3);
+}
+
+.fdt-timecol {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	max-height: 196px;
+	overflow-y: auto;
+	padding-right: 2px;
+	scrollbar-width: thin;
+}
+
+.fdt-time-item {
+	background: var(--bg, #0e0f12);
+	border: 1px solid var(--border, #2a2f3a);
+	border-radius: 4px;
+	color: var(--text, #d6dbe5);
+	cursor: pointer;
+	font: inherit;
+	font-size: 0.74rem;
+	padding: 4px 10px;
+}
+
+.fdt-time-item:hover {
+	border-color: var(--accent, #f7c948);
+}
+
+.fdt-time-item.is-on {
+	background: var(--accent, #f7c948);
+	color: #000;
+	border-color: var(--accent, #f7c948);
+}
+
+/* Footer */
+.fdt-foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	width: 100%;
+	border-top: 1px solid var(--border, #2a2f3a);
+	padding-top: 8px;
+}
+
+.fdt-action {
+	background: none;
+	border: none;
+	color: var(--accent-4, #6cb6ff);
+	cursor: pointer;
+	font: inherit;
+	font-size: 0.74rem;
+	padding: 2px 4px;
+}
+
+.fdt-action:hover {
+	text-decoration: underline;
+}
+
+.fdt-action--done {
+	color: var(--accent-2, #5cd0a9);
+}

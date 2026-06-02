@@ -134,8 +134,8 @@ export default function PiumaHome({ onBack, onOpenChat }) {
 				</button>
 				<button
 					type="button"
-					className="piuma-menu-item is-soon"
-					onClick={() => setComingSoon({ label: "Tasks & alarms", quip: 0 })}
+					className="piuma-menu-item"
+					onClick={() => navigate("/admin/tasks")}
 				>
 					<span className="piuma-menu-glyph" aria-hidden="true">
 						☑
@@ -144,8 +144,8 @@ export default function PiumaHome({ onBack, onOpenChat }) {
 				</button>
 				<button
 					type="button"
-					className="piuma-menu-item is-soon"
-					onClick={() => setComingSoon({ label: "Calendar", quip: 1 })}
+					className="piuma-menu-item"
+					onClick={() => navigate("/admin/calendar")}
 				>
 					<span className="piuma-menu-glyph" aria-hidden="true">
 						▤
