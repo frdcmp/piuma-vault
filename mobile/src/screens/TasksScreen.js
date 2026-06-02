@@ -19,8 +19,10 @@ import {
 	useRecurringTasks,
 	useTasks,
 	useToggleTask,
+	useUpdateTask,
 } from "../queries/tasksQuery";
 import { formatDate, timeAgo } from "../utils/dateTime";
+import { tagColor } from "../utils/tagColor";
 import { colors, mono as MONO } from "../utils/theme";
 
 const PRIORITY = ["none", "low", "med", "high"];
@@ -46,15 +48,37 @@ export default function TasksScreen({ navigation }) {
 	const { data: tasks = [] } = useTasks();
 	const { data: recurring = [] } = useRecurringTasks();
 	const toggleTask = useToggleTask();
-	const deleteTask = useDeleteTask();
 	const deleteRecurring = useDeleteRecurringTask();
 
-	const [taskSheet, setTaskSheet] = useState(false);
+	const [taskSheet, setTaskSheet] = useState(null); // { task } | {} | null
 	const [recSheet, setRecSheet] = useState(false);
+	const [selectedTag, setSelectedTag] = useState(null); // tag string | null (= all)
+	const [showRecurring, setShowRecurring] = useState(false); // chip-row view toggle
+	const [tagQuery, setTagQuery] = useState(""); // filters the tag chips
 
 	const oneOff = tasks.filter((t) => !t.recurrence_id);
-	const pending = oneOff.filter((t) => !t.done);
-	const done = oneOff.filter((t) => t.done);
+
+	// Tags-as-groups: tally every tag in use across one-off tasks.
+	const tagCounts = new Map();
+	for (const t of oneOff) {
+		for (const tag of t.tags || []) {
+			tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+		}
+	}
+	const tagList = [...tagCounts.entries()]
+		.map(([tag, count]) => ({ tag, count }))
+		.sort((a, b) => a.tag.localeCompare(b.tag));
+	const q = tagQuery.trim().toLowerCase();
+	const shownTags = q ? tagList.filter(({ tag }) => tag.includes(q)) : tagList;
+
+	// A removed/emptied tag may still be selected — fall back to "all".
+	const activeTag =
+		selectedTag && tagCounts.has(selectedTag) ? selectedTag : null;
+	const visible = activeTag
+		? oneOff.filter((t) => t.tags?.includes(activeTag))
+		: oneOff;
+	const pending = visible.filter((t) => !t.done);
+	const done = visible.filter((t) => t.done);
 
 	return (
 		<View style={[s.root, { paddingTop: insets.top }]}>
@@ -63,165 +87,319 @@ export default function TasksScreen({ navigation }) {
 					<Ionicons name="chevron-back" size={22} color={colors.text} />
 				</Pressable>
 				<Text style={s.title}>☑ Tasks</Text>
-				<Pressable onPress={() => setTaskSheet(true)} hitSlop={10}>
+				<Pressable onPress={() => setTaskSheet({})} hitSlop={10}>
 					<Ionicons name="add" size={24} color={colors.accent} />
 				</Pressable>
 			</View>
 
-			<ScrollView contentContainerStyle={s.scroll}>
-				<Text style={s.section}>TO DO · {pending.length}</Text>
-				{pending.length === 0 ? (
-					<Text style={s.empty}>Nothing to do. Piuma approves.</Text>
-				) : null}
-				{pending.map((t) => (
-					<View key={t.id} style={s.taskRow}>
-						<Pressable onPress={() => toggleTask.mutate(t.id)} hitSlop={8}>
-							<Text style={s.check}>☐</Text>
+			<View style={s.chipBar}>
+				<View style={s.tagSearchRow}>
+					<Ionicons name="search" size={14} color={colors.muted} />
+					<TextInput
+						style={s.tagSearch}
+						value={tagQuery}
+						onChangeText={setTagQuery}
+						placeholder="Filter tags"
+						placeholderTextColor={colors.muted}
+						autoCapitalize="none"
+						autoCorrect={false}
+					/>
+					{tagQuery ? (
+						<Pressable onPress={() => setTagQuery("")} hitSlop={8}>
+							<Ionicons name="close" size={14} color={colors.muted} />
 						</Pressable>
-						<View style={s.taskMain}>
-							<Text style={s.taskTitle}>{t.title}</Text>
-							<View style={s.metaRow}>
-								{t.priority ? (
-									<Text style={[s.meta, s.prio]}>{PRIORITY[t.priority]}</Text>
-								) : null}
-								{t.due_at ? (
-									<Text style={[s.meta, s.due]}>due {timeAgo(t.due_at)}</Text>
-								) : null}
-								{(t.tags || []).map((tag) => (
-									<Text key={tag} style={[s.meta, s.tag]}>
-										#{tag}
-									</Text>
-								))}
-							</View>
-						</View>
-						<Pressable onPress={() => deleteTask.mutate(t.id)} hitSlop={8}>
-							<Ionicons name="close" size={16} color={colors.muted} />
-						</Pressable>
-					</View>
-				))}
-
-				{done.length > 0 ? (
-					<>
-						<Text style={s.section}>DONE · {done.length}</Text>
-						{done.map((t) => (
-							<View key={t.id} style={[s.taskRow, s.dim]}>
-								<Pressable onPress={() => toggleTask.mutate(t.id)} hitSlop={8}>
-									<Text style={s.check}>☑</Text>
-								</Pressable>
-								<Text style={[s.taskTitle, s.strike]}>{t.title}</Text>
-								<Pressable onPress={() => deleteTask.mutate(t.id)} hitSlop={8}>
-									<Ionicons name="close" size={16} color={colors.muted} />
-								</Pressable>
-							</View>
-						))}
-					</>
-				) : null}
-
-				<View style={s.recHead}>
-					<Text style={s.section}>RECURRING · {recurring.length}</Text>
-					<Pressable onPress={() => setRecSheet(true)} hitSlop={10}>
-						<Text style={s.addRec}>+ recurring</Text>
-					</Pressable>
+					) : null}
 				</View>
-				{recurring.length === 0 ? (
-					<Text style={s.empty}>No recurring tasks. Add a workout plan?</Text>
-				) : null}
-				{recurring.map((r) => (
-					<View key={r.id} style={[s.taskRow, !r.active && s.dim]}>
-						<Text style={s.check}>⟳</Text>
-						<View style={s.taskMain}>
-							<Text style={s.taskTitle}>{r.title}</Text>
-							<View style={s.metaRow}>
-								<Text style={[s.meta, s.rrule]}>{r.rrule}</Text>
-								<Text style={[s.meta, s.due]}>
-									from {formatDate(r.dtstart)}
-								</Text>
-								{!r.active ? <Text style={[s.meta, s.tag]}>paused</Text> : null}
-							</View>
-						</View>
-						<Pressable onPress={() => deleteRecurring.mutate(r.id)} hitSlop={8}>
-							<Ionicons name="close" size={16} color={colors.muted} />
+				<ScrollView
+					horizontal
+					showsHorizontalScrollIndicator={false}
+					keyboardShouldPersistTaps="handled"
+					contentContainerStyle={s.chipRow}
+				>
+					<Chip
+						label="all"
+						count={oneOff.length}
+						active={!showRecurring && activeTag === null}
+						onPress={() => {
+							setShowRecurring(false);
+							setSelectedTag(null);
+						}}
+					/>
+					{shownTags.map(({ tag, count }) => (
+						<Chip
+							key={tag}
+							label={`#${tag}`}
+							count={count}
+							color={tagColor(tag)}
+							active={!showRecurring && activeTag === tag}
+							onPress={() => {
+								setShowRecurring(false);
+								setSelectedTag(tag);
+							}}
+						/>
+					))}
+					<Chip
+						label="⟳ recurring"
+						count={recurring.length}
+						active={showRecurring}
+						onPress={() => setShowRecurring(true)}
+					/>
+				</ScrollView>
+			</View>
+
+			{showRecurring ? (
+				<ScrollView contentContainerStyle={s.scroll}>
+					<View style={s.recHead}>
+						<Text style={s.section}>RECURRING · {recurring.length}</Text>
+						<Pressable onPress={() => setRecSheet(true)} hitSlop={10}>
+							<Text style={s.addRec}>+ recurring</Text>
 						</Pressable>
 					</View>
-				))}
-			</ScrollView>
+					{recurring.length === 0 ? (
+						<Text style={s.empty}>No recurring tasks. Add a workout plan?</Text>
+					) : null}
+					{recurring.map((r) => (
+						<View key={r.id} style={[s.taskRow, !r.active && s.dim]}>
+							<Text style={s.check}>⟳</Text>
+							<View style={s.taskMain}>
+								<Text style={s.taskTitle}>{r.title}</Text>
+								<View style={s.metaRow}>
+									<Text style={[s.meta, s.rrule]}>{r.rrule}</Text>
+									<Text style={[s.meta, s.due]}>
+										from {formatDate(r.dtstart)}
+									</Text>
+									{!r.active ? (
+										<Text style={[s.meta, s.tag]}>paused</Text>
+									) : null}
+								</View>
+							</View>
+							<Pressable
+								onPress={() => deleteRecurring.mutate(r.id)}
+								hitSlop={8}
+							>
+								<Ionicons name="close" size={16} color={colors.muted} />
+							</Pressable>
+						</View>
+					))}
+				</ScrollView>
+			) : (
+				<ScrollView contentContainerStyle={s.scroll}>
+					<Text style={s.section}>
+						{activeTag ? `#${activeTag} · ` : "TO DO · "}
+						{pending.length}
+					</Text>
+					{pending.length === 0 ? (
+						<Text style={s.empty}>Nothing to do. Piuma approves.</Text>
+					) : null}
+					{pending.map((t) => (
+						<View key={t.id} style={s.taskRow}>
+							<Pressable onPress={() => toggleTask.mutate(t.id)} hitSlop={8}>
+								<Text style={s.check}>☐</Text>
+							</Pressable>
+							<Pressable
+								style={s.taskMain}
+								onPress={() => setTaskSheet({ task: t })}
+							>
+								<Text style={s.taskTitle}>{t.title}</Text>
+								<View style={s.metaRow}>
+									{t.priority ? (
+										<Text style={[s.meta, s.prio]}>{PRIORITY[t.priority]}</Text>
+									) : null}
+									{t.due_at ? (
+										<Text style={[s.meta, s.due]}>due {timeAgo(t.due_at)}</Text>
+									) : null}
+									{(t.tags || []).map((tag) => (
+										<Text key={tag} style={[s.meta, { color: tagColor(tag) }]}>
+											#{tag}
+										</Text>
+									))}
+								</View>
+							</Pressable>
+						</View>
+					))}
 
-			{taskSheet ? <TaskSheet onClose={() => setTaskSheet(false)} /> : null}
+					{done.length > 0 ? (
+						<>
+							<Text style={s.section}>DONE · {done.length}</Text>
+							{done.map((t) => (
+								<View key={t.id} style={[s.taskRow, s.dim]}>
+									<Pressable
+										onPress={() => toggleTask.mutate(t.id)}
+										hitSlop={8}
+									>
+										<Text style={s.check}>☑</Text>
+									</Pressable>
+									<Pressable
+										style={s.taskMain}
+										onPress={() => setTaskSheet({ task: t })}
+									>
+										<Text style={[s.taskTitle, s.strike]}>{t.title}</Text>
+									</Pressable>
+								</View>
+							))}
+						</>
+					) : null}
+				</ScrollView>
+			)}
+
+			{taskSheet ? (
+				<TaskSheet task={taskSheet.task} onClose={() => setTaskSheet(null)} />
+			) : null}
 			{recSheet ? <RecurringSheet onClose={() => setRecSheet(false)} /> : null}
 		</View>
 	);
 }
 
+// ── Filter chip (tag group / recurring) ─────────────────────────────────────
+
+function Chip({ label, count, active, color, onPress }) {
+	return (
+		<Pressable
+			style={[s.chip, active && s.chipOn]}
+			onPress={onPress}
+			hitSlop={6}
+		>
+			<Text style={[s.chipText, active && s.chipTextOn, color && { color }]}>
+				{label}
+			</Text>
+			<Text style={[s.chipCount, active && s.chipTextOn]}>{count}</Text>
+		</Pressable>
+	);
+}
+
 // ── Create-task sheet ──────────────────────────────────────────────────────
 
-function TaskSheet({ onClose }) {
+function TaskSheet({ task, onClose }) {
+	const editing = !!task;
 	const createTask = useCreateTask();
-	const [title, setTitle] = useState("");
-	const [dueAt, setDueAt] = useState(null);
-	const [priority, setPriority] = useState(0);
-	const [tags, setTags] = useState("");
+	const updateTask = useUpdateTask();
+	const deleteTask = useDeleteTask();
+	const [title, setTitle] = useState(task?.title ?? "");
+	const [dueAt, setDueAt] = useState(task?.due_at ?? null);
+	const [priority, setPriority] = useState(task?.priority ?? 0);
+	const [tags, setTags] = useState((task?.tags ?? []).join(", "));
 
 	const save = () => {
 		if (!title.trim()) return;
-		createTask.mutate(
-			{
-				title: title.trim(),
-				due_at: dueAt || null,
-				priority,
-				tags: tags
-					.split(",")
-					.map((x) => x.trim().toLowerCase())
-					.filter(Boolean),
-			},
-			{ onSuccess: onClose },
-		);
+		const payload = {
+			title: title.trim(),
+			due_at: dueAt || null,
+			priority,
+			tags: tags
+				.split(",")
+				.map((x) => x.trim().toLowerCase())
+				.filter(Boolean),
+		};
+		if (editing) {
+			updateTask.mutate({ id: task.id, ...payload }, { onSuccess: onClose });
+		} else {
+			createTask.mutate(payload, { onSuccess: onClose });
+		}
 	};
 
+	const remove = () => deleteTask.mutate(task.id, { onSuccess: onClose });
+
+	// "details" swaps the sheet body in place rather than stacking a second
+	// modal — DateTimePickerField already opens its own sheet, and RN can't
+	// reliably nest three modals deep (see BottomSheet.js).
+	const [panel, setPanel] = useState("main");
+
+	const tagCount = tags
+		.split(",")
+		.map((x) => x.trim())
+		.filter(Boolean).length;
+	const detailSummary =
+		[
+			dueAt ? "due set" : null,
+			priority ? PRIORITY[priority] : null,
+			tagCount ? `${tagCount} tag${tagCount > 1 ? "s" : ""}` : null,
+		]
+			.filter(Boolean)
+			.join(" · ") || "due, priority, tags";
+
 	return (
-		<BottomSheet visible onClose={onClose} title="New task">
-			<View style={s.form}>
-				<Text style={s.label}>Title</Text>
-				<TextInput
-					style={s.input}
-					value={title}
-					onChangeText={setTitle}
-					placeholder="What needs doing?"
-					placeholderTextColor={colors.muted}
-				/>
-				<Text style={s.label}>Due</Text>
-				<DateTimePickerField
-					value={dueAt}
-					onChange={setDueAt}
-					mode="datetime"
-					placeholder="No due date"
-				/>
-				<Text style={s.label}>Priority</Text>
-				<View style={s.prioRow}>
-					{PRIORITY.map((p, i) => (
-						<Pressable
-							key={p}
-							style={[s.prioBtn, priority === i && s.prioBtnOn]}
-							onPress={() => setPriority(i)}
-						>
-							<Text style={[s.prioBtnText, priority === i && s.prioBtnTextOn]}>
-								{p}
-							</Text>
+		<BottomSheet
+			visible
+			onClose={onClose}
+			title={
+				panel === "details"
+					? "Task details"
+					: editing
+						? "Edit task"
+						: "New task"
+			}
+		>
+			{panel === "main" ? (
+				<View style={s.form}>
+					<Text style={s.label}>Task</Text>
+					<TextInput
+						style={[s.input, s.titleInput]}
+						value={title}
+						onChangeText={setTitle}
+						placeholder="What needs doing?"
+						placeholderTextColor={colors.muted}
+						multiline
+						textAlignVertical="top"
+					/>
+					<Pressable style={s.detailsBtn} onPress={() => setPanel("details")}>
+						<Ionicons name="options-outline" size={16} color={colors.text} />
+						<Text style={s.detailsBtnText} numberOfLines={1}>
+							{detailSummary}
+						</Text>
+						<Ionicons name="chevron-forward" size={16} color={colors.muted} />
+					</Pressable>
+					<Pressable style={s.saveBtn} onPress={save}>
+						<Text style={s.saveBtnText}>Save</Text>
+					</Pressable>
+					{editing ? (
+						<Pressable style={s.deleteBtn} onPress={remove}>
+							<Text style={s.deleteBtnText}>Delete task</Text>
 						</Pressable>
-					))}
+					) : null}
 				</View>
-				<Text style={s.label}>Tags</Text>
-				<TextInput
-					style={s.input}
-					value={tags}
-					onChangeText={setTags}
-					placeholder="fitness, admin"
-					placeholderTextColor={colors.muted}
-					autoCapitalize="none"
-				/>
-				<Pressable style={s.saveBtn} onPress={save}>
-					<Text style={s.saveBtnText}>Save</Text>
-				</Pressable>
-			</View>
+			) : (
+				<View style={s.form}>
+					<Pressable style={s.backRow} onPress={() => setPanel("main")}>
+						<Ionicons name="chevron-back" size={16} color={colors.accent2} />
+						<Text style={s.backText}>Back to task</Text>
+					</Pressable>
+					<Text style={s.label}>Due</Text>
+					<DateTimePickerField
+						value={dueAt}
+						onChange={setDueAt}
+						mode="datetime"
+						placeholder="No due date"
+					/>
+					<Text style={s.label}>Priority</Text>
+					<View style={s.prioRow}>
+						{PRIORITY.map((p, i) => (
+							<Pressable
+								key={p}
+								style={[s.prioBtn, priority === i && s.prioBtnOn]}
+								onPress={() => setPriority(i)}
+							>
+								<Text
+									style={[s.prioBtnText, priority === i && s.prioBtnTextOn]}
+								>
+									{p}
+								</Text>
+							</Pressable>
+						))}
+					</View>
+					<Text style={s.label}>Tags</Text>
+					<TextInput
+						style={s.input}
+						value={tags}
+						onChangeText={setTags}
+						placeholder="fitness, admin"
+						placeholderTextColor={colors.muted}
+						autoCapitalize="none"
+					/>
+					<Pressable style={s.saveBtn} onPress={() => setPanel("main")}>
+						<Text style={s.saveBtnText}>Done</Text>
+					</Pressable>
+				</View>
+			)}
 		</BottomSheet>
 	);
 }
@@ -345,6 +523,48 @@ const s = StyleSheet.create({
 		fontWeight: "700",
 		letterSpacing: 1,
 	},
+	chipBar: {
+		borderBottomWidth: 1,
+		borderBottomColor: colors.border,
+	},
+	tagSearchRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		marginHorizontal: 16,
+		marginTop: 10,
+		paddingHorizontal: 10,
+		borderWidth: 1,
+		borderColor: colors.border,
+		backgroundColor: colors.bgSoft,
+	},
+	tagSearch: {
+		flex: 1,
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 13,
+		paddingVertical: 7,
+	},
+	chipRow: {
+		flexDirection: "row",
+		gap: 6,
+		paddingHorizontal: 16,
+		paddingVertical: 10,
+	},
+	chip: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		borderWidth: 1,
+		borderColor: colors.border,
+		backgroundColor: colors.bgSoft,
+		paddingHorizontal: 10,
+		paddingVertical: 6,
+	},
+	chipOn: { borderColor: colors.accent2, backgroundColor: colors.bg },
+	chipText: { color: colors.text, fontFamily: MONO, fontSize: 12 },
+	chipTextOn: { color: colors.accent2 },
+	chipCount: { color: colors.muted, fontFamily: MONO, fontSize: 11 },
 	scroll: { padding: 16, paddingBottom: 48 },
 	section: {
 		color: colors.muted,
@@ -420,6 +640,43 @@ const s = StyleSheet.create({
 		paddingVertical: 9,
 		fontSize: 14,
 	},
+	titleInput: {
+		minHeight: 150,
+		fontSize: 16,
+		lineHeight: 24,
+		paddingTop: 12,
+	},
+	detailsBtn: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
+		borderWidth: 1,
+		borderColor: colors.border,
+		backgroundColor: colors.bgSoft,
+		paddingHorizontal: 10,
+		paddingVertical: 11,
+		marginTop: 4,
+	},
+	detailsBtnText: {
+		flex: 1,
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 13,
+	},
+	backRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 4,
+		paddingVertical: 4,
+		marginBottom: 4,
+	},
+	backText: {
+		color: colors.accent2,
+		fontFamily: MONO,
+		fontSize: 13,
+		fontWeight: "700",
+		letterSpacing: 0.5,
+	},
 	prioRow: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
 	prioBtn: {
 		borderWidth: 1,
@@ -471,6 +728,21 @@ const s = StyleSheet.create({
 		fontWeight: "700",
 		fontSize: 14,
 		letterSpacing: 1.5,
+		textTransform: "uppercase",
+	},
+	deleteBtn: {
+		borderWidth: 1,
+		borderColor: colors.accent3,
+		paddingVertical: 10,
+		alignItems: "center",
+		marginTop: 10,
+	},
+	deleteBtnText: {
+		color: colors.accent3,
+		fontFamily: MONO,
+		fontWeight: "700",
+		fontSize: 13,
+		letterSpacing: 1,
 		textTransform: "uppercase",
 	},
 });
