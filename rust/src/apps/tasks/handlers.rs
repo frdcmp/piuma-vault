@@ -12,13 +12,22 @@ use super::models::{
 };
 
 const TASK_FIELDS: &str = "id, user_id, title, notes, done, completed_at, due_at, priority, \
-     tags, sort_order, recurrence_id, occurrence_date, created_at, updated_at";
+     tags, sort_order, recurrence_id, occurrence_date, alerts, created_at, updated_at";
 
 const RECURRING_FIELDS: &str = "id, user_id, title, notes, priority, tags, rrule, dtstart, \
-     until, active, created_at, updated_at";
+     until, active, alerts, created_at, updated_at";
 
 fn err(msg: impl Into<String>) -> TasksApiError {
     TasksApiError { error: msg.into() }
+}
+
+// Best-effort (re)materialization of a source's alert schedule.
+async fn reschedule(pool: &DbPool, source_type: &str, source_id: Uuid) {
+    if let Err(e) =
+        crate::apps::notifications::schedule::reschedule_source(pool, source_type, source_id).await
+    {
+        log::error!("tasks reschedule failed for {source_type} {source_id}: {e}");
+    }
 }
 
 fn require_read(user: &AuthenticatedUser) -> Option<HttpResponse> {
@@ -129,8 +138,8 @@ pub async fn create_task(
     }
 
     let sql = format!(
-        "INSERT INTO db_tasks (user_id, title, notes, due_at, priority, tags) \
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING {TASK_FIELDS}"
+        "INSERT INTO db_tasks (user_id, title, notes, due_at, priority, tags, alerts) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {TASK_FIELDS}"
     );
     match sqlx::query_as::<_, Task>(&sql)
         .bind(&user.user_id)
@@ -139,10 +148,14 @@ pub async fn create_task(
         .bind(body.due_at)
         .bind(body.priority)
         .bind(&body.tags)
+        .bind(&body.alerts)
         .fetch_one(pool.get_ref())
         .await
     {
-        Ok(task) => HttpResponse::Created().json(task),
+        Ok(task) => {
+            reschedule(pool.get_ref(), "task", task.id).await;
+            HttpResponse::Created().json(task)
+        }
         Err(e) => {
             log::error!("tasks create failed: {e}");
             HttpResponse::BadRequest().json(err("Failed to create task"))
@@ -207,6 +220,7 @@ pub async fn update_task(
             done = COALESCE($11, done), \
             completed_at = CASE WHEN $11 IS NULL THEN completed_at \
                                 WHEN $11 THEN NOW() ELSE NULL END, \
+            alerts = COALESCE($12, alerts), \
             updated_at = NOW() \
          WHERE id = $1 AND user_id = $2 RETURNING {TASK_FIELDS}"
     );
@@ -232,10 +246,14 @@ pub async fn update_task(
         .bind(&body.tags)
         .bind(body.sort_order)
         .bind(body.done)
+        .bind(&body.alerts)
         .fetch_optional(pool.get_ref())
         .await
     {
-        Ok(Some(task)) => HttpResponse::Ok().json(task),
+        Ok(Some(task)) => {
+            reschedule(pool.get_ref(), "task", task.id).await;
+            HttpResponse::Ok().json(task)
+        }
         Ok(None) => HttpResponse::NotFound().json(err("Task not found")),
         Err(e) => {
             log::error!("tasks update failed: {e}");
@@ -269,7 +287,20 @@ pub async fn toggle_task(
         .fetch_optional(pool.get_ref())
         .await
     {
-        Ok(Some(task)) => HttpResponse::Ok().json(task),
+        Ok(Some(task)) => {
+            // Completed tasks suppress pending alerts; un-completing restores them.
+            if task.done {
+                let _ = crate::apps::notifications::schedule::purge_source(
+                    pool.get_ref(),
+                    "task",
+                    task.id,
+                )
+                .await;
+            } else {
+                reschedule(pool.get_ref(), "task", task.id).await;
+            }
+            HttpResponse::Ok().json(task)
+        }
         Ok(None) => HttpResponse::NotFound().json(err("Task not found")),
         Err(e) => {
             log::error!("tasks toggle failed: {e}");
@@ -296,7 +327,11 @@ pub async fn delete_task(
         .await
     {
         Ok(res) if res.rows_affected() == 0 => HttpResponse::NotFound().json(err("Task not found")),
-        Ok(_) => HttpResponse::NoContent().finish(),
+        Ok(_) => {
+            let _ =
+                crate::apps::notifications::schedule::purge_source(pool.get_ref(), "task", id).await;
+            HttpResponse::NoContent().finish()
+        }
         Err(e) => {
             log::error!("tasks delete failed: {e}");
             HttpResponse::InternalServerError().json(err("Failed to delete task"))
@@ -347,8 +382,8 @@ pub async fn create_recurring(
     }
 
     let sql = format!(
-        "INSERT INTO db_recurring_tasks (user_id, title, notes, priority, tags, rrule, dtstart, until) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING {RECURRING_FIELDS}"
+        "INSERT INTO db_recurring_tasks (user_id, title, notes, priority, tags, rrule, dtstart, until, alerts) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING {RECURRING_FIELDS}"
     );
     match sqlx::query_as::<_, RecurringTask>(&sql)
         .bind(&user.user_id)
@@ -359,10 +394,14 @@ pub async fn create_recurring(
         .bind(&body.rrule)
         .bind(body.dtstart)
         .bind(body.until)
+        .bind(&body.alerts)
         .fetch_one(pool.get_ref())
         .await
     {
-        Ok(rt) => HttpResponse::Created().json(rt),
+        Ok(rt) => {
+            reschedule(pool.get_ref(), "recurring", rt.id).await;
+            HttpResponse::Created().json(rt)
+        }
         Err(e) => {
             log::error!("recurring create failed: {e}");
             HttpResponse::BadRequest().json(err("Failed to create recurring task"))
@@ -426,6 +465,7 @@ pub async fn update_recurring(
             dtstart = COALESCE($9, dtstart), \
             until = CASE WHEN $10 THEN $11 ELSE until END, \
             active = COALESCE($12, active), \
+            alerts = COALESCE($13, alerts), \
             updated_at = NOW() \
          WHERE id = $1 AND user_id = $2 RETURNING {RECURRING_FIELDS}"
     );
@@ -452,10 +492,21 @@ pub async fn update_recurring(
         .bind(set_until)
         .bind(until)
         .bind(body.active)
+        .bind(&body.alerts)
         .fetch_optional(pool.get_ref())
         .await
     {
-        Ok(Some(rt)) => HttpResponse::Ok().json(rt),
+        Ok(Some(rt)) => {
+            // Rebuild the rolling window from scratch (rrule/dtstart/active/alerts may have changed).
+            let _ = crate::apps::notifications::schedule::purge_source(
+                pool.get_ref(),
+                "recurring",
+                rt.id,
+            )
+            .await;
+            reschedule(pool.get_ref(), "recurring", rt.id).await;
+            HttpResponse::Ok().json(rt)
+        }
         Ok(None) => HttpResponse::NotFound().json(err("Recurring task not found")),
         Err(e) => {
             log::error!("recurring update failed: {e}");
@@ -485,7 +536,15 @@ pub async fn delete_recurring(
         Ok(res) if res.rows_affected() == 0 => {
             HttpResponse::NotFound().json(err("Recurring task not found"))
         }
-        Ok(_) => HttpResponse::NoContent().finish(),
+        Ok(_) => {
+            let _ = crate::apps::notifications::schedule::purge_source(
+                pool.get_ref(),
+                "recurring",
+                id,
+            )
+            .await;
+            HttpResponse::NoContent().finish()
+        }
         Err(e) => {
             log::error!("recurring delete failed: {e}");
             HttpResponse::InternalServerError().json(err("Failed to delete recurring task"))

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useCreateTask, useDeleteTask, useUpdateTask } from "../../../queries";
+import AlertsField from "../../components/AlertsField";
 import {
 	PvButton,
 	PvDateTimePicker,
@@ -18,6 +19,7 @@ export default function TaskModal({ task, onClose }) {
 	const [dueAt, setDueAt] = useState(task?.due_at ?? null);
 	const [priority, setPriority] = useState(task?.priority ?? 0);
 	const [tags, setTags] = useState((task?.tags ?? []).join(", "));
+	const [alerts, setAlerts] = useState(task?.alerts ?? []);
 	const [error, setError] = useState("");
 
 	const busy = createTask.isPending || updateTask.isPending;
@@ -37,6 +39,7 @@ export default function TaskModal({ task, onClose }) {
 			due_at: dueAt || null,
 			priority: Number(priority),
 			tags: tagList,
+			alerts,
 		};
 		const onDone = {
 			onSuccess: onClose,
@@ -102,6 +105,10 @@ export default function TaskModal({ task, onClose }) {
 						onChange={(e) => setNotes(e.target.value)}
 					/>
 				</label>
+				<div className="tasks-field">
+					<span>Alerts</span>
+					<AlertsField value={alerts} onChange={setAlerts} />
+				</div>
 				{error ? <p className="tasks-error">{error}</p> : null}
 				{isEdit ? (
 					<PvButton

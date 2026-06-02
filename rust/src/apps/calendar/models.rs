@@ -18,8 +18,15 @@ pub struct CalendarEvent {
     #[sqlx(default)]
     pub tags: Vec<String>,
     pub rrule: Option<String>,
+    // JSONB array of { offset_minutes, channels? } alert definitions.
+    #[serde(default = "default_alerts")]
+    pub alerts: serde_json::Value,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+pub fn default_alerts() -> serde_json::Value {
+    serde_json::Value::Array(Vec::new())
 }
 
 // ── Request DTOs ──
@@ -42,6 +49,8 @@ pub struct CreateEventRequest {
     pub tags: Vec<String>,
     #[serde(default)]
     pub rrule: Option<String>,
+    #[serde(default = "default_alerts")]
+    pub alerts: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,6 +64,7 @@ pub struct UpdateEventRequest {
     pub color: Option<String>,
     pub tags: Option<Vec<String>>,
     pub rrule: Option<Option<String>>,
+    pub alerts: Option<serde_json::Value>,
 }
 
 // Visible-range query. `from`/`to` are computed from the user's local view on

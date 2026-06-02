@@ -19,8 +19,14 @@ pub struct Task {
     pub sort_order: i32,
     pub recurrence_id: Option<uuid::Uuid>,
     pub occurrence_date: Option<NaiveDate>,
+    #[serde(default = "default_alerts")]
+    pub alerts: serde_json::Value,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+pub fn default_alerts() -> serde_json::Value {
+    serde_json::Value::Array(Vec::new())
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,6 +40,8 @@ pub struct CreateTaskRequest {
     pub priority: i16,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default = "default_alerts")]
+    pub alerts: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,6 +54,7 @@ pub struct UpdateTaskRequest {
     pub tags: Option<Vec<String>>,
     pub sort_order: Option<i32>,
     pub done: Option<bool>,
+    pub alerts: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,6 +80,8 @@ pub struct RecurringTask {
     pub dtstart: DateTime<Utc>,
     pub until: Option<DateTime<Utc>>,
     pub active: bool,
+    #[serde(default = "default_alerts")]
+    pub alerts: serde_json::Value,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -88,6 +99,8 @@ pub struct CreateRecurringTaskRequest {
     pub tags: Vec<String>,
     #[serde(default)]
     pub until: Option<DateTime<Utc>>,
+    #[serde(default = "default_alerts")]
+    pub alerts: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +113,7 @@ pub struct UpdateRecurringTaskRequest {
     pub dtstart: Option<DateTime<Utc>>,
     pub until: Option<Option<DateTime<Utc>>>,
     pub active: Option<bool>,
+    pub alerts: Option<serde_json::Value>,
 }
 
 // Body for the occurrence complete/uncomplete endpoint. `done` defaults to true

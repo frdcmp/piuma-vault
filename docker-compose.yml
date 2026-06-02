@@ -76,7 +76,33 @@ services:
       # If neither is set the dev keys at /app/src/keys/ are used as a fallback.
       - JWT_PRIVATE_KEY_PATH=${JWT_PRIVATE_KEY_PATH:-}
       - JWT_PUBLIC_KEY_PATH=${JWT_PUBLIC_KEY_PATH:-}
+      # Web Push (VAPID) — served to the browser + used by the /test endpoint.
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
+      - VAPID_PRIVATE_KEY_PATH=${VAPID_PRIVATE_KEY_PATH:-}
       # S3 object storage config lives in the DB (Services dashboard), not here.
+    networks:
+      - network
+
+  notification-worker:
+    container_name: ${COMPOSE_NAME}-notification-worker
+    build: ./rust
+    restart: unless-stopped
+    profiles: ["server-stack"]
+    command: ["cargo", "watch", "-x", "run --bin notification-worker"]
+    volumes:
+      - ./rust:/app
+    environment:
+      - RUST_LOG=${RUST_LOG}
+      - DB_HOST=${DB_HOST}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_PORT=${DB_PORT}
+      # Web Push (VAPID) — needed to sign and send pushes.
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
+      - VAPID_PRIVATE_KEY_PATH=${VAPID_PRIVATE_KEY_PATH:-}
     networks:
       - network
 

@@ -92,6 +92,7 @@ async fn main() -> io::Result<()> {
             .configure(apps::calendar::routes::configure_routes)
             .configure(apps::tasks::routes::configure_routes)
             .configure(apps::agenda::routes::configure_routes)
+            .configure(apps::notifications::routes::configure_routes)
             .configure(apps::shares::routes::configure_routes)
             .configure(apps::storage::routes::configure_routes)
             .configure(apps::storage_shares::routes::configure_routes)

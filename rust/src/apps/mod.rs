@@ -7,6 +7,7 @@ pub mod notes;
 pub mod calendar;
 pub mod tasks;
 pub mod agenda;
+pub mod notifications;
 pub mod shares;
 pub mod storage;
 pub mod storage_shares;

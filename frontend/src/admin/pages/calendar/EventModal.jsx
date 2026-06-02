@@ -5,6 +5,7 @@ import {
 	useDeleteEvent,
 	useUpdateEvent,
 } from "../../../queries";
+import AlertsField from "../../components/AlertsField";
 import {
 	PvButton,
 	PvDateTimePicker,
@@ -35,6 +36,7 @@ export default function EventModal({ event, initialDate, onClose }) {
 	const [location, setLocation] = useState(event?.location ?? "");
 	const [color, setColor] = useState(event?.color ?? "#6cb6ff");
 	const [description, setDescription] = useState(event?.description ?? "");
+	const [alerts, setAlerts] = useState(event?.alerts ?? []);
 	const [error, setError] = useState("");
 
 	const busy =
@@ -53,6 +55,7 @@ export default function EventModal({ event, initialDate, onClose }) {
 			location: location.trim() || null,
 			color,
 			description: description.trim() || null,
+			alerts,
 		};
 		const onDone = {
 			onSuccess: onClose,
@@ -144,6 +147,11 @@ export default function EventModal({ event, initialDate, onClose }) {
 						placeholder="Optional"
 					/>
 				</label>
+
+				<div className="cal-field">
+					<span>Alerts</span>
+					<AlertsField value={alerts} onChange={setAlerts} />
+				</div>
 
 				{error ? <p className="cal-error">{error}</p> : null}
 

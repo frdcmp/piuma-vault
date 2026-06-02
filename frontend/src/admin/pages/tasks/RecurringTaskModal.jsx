@@ -6,6 +6,7 @@ import {
 	useUpdateRecurringTask,
 } from "../../../queries";
 import { parseRrule } from "../../../utils/recurrence";
+import AlertsField from "../../components/AlertsField";
 import {
 	PvButton,
 	PvDateTimePicker,
@@ -60,6 +61,7 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 	const [until, setUntil] = useState(recurring?.until ?? null);
 	const [active, setActive] = useState(recurring?.active ?? true);
 	const [tags, setTags] = useState((recurring?.tags ?? []).join(", "));
+	const [alerts, setAlerts] = useState(recurring?.alerts ?? []);
 	const [error, setError] = useState("");
 
 	const busy = create.isPending || update.isPending;
@@ -89,6 +91,7 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 				.split(",")
 				.map((s) => s.trim().toLowerCase())
 				.filter(Boolean),
+			alerts,
 		};
 		const onDone = {
 			onSuccess: onClose,
@@ -193,6 +196,11 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 					/>
 					<span>Active</span>
 				</label>
+
+				<div className="tasks-field">
+					<span>Alerts</span>
+					<AlertsField value={alerts} onChange={setAlerts} />
+				</div>
 
 				<p className="tasks-hint">
 					rule: <code>{buildRrule(freq, Number(interval), byday)}</code>
