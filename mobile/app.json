@@ -16,6 +16,7 @@
     },
     "android": {
       "package": "com.pv.vault",
+      "googleServicesFile": "./google-services.json",
       "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#5cd0a9",

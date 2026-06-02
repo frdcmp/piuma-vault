@@ -1,7 +1,7 @@
+import dayjs from "dayjs";
 import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
-import dayjs from "dayjs";
 import { Platform } from "react-native";
 import { expandRecurrence } from "./recurrence";
 
@@ -49,8 +49,12 @@ export async function registerForPushNotifications() {
 		Constants?.easConfig?.projectId;
 	try {
 		const token = await Notifications.getExpoPushTokenAsync({ projectId });
+		console.log("[notifications] expo push token:", token.data);
 		return token.data;
-	} catch (_e) {
+	} catch (e) {
+		// Most common cause on Android: missing/invalid FCM config
+		// (google-services.json + FCM V1 key uploaded to Expo).
+		console.warn("[notifications] getExpoPushTokenAsync failed:", e?.message || e);
 		return null;
 	}
 }
