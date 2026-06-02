@@ -158,6 +158,9 @@ export const useNotesLiveUpdates = (activeNoteId) => {
 			}
 
 			qc.invalidateQueries({ queryKey: ["notes", "list"] });
+			// The folder tree is driven by browse(path) queries — invalidate the
+			// whole browse family so create/rename/move/delete refresh it.
+			qc.invalidateQueries({ queryKey: ["notes", "browse"] });
 
 			if (!payload?.id) return;
 
@@ -206,6 +209,7 @@ export const useNotesLiveUpdates = (activeNoteId) => {
 			es.addEventListener("open", () => {
 				if (attempts > 0) {
 					qc.invalidateQueries({ queryKey: ["notes", "list"] });
+					qc.invalidateQueries({ queryKey: ["notes", "browse"] });
 					if (activeNoteId) {
 						qc.invalidateQueries({
 							queryKey: notesKeys.detail(activeNoteId),

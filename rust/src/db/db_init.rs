@@ -290,6 +290,86 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_db_folder_shares_prefix ON db_folder_shares (prefix)",
         ],
     },
+    TableDefinition {
+        name: "db_calendar_events",
+        sql: r#"
+            CREATE TABLE db_calendar_events (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                location TEXT,
+                starts_at TIMESTAMPTZ NOT NULL,
+                ends_at TIMESTAMPTZ,
+                all_day BOOLEAN NOT NULL DEFAULT FALSE,
+                color TEXT,
+                tags TEXT[] DEFAULT '{}',
+                rrule TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_calendar_user ON db_calendar_events USING btree (user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_calendar_starts_at ON db_calendar_events USING btree (starts_at)",
+            "CREATE INDEX IF NOT EXISTS idx_calendar_user_range ON db_calendar_events USING btree (user_id, starts_at)",
+            "CREATE INDEX IF NOT EXISTS idx_calendar_tags ON db_calendar_events USING gin (tags)",
+        ],
+    },
+    // Recurring-task templates. Created before db_tasks because db_tasks.recurrence_id
+    // references this table.
+    TableDefinition {
+        name: "db_recurring_tasks",
+        sql: r#"
+            CREATE TABLE db_recurring_tasks (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                notes TEXT,
+                priority SMALLINT NOT NULL DEFAULT 0,
+                tags TEXT[] DEFAULT '{}',
+                rrule TEXT NOT NULL,
+                dtstart TIMESTAMPTZ NOT NULL,
+                until TIMESTAMPTZ,
+                active BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_recurring_tasks_user ON db_recurring_tasks USING btree (user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_recurring_tasks_user_active ON db_recurring_tasks USING btree (user_id, active)",
+            "CREATE INDEX IF NOT EXISTS idx_recurring_tasks_tags ON db_recurring_tasks USING gin (tags)",
+        ],
+    },
+    TableDefinition {
+        name: "db_tasks",
+        sql: r#"
+            CREATE TABLE db_tasks (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                notes TEXT,
+                done BOOLEAN NOT NULL DEFAULT FALSE,
+                completed_at TIMESTAMPTZ,
+                due_at TIMESTAMPTZ,
+                priority SMALLINT NOT NULL DEFAULT 0,
+                tags TEXT[] DEFAULT '{}',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                recurrence_id UUID REFERENCES db_recurring_tasks(id) ON DELETE CASCADE,
+                occurrence_date DATE,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE (recurrence_id, occurrence_date)
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_tasks_user ON db_tasks USING btree (user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_tasks_user_done ON db_tasks USING btree (user_id, done)",
+            "CREATE INDEX IF NOT EXISTS idx_tasks_due ON db_tasks USING btree (due_at)",
+            "CREATE INDEX IF NOT EXISTS idx_tasks_tags ON db_tasks USING gin (tags)",
+        ],
+    },
 ];
 
 pub async fn init_db(pool: &DbPool) -> Result<InitResult, sqlx::Error> {

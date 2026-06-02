@@ -56,18 +56,34 @@ const SCOPE_OPTIONS = [
 		description:
 			"Full access to Bunny storage: list, upload, download, and delete files and folders",
 	},
+	{
+		label: "Tasks",
+		value: "tasks.manage",
+		description:
+			"Full control of tasks & recurring tasks: list, create, update, complete, and delete",
+	},
+	{
+		label: "Calendar",
+		value: "calendar.manage",
+		description:
+			"Full control of calendar events: list, create, update, and delete",
+	},
 ];
 
 const SCOPE_TAG_CLASSES = {
 	"notes.read": "vp-tag--green",
 	"notes.write": "vp-tag--blue",
 	"storage.access": "vp-tag--accent",
+	"tasks.manage": "vp-tag--blue",
+	"calendar.manage": "vp-tag--green",
 };
 
 const SCOPE_LABELS = {
 	"notes.read": "Read",
 	"notes.write": "Write",
 	"storage.access": "Storage",
+	"tasks.manage": "Tasks",
+	"calendar.manage": "Calendar",
 };
 
 const ScopeTag = ({ scope }) => (

@@ -288,6 +288,8 @@ export default function VaultHomeScreen({ navigation }) {
 							onFiles={openLeft}
 							onChat={openRight}
 							onStorage={() => navigation.navigate("Storage")}
+							onTasks={() => navigation.navigate("Tasks")}
+							onCalendar={() => navigation.navigate("Calendar")}
 							onLogout={logout}
 						/>
 					</View>

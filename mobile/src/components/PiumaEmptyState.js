@@ -131,14 +131,17 @@ export default function PiumaEmptyState({
 	onFiles,
 	onChat,
 	onStorage,
+	onTasks,
+	onCalendar,
 	onLogout,
 }) {
 	// fall: entrance drop from above the layout. float: idle bob after landing.
 	const fall = useRef(new Animated.Value(-400)).current;
 	const float = useRef(new Animated.Value(0)).current;
-	const quipFade = useRef(new Animated.Value(1)).current;
+	const caret = useRef(new Animated.Value(1)).current;
 	const [dims, setDims] = useState({ width: 0, height: 0 });
-	const [quip, setQuip] = useState(0);
+	// Text currently typed out by the terminal-style typewriter.
+	const [typed, setTyped] = useState("");
 	// Placeholder for not-yet-built features: holds the tapped feature's label
 	// (and a quip index) while the "coming soon" modal is open, or null.
 	const [comingSoon, setComingSoon] = useState(null);
@@ -178,24 +181,68 @@ export default function PiumaEmptyState({
 		};
 	}, [fall, float]);
 
-	// Cycle the quip every few seconds with a quick cross-fade.
+	// Terminal-style typewriter: type a quip out char by char, hold, backspace
+	// it, then move to the next one. A single recursive timeout chain drives the
+	// whole cycle so the speeds stay independent of React's render cadence.
 	useEffect(() => {
-		const id = setInterval(() => {
-			Animated.timing(quipFade, {
-				toValue: 0,
-				duration: 250,
-				useNativeDriver: true,
-			}).start(() => {
-				setQuip((q) => (q + 1) % QUIPS.length);
-				Animated.timing(quipFade, {
-					toValue: 1,
-					duration: 250,
+		const TYPE_MS = 55; // per character typed
+		const DELETE_MS = 25; // per character erased
+		const HOLD_MS = 2400; // pause on the full line
+		const GAP_MS = 500; // pause on the empty line before the next quip
+		let quipIndex = 0;
+		let charIndex = 0;
+		let deleting = false;
+		let timeout;
+
+		const tick = () => {
+			const full = QUIPS[quipIndex];
+			if (!deleting) {
+				charIndex += 1;
+				setTyped(full.slice(0, charIndex));
+				if (charIndex >= full.length) {
+					deleting = true;
+					timeout = setTimeout(tick, HOLD_MS);
+				} else {
+					timeout = setTimeout(tick, TYPE_MS);
+				}
+			} else {
+				charIndex -= 1;
+				setTyped(full.slice(0, charIndex));
+				if (charIndex <= 0) {
+					deleting = false;
+					quipIndex = (quipIndex + 1) % QUIPS.length;
+					timeout = setTimeout(tick, GAP_MS);
+				} else {
+					timeout = setTimeout(tick, DELETE_MS);
+				}
+			}
+		};
+
+		timeout = setTimeout(tick, GAP_MS);
+		return () => clearTimeout(timeout);
+	}, []);
+
+	// Blinking terminal caret that trails the typed text (1s hard blink).
+	useEffect(() => {
+		const loop = Animated.loop(
+			Animated.sequence([
+				Animated.timing(caret, {
+					toValue: 0,
+					duration: 0,
+					delay: 500,
 					useNativeDriver: true,
-				}).start();
-			});
-		}, 3800);
-		return () => clearInterval(id);
-	}, [quipFade]);
+				}),
+				Animated.timing(caret, {
+					toValue: 1,
+					duration: 0,
+					delay: 500,
+					useNativeDriver: true,
+				}),
+			]),
+		);
+		loop.start();
+		return () => loop.stop();
+	}, [caret]);
 
 	const floatY = float.interpolate({
 		inputRange: [0, 1],
@@ -221,9 +268,12 @@ export default function PiumaEmptyState({
 			>
 				<PiumaPixelArt pixelSize={8} />
 			</Animated.View>
-			<Animated.Text style={[styles.text, { opacity: quipFade }]}>
-				{QUIPS[quip]}
-			</Animated.Text>
+			<Text style={styles.text}>
+				{typed}
+				<Animated.Text style={[styles.caret, { opacity: caret }]}>
+					▋
+				</Animated.Text>
+			</Text>
 			<View style={styles.hintRow}>
 				<Pressable
 					onPress={onFiles}
@@ -260,10 +310,9 @@ export default function PiumaEmptyState({
 					<Text style={styles.hintText}>storage</Text>
 				</Pressable>
 				<Pressable
-					onPress={() => setComingSoon({ label: "Tasks & alarms", quip: 0 })}
+					onPress={onTasks}
 					style={({ pressed }) => [
 						styles.menuItem,
-						styles.menuItemSoon,
 						pressed && styles.menuItemPressed,
 					]}
 				>
@@ -271,10 +320,9 @@ export default function PiumaEmptyState({
 					<Text style={styles.hintText}>tasks</Text>
 				</Pressable>
 				<Pressable
-					onPress={() => setComingSoon({ label: "Calendar", quip: 1 })}
+					onPress={onCalendar}
 					style={({ pressed }) => [
 						styles.menuItem,
-						styles.menuItemSoon,
 						pressed && styles.menuItemPressed,
 					]}
 				>
@@ -337,7 +385,9 @@ export default function PiumaEmptyState({
 									onLogout?.();
 								}}
 							>
-								<Text style={[styles.confirmBtnText, styles.confirmBtnTextDanger]}>
+								<Text
+									style={[styles.confirmBtnText, styles.confirmBtnTextDanger]}
+								>
 									Log out
 								</Text>
 							</Pressable>
@@ -369,6 +419,11 @@ const styles = StyleSheet.create({
 		fontFamily: MONO,
 		maxWidth: 240,
 		minHeight: 44,
+	},
+	caret: {
+		color: colors.accent,
+		fontFamily: MONO,
+		fontSize: 14,
 	},
 	hintRow: {
 		flexDirection: "row",

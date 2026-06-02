@@ -1,9 +1,11 @@
 import { DarkTheme, NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useEffect, useState } from "react";
+import CalendarScreen from "../screens/CalendarScreen";
 import LoginScreen from "../screens/LoginScreen";
 import SplashScreen from "../screens/SplashScreen";
 import StorageScreen from "../screens/StorageScreen";
+import TasksScreen from "../screens/TasksScreen";
 import VaultHomeScreen from "../screens/VaultHomeScreen";
 import { useAuthStore } from "../stores/authStore";
 import { colors } from "../utils/theme";
@@ -60,6 +62,8 @@ export default function AppNavigator() {
 							component={StorageScreen}
 							options={{ gestureEnabled: false }}
 						/>
+						<Stack.Screen name="Calendar" component={CalendarScreen} />
+						<Stack.Screen name="Tasks" component={TasksScreen} />
 					</>
 				) : (
 					<Stack.Screen name="Login" component={LoginScreen} />

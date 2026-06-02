@@ -12,6 +12,7 @@ export {
 	useResetPassword,
 	useVerifyEmail,
 } from "./authQuery";
+export * from "./calendarQuery";
 export * from "./dbDumpQuery";
 export * from "./folderSharesQuery";
 export * from "./healthQuery";
@@ -19,5 +20,6 @@ export * from "./llmQuery";
 export * from "./notesQuery";
 export * from "./servicesQuery";
 export * from "./storageQuery";
+export * from "./tasksQuery";
 export * from "./userQuery";
 export { useUpdateProfile, useUserMe } from "./userQuery";

@@ -5,7 +5,6 @@ import {
 	Dimensions,
 	Modal,
 	PanResponder,
-	Platform,
 	Pressable,
 	StyleSheet,
 	Text,
@@ -13,14 +12,8 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors } from "../utils/theme";
+import { colors, mono as MONO } from "../utils/theme";
 import { BottomBar } from "./SystemBars";
-
-const MONO = Platform.select({
-	ios: "Menlo",
-	android: "monospace",
-	default: "monospace",
-});
 
 const SCREEN_H = Dimensions.get("window").height;
 // translateY is driven on the JS thread (useNativeDriver: false) so that the
@@ -133,6 +126,7 @@ export default function BottomSheet({
 							<View style={styles.handle} />
 							{title ? (
 								<Text style={styles.title} numberOfLines={1}>
+									<Text style={styles.titlePrompt}>{"▸ "}</Text>
 									{title}
 								</Text>
 							) : null}
@@ -182,37 +176,43 @@ const styles = StyleSheet.create({
 		right: 0,
 		bottom: 0,
 		backgroundColor: colors.panel,
-		borderTopLeftRadius: 16,
-		borderTopRightRadius: 16,
+		// Hard square edges + a 2px top rail = pixel/terminal window, not a soft
+		// sheet. No corner radius anywhere.
 		borderTopWidth: 2,
-		borderLeftWidth: 2,
-		borderRightWidth: 2,
 		borderColor: colors.borderStrong,
 		paddingHorizontal: 16,
 	},
 	grabZone: {
-		paddingTop: 14,
+		paddingTop: 12,
 		paddingBottom: 14,
+		borderBottomWidth: 1,
+		borderBottomColor: colors.border,
+		marginBottom: 4,
 	},
 	handle: {
 		alignSelf: "center",
-		width: 56,
-		height: 6,
-		borderRadius: 3,
+		width: 40,
+		height: 4,
 		backgroundColor: colors.borderStrong,
-		marginBottom: 12,
+		marginBottom: 14,
 	},
 	title: {
 		color: colors.accent,
 		fontFamily: MONO,
-		fontSize: 15,
+		fontSize: 14,
 		fontWeight: "700",
+		letterSpacing: 1,
+		textTransform: "uppercase",
+	},
+	titlePrompt: {
+		color: colors.accent2,
 	},
 	subtitle: {
 		color: colors.muted,
 		fontFamily: MONO,
 		fontSize: 11,
-		marginTop: 2,
+		letterSpacing: 0.5,
+		marginTop: 3,
 	},
 	item: {
 		flexDirection: "row",
@@ -227,5 +227,6 @@ const styles = StyleSheet.create({
 		fontFamily: MONO,
 		fontSize: 14,
 		fontWeight: "700",
+		letterSpacing: 0.5,
 	},
 });

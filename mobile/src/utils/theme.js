@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 // Token palette mirrored from frontend NotesSidebar.css so mobile and web
 // share the same look.
 export const colors = {
@@ -13,3 +15,11 @@ export const colors = {
   accent3: '#ff6b6b',
   accent4: '#6cb6ff',
 };
+
+// The pixel/terminal aesthetic is monospace + hard square edges. Shared here so
+// every component renders the same way instead of redefining MONO locally.
+export const mono = Platform.select({
+  ios: 'Menlo',
+  android: 'monospace',
+  default: 'monospace',
+});
