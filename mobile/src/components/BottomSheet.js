@@ -196,14 +196,16 @@ const styles = StyleSheet.create({
 	},
 	sheet: {
 		position: "absolute",
-		left: 0,
-		right: 0,
+		left: 8,
+		right: 8,
 		bottom: 0,
 		backgroundColor: colors.panel,
-		// Hard square edges + a 2px top rail = pixel/terminal window, not a soft
-		// sheet. No corner radius anywhere.
+		// Inset from the screen edges with gently rounded top corners. A 2px top
+		// rail keeps the terminal-window feel.
 		borderTopWidth: 2,
 		borderColor: colors.borderStrong,
+		borderTopLeftRadius: 12,
+		borderTopRightRadius: 12,
 		paddingHorizontal: 16,
 	},
 	grabZone: {

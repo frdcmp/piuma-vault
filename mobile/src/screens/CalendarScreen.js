@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import dayjs from "dayjs";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	Dimensions,
 	FlatList,
@@ -12,6 +12,7 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AlertsField from "../components/AlertsField";
 import BottomSheet from "../components/BottomSheet";
 import DateTimePickerField from "../components/DateTimePickerField";
 import {
@@ -27,6 +28,7 @@ import {
 	useToggleTask,
 } from "../queries/tasksQuery";
 import { formatTime } from "../utils/dateTime";
+import { syncLocalAlerts } from "../utils/notifications";
 import { expandRecurrence } from "../utils/recurrence";
 import { colors } from "../utils/theme";
 
@@ -206,6 +208,13 @@ export default function CalendarScreen({ navigation }) {
 	const toggleTask = useToggleTask();
 	const completeOccurrence = useCompleteOccurrence();
 
+	// Keep on-device local notifications in sync with the loaded agenda data, so
+	// alerts fire offline. Remote push (notification-worker) covers anything
+	// beyond the local horizon. Best-effort; safe to re-run on data changes.
+	useEffect(() => {
+		syncLocalAlerts({ events, tasks, recurring });
+	}, [events, tasks, recurring]);
+
 	const materialized = useMemo(() => {
 		const m = new Map();
 		for (const t of tasks) {
@@ -281,10 +290,14 @@ export default function CalendarScreen({ navigation }) {
 	// show one modal at a time — so we stash the target and open it once the day
 	// sheet has finished sliding out (onClosed).
 	const openEventFromDay = useCallback((target) => {
+		// Stash the target only. DaySheet's own `closing` state animates it out;
+		// the parent clears `daySheet` in onDaySheetClosed once the slide-out
+		// finishes — clearing it here would unmount the sheet before its exit
+		// animation runs, so `onClosed` (which opens the event sheet) never fires.
 		pendingEvent.current = target;
-		setDaySheet(null);
 	}, []);
 	const onDaySheetClosed = useCallback(() => {
+		setDaySheet(null);
 		if (pendingEvent.current) {
 			setEventSheet(pendingEvent.current);
 			pendingEvent.current = null;
@@ -341,7 +354,6 @@ export default function CalendarScreen({ navigation }) {
 				<DaySheet
 					date={daySheet}
 					data={byDay.get(KEY(daySheet)) || EMPTY_DAY}
-					onClose={() => setDaySheet(null)}
 					onClosed={onDaySheetClosed}
 					onAddEvent={() => openEventFromDay({ date: daySheet })}
 					onOpenEvent={(ev) => openEventFromDay({ event: ev })}
@@ -372,7 +384,6 @@ export default function CalendarScreen({ navigation }) {
 function DaySheet({
 	date,
 	data,
-	onClose,
 	onClosed,
 	onAddEvent,
 	onOpenEvent,
@@ -392,7 +403,7 @@ function DaySheet({
 	return (
 		<BottomSheet
 			visible={!closing}
-			onClose={onClose}
+			onClose={() => setClosing(true)}
 			onClosed={onClosed}
 			title={date.format("ddd, DD MMM")}
 		>
@@ -459,6 +470,7 @@ function EventSheet({ event, initialDate, onClose }) {
 	const [startsAt, setStartsAt] = useState(event?.starts_at ?? defaultStart);
 	const [endsAt, setEndsAt] = useState(event?.ends_at ?? null);
 	const [location, setLocation] = useState(event?.location ?? "");
+	const [alerts, setAlerts] = useState(event?.alerts ?? []);
 
 	const save = () => {
 		if (!title.trim()) return;
@@ -468,6 +480,7 @@ function EventSheet({ event, initialDate, onClose }) {
 			ends_at: endsAt || null,
 			all_day: allDay,
 			location: location.trim() || null,
+			alerts,
 		};
 		const done = { onSuccess: onClose };
 		if (isEdit) updateEvent.mutate({ id: event.id, ...payload }, done);
@@ -516,6 +529,8 @@ function EventSheet({ event, initialDate, onClose }) {
 					placeholder="Optional"
 					placeholderTextColor={colors.muted}
 				/>
+				<Text style={s.label}>Alerts</Text>
+				<AlertsField value={alerts} onChange={setAlerts} />
 				<Pressable style={s.saveBtn} onPress={save}>
 					<Text style={s.saveBtnText}>Save</Text>
 				</Pressable>

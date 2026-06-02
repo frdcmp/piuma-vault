@@ -7,8 +7,11 @@ import {
 	initialWindowMetrics,
 	SafeAreaProvider,
 } from "react-native-safe-area-context";
+import { registerExpoToken } from "./src/api/notificationsApi";
 import SystemBars from "./src/components/SystemBars";
 import AppNavigator from "./src/navigation/AppNavigator";
+import { useAuthStore } from "./src/stores/authStore";
+import { registerForPushNotifications } from "./src/utils/notifications";
 import { asyncStoragePersister, queryClient } from "./src/utils/queryClient";
 import { colors } from "./src/utils/theme";
 
@@ -27,6 +30,27 @@ export default function App() {
 		html.style.height = "100%";
 		body.style.height = "100%";
 	}, []);
+
+	// Once authenticated, register this device for remote push and report the
+	// Expo token to the backend (best-effort; no-op on web / simulator / denial).
+	const token = useAuthStore((state) => state.token);
+	useEffect(() => {
+		if (!token) return;
+		let cancelled = false;
+		(async () => {
+			const pushToken = await registerForPushNotifications();
+			if (!cancelled && pushToken) {
+				try {
+					await registerExpoToken(pushToken);
+				} catch (_e) {
+					/* best-effort */
+				}
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [token]);
 
 	return (
 		<PersistQueryClientProvider

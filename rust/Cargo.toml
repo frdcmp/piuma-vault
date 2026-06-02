@@ -12,12 +12,16 @@ path = "src/main.rs"
 name = "embedding-worker"
 path = "src/bin/embedding-worker.rs"
 
+[[bin]]
+name = "notification-worker"
+path = "src/bin/notification-worker.rs"
+
 [dependencies]
 actix-web = "4.3"
 actix-cors = "0.7"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "chrono", "uuid"] }
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "chrono", "uuid", "json"] }
 tokio = { version = "1.0", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
@@ -48,6 +52,7 @@ base64 = "0.22"
 pgvector = { version = "0.4", features = ["sqlx"] }
 moka = { version = "0.12", features = ["future"] }
 serde_yaml = "0.9"
+web-push = { version = "0.10", default-features = false, features = ["hyper-client"] }
 
 [build-dependencies]
 rand = "0.8"

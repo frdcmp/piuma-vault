@@ -16,7 +16,7 @@
     },
     "android": {
       "package": "com.pv.vault",
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#5cd0a9",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -35,7 +35,13 @@
     "owner": "pv",
     "plugins": [
       "expo-video",
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-notifications",
+        {
+          "color": "#5cd0a9"
+        }
+      ]
     ]
   }
 }

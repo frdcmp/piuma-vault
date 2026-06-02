@@ -11,6 +11,7 @@ import { useState } from "react";
 import { useUserMe } from "../../../queries";
 import { PageContent } from "../../components/layout/PageLayout";
 import { PvPanel } from "../../components/ui";
+import NotificationSettings from "./NotificationSettings";
 import "../../vault-pixel.css";
 import "./profile.css";
 
@@ -196,53 +197,7 @@ const Profile = () => {
 										</>
 									}
 								>
-									<div className="vp-stack" style={{ gap: 12 }}>
-										<div className="vp-row vp-spread">
-											<span className="vp-text">Email Notifications</span>
-											<Switch
-												checked={additionalData.notifications.email}
-												onChange={(checked) =>
-													setAdditionalData((prev) => ({
-														...prev,
-														notifications: {
-															...prev.notifications,
-															email: checked,
-														},
-													}))
-												}
-											/>
-										</div>
-										<div className="vp-row vp-spread">
-											<span className="vp-text">Push Notifications</span>
-											<Switch
-												checked={additionalData.notifications.push}
-												onChange={(checked) =>
-													setAdditionalData((prev) => ({
-														...prev,
-														notifications: {
-															...prev.notifications,
-															push: checked,
-														},
-													}))
-												}
-											/>
-										</div>
-										<div className="vp-row vp-spread">
-											<span className="vp-text">SMS Notifications</span>
-											<Switch
-												checked={additionalData.notifications.sms}
-												onChange={(checked) =>
-													setAdditionalData((prev) => ({
-														...prev,
-														notifications: {
-															...prev.notifications,
-															sms: checked,
-														},
-													}))
-												}
-											/>
-										</div>
-									</div>
+									<NotificationSettings />
 								</PvPanel>
 
 								<PvPanel

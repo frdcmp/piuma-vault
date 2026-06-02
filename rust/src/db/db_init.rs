@@ -305,6 +305,7 @@ const TABLES: &[TableDefinition] = &[
                 color TEXT,
                 tags TEXT[] DEFAULT '{}',
                 rrule TEXT,
+                alerts JSONB NOT NULL DEFAULT '[]',
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
@@ -332,6 +333,7 @@ const TABLES: &[TableDefinition] = &[
                 dtstart TIMESTAMPTZ NOT NULL,
                 until TIMESTAMPTZ,
                 active BOOLEAN NOT NULL DEFAULT TRUE,
+                alerts JSONB NOT NULL DEFAULT '[]',
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
@@ -358,6 +360,7 @@ const TABLES: &[TableDefinition] = &[
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 recurrence_id UUID REFERENCES db_recurring_tasks(id) ON DELETE CASCADE,
                 occurrence_date DATE,
+                alerts JSONB NOT NULL DEFAULT '[]',
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW(),
                 UNIQUE (recurrence_id, occurrence_date)
@@ -369,6 +372,84 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_tasks_due ON db_tasks USING btree (due_at)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_tags ON db_tasks USING gin (tags)",
         ],
+    },
+    // Materialized alert schedule. The notification-worker polls this table for
+    // due rows (fire_at <= now AND sent_at IS NULL) with FOR UPDATE SKIP LOCKED,
+    // mirroring the embedding_jobs pattern. Rows are (re)built by reschedule_source
+    // whenever an event/task/recurring template changes, and topped up for
+    // recurring sources by the worker's rolling-window refill.
+    TableDefinition {
+        name: "db_scheduled_notifications",
+        sql: r#"
+            CREATE TABLE db_scheduled_notifications (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                source_type TEXT NOT NULL,
+                source_id UUID NOT NULL,
+                occurrence_date DATE,
+                fire_at TIMESTAMPTZ NOT NULL,
+                offset_minutes INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                body TEXT,
+                channels TEXT[] NOT NULL DEFAULT '{web,push}',
+                sent_at TIMESTAMPTZ,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE (source_type, source_id, occurrence_date, offset_minutes)
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_sched_notif_due ON db_scheduled_notifications USING btree (fire_at) WHERE sent_at IS NULL",
+            "CREATE INDEX IF NOT EXISTS idx_sched_notif_source ON db_scheduled_notifications USING btree (source_type, source_id)",
+            "CREATE INDEX IF NOT EXISTS idx_sched_notif_user ON db_scheduled_notifications USING btree (user_id)",
+        ],
+    },
+    // Browser Web Push subscriptions (one row per browser profile).
+    TableDefinition {
+        name: "db_push_subscriptions",
+        sql: r#"
+            CREATE TABLE db_push_subscriptions (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                endpoint TEXT NOT NULL UNIQUE,
+                p256dh TEXT NOT NULL,
+                auth TEXT NOT NULL,
+                user_agent TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_push_subs_user ON db_push_subscriptions USING btree (user_id)",
+        ],
+    },
+    // Expo push tokens (one row per device).
+    TableDefinition {
+        name: "db_expo_push_tokens",
+        sql: r#"
+            CREATE TABLE db_expo_push_tokens (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                token TEXT NOT NULL UNIQUE,
+                platform TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_expo_tokens_user ON db_expo_push_tokens USING btree (user_id)",
+        ],
+    },
+    // Per-user channel preferences (replaces the previously-mocked Profile toggles).
+    TableDefinition {
+        name: "db_notification_prefs",
+        sql: r#"
+            CREATE TABLE db_notification_prefs (
+                user_id TEXT PRIMARY KEY,
+                web_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                push_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        "#,
+        indices: &[],
     },
 ];
 

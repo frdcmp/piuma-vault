@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import BottomSheet from "../components/BottomSheet";
+import AlertsField from "../components/AlertsField";
 import DateTimePickerField from "../components/DateTimePickerField";
 import {
 	useCreateRecurringTask,
@@ -333,6 +334,7 @@ function TaskSheet({ task, onClose }) {
 	const [dueAt, setDueAt] = useState(task?.due_at ?? null);
 	const [priority, setPriority] = useState(task?.priority ?? 0);
 	const [tags, setTags] = useState((task?.tags ?? []).join(", "));
+	const [alerts, setAlerts] = useState(task?.alerts ?? []);
 
 	const save = () => {
 		if (!title.trim()) return;
@@ -344,6 +346,7 @@ function TaskSheet({ task, onClose }) {
 				.split(",")
 				.map((x) => x.trim().toLowerCase())
 				.filter(Boolean),
+			alerts,
 		};
 		if (editing) {
 			updateTask.mutate({ id: task.id, ...payload }, { onSuccess: onClose });
@@ -371,9 +374,10 @@ function TaskSheet({ task, onClose }) {
 			dueAt ? "due set" : null,
 			priority ? PRIORITY[priority] : null,
 			tagCount ? `${tagCount} tag${tagCount > 1 ? "s" : ""}` : null,
+			alerts.length ? `${alerts.length} alert${alerts.length > 1 ? "s" : ""}` : null,
 		]
 			.filter(Boolean)
-			.join(" · ") || "due, priority, tags";
+			.join(" · ") || "due, priority, tags, alerts";
 
 	return (
 		<BottomSheet
@@ -469,6 +473,8 @@ function TaskSheet({ task, onClose }) {
 						placeholderTextColor={colors.muted}
 						autoCapitalize="none"
 					/>
+					<Text style={s.label}>Alerts</Text>
+					<AlertsField value={alerts} onChange={setAlerts} />
 					<Pressable style={s.saveBtn} onPress={() => setPanel("main")}>
 						<Text style={s.saveBtnText}>Done</Text>
 					</Pressable>
@@ -487,6 +493,7 @@ function RecurringSheet({ onClose }) {
 	const [byday, setByday] = useState(["MO", "WE", "FR"]);
 	const [dtstart, setDtstart] = useState(null);
 	const [tags, setTags] = useState("");
+	const [alerts, setAlerts] = useState([]);
 
 	const toggleDay = (d) =>
 		setByday((prev) =>
@@ -505,6 +512,7 @@ function RecurringSheet({ onClose }) {
 					.split(",")
 					.map((x) => x.trim().toLowerCase())
 					.filter(Boolean),
+				alerts,
 			},
 			{ onSuccess: onClose },
 		);
@@ -571,6 +579,8 @@ function RecurringSheet({ onClose }) {
 					autoCapitalize="none"
 				/>
 				<Text style={s.hint}>rule: {buildRrule(freq, byday)}</Text>
+				<Text style={s.label}>Alerts</Text>
+				<AlertsField value={alerts} onChange={setAlerts} />
 				<Pressable style={s.saveBtn} onPress={save}>
 					<Text style={s.saveBtnText}>Save</Text>
 				</Pressable>

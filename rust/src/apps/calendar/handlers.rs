@@ -10,7 +10,7 @@ use super::models::{
 };
 
 const EVENT_FIELDS: &str = "id, user_id, title, description, location, starts_at, ends_at, \
-     all_day, color, tags, rrule, created_at, updated_at";
+     all_day, color, tags, rrule, alerts, created_at, updated_at";
 
 fn err(msg: impl Into<String>) -> CalendarApiError {
     CalendarApiError { error: msg.into() }
@@ -112,8 +112,8 @@ pub async fn create_event(
 
     let sql = format!(
         "INSERT INTO db_calendar_events \
-         (user_id, title, description, location, starts_at, ends_at, all_day, color, tags, rrule) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING {EVENT_FIELDS}"
+         (user_id, title, description, location, starts_at, ends_at, all_day, color, tags, rrule, alerts) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING {EVENT_FIELDS}"
     );
 
     match sqlx::query_as::<_, CalendarEvent>(&sql)
@@ -127,14 +127,28 @@ pub async fn create_event(
         .bind(&body.color)
         .bind(&body.tags)
         .bind(&body.rrule)
+        .bind(&body.alerts)
         .fetch_one(pool.get_ref())
         .await
     {
-        Ok(event) => HttpResponse::Created().json(event),
+        Ok(event) => {
+            reschedule(pool.get_ref(), event.id).await;
+            HttpResponse::Created().json(event)
+        }
         Err(e) => {
             log::error!("calendar create failed: {e}");
             HttpResponse::BadRequest().json(err("Failed to create event"))
         }
+    }
+}
+
+// Best-effort (re)materialization of an event's alert schedule. Never fails the
+// request — logs and moves on.
+async fn reschedule(pool: &DbPool, event_id: Uuid) {
+    if let Err(e) =
+        crate::apps::notifications::schedule::reschedule_source(pool, "event", event_id).await
+    {
+        log::error!("calendar reschedule failed for {event_id}: {e}");
     }
 }
 
@@ -199,6 +213,7 @@ pub async fn update_event(
             color = CASE WHEN $12 THEN $13 ELSE color END, \
             tags = COALESCE($14, tags), \
             rrule = CASE WHEN $15 THEN $16 ELSE rrule END, \
+            alerts = COALESCE($17, alerts), \
             updated_at = NOW() \
          WHERE id = $1 AND user_id = $2 RETURNING {EVENT_FIELDS}"
     );
@@ -241,10 +256,14 @@ pub async fn update_event(
         .bind(&body.tags)
         .bind(set_rrule)
         .bind(rrule)
+        .bind(&body.alerts)
         .fetch_optional(pool.get_ref())
         .await
     {
-        Ok(Some(event)) => HttpResponse::Ok().json(event),
+        Ok(Some(event)) => {
+            reschedule(pool.get_ref(), event.id).await;
+            HttpResponse::Ok().json(event)
+        }
         Ok(None) => HttpResponse::NotFound().json(err("Event not found")),
         Err(e) => {
             log::error!("calendar update failed: {e}");
@@ -273,7 +292,11 @@ pub async fn delete_event(
         Ok(res) if res.rows_affected() == 0 => {
             HttpResponse::NotFound().json(err("Event not found"))
         }
-        Ok(_) => HttpResponse::NoContent().finish(),
+        Ok(_) => {
+            let _ =
+                crate::apps::notifications::schedule::purge_source(pool.get_ref(), "event", id).await;
+            HttpResponse::NoContent().finish()
+        }
         Err(e) => {
             log::error!("calendar delete failed: {e}");
             HttpResponse::InternalServerError().json(err("Failed to delete event"))
