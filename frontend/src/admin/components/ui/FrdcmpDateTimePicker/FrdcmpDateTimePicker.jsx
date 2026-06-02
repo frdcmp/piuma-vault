@@ -4,13 +4,13 @@ import { formatDate, formatTime } from "../../../../utils/dateTime";
 import "./PvDateTimePicker.css";
 
 const WEEKDAYS = [
-	{ id: "su", label: "S" },
 	{ id: "mo", label: "M" },
 	{ id: "tu", label: "T" },
 	{ id: "we", label: "W" },
 	{ id: "th", label: "T" },
 	{ id: "fr", label: "F" },
 	{ id: "sa", label: "S" },
+	{ id: "su", label: "S" },
 ];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5); // 5-min steps
