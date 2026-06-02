@@ -59,11 +59,21 @@ export default function TasksPage() {
 	const visible = activeTag
 		? oneOff.filter((t) => t.tags?.includes(activeTag))
 		: oneOff;
-	// Highest priority first; stable sort keeps the backend order within a tier.
+	// Highest priority first; within a priority tier, cluster tasks that share
+	// tags (by normalized tag signature). Untagged tasks (→ "￿") trail.
 	const pending = visible
 		.filter((t) => !t.done)
-		.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+		.sort((a, b) => {
+			const byPriority = (b.priority ?? 0) - (a.priority ?? 0);
+			if (byPriority !== 0) return byPriority;
+			const ka = (a.tags ?? []).slice().sort().join(",") || "￿";
+			const kb = (b.tags ?? []).slice().sort().join(",") || "￿";
+			return ka.localeCompare(kb);
+		});
 	const done = visible.filter((t) => t.done);
+
+	// The id of the task whose toggle is in flight, so we can spin just its box.
+	const togglingId = toggleTask.isPending ? toggleTask.variables : null;
 
 	return (
 		<div className="tasks-page">
@@ -176,9 +186,14 @@ export default function TasksPage() {
 												className="task-check"
 												style={{ color: PRIORITY_COLOR[t.priority] }}
 												onClick={() => toggleTask.mutate(t.id)}
+												disabled={togglingId === t.id}
 												aria-label="Complete task"
 											>
-												☐
+												{togglingId === t.id ? (
+													<span className="task-spin" aria-hidden="true" />
+												) : (
+													"☐"
+												)}
 											</button>
 											<div className="task-col">
 												<button
@@ -242,9 +257,14 @@ export default function TasksPage() {
 														type="button"
 														className="task-check"
 														onClick={() => toggleTask.mutate(t.id)}
+														disabled={togglingId === t.id}
 														aria-label="Reopen task"
 													>
-														☑
+														{togglingId === t.id ? (
+															<span className="task-spin" aria-hidden="true" />
+														) : (
+															"☑"
+														)}
 													</button>
 													<button
 														type="button"
