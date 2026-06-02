@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
+	ActivityIndicator,
 	Pressable,
 	ScrollView,
 	StyleSheet,
@@ -26,6 +27,13 @@ import { tagColor } from "../utils/tagColor";
 import { colors, mono as MONO } from "../utils/theme";
 
 const PRIORITY = ["none", "low", "med", "high"];
+// Checkbox tint by priority: none → muted, low → green, med → yellow, high → red.
+const PRIORITY_COLOR = [
+	colors.muted,
+	colors.accent2,
+	colors.accent,
+	colors.accent3,
+];
 const DOW = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
 const DOW_LABEL = {
 	MO: "M",
@@ -77,7 +85,10 @@ export default function TasksScreen({ navigation }) {
 	const visible = activeTag
 		? oneOff.filter((t) => t.tags?.includes(activeTag))
 		: oneOff;
-	const pending = visible.filter((t) => !t.done);
+	// Highest priority first; stable sort keeps the backend order within a tier.
+	const pending = visible
+		.filter((t) => !t.done)
+		.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 	const done = visible.filter((t) => t.done);
 
 	return (
@@ -194,7 +205,9 @@ export default function TasksScreen({ navigation }) {
 					{pending.map((t) => (
 						<View key={t.id} style={s.taskRow}>
 							<Pressable onPress={() => toggleTask.mutate(t.id)} hitSlop={8}>
-								<Text style={s.check}>☐</Text>
+								<Text style={[s.check, { color: PRIORITY_COLOR[t.priority] }]}>
+									☐
+								</Text>
 							</Pressable>
 							<Pressable
 								style={s.taskMain}
@@ -209,9 +222,18 @@ export default function TasksScreen({ navigation }) {
 										<Text style={[s.meta, s.due]}>due {timeAgo(t.due_at)}</Text>
 									) : null}
 									{(t.tags || []).map((tag) => (
-										<Text key={tag} style={[s.meta, { color: tagColor(tag) }]}>
-											#{tag}
-										</Text>
+										<Pressable
+											key={tag}
+											hitSlop={4}
+											onPress={() => {
+												setShowRecurring(false);
+												setSelectedTag(tag);
+											}}
+										>
+											<Text style={[s.meta, { color: tagColor(tag) }]}>
+												#{tag}
+											</Text>
+										</Pressable>
 									))}
 								</View>
 							</Pressable>
@@ -299,6 +321,9 @@ function TaskSheet({ task, onClose }) {
 
 	const remove = () => deleteTask.mutate(task.id, { onSuccess: onClose });
 
+	const saving = createTask.isPending || updateTask.isPending;
+	const deleting = deleteTask.isPending;
+
 	// "details" swaps the sheet body in place rather than stacking a second
 	// modal — DateTimePickerField already opens its own sheet, and RN can't
 	// reliably nest three modals deep (see BottomSheet.js).
@@ -348,12 +373,28 @@ function TaskSheet({ task, onClose }) {
 						</Text>
 						<Ionicons name="chevron-forward" size={16} color={colors.muted} />
 					</Pressable>
-					<Pressable style={s.saveBtn} onPress={save}>
-						<Text style={s.saveBtnText}>Save</Text>
+					<Pressable
+						style={[s.saveBtn, saving && s.btnDisabled]}
+						onPress={save}
+						disabled={saving || deleting}
+					>
+						{saving ? (
+							<ActivityIndicator size="small" color="#000" />
+						) : (
+							<Text style={s.saveBtnText}>Save</Text>
+						)}
 					</Pressable>
 					{editing ? (
-						<Pressable style={s.deleteBtn} onPress={remove}>
-							<Text style={s.deleteBtnText}>Delete task</Text>
+						<Pressable
+							style={[s.deleteBtn, deleting && s.btnDisabled]}
+							onPress={remove}
+							disabled={saving || deleting}
+						>
+							{deleting ? (
+								<ActivityIndicator size="small" color={colors.accent3} />
+							) : (
+								<Text style={s.deleteBtnText}>Delete task</Text>
+							)}
 						</Pressable>
 					) : null}
 				</View>
@@ -620,7 +661,7 @@ const s = StyleSheet.create({
 	rrule: { color: colors.accent4 },
 	prio: { color: colors.accent, textTransform: "uppercase" },
 	// Forms
-	form: { paddingHorizontal: 16, paddingTop: 4, gap: 6 },
+	form: { paddingHorizontal: 16, paddingTop: 2, gap: 4 },
 	label: {
 		color: colors.muted,
 		fontFamily: MONO,
@@ -628,7 +669,7 @@ const s = StyleSheet.create({
 		fontWeight: "700",
 		letterSpacing: 1,
 		textTransform: "uppercase",
-		marginTop: 8,
+		marginTop: 5,
 	},
 	input: {
 		backgroundColor: colors.bg,
@@ -637,14 +678,14 @@ const s = StyleSheet.create({
 		color: colors.text,
 		fontFamily: MONO,
 		paddingHorizontal: 10,
-		paddingVertical: 9,
+		paddingVertical: 7,
 		fontSize: 14,
 	},
 	titleInput: {
-		minHeight: 150,
+		minHeight: 110,
 		fontSize: 16,
-		lineHeight: 24,
-		paddingTop: 12,
+		lineHeight: 23,
+		paddingTop: 8,
 	},
 	detailsBtn: {
 		flexDirection: "row",
@@ -654,8 +695,8 @@ const s = StyleSheet.create({
 		borderColor: colors.border,
 		backgroundColor: colors.bgSoft,
 		paddingHorizontal: 10,
-		paddingVertical: 11,
-		marginTop: 4,
+		paddingVertical: 9,
+		marginTop: 2,
 	},
 	detailsBtnText: {
 		flex: 1,
@@ -718,9 +759,9 @@ const s = StyleSheet.create({
 		backgroundColor: colors.accent,
 		borderWidth: 2,
 		borderColor: colors.accent,
-		paddingVertical: 11,
+		paddingVertical: 9,
 		alignItems: "center",
-		marginTop: 16,
+		marginTop: 10,
 	},
 	saveBtnText: {
 		color: "#000",
@@ -730,12 +771,13 @@ const s = StyleSheet.create({
 		letterSpacing: 1.5,
 		textTransform: "uppercase",
 	},
+	btnDisabled: { opacity: 0.6 },
 	deleteBtn: {
 		borderWidth: 1,
 		borderColor: colors.accent3,
-		paddingVertical: 10,
+		paddingVertical: 8,
 		alignItems: "center",
-		marginTop: 10,
+		marginTop: 6,
 	},
 	deleteBtnText: {
 		color: colors.accent3,

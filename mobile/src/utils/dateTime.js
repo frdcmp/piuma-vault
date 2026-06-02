@@ -1,65 +1,62 @@
-// Ported from frontend/src/utils/dateTime.js so mobile and web format dates
-// identically. Backend timestamps are UTC; we convert to the device timezone.
+// Date/time formatting for mobile. Mirrors frontend/src/utils/dateTime.js so
+// web and mobile render dates identically. Backend timestamps are UTC; we
+// convert to the device timezone.
+//
+// IMPORTANT: this is formatted with dayjs, NOT Intl. Release Android builds run
+// on Hermes, whose Intl only implements Collator/DateTimeFormat/NumberFormat —
+// `Intl.RelativeTimeFormat` is UNDEFINED there, so `new Intl.RelativeTimeFormat()`
+// throws "Cannot read property 'prototype' of undefined" and crashes the screen
+// (Tasks was the only screen calling timeAgo). dayjs is pure JS and already a
+// dependency, so it works everywhere; it also renders in the device-local
+// timezone automatically.
 
-const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+import dayjs from "dayjs";
 
 // Append "Z" to bare strings (e.g. "2026-04-24T14:00:00") so they're parsed
-// as UTC rather than local time.
+// as UTC rather than local time. Returns a dayjs instance or null.
 const parseUtc = (value) => {
-  if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  const s = String(value).trim();
-  const hasOffset = /[Z]$/i.test(s) || /[+-]\d{2}:\d{2}$/.test(s);
-  const normalized = hasOffset ? s : `${s}Z`;
-  const d = new Date(normalized);
-  return Number.isNaN(d.getTime()) ? null : d;
+	if (!value) return null;
+	if (value instanceof Date) {
+		const d = dayjs(value);
+		return d.isValid() ? d : null;
+	}
+	const s = String(value).trim();
+	const hasOffset = /[Z]$/i.test(s) || /[+-]\d{2}:\d{2}$/.test(s);
+	const d = dayjs(hasOffset ? s : `${s}Z`);
+	return d.isValid() ? d : null;
 };
 
 export const formatDate = (value) => {
-  const d = parseUtc(value);
-  if (!d) return '—';
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    timeZone: TZ,
-  }).formatToParts(d);
-  const day = parts.find((p) => p.type === 'day')?.value ?? '';
-  const month = parts.find((p) => p.type === 'month')?.value ?? '';
-  const year = parts.find((p) => p.type === 'year')?.value ?? '';
-  return `${day} ${month}, ${year}`;
+	const d = parseUtc(value);
+	return d ? d.format("DD MMM, YYYY") : "—";
 };
 
 export const formatTime = (value) => {
-  const d = parseUtc(value);
-  if (!d) return '—';
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: TZ,
-  }).formatToParts(d);
-  const hour = parts.find((p) => p.type === 'hour')?.value ?? '00';
-  const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
-  return `${hour}:${minute}`;
+	const d = parseUtc(value);
+	return d ? d.format("HH:mm") : "—";
 };
 
 export const formatDateTime = (value) => ({
-  date: formatDate(value),
-  time: formatTime(value),
+	date: formatDate(value),
+	time: formatTime(value),
 });
 
+// Relative time ("in 4 hours", "3 days ago"). Hand-rolled so it needs no Intl
+// and no dayjs plugin — matches the web's en-GB phrasing closely enough.
 export const timeAgo = (value) => {
-  const d = parseUtc(value);
-  if (!d) return '—';
-  const diffMs = d.getTime() - Date.now();
-  const diffSec = Math.round(diffMs / 1000);
-  const abs = Math.abs(diffSec);
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
-  if (abs < 60) return rtf.format(diffSec, 'second');
-  if (abs < 3_600) return rtf.format(Math.round(diffSec / 60), 'minute');
-  if (abs < 86_400) return rtf.format(Math.round(diffSec / 3_600), 'hour');
-  if (abs < 2_592_000) return rtf.format(Math.round(diffSec / 86_400), 'day');
-  if (abs < 31_536_000) return rtf.format(Math.round(diffSec / 2_592_000), 'month');
-  return rtf.format(Math.round(diffSec / 31_536_000), 'year');
+	const d = parseUtc(value);
+	if (!d) return "—";
+	const diffSec = Math.round((d.valueOf() - Date.now()) / 1000);
+	const future = diffSec >= 0;
+	const abs = Math.abs(diffSec);
+	const phrase = (n, unit) => {
+		const u = n === 1 ? unit : `${unit}s`;
+		return future ? `in ${n} ${u}` : `${n} ${u} ago`;
+	};
+	if (abs < 45) return future ? "in a few seconds" : "a few seconds ago";
+	if (abs < 3_600) return phrase(Math.round(abs / 60), "minute");
+	if (abs < 86_400) return phrase(Math.round(abs / 3_600), "hour");
+	if (abs < 2_592_000) return phrase(Math.round(abs / 86_400), "day");
+	if (abs < 31_536_000) return phrase(Math.round(abs / 2_592_000), "month");
+	return phrase(Math.round(abs / 31_536_000), "year");
 };

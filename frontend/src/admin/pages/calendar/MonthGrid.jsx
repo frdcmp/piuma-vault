@@ -1,7 +1,7 @@
 import dayjs from "dayjs";
 import { formatTime } from "../../../utils/dateTime";
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 /**
  * Presentational month grid. All bucketing/timezone work happens in the parent;

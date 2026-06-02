@@ -3,8 +3,10 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import {
 	Animated,
 	Dimensions,
+	Keyboard,
 	Modal,
 	PanResponder,
+	Platform,
 	Pressable,
 	StyleSheet,
 	Text,
@@ -46,7 +48,25 @@ export default function BottomSheet({
 }) {
 	const insets = useSafeAreaInsets();
 	const [mounted, setMounted] = useState(visible);
+	const [kbHeight, setKbHeight] = useState(0);
 	const translateY = useRef(new Animated.Value(SCREEN_H)).current;
+
+	// Lift the sheet above the keyboard so the focused field stays visible.
+	// iOS fires *Will* events (smoother); Android only fires *Did*.
+	useEffect(() => {
+		const showEvt =
+			Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+		const hideEvt =
+			Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+		const onShow = (e) => setKbHeight(e?.endCoordinates?.height ?? 0);
+		const onHide = () => setKbHeight(0);
+		const sub1 = Keyboard.addListener(showEvt, onShow);
+		const sub2 = Keyboard.addListener(hideEvt, onHide);
+		return () => {
+			sub1.remove();
+			sub2.remove();
+		};
+	}, []);
 
 	// Mount as soon as the parent asks to open.
 	useEffect(() => {
@@ -118,7 +138,11 @@ export default function BottomSheet({
 							styles.sheet,
 							{
 								transform: [{ translateY }],
-								paddingBottom: Math.max(insets.bottom, 8) + 12,
+								// Raise the sheet to sit on top of the keyboard; drop the
+								// safe-area padding while it's up (the keyboard covers the bar).
+								bottom: kbHeight,
+								paddingBottom:
+									kbHeight > 0 ? 12 : Math.max(insets.bottom, 8) + 12,
 							},
 						]}
 					>
@@ -183,18 +207,18 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 16,
 	},
 	grabZone: {
-		paddingTop: 12,
-		paddingBottom: 14,
+		paddingTop: 8,
+		paddingBottom: 9,
 		borderBottomWidth: 1,
 		borderBottomColor: colors.border,
-		marginBottom: 4,
+		marginBottom: 2,
 	},
 	handle: {
 		alignSelf: "center",
 		width: 40,
 		height: 4,
 		backgroundColor: colors.borderStrong,
-		marginBottom: 14,
+		marginBottom: 9,
 	},
 	title: {
 		color: colors.accent,

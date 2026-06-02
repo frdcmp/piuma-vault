@@ -6,13 +6,13 @@ import { colors, mono as MONO } from "../utils/theme";
 import BottomSheet from "./BottomSheet";
 
 const WEEKDAYS = [
-	{ id: "su", label: "S" },
 	{ id: "mo", label: "M" },
 	{ id: "tu", label: "T" },
 	{ id: "we", label: "W" },
 	{ id: "th", label: "T" },
 	{ id: "fr", label: "F" },
 	{ id: "sa", label: "S" },
+	{ id: "su", label: "S" },
 ];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5);
@@ -252,7 +252,12 @@ const s = StyleSheet.create({
 		justifyContent: "space-between",
 		marginBottom: 8,
 	},
-	nav: { color: colors.text, fontFamily: MONO, fontSize: 22, paddingHorizontal: 10 },
+	nav: {
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 22,
+		paddingHorizontal: 10,
+	},
 	month: {
 		color: colors.text,
 		fontFamily: MONO,

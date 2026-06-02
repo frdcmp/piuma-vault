@@ -14,6 +14,13 @@ import TaskModal from "./TaskModal";
 import "./Tasks.css";
 
 const PRIORITY = ["", "low", "med", "high"];
+// Checkbox tint by priority: none → muted, low → green, med → yellow, high → red.
+const PRIORITY_COLOR = [
+	"var(--muted)",
+	"var(--accent-2)",
+	"var(--accent)",
+	"var(--accent-3)",
+];
 
 export default function TasksPage() {
 	const navigate = useNavigate();
@@ -52,7 +59,10 @@ export default function TasksPage() {
 	const visible = activeTag
 		? oneOff.filter((t) => t.tags?.includes(activeTag))
 		: oneOff;
-	const pending = visible.filter((t) => !t.done);
+	// Highest priority first; stable sort keeps the backend order within a tier.
+	const pending = visible
+		.filter((t) => !t.done)
+		.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 	const done = visible.filter((t) => t.done);
 
 	return (
@@ -164,39 +174,55 @@ export default function TasksPage() {
 											<button
 												type="button"
 												className="task-check"
+												style={{ color: PRIORITY_COLOR[t.priority] }}
 												onClick={() => toggleTask.mutate(t.id)}
 												aria-label="Complete task"
 											>
 												☐
 											</button>
-											<button
-												type="button"
-												className="task-main"
-												onClick={() => setTaskModal({ task: t })}
-											>
-												<span className="task-title">{t.title}</span>
-												<span className="task-meta">
-													{t.priority ? (
-														<span className={`task-prio prio-${t.priority}`}>
-															{PRIORITY[t.priority]}
+											<div className="task-col">
+												<button
+													type="button"
+													className="task-main"
+													onClick={() => setTaskModal({ task: t })}
+												>
+													<span className="task-title">{t.title}</span>
+													{t.priority || t.due_at ? (
+														<span className="task-meta">
+															{t.priority ? (
+																<span
+																	className={`task-prio prio-${t.priority}`}
+																>
+																	{PRIORITY[t.priority]}
+																</span>
+															) : null}
+															{t.due_at ? (
+																<span className="task-due">
+																	due {timeAgo(t.due_at)}
+																</span>
+															) : null}
 														</span>
 													) : null}
-													{t.due_at ? (
-														<span className="task-due">
-															due {timeAgo(t.due_at)}
-														</span>
-													) : null}
-													{t.tags?.map((tag) => (
-														<span
-															key={tag}
-															className="task-tag"
-															style={{ color: tagColor(tag) }}
-														>
-															#{tag}
-														</span>
-													))}
-												</span>
-											</button>
+												</button>
+												{t.tags?.length ? (
+													<span className="task-tags">
+														{t.tags.map((tag) => (
+															<button
+																type="button"
+																key={tag}
+																className="task-tag"
+																style={{ color: tagColor(tag) }}
+																onClick={() => {
+																	setShowRecurring(false);
+																	setSelectedTag(tag);
+																}}
+															>
+																#{tag}
+															</button>
+														))}
+													</span>
+												) : null}
+											</div>
 										</li>
 									))}
 									{pending.length === 0 ? (

@@ -117,8 +117,11 @@ export const expandRecurrence = ({
 
 	if (rule.freq === "WEEKLY") {
 		const days = rule.byday.length ? rule.byday : [start.day()];
-		// Walk week by week from the week containing `start`.
-		let weekAnchor = start.startOf("week");
+		// Walk week by week from the week containing `start`. Anchor on the Sunday
+		// via `.day(0)` (pure Sunday-based arithmetic) rather than `startOf("week")`
+		// so `weekAnchor.day(dow)` resolves each BYDAY token correctly regardless of
+		// the global Monday week-start (see utils/dayjsConfig.js).
+		let weekAnchor = start.day(0);
 		let guard = 0;
 		while (guard++ < MAX_OCCURRENCES * 2) {
 			for (const dow of days) {
