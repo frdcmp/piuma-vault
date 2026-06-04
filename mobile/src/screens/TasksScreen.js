@@ -20,6 +20,7 @@ import {
 	useDeleteTask,
 	useRecurringTasks,
 	useTasks,
+	useTasksLiveUpdates,
 	useToggleTask,
 	useUpdateTask,
 } from "../queries/tasksQuery";
@@ -54,6 +55,7 @@ const buildRrule = (freq, byday) => {
 
 export default function TasksScreen({ navigation }) {
 	const insets = useSafeAreaInsets();
+	useTasksLiveUpdates(); // refetch when tasks change on another device
 	const { data: tasks = [] } = useTasks();
 	const { data: recurring = [] } = useRecurringTasks();
 	const toggleTask = useToggleTask();
@@ -109,7 +111,12 @@ export default function TasksScreen({ navigation }) {
 					<Ionicons name="chevron-back" size={22} color={colors.text} />
 				</Pressable>
 				<Text style={s.title}>☑ Tasks</Text>
-				<Pressable onPress={() => setTaskSheet({})} hitSlop={10}>
+				<Pressable
+					onPress={() =>
+						setTaskSheet({ defaultTags: activeTag ? [activeTag] : [] })
+					}
+					hitSlop={10}
+				>
 					<Ionicons name="add" size={24} color={colors.accent} />
 				</Pressable>
 			</View>
@@ -299,7 +306,11 @@ export default function TasksScreen({ navigation }) {
 			)}
 
 			{taskSheet ? (
-				<TaskSheet task={taskSheet.task} onClose={() => setTaskSheet(null)} />
+				<TaskSheet
+					task={taskSheet.task}
+					defaultTags={taskSheet.defaultTags}
+					onClose={() => setTaskSheet(null)}
+				/>
 			) : null}
 			{recSheet ? <RecurringSheet onClose={() => setRecSheet(false)} /> : null}
 		</View>
@@ -325,7 +336,7 @@ function Chip({ label, count, active, color, onPress }) {
 
 // ── Create-task sheet ──────────────────────────────────────────────────────
 
-function TaskSheet({ task, onClose }) {
+function TaskSheet({ task, defaultTags = [], onClose }) {
 	const editing = !!task;
 	const createTask = useCreateTask();
 	const updateTask = useUpdateTask();
@@ -333,11 +344,13 @@ function TaskSheet({ task, onClose }) {
 	const [title, setTitle] = useState(task?.title ?? "");
 	const [dueAt, setDueAt] = useState(task?.due_at ?? null);
 	const [priority, setPriority] = useState(task?.priority ?? 0);
-	const [tags, setTags] = useState((task?.tags ?? []).join(", "));
+	const [tags, setTags] = useState((task?.tags ?? defaultTags).join(", "));
 	const [alerts, setAlerts] = useState(task?.alerts ?? []);
 
 	const save = () => {
 		if (!title.trim()) return;
+		// Alerts fire relative to the due date, so they need one as an anchor.
+		if (alerts.length > 0 && !dueAt) return;
 		const payload = {
 			title: title.trim(),
 			due_at: dueAt || null,
@@ -444,7 +457,11 @@ function TaskSheet({ task, onClose }) {
 					<Text style={s.label}>Due</Text>
 					<DateTimePickerField
 						value={dueAt}
-						onChange={setDueAt}
+						onChange={(v) => {
+							setDueAt(v);
+							// Alerts are anchored to the due date — drop them if it's cleared.
+							if (!v) setAlerts([]);
+						}}
 						mode="datetime"
 						placeholder="No due date"
 					/>
@@ -474,7 +491,11 @@ function TaskSheet({ task, onClose }) {
 						autoCapitalize="none"
 					/>
 					<Text style={s.label}>Alerts</Text>
-					<AlertsField value={alerts} onChange={setAlerts} />
+					{dueAt ? (
+						<AlertsField value={alerts} onChange={setAlerts} />
+					) : (
+						<Text style={s.hint}>set a due date to add alerts</Text>
+					)}
 					<Pressable style={s.saveBtn} onPress={() => setPanel("main")}>
 						<Text style={s.saveBtnText}>Done</Text>
 					</Pressable>

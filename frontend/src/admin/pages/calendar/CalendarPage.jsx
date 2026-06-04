@@ -3,9 +3,11 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	useCalendarEvents,
+	useCalendarLiveUpdates,
 	useCompleteOccurrence,
 	useRecurringTasks,
 	useTasks,
+	useTasksLiveUpdates,
 	useToggleTask,
 } from "../../../queries";
 import { expandRecurrence } from "../../../utils/recurrence";
@@ -25,6 +27,10 @@ const KEY = (d) => d.format("YYYY-MM-DD");
  */
 export default function CalendarPage() {
 	const navigate = useNavigate();
+	// The calendar renders both events and tasks, so subscribe to both streams
+	// to reflect changes made in another tab/device.
+	useCalendarLiveUpdates();
+	useTasksLiveUpdates();
 	const [cursor, setCursor] = useState(() => dayjs().startOf("month"));
 	const [modal, setModal] = useState(null); // { event } | { date } | null
 

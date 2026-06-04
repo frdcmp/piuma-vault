@@ -11,6 +11,7 @@ import {
 	updateRecurringTask,
 	updateTask,
 } from "../api/tasksApi";
+import { useResourceLiveUpdates } from "./liveUpdates";
 
 export const taskKeys = {
 	all: ["tasks"],
@@ -102,5 +103,21 @@ export const useCompleteOccurrence = () => {
 	return useMutation({
 		mutationFn: completeOccurrence,
 		onSuccess: () => invalidateAll(qc),
+	});
+};
+
+// ── Live updates (SSE) ──────────────────────────────────────────────────────
+//
+// Subscribes to the backend task event stream so this device reflects changes
+// made elsewhere (web, another phone, API-key clients). Any event refetches the
+// whole tasks family (lists are keyed by filter, so per-id targeting wouldn't
+// help). Mount once near the tasks screen root.
+export const useTasksLiveUpdates = () => {
+	const qc = useQueryClient();
+	useResourceLiveUpdates({
+		path: "/admin/tasks/events",
+		event: "task",
+		queryClient: qc,
+		queryKey: taskKeys.all,
 	});
 };

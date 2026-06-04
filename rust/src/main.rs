@@ -66,10 +66,13 @@ async fn main() -> io::Result<()> {
     // apply to the whole process, not per-thread.
     let rate_limiter = apps::auth::rate_limit::RateLimiter::new();
 
-    // Shared event bus for live note-change notifications (SSE). Any handler
-    // that mutates a note publishes here; connected browsers re-fetch the
-    // affected note via the regular auth-protected route.
+    // Shared event buses for live cross-device sync (SSE). Any handler that
+    // mutates a resource publishes here; connected clients re-fetch via the
+    // regular auth-protected routes. Notes uses its own bus; tasks/calendar use
+    // the generic `apps::realtime` bus.
     let notes_bus = apps::notes::events::NotesEventBus::new();
+    let tasks_bus = apps::tasks::events::TasksEventBus::new();
+    let calendar_bus = apps::calendar::events::CalendarEventBus::new();
 
     // CORS policy is read from the environment once (see cors.rs) and used to
     // build a fresh middleware per worker.
@@ -84,6 +87,8 @@ async fn main() -> io::Result<()> {
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(rate_limiter.clone()))
             .app_data(web::Data::new(notes_bus.clone()))
+            .app_data(web::Data::new(tasks_bus.clone()))
+            .app_data(web::Data::new(calendar_bus.clone()))
             .configure(apps::health::routes::configure_routes)
             .configure(apps::auth::routes::configure_routes)
             .configure(apps::llm::routes::configure_routes)

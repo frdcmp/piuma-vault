@@ -1,9 +1,17 @@
 use actix_web::web;
 
+use crate::apps::realtime::event_stream;
+
+use super::events::Tasks;
 use super::handlers;
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg
+        // ── Live updates (SSE) ──
+        // Registered before `/admin/tasks/{id}` so "events" isn't read as an id.
+        .service(
+            web::resource("/admin/tasks/events").route(web::get().to(event_stream::<Tasks>)),
+        )
         // ── Recurring-task templates ──
         .service(
             web::resource("/admin/recurring-tasks")

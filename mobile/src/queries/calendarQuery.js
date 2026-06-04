@@ -5,6 +5,7 @@ import {
 	fetchEvents,
 	updateEvent,
 } from "../api/calendarApi";
+import { useResourceLiveUpdates } from "./liveUpdates";
 
 export const calendarKeys = {
 	all: ["calendar"],
@@ -42,5 +43,20 @@ export const useDeleteEvent = () => {
 	return useMutation({
 		mutationFn: deleteEvent,
 		onSuccess: () => qc.invalidateQueries({ queryKey: calendarKeys.all }),
+	});
+};
+
+// ── Live updates (SSE) ──────────────────────────────────────────────────────
+//
+// Subscribes to the backend calendar event stream so this device reflects
+// changes made elsewhere. Any event refetches the whole calendar family (queries
+// are keyed by visible range). Mount once near the calendar screen root.
+export const useCalendarLiveUpdates = () => {
+	const qc = useQueryClient();
+	useResourceLiveUpdates({
+		path: "/admin/calendar/stream",
+		event: "event",
+		queryClient: qc,
+		queryKey: calendarKeys.all,
 	});
 };

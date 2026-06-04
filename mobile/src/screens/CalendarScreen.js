@@ -17,6 +17,7 @@ import BottomSheet from "../components/BottomSheet";
 import DateTimePickerField from "../components/DateTimePickerField";
 import {
 	useCalendarEvents,
+	useCalendarLiveUpdates,
 	useCreateEvent,
 	useDeleteEvent,
 	useUpdateEvent,
@@ -25,6 +26,7 @@ import {
 	useCompleteOccurrence,
 	useRecurringTasks,
 	useTasks,
+	useTasksLiveUpdates,
 	useToggleTask,
 } from "../queries/tasksQuery";
 import { formatTime } from "../utils/dateTime";
@@ -164,6 +166,10 @@ function MonthBlock({ month, byDay, todayKey, onPickDay }) {
 
 export default function CalendarScreen({ navigation }) {
 	const insets = useSafeAreaInsets();
+	// The calendar renders both events and tasks, so subscribe to both streams
+	// to reflect changes made on another device.
+	useCalendarLiveUpdates();
+	useTasksLiveUpdates();
 	const listRef = useRef(null);
 	// Fixed base month (PAST_MONTHS before the current month); the visible window
 	// grows forward via `future`. The current month always sits at PAST_MONTHS.

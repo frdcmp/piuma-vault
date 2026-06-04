@@ -3,8 +3,10 @@ use uuid::Uuid;
 
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
+use crate::apps::realtime::ResourceAction;
 use crate::db::db::DbPool;
 
+use super::events::CalendarEventBus;
 use super::models::{
     CalendarApiError, CalendarEvent, CreateEventRequest, ListEventsQuery, UpdateEventRequest,
 };
@@ -97,6 +99,7 @@ pub async fn create_event(
     user: AuthenticatedUser,
     body: web::Json<CreateEventRequest>,
     pool: web::Data<DbPool>,
+    bus: web::Data<CalendarEventBus>,
 ) -> impl Responder {
     if let Some(r) = require_write(&user) {
         return r;
@@ -133,6 +136,7 @@ pub async fn create_event(
     {
         Ok(event) => {
             reschedule(pool.get_ref(), event.id).await;
+            bus.publish(ResourceAction::Created, event.id);
             HttpResponse::Created().json(event)
         }
         Err(e) => {
@@ -187,6 +191,7 @@ pub async fn update_event(
     path: web::Path<Uuid>,
     body: web::Json<UpdateEventRequest>,
     pool: web::Data<DbPool>,
+    bus: web::Data<CalendarEventBus>,
 ) -> impl Responder {
     if let Some(r) = require_write(&user) {
         return r;
@@ -262,6 +267,7 @@ pub async fn update_event(
     {
         Ok(Some(event)) => {
             reschedule(pool.get_ref(), event.id).await;
+            bus.publish(ResourceAction::Updated, event.id);
             HttpResponse::Ok().json(event)
         }
         Ok(None) => HttpResponse::NotFound().json(err("Event not found")),
@@ -278,6 +284,7 @@ pub async fn delete_event(
     user: AuthenticatedUser,
     path: web::Path<Uuid>,
     pool: web::Data<DbPool>,
+    bus: web::Data<CalendarEventBus>,
 ) -> impl Responder {
     if let Some(r) = require_write(&user) {
         return r;
@@ -295,6 +302,7 @@ pub async fn delete_event(
         Ok(_) => {
             let _ =
                 crate::apps::notifications::schedule::purge_source(pool.get_ref(), "event", id).await;
+            bus.publish(ResourceAction::Deleted, id);
             HttpResponse::NoContent().finish()
         }
         Err(e) => {
