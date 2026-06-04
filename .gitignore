@@ -55,6 +55,8 @@ yarn-error.log*
 *.m4a
 *.aac
 *.ogg
+# …except the bundled in-app alarm tone, which must ship in the build.
+!mobile/assets/alarm.wav
 *.wma
 *.aiff
 *.mid

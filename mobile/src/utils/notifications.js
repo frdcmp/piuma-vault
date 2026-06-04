@@ -72,13 +72,20 @@ function buildReminders({ events = [], tasks = [], recurring = [] }) {
 	const horizon = now.add(HORIZON_DAYS, "day");
 	const out = [];
 
-	const addAlerts = (anchorISO, title, alerts) => {
+	// `tag` = `{source_type}:{source_id}`, matching the backend's remote-push tag
+	// so a local + remote delivery of the same alert de-dupes to one alarm.
+	const addAlerts = (anchorISO, title, alerts, tag) => {
 		if (!anchorISO || !Array.isArray(alerts)) return;
 		const anchor = dayjs(anchorISO);
 		for (const a of alerts) {
 			const fire = anchor.subtract(Math.max(0, a.offset_minutes || 0), "minute");
 			if (fire.isAfter(now) && fire.isBefore(horizon)) {
-				out.push({ title, body: offsetLabel(a.offset_minutes), date: fire.toDate() });
+				out.push({
+					title,
+					body: offsetLabel(a.offset_minutes),
+					date: fire.toDate(),
+					tag,
+				});
 			}
 		}
 	};
@@ -86,13 +93,13 @@ function buildReminders({ events = [], tasks = [], recurring = [] }) {
 	// One-off (non-recurring) events.
 	for (const ev of events) {
 		if (ev.rrule) continue; // recurring events rely on remote push
-		addAlerts(ev.starts_at, ev.title, ev.alerts);
+		addAlerts(ev.starts_at, ev.title, ev.alerts, `event:${ev.id}`);
 	}
 
 	// One-off tasks with a due date.
 	for (const t of tasks) {
 		if (t.done || t.recurrence_id) continue;
-		addAlerts(t.due_at, t.title, t.alerts);
+		addAlerts(t.due_at, t.title, t.alerts, `task:${t.id}`);
 	}
 
 	// Recurring task templates → expand occurrences within the horizon.
@@ -114,6 +121,7 @@ function buildReminders({ events = [], tasks = [], recurring = [] }) {
 						title: tpl.title,
 						body: offsetLabel(a.offset_minutes),
 						date: fire.toDate(),
+						tag: `recurring:${tpl.id}`,
 					});
 				}
 			}
@@ -131,7 +139,7 @@ export async function syncLocalAlerts(data) {
 		await Notifications.cancelAllScheduledNotificationsAsync();
 		for (const r of reminders) {
 			await Notifications.scheduleNotificationAsync({
-				content: { title: r.title, body: r.body },
+				content: { title: r.title, body: r.body, data: { tag: r.tag } },
 				trigger: {
 					type: Notifications.SchedulableTriggerInputTypes.DATE,
 					date: r.date,

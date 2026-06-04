@@ -43,3 +43,14 @@ export const sendTestNotification = async () => {
 	const { data } = await axiosInstance.post("/admin/notifications/test");
 	return data; // { web_sent, push_sent }
 };
+
+// Materialized alerts whose fire_at is within the near window — drives the
+// in-app alarm (loud, must-dismiss overlay) while a tab is open. Recurrence /
+// all-day / DST are already resolved server-side.
+export const fetchUpcomingAlarms = async (withinMinutes = 180) => {
+	const { data } = await axiosInstance.get("/admin/notifications/upcoming", {
+		params: { within_minutes: withinMinutes },
+	});
+	// [{ id, source_type, source_id, occurrence_date, fire_at, offset_minutes, title, body }]
+	return Array.isArray(data) ? data : [];
+};

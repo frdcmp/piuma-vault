@@ -24,6 +24,30 @@ pub struct ScheduledNotification {
     pub source_id: uuid::Uuid,
 }
 
+// ── Upcoming alarms (read model for the in-app alarm scheduler) ──
+//
+// Surfaces the materialized `db_scheduled_notifications` rows so an open client
+// can ring a loud, must-dismiss in-app alarm at `fire_at` — independent of the
+// push channels (which cover the closed-app case). Recurrence/all-day/DST are
+// already resolved at materialization, so the client just needs when + what.
+#[derive(Debug, Serialize, FromRow)]
+pub struct UpcomingNotification {
+    pub id: uuid::Uuid,
+    pub source_type: String,
+    pub source_id: uuid::Uuid,
+    pub occurrence_date: Option<chrono::NaiveDate>,
+    pub fire_at: chrono::DateTime<chrono::Utc>,
+    pub offset_minutes: i32,
+    pub title: String,
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpcomingQuery {
+    // How far ahead to look (minutes). Defaults to 180 when omitted.
+    pub within_minutes: Option<i32>,
+}
+
 // ── Subscription / token registration DTOs ──
 
 // Mirrors the browser PushSubscription.toJSON() shape.

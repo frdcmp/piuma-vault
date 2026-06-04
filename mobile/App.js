@@ -1,4 +1,5 @@
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import * as Notifications from "expo-notifications";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { Platform, View } from "react-native";
@@ -8,12 +9,24 @@ import {
 	SafeAreaProvider,
 } from "react-native-safe-area-context";
 import { registerExpoToken } from "./src/api/notificationsApi";
+import AlarmModal from "./src/components/AlarmModal";
 import SystemBars from "./src/components/SystemBars";
 import AppNavigator from "./src/navigation/AppNavigator";
+import { useAlarmStore } from "./src/stores/alarmStore";
 import { useAuthStore } from "./src/stores/authStore";
 import { registerForPushNotifications } from "./src/utils/notifications";
 import { asyncStoragePersister, queryClient } from "./src/utils/queryClient";
 import { colors } from "./src/utils/theme";
+
+// Turn a delivered notification into an in-app alarm payload.
+function alarmFromNotification(notification) {
+	const c = notification.request.content;
+	return {
+		tag: c.data?.tag || notification.request.identifier,
+		title: c.title || "Reminder",
+		body: c.body || "",
+	};
+}
 
 export default function App() {
 	// On web, RN's root only fills part of the viewport, so any uncovered
@@ -52,6 +65,23 @@ export default function App() {
 		};
 	}, [token]);
 
+	// Escalate delivered alerts to the loud in-app alarm: when one fires while
+	// the app is foregrounded (received), or when the user taps one that fired
+	// in the background (response).
+	const present = useAlarmStore((s) => s.present);
+	useEffect(() => {
+		const received = Notifications.addNotificationReceivedListener((n) =>
+			present(alarmFromNotification(n)),
+		);
+		const response = Notifications.addNotificationResponseReceivedListener((r) =>
+			present(alarmFromNotification(r.notification)),
+		);
+		return () => {
+			received.remove();
+			response.remove();
+		};
+	}, [present]);
+
 	return (
 		<PersistQueryClientProvider
 			client={queryClient}
@@ -64,6 +94,7 @@ export default function App() {
 					</View>
 					<SystemBars />
 					<StatusBar style="light" />
+					<AlarmModal />
 				</KeyboardProvider>
 			</SafeAreaProvider>
 		</PersistQueryClientProvider>
