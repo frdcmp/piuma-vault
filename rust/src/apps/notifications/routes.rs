@@ -25,5 +25,9 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     .service(
         web::resource("/admin/notifications/test")
             .route(web::post().to(handlers::test_notification)),
+    )
+    .service(
+        web::resource("/admin/notifications/upcoming")
+            .route(web::get().to(handlers::get_upcoming)),
     );
 }

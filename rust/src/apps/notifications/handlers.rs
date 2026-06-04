@@ -6,7 +6,8 @@ use crate::db::db::DbPool;
 
 use super::models::{
     ExpoTokenDeleteRequest, ExpoTokenRequest, NotificationPrefs, NotificationsApiError,
-    UpdatePrefsRequest, VapidKeyResponse, WebPushSubscribeRequest, WebPushUnsubscribeRequest,
+    UpcomingNotification, UpcomingQuery, UpdatePrefsRequest, VapidKeyResponse,
+    WebPushSubscribeRequest, WebPushUnsubscribeRequest,
 };
 use super::{expo, webpush};
 
@@ -186,4 +187,36 @@ pub async fn test_notification(
     let push_sent = expo::dispatch_expo(pool.get_ref(), &user.user_id, title, body, &data).await;
 
     HttpResponse::Ok().json(json!({ "web_sent": web_sent, "push_sent": push_sent }))
+}
+
+// ── Upcoming alarms ───────────────────────────────────────────────────────────
+
+// Returns the materialized scheduled-notification rows whose `fire_at` falls in
+// the near window [now − 2 min, now + within_minutes], so an open client can
+// ring an in-app alarm at the precise instant. The 2-minute grace lets a client
+// that opened right after a fire still catch it. Independent of `sent_at` (which
+// only tracks push dispatch), since the alarm is a separate in-app channel.
+pub async fn get_upcoming(
+    user: AuthenticatedUser,
+    query: web::Query<UpcomingQuery>,
+    pool: web::Data<DbPool>,
+) -> impl Responder {
+    let within = query.within_minutes.unwrap_or(180).clamp(1, 1440);
+
+    let rows: Vec<UpcomingNotification> = sqlx::query_as(
+        "SELECT id, source_type, source_id, occurrence_date, fire_at, offset_minutes, title, body \
+         FROM db_scheduled_notifications \
+         WHERE user_id = $1 \
+           AND fire_at >= NOW() - INTERVAL '2 minutes' \
+           AND fire_at <= NOW() + make_interval(mins => $2) \
+         ORDER BY fire_at \
+         LIMIT 200",
+    )
+    .bind(&user.user_id)
+    .bind(within)
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default();
+
+    HttpResponse::Ok().json(rows)
 }

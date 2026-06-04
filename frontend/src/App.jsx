@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import AlarmHost from "./admin/components/alarm/AlarmHost";
 import PageLayout from "./admin/components/layout/PageLayout";
 import ProtectedRoute from "./admin/components/layout/ProtectedRoute";
 import About from "./admin/pages/about";
@@ -114,6 +115,9 @@ function AppContent() {
 					}
 				/>
 			</Routes>
+			{/* Loud, must-dismiss in-app alarm — rings when an alert fires while
+			    the app is open (the OS notification covers the closed-tab case). */}
+			<AlarmHost />
 		</BrowserRouter>
 	);
 }
