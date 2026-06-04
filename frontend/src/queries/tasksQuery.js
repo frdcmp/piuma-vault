@@ -11,6 +11,7 @@ import {
 	updateRecurringTask,
 	updateTask,
 } from "../api/tasks";
+import { useResourceLiveUpdates } from "./liveUpdates";
 
 export const taskKeys = {
 	all: ["tasks"],
@@ -107,3 +108,16 @@ export const useCompleteOccurrence = () => {
 		onSuccess: () => invalidateAll(qc),
 	});
 };
+
+// ── Live updates (SSE) ──────────────────────────────────────────────────────
+//
+// Subscribes to the backend task event stream so this tab reflects changes made
+// elsewhere (another tab, the mobile app, API-key clients). Any event refetches
+// the whole tasks family (lists are keyed by filter, so per-id targeting
+// wouldn't help). Mount once near the tasks view root.
+export const useTasksLiveUpdates = () =>
+	useResourceLiveUpdates({
+		path: "/admin/tasks/events",
+		event: "task",
+		queryKey: taskKeys.all,
+	});

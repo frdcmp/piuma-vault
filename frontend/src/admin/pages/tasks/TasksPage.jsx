@@ -4,6 +4,7 @@ import {
 	useDeleteRecurringTask,
 	useRecurringTasks,
 	useTasks,
+	useTasksLiveUpdates,
 	useToggleTask,
 } from "../../../queries";
 import { formatDate, timeAgo } from "../../../utils/dateTime";
@@ -24,6 +25,7 @@ const PRIORITY_COLOR = [
 
 export default function TasksPage() {
 	const navigate = useNavigate();
+	useTasksLiveUpdates(); // refetch when tasks change in another tab/device
 	const { data: tasks = [] } = useTasks();
 	const { data: recurring = [] } = useRecurringTasks();
 	const toggleTask = useToggleTask();
@@ -94,7 +96,12 @@ export default function TasksPage() {
 					>
 						calendar ▤
 					</PvButton>
-					<PvButton variant="accent" onClick={() => setTaskModal({})}>
+					<PvButton
+						variant="accent"
+						onClick={() =>
+							setTaskModal({ defaultTags: activeTag ? [activeTag] : [] })
+						}
+					>
 						+ task
 					</PvButton>
 				</div>
@@ -338,7 +345,11 @@ export default function TasksPage() {
 			</div>
 
 			{taskModal ? (
-				<TaskModal task={taskModal.task} onClose={() => setTaskModal(null)} />
+				<TaskModal
+					task={taskModal.task}
+					defaultTags={taskModal.defaultTags}
+					onClose={() => setTaskModal(null)}
+				/>
 			) : null}
 			{recModal ? (
 				<RecurringTaskModal

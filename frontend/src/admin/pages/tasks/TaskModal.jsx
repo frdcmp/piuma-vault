@@ -7,8 +7,12 @@ import {
 	PvModal,
 } from "../../components/ui";
 
-/** Create / edit / delete a one-off task. Dates stored as UTC ISO. */
-export default function TaskModal({ task, onClose }) {
+/**
+ * Create / edit / delete a one-off task. Dates stored as UTC ISO.
+ * `defaultTags` seeds the tags field on creation (e.g. the tag the list is
+ * currently filtered by), so new tasks land in the group you're looking at.
+ */
+export default function TaskModal({ task, defaultTags = [], onClose }) {
 	const isEdit = !!task;
 	const createTask = useCreateTask();
 	const updateTask = useUpdateTask();
@@ -18,7 +22,7 @@ export default function TaskModal({ task, onClose }) {
 	const [notes, setNotes] = useState(task?.notes ?? "");
 	const [dueAt, setDueAt] = useState(task?.due_at ?? null);
 	const [priority, setPriority] = useState(task?.priority ?? 0);
-	const [tags, setTags] = useState((task?.tags ?? []).join(", "));
+	const [tags, setTags] = useState((task?.tags ?? defaultTags).join(", "));
 	const [alerts, setAlerts] = useState(task?.alerts ?? []);
 	const [error, setError] = useState("");
 
@@ -27,6 +31,11 @@ export default function TaskModal({ task, onClose }) {
 	const handleConfirm = () => {
 		if (!title.trim()) {
 			setError("Title is required");
+			return;
+		}
+		// Alerts fire relative to the due date, so they need one as an anchor.
+		if (alerts.length > 0 && !dueAt) {
+			setError("Set a due date to use alerts");
 			return;
 		}
 		const tagList = tags
@@ -72,7 +81,11 @@ export default function TaskModal({ task, onClose }) {
 					<span>Due</span>
 					<PvDateTimePicker
 						value={dueAt}
-						onChange={setDueAt}
+						onChange={(v) => {
+							setDueAt(v);
+							// Alerts are anchored to the due date — drop them if it's cleared.
+							if (!v) setAlerts([]);
+						}}
 						mode="datetime"
 						placeholder="No due date"
 					/>
@@ -107,7 +120,11 @@ export default function TaskModal({ task, onClose }) {
 				</label>
 				<div className="tasks-field">
 					<span>Alerts</span>
-					<AlertsField value={alerts} onChange={setAlerts} />
+					{dueAt ? (
+						<AlertsField value={alerts} onChange={setAlerts} />
+					) : (
+						<p className="tasks-hint">Set a due date to add alerts.</p>
+					)}
 				</div>
 				{error ? <p className="tasks-error">{error}</p> : null}
 				{isEdit ? (

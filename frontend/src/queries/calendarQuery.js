@@ -6,6 +6,7 @@ import {
 	fetchEvents,
 	updateEvent,
 } from "../api/calendar";
+import { useResourceLiveUpdates } from "./liveUpdates";
 
 export const calendarKeys = {
 	all: ["calendar"],
@@ -60,3 +61,15 @@ export const useDeleteEvent = () => {
 		onSuccess: () => qc.invalidateQueries({ queryKey: calendarKeys.all }),
 	});
 };
+
+// ── Live updates (SSE) ──────────────────────────────────────────────────────
+//
+// Subscribes to the backend calendar event stream so this tab reflects changes
+// made elsewhere. Any event refetches the whole calendar family (queries are
+// keyed by visible range). Mount once near the calendar view root.
+export const useCalendarLiveUpdates = () =>
+	useResourceLiveUpdates({
+		path: "/admin/calendar/stream",
+		event: "event",
+		queryKey: calendarKeys.all,
+	});

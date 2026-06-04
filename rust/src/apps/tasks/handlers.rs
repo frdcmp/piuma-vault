@@ -1,11 +1,13 @@
 use actix_web::{web, HttpResponse, Responder};
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use uuid::Uuid;
 
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
+use crate::apps::realtime::ResourceAction;
 use crate::db::db::DbPool;
 
+use super::events::TasksEventBus;
 use super::models::{
     CompleteOccurrenceRequest, CreateRecurringTaskRequest, CreateTaskRequest, ListTasksQuery,
     RecurringTask, Task, TasksApiError, UpdateRecurringTaskRequest, UpdateTaskRequest,
@@ -63,6 +65,13 @@ fn validate_task(title: &str, tags: &[String]) -> Option<HttpResponse> {
         return Some(HttpResponse::BadRequest().json(err("Maximum 20 tags per task")));
     }
     None
+}
+
+// A task alert is an offset *before* due_at, so without a due date there is no
+// anchor to schedule against — the alert would be stored but never fire. Reject
+// that combination up front instead of silently dropping it.
+fn alerts_present(alerts: &serde_json::Value) -> bool {
+    alerts.as_array().map(|a| !a.is_empty()).unwrap_or(false)
 }
 
 // ── TASKS: LIST ──────────────────────────────────────────────────────────────
@@ -129,12 +138,16 @@ pub async fn create_task(
     user: AuthenticatedUser,
     body: web::Json<CreateTaskRequest>,
     pool: web::Data<DbPool>,
+    bus: web::Data<TasksEventBus>,
 ) -> impl Responder {
     if let Some(r) = require_write(&user) {
         return r;
     }
     if let Some(r) = validate_task(&body.title, &body.tags) {
         return r;
+    }
+    if alerts_present(&body.alerts) && body.due_at.is_none() {
+        return HttpResponse::BadRequest().json(err("A due date is required to set alerts"));
     }
 
     let sql = format!(
@@ -154,6 +167,7 @@ pub async fn create_task(
     {
         Ok(task) => {
             reschedule(pool.get_ref(), "task", task.id).await;
+            bus.publish(ResourceAction::Created, task.id);
             HttpResponse::Created().json(task)
         }
         Err(e) => {
@@ -197,6 +211,7 @@ pub async fn update_task(
     path: web::Path<Uuid>,
     body: web::Json<UpdateTaskRequest>,
     pool: web::Data<DbPool>,
+    bus: web::Data<TasksEventBus>,
 ) -> impl Responder {
     if let Some(r) = require_write(&user) {
         return r;
@@ -205,6 +220,39 @@ pub async fn update_task(
     if let Some(ref title) = body.title {
         if let Some(r) = validate_task(title, body.tags.as_deref().unwrap_or(&[])) {
             return r;
+        }
+    }
+
+    // Alerts need a due_at anchor. Compute the effective state after this patch
+    // and reject "alerts without a due date". Only touch the DB for the fields
+    // the request omits (a patch clearing due_at, or adding alerts).
+    let touches_alerts = body.alerts.is_some();
+    let clears_due = matches!(body.due_at, Some(None));
+    if touches_alerts || clears_due {
+        let current: Option<(Option<DateTime<Utc>>, serde_json::Value)> = match sqlx::query_as(
+            "SELECT due_at, alerts FROM db_tasks WHERE id = $1 AND user_id = $2",
+        )
+        .bind(id)
+        .bind(&user.user_id)
+        .fetch_optional(pool.get_ref())
+        .await
+        {
+            Ok(row) => row,
+            Err(e) => {
+                log::error!("tasks update precheck failed: {e}");
+                return HttpResponse::InternalServerError().json(err("Failed to update task"));
+            }
+        };
+        if let Some((cur_due, cur_alerts)) = current {
+            let effective_due = match body.due_at {
+                Some(v) => v,           // explicit set or clear
+                None => cur_due,        // omitted → keep stored
+            };
+            let effective_alerts = body.alerts.as_ref().unwrap_or(&cur_alerts);
+            if alerts_present(effective_alerts) && effective_due.is_none() {
+                return HttpResponse::BadRequest()
+                    .json(err("A due date is required to set alerts"));
+            }
         }
     }
 
@@ -252,6 +300,7 @@ pub async fn update_task(
     {
         Ok(Some(task)) => {
             reschedule(pool.get_ref(), "task", task.id).await;
+            bus.publish(ResourceAction::Updated, task.id);
             HttpResponse::Ok().json(task)
         }
         Ok(None) => HttpResponse::NotFound().json(err("Task not found")),
@@ -268,6 +317,7 @@ pub async fn toggle_task(
     user: AuthenticatedUser,
     path: web::Path<Uuid>,
     pool: web::Data<DbPool>,
+    bus: web::Data<TasksEventBus>,
 ) -> impl Responder {
     if let Some(r) = require_write(&user) {
         return r;
@@ -299,6 +349,7 @@ pub async fn toggle_task(
             } else {
                 reschedule(pool.get_ref(), "task", task.id).await;
             }
+            bus.publish(ResourceAction::Updated, task.id);
             HttpResponse::Ok().json(task)
         }
         Ok(None) => HttpResponse::NotFound().json(err("Task not found")),
@@ -315,6 +366,7 @@ pub async fn delete_task(
     user: AuthenticatedUser,
     path: web::Path<Uuid>,
     pool: web::Data<DbPool>,
+    bus: web::Data<TasksEventBus>,
 ) -> impl Responder {
     if let Some(r) = require_write(&user) {
         return r;
@@ -330,6 +382,7 @@ pub async fn delete_task(
         Ok(_) => {
             let _ =
                 crate::apps::notifications::schedule::purge_source(pool.get_ref(), "task", id).await;
+            bus.publish(ResourceAction::Deleted, id);
             HttpResponse::NoContent().finish()
         }
         Err(e) => {
@@ -370,6 +423,7 @@ pub async fn create_recurring(
     user: AuthenticatedUser,
     body: web::Json<CreateRecurringTaskRequest>,
     pool: web::Data<DbPool>,
+    bus: web::Data<TasksEventBus>,
 ) -> impl Responder {
     if let Some(r) = require_write(&user) {
         return r;
@@ -400,6 +454,7 @@ pub async fn create_recurring(
     {
         Ok(rt) => {
             reschedule(pool.get_ref(), "recurring", rt.id).await;
+            bus.publish(ResourceAction::Created, rt.id);
             HttpResponse::Created().json(rt)
         }
         Err(e) => {
@@ -444,6 +499,7 @@ pub async fn update_recurring(
     path: web::Path<Uuid>,
     body: web::Json<UpdateRecurringTaskRequest>,
     pool: web::Data<DbPool>,
+    bus: web::Data<TasksEventBus>,
 ) -> impl Responder {
     if let Some(r) = require_write(&user) {
         return r;
@@ -505,6 +561,7 @@ pub async fn update_recurring(
             )
             .await;
             reschedule(pool.get_ref(), "recurring", rt.id).await;
+            bus.publish(ResourceAction::Updated, rt.id);
             HttpResponse::Ok().json(rt)
         }
         Ok(None) => HttpResponse::NotFound().json(err("Recurring task not found")),
@@ -521,6 +578,7 @@ pub async fn delete_recurring(
     user: AuthenticatedUser,
     path: web::Path<Uuid>,
     pool: web::Data<DbPool>,
+    bus: web::Data<TasksEventBus>,
 ) -> impl Responder {
     if let Some(r) = require_write(&user) {
         return r;
@@ -543,6 +601,7 @@ pub async fn delete_recurring(
                 id,
             )
             .await;
+            bus.publish(ResourceAction::Deleted, id);
             HttpResponse::NoContent().finish()
         }
         Err(e) => {
@@ -563,6 +622,7 @@ pub async fn complete_occurrence(
     path: web::Path<(Uuid, String)>,
     body: Option<web::Json<CompleteOccurrenceRequest>>,
     pool: web::Data<DbPool>,
+    bus: web::Data<TasksEventBus>,
 ) -> impl Responder {
     if let Some(r) = require_write(&user) {
         return r;
@@ -604,7 +664,10 @@ pub async fn complete_occurrence(
         .execute(pool.get_ref())
         .await
         {
-            Ok(_) => return HttpResponse::NoContent().finish(),
+            Ok(_) => {
+                bus.publish(ResourceAction::Updated, recurrence_id);
+                return HttpResponse::NoContent().finish();
+            }
             Err(e) => {
                 log::error!("occurrence uncomplete failed: {e}");
                 return HttpResponse::InternalServerError()
@@ -635,7 +698,10 @@ pub async fn complete_occurrence(
         .fetch_one(pool.get_ref())
         .await
     {
-        Ok(task) => HttpResponse::Ok().json(task),
+        Ok(task) => {
+            bus.publish(ResourceAction::Updated, recurrence_id);
+            HttpResponse::Ok().json(task)
+        }
         Err(e) => {
             log::error!("occurrence complete failed: {e}");
             HttpResponse::InternalServerError().json(err("Failed to complete occurrence"))
