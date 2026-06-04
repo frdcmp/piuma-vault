@@ -10,16 +10,15 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PvButton, PvModal } from "@/admin/components/ui";
-import { streamChat } from "../api/openclawChat";
-import { useServices } from "../queries";
+import {
+	getSessionKey,
+	rotateSessionKey,
+	streamChat,
+} from "../api/openclawChat";
+import { useOpenclawHistory, useServices } from "../queries";
 import useNotesWorkspaceStore from "../store/notesWorkspaceStore";
 import PiumaRunning from "./PiumaRunning";
 import "./ChatPage.css";
-
-// Bumping this key invalidates persisted chats — change it if the message
-// shape ever changes in a breaking way. v2: user messages carry a separate
-// `context` array instead of inlining "vault path:" lines into `content`.
-const STORAGE_KEY = "openclaw_chat_history_v2";
 
 const ASSISTANT_LABEL = "openclaw stream";
 const SUBMIT_LABEL = "ask claw";
@@ -48,6 +47,18 @@ const withContextBlock = (content, context) => {
 
 const newMessageId = () =>
 	`msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+// Map a gateway transcript entry ({role, content, context?}) to our UI message
+// shape. The backend recovers the per-turn note chips from the stored <context>
+// block; `tools` activity isn't persisted, so reloaded assistant turns get an
+// empty tool list.
+const historyToMessage = (m) => ({
+	id: newMessageId(),
+	role: m.role,
+	content: m.content,
+	...(m.context?.length ? { context: m.context } : {}),
+	...(m.role === "assistant" ? { tools: [] } : {}),
+});
 
 // Compact one-line summary of a tool call's args object, e.g.
 // `{ query: "16khz" }` → `query: "16khz"`. Long values are clipped.
@@ -226,6 +237,10 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const [hydrated, setHydrated] = useState(false);
 	const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 	const [compact, setCompact] = useState(false);
+	// The OpenClaw session key IS the conversation identity — the transcript is
+	// loaded from the gateway, never stored locally. Rotating it starts a new
+	// chat (see confirmClear) and re-keys the history query.
+	const [sessionKey, setSessionKey] = useState(getSessionKey);
 	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
 	const inputRef = useRef(null);
@@ -287,27 +302,18 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 
 	useEffect(() => () => abortRef.current?.abort(), []);
 
-	useEffect(() => {
-		try {
-			const raw = localStorage.getItem(STORAGE_KEY);
-			if (raw) {
-				const parsed = JSON.parse(raw);
-				if (Array.isArray(parsed)) setMessages(parsed);
-			}
-		} catch (e) {
-			console.warn("[chat] failed to parse stored history", e);
-		}
-		setHydrated(true);
-	}, []);
+	// The conversation lives in OpenClaw, keyed by the session key. Load it once
+	// per mount and seed local state. We wait for the fetch to settle (so a
+	// remount picks up the freshest transcript, not a stale cache) and seed only
+	// once — after that, streaming owns local state and we never re-seed.
+	const { data: history, isFetching: historyFetching } =
+		useOpenclawHistory(sessionKey);
 
 	useEffect(() => {
-		if (!hydrated || isStreaming) return;
-		try {
-			localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-		} catch (e) {
-			console.warn("[chat] failed to persist history", e);
-		}
-	}, [messages, isStreaming, hydrated]);
+		if (hydrated || historyFetching || !history) return;
+		setMessages(history.map(historyToMessage));
+		setHydrated(true);
+	}, [history, historyFetching, hydrated]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: scroll-to-bottom must fire when messages change
 	useEffect(() => {
@@ -324,11 +330,9 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		abortRef.current = null;
 		setIsStreaming(false);
 		setMessages([]);
-		try {
-			localStorage.removeItem(STORAGE_KEY);
-		} catch (e) {
-			console.warn("[chat] failed to clear stored history", e);
-		}
+		// Start a new gateway conversation; the old one is orphaned in OpenClaw.
+		// Re-keying the history query just returns the (empty) new transcript.
+		setSessionKey(rotateSessionKey());
 		setConfirmClearOpen(false);
 	}, []);
 
@@ -469,13 +473,15 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			<div ref={scrollRef} className="chat-messages">
 				<div className="chat-messages-inner">
 					{messages.length === 0 ? (
-						<div className="chat-empty">
-							<div className="chat-empty-title">Claw is on the leash.</div>
-							<div className="chat-empty-sub">
-								Ask anything — markdown, code, plans. Streams back token by
-								token.
+						historyFetching ? null : (
+							<div className="chat-empty">
+								<div className="chat-empty-title">Claw is on the leash.</div>
+								<div className="chat-empty-sub">
+									Ask anything — markdown, code, plans. Streams back token by
+									token.
+								</div>
 							</div>
-						</div>
+						)
 					) : (
 						messages.map((m, i) => {
 							const isLast = i === messages.length - 1;
@@ -547,14 +553,15 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 
 			<PvModal
 				open={confirmClearOpen}
-				title="Clear conversation?"
-				confirmText="Clear"
+				title="Start a new conversation?"
+				confirmText="New chat"
 				cancelText="Cancel"
 				danger
 				onConfirm={confirmClear}
 				onCancel={() => setConfirmClearOpen(false)}
 			>
-				This deletes all messages on this device.
+				This starts a fresh chat. The current conversation stays in OpenClaw but
+				won't be shown here anymore.
 			</PvModal>
 		</div>
 	);

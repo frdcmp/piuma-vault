@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	ActivityIndicator,
@@ -18,7 +17,11 @@ import {
 	SafeAreaView,
 	useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { streamChat } from "../api/chatApi";
+import {
+	fetchOpenclawHistory,
+	rotateSessionKey,
+	streamChat,
+} from "../api/chatApi";
 import MarkdownView from "../components/MarkdownView";
 import PiumaAvatar from "../components/PiumaAvatar";
 import StreamingCursor from "../components/StreamingCursor";
@@ -26,10 +29,6 @@ import { TOP_EXTRA } from "../components/SystemBars";
 import ThinkingLoader from "../components/ThinkingLoader";
 import { colors } from "../utils/theme";
 import useProgressiveText from "../utils/useProgressiveText";
-
-// Bumping this key invalidates persisted chats — change it if the message
-// shape ever changes in a breaking way.
-const STORAGE_KEY = "openclaw_chat_history_v1";
 
 const MONO = Platform.select({
 	ios: "Menlo",
@@ -48,6 +47,18 @@ const INPUT_MAX_H = 124;
 
 const newMessageId = () =>
 	`msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+// Map a gateway transcript entry ({role, content, context?}) to our UI message
+// shape. The backend recovers the per-turn note chip from the stored <context>
+// block; `tools` activity isn't persisted, so reloaded assistant turns get an
+// empty tool list.
+const historyToMessage = (m) => ({
+	id: newMessageId(),
+	role: m.role,
+	content: m.content,
+	...(m.context?.length ? { context: m.context } : {}),
+	...(m.role === "assistant" ? { tools: [] } : {}),
+});
 
 const escapeXmlAttr = (value) =>
 	value
@@ -206,10 +217,6 @@ export default function ChatScreen({ onClose, notePath }) {
 	// it off for the next send. Mobile keeps it to a single note (no tabs, no
 	// lock state) — the chip just mirrors whatever note opened this chat.
 	const [contextAttached, setContextAttached] = useState(true);
-	// Gates persistence: don't write to storage until we've finished the
-	// initial hydration read, otherwise an empty initial state would clobber
-	// the saved history before the user sees it.
-	const [hydrated, setHydrated] = useState(false);
 	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
 
@@ -234,73 +241,59 @@ export default function ChatScreen({ onClose, notePath }) {
 		if (notePath) setContextAttached(true);
 	}, [notePath]);
 
-	// Hydrate persisted messages on mount.
+	// The conversation lives in OpenClaw, keyed by the device session key. Load
+	// it from the gateway on mount and seed local state — nothing is stored on
+	// the device. After this initial seed, streaming owns local state.
 	useEffect(() => {
 		let cancelled = false;
-		AsyncStorage.getItem(STORAGE_KEY)
-			.then((raw) => {
+		const controller = new AbortController();
+		fetchOpenclawHistory({ signal: controller.signal })
+			.then((items) => {
 				if (cancelled) return;
-				if (raw) {
-					try {
-						const parsed = JSON.parse(raw);
-						if (Array.isArray(parsed)) setMessages(parsed);
-					} catch (e) {
-						console.warn("[chat] failed to parse stored history", e);
-					}
+				if (Array.isArray(items) && items.length) {
+					setMessages(items.map(historyToMessage));
 				}
-				setHydrated(true);
 			})
-			.catch(() => {
-				if (!cancelled) setHydrated(true);
+			.catch((e) => {
+				if (cancelled) return;
+				console.warn("[chat] failed to load history", e);
 			});
 		return () => {
 			cancelled = true;
+			controller.abort();
 		};
 	}, []);
 
-	// Persist after every settled change. We skip writes mid-stream so we
-	// don't hammer AsyncStorage on every token — the final flush happens
-	// when isStreaming flips back to false.
-	useEffect(() => {
-		if (!hydrated || isStreaming) return;
-		AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(messages)).catch((e) => {
-			console.warn("[chat] failed to persist history", e);
-		});
-	}, [messages, isStreaming, hydrated]);
-
 	const handleClearConversation = useCallback(() => {
+		// Start a new gateway conversation; the old one is orphaned in OpenClaw.
 		const wipe = async () => {
 			abortRef.current?.abort();
 			abortRef.current = null;
 			setIsStreaming(false);
 			setMessages([]);
 			try {
-				await AsyncStorage.removeItem(STORAGE_KEY);
+				await rotateSessionKey();
 			} catch (e) {
-				console.warn("[chat] failed to clear stored history", e);
+				console.warn("[chat] failed to rotate session key", e);
 			}
 		};
 
+		const message =
+			"This starts a fresh chat. The current conversation stays in OpenClaw but won't be shown here anymore.";
 		if (Platform.OS === "web") {
 			// RN Alert on web is a no-op — fall back to window.confirm.
 			if (
 				typeof window !== "undefined" &&
-				window.confirm(
-					"Clear conversation? This deletes all messages on this device.",
-				)
+				window.confirm(`Start a new conversation? ${message}`)
 			) {
 				wipe();
 			}
 			return;
 		}
-		Alert.alert(
-			"Clear conversation?",
-			"This deletes all messages on this device.",
-			[
-				{ text: "Cancel", style: "cancel" },
-				{ text: "Clear", style: "destructive", onPress: wipe },
-			],
-		);
+		Alert.alert("Start a new conversation?", message, [
+			{ text: "Cancel", style: "cancel" },
+			{ text: "New chat", style: "destructive", onPress: wipe },
+		]);
 	}, []);
 
 	const sendMessage = useCallback(async () => {
