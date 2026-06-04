@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { AppState } from "react-native";
 import EventSource from "react-native-sse";
 import { refreshAccessToken } from "../api/axiosInstance";
 import {
@@ -245,8 +246,28 @@ export const useNotesLiveUpdates = (activeNoteId) => {
 
 		connect();
 
+		// Backgrounding silently kills the SSE socket (often with no error/close
+		// event), so the stream is dead on return. On foreground, tear down any
+		// zombie connection, backfill changes made while away, and reconnect.
+		const appStateSub = AppState.addEventListener("change", (status) => {
+			if (cancelled || status !== "active") return;
+			if (reconnectTimer) {
+				clearTimeout(reconnectTimer);
+				reconnectTimer = null;
+			}
+			close();
+			attempts = 0;
+			qc.invalidateQueries({ queryKey: ["notes", "list"] });
+			qc.invalidateQueries({ queryKey: ["notes", "browse"] });
+			if (activeNoteId) {
+				qc.invalidateQueries({ queryKey: notesKeys.detail(activeNoteId) });
+			}
+			connect();
+		});
+
 		return () => {
 			cancelled = true;
+			appStateSub.remove();
 			if (reconnectTimer) clearTimeout(reconnectTimer);
 			close();
 		};

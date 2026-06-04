@@ -1,8 +1,9 @@
+import { focusManager } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import * as Notifications from "expo-notifications";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { Platform, View } from "react-native";
+import { AppState, Platform, View } from "react-native";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import {
 	initialWindowMetrics,
@@ -42,6 +43,17 @@ export default function App() {
 		body.style.margin = "0";
 		html.style.height = "100%";
 		body.style.height = "100%";
+	}, []);
+
+	// Wire TanStack Query's focusManager to AppState. RN has no window-focus
+	// event, so `refetchOnWindowFocus` is dead by default — this makes queries
+	// refetch when the app returns to the foreground (e.g. after adding a task
+	// from Telegram while backgrounded). Respects each query's staleTime.
+	useEffect(() => {
+		const sub = AppState.addEventListener("change", (status) => {
+			if (Platform.OS !== "web") focusManager.setFocused(status === "active");
+		});
+		return () => sub.remove();
 	}, []);
 
 	// Once authenticated, register this device for remote push and report the

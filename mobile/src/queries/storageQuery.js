@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { AppState } from "react-native";
 import {
 	bulkDelete,
 	deleteFolder,
@@ -12,6 +14,22 @@ import {
 export const storageKeys = {
 	all: ["storage"],
 	list: (params) => ["storage", "list", params],
+};
+
+// Storage has no SSE stream, so a file added elsewhere (web, API client) won't
+// push here. Force a refresh of the whole storage family whenever the app
+// returns to the foreground, so returning to the screen reflects changes made
+// while away — regardless of staleTime. Mount once near the storage screen.
+export const useStorageForegroundRefresh = () => {
+	const qc = useQueryClient();
+	useEffect(() => {
+		const sub = AppState.addEventListener("change", (status) => {
+			if (status === "active") {
+				qc.invalidateQueries({ queryKey: storageKeys.all });
+			}
+		});
+		return () => sub.remove();
+	}, [qc]);
 };
 
 export const useStorageList = (params = {}, options = {}) =>

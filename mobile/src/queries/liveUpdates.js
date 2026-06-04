@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { AppState } from "react-native";
 import EventSource from "react-native-sse";
 import { refreshAccessToken } from "../api/axiosInstance";
 import { useAuthStore } from "../stores/authStore";
@@ -93,8 +94,26 @@ export function useResourceLiveUpdates({ path, event, queryClient, queryKey }) {
 
 		connect();
 
+		// Backgrounding silently kills the SSE socket on iOS/Android — often
+		// with no error/close event, so the reconnect loop never fires and the
+		// stream is dead on return. When the app comes back to the foreground,
+		// tear down any zombie connection, refetch to backfill changes made
+		// while away, and reconnect so future live events resume.
+		const appStateSub = AppState.addEventListener("change", (status) => {
+			if (cancelled || status !== "active") return;
+			if (reconnectTimer) {
+				clearTimeout(reconnectTimer);
+				reconnectTimer = null;
+			}
+			close();
+			attempts = 0;
+			invalidate();
+			connect();
+		});
+
 		return () => {
 			cancelled = true;
+			appStateSub.remove();
 			if (reconnectTimer) clearTimeout(reconnectTimer);
 			close();
 		};

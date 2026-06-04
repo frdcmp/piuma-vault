@@ -25,6 +25,7 @@ import {
 	useStorageBulkDelete,
 	useStorageDeleteFolder,
 	useStorageDeleteObject,
+	useStorageForegroundRefresh,
 	useStorageList,
 	useStorageSignedUrl,
 	useStorageUpload,
@@ -110,6 +111,7 @@ export default function StorageScreen({ navigation }) {
 	const [selected, setSelected] = useState(() => new Set());
 
 	const list = useStorageList({ prefix });
+	useStorageForegroundRefresh(); // refresh when returning to the app
 	const upload = useStorageUpload();
 	const deleteObject = useStorageDeleteObject();
 	const deleteFolder = useStorageDeleteFolder();
