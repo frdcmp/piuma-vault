@@ -1,12 +1,20 @@
 const BASE_PATH = `${import.meta.env.BASE_URL}api/v1`;
 const SESSION_KEY_STORAGE = "openclaw_session_key";
 
-const getSessionKey = () => {
+export const getSessionKey = () => {
 	let key = localStorage.getItem(SESSION_KEY_STORAGE);
 	if (!key) {
 		key = crypto.randomUUID();
 		localStorage.setItem(SESSION_KEY_STORAGE, key);
 	}
+	return key;
+};
+
+// Start a fresh conversation: mint a new session key so the next turns land on
+// a new gateway session. The old conversation stays in OpenClaw, just orphaned.
+export const rotateSessionKey = () => {
+	const key = crypto.randomUUID();
+	localStorage.setItem(SESSION_KEY_STORAGE, key);
 	return key;
 };
 
@@ -118,4 +126,39 @@ export async function streamChat({
 		if (e?.name === "AbortError") return;
 		onError?.(e);
 	}
+}
+
+const buildHistoryRequest = (signal) => {
+	const token = localStorage.getItem("token");
+	return fetch(`${BASE_PATH}/llm/openclaw/history?limit=200`, {
+		method: "GET",
+		headers: {
+			"x-openclaw-session-key": getSessionKey(),
+			...(token ? { Authorization: `Bearer ${token}` } : {}),
+		},
+		signal,
+	});
+};
+
+// Loads this device's conversation FROM the OpenClaw gateway (the single source
+// of truth — nothing is persisted locally). Returns `{role, content}[]` for the
+// current session key. On 401, refreshes the access token once and retries.
+export async function fetchOpenclawHistory({ signal } = {}) {
+	let resp = await buildHistoryRequest(signal);
+	if (resp.status === 401 && localStorage.getItem("refreshToken")) {
+		try {
+			await refreshAccessToken();
+			resp = await buildHistoryRequest(signal);
+		} catch (refreshErr) {
+			localStorage.removeItem("token");
+			localStorage.removeItem("refreshToken");
+			throw refreshErr;
+		}
+	}
+	if (!resp.ok) {
+		const text = await resp.text();
+		throw new Error(`HTTP ${resp.status}: ${text || "history request failed"}`);
+	}
+	const data = await resp.json();
+	return Array.isArray(data?.messages) ? data.messages : [];
 }
