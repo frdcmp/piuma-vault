@@ -4,6 +4,7 @@ import AlarmHost from "./admin/components/alarm/AlarmHost";
 import PageLayout from "./admin/components/layout/PageLayout";
 import ProtectedRoute from "./admin/components/layout/ProtectedRoute";
 import About from "./admin/pages/about";
+import AgentsPage from "./admin/pages/agents/AgentsPage";
 import ApiKeysPage from "./admin/pages/apiKeys";
 import ApiTest from "./admin/pages/apiTest";
 import ForgotPassword from "./admin/pages/auth/forgotPassword";
@@ -68,6 +69,7 @@ function AppContent() {
 					}
 				>
 					<Route index element={<Homepage />} />
+					<Route path="agents" element={<AgentsPage />} />
 					<Route path="about" element={<About />} />
 					<Route path="projects" element={<Projects />} />
 					<Route path="files" element={<Files />} />

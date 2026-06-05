@@ -9,6 +9,7 @@ import {
 	HomeOutlined,
 	KeyOutlined,
 	QuestionCircleOutlined,
+	RobotOutlined,
 	SearchOutlined,
 	SettingOutlined,
 	UpOutlined,
@@ -24,6 +25,7 @@ import "./layout.css";
 const NAVIGATION = [
 	{ key: "/admin", icon: <HomeOutlined />, label: "Home" },
 	{ key: "/admin/notes", icon: <BookOutlined />, label: "Vault" },
+	{ key: "/admin/agents", icon: <RobotOutlined />, label: "Agents" },
 	{ key: "/admin/about", icon: <AppstoreOutlined />, label: "About" },
 	{ key: "/admin/storage", icon: <FolderOpenOutlined />, label: "Storage" },
 ];
