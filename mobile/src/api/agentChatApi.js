@@ -15,6 +15,17 @@ export const createConversation = async (payload) =>
 	(await axiosInstance.post("/agents/conversations", payload)).data;
 export const fetchConversation = async (id) =>
 	(await axiosInstance.get(`/agents/conversations/${id}`)).data;
+export const fetchConversations = async (agent) =>
+	(
+		await axiosInstance.get("/agents/conversations", {
+			params: agent ? { agent } : {},
+		})
+	).data;
+export const updateConversation = async ({ id, ...payload }) =>
+	(await axiosInstance.patch(`/agents/conversations/${id}`, payload)).data;
+// All enabled models across providers — for the /models picker.
+export const fetchAllModels = async () =>
+	(await axiosInstance.get("/agents/models")).data;
 
 const buildChatRequest = (conversationId, message, contextNoteIds, signal) => {
 	const token = useAuthStore.getState().token;

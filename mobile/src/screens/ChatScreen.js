@@ -4,6 +4,7 @@ import {
 	ActivityIndicator,
 	Alert,
 	Keyboard,
+	Modal,
 	Platform,
 	Pressable,
 	ScrollView,
@@ -21,9 +22,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
 	createConversation,
 	fetchAgents,
+	fetchAllModels,
 	fetchConversation,
+	fetchConversations,
 	fetchDefaultAgent,
 	streamChat,
+	updateConversation,
 } from "../api/agentChatApi";
 import MarkdownView from "../components/MarkdownView";
 import PiumaAvatar from "../components/PiumaAvatar";
@@ -45,6 +49,16 @@ const SUBMIT_LABEL = "send";
 
 // Restores the active agents conversation across mounts.
 const CONV_STORAGE_KEY = "agents_active_conv";
+
+// Universal slash commands (same for every agent). Per-agent macros are merged
+// in from the agent's `commands`. Mirrors the web ChatPanel.
+const CLIENT_COMMANDS = [
+	{ name: "new", description: "Start a new conversation" },
+	{ name: "clear", description: "Start a new conversation" },
+	{ name: "sessions", description: "Switch to another conversation" },
+	{ name: "models", description: "Pick the model for this chat" },
+	{ name: "title", description: "Rename this conversation" },
+];
 
 // Composer auto-grow bounds: one line on start, expand up to ~5 lines, then
 // the input scrolls internally. Mirrors the frontend composer behaviour.
@@ -226,6 +240,11 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	const [conversationId, setConversationId] = useState(null);
 	const [agentKind, setAgentKind] = useState("vault_agent");
 	const [agentLabel, setAgentLabel] = useState("Piuma");
+	const [agentCommands, setAgentCommands] = useState([]);
+	// Slash-command overlay: null | "models" | "sessions" | "title".
+	const [overlay, setOverlay] = useState(null);
+	const [pickList, setPickList] = useState([]);
+	const [titleDraft, setTitleDraft] = useState("");
 	// The open note is attached as context by default; tapping the chip toggles
 	// it off for the next send. Mobile keeps it to a single note (no tabs, no
 	// lock state) — the chip just mirrors whatever note opened this chat.
@@ -274,6 +293,8 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				const agents = await fetchAgents();
 				const a = agents.find((x) => x.kind === kind);
 				if (!cancelled && a?.display_name) setAgentLabel(a.display_name);
+				if (!cancelled && Array.isArray(a?.commands))
+					setAgentCommands(a.commands);
 			} catch {
 				/* keep the default label */
 			}
@@ -302,21 +323,24 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		};
 	}, []);
 
-	const handleClearConversation = useCallback(() => {
-		// Start a fresh agents conversation; the old one stays saved server-side.
-		const wipe = async () => {
-			abortRef.current?.abort();
-			abortRef.current = null;
-			setIsStreaming(false);
-			setMessages([]);
-			setConversationId(null);
-			try {
-				await AsyncStorage.removeItem(CONV_STORAGE_KEY);
-			} catch {
-				/* best-effort */
-			}
-		};
+	// Wipe local state to start a fresh conversation; the old one stays saved
+	// server-side. No confirmation (the slash commands call this directly).
+	const startNewChat = useCallback(async () => {
+		abortRef.current?.abort();
+		abortRef.current = null;
+		setIsStreaming(false);
+		setOverlay(null);
+		setMessages([]);
+		setConversationId(null);
+		setInput("");
+		try {
+			await AsyncStorage.removeItem(CONV_STORAGE_KEY);
+		} catch {
+			/* best-effort */
+		}
+	}, []);
 
+	const handleClearConversation = useCallback(() => {
 		const message =
 			"This starts a fresh chat. The current conversation stays saved but won't be shown here anymore.";
 		if (Platform.OS === "web") {
@@ -325,15 +349,112 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				typeof window !== "undefined" &&
 				window.confirm(`Start a new conversation? ${message}`)
 			) {
-				wipe();
+				startNewChat();
 			}
 			return;
 		}
 		Alert.alert("Start a new conversation?", message, [
 			{ text: "Cancel", style: "cancel" },
-			{ text: "New chat", style: "destructive", onPress: wipe },
+			{ text: "New chat", style: "destructive", onPress: startNewChat },
 		]);
+	}, [startNewChat]);
+
+	// Open a stored conversation (from the /sessions picker).
+	const switchConversation = useCallback(async (id) => {
+		setOverlay(null);
+		setConversationId(id);
+		try {
+			await AsyncStorage.setItem(CONV_STORAGE_KEY, id);
+			const d = await fetchConversation(id);
+			setMessages(
+				(d.messages || []).map((m) => ({
+					id: m.id,
+					role: m.role,
+					content: blocksToText(m.content),
+					...(m.role === "assistant" ? { tools: blocksToTools(m.content) } : {}),
+				})),
+			);
+		} catch {
+			/* ignore */
+		}
 	}, []);
+
+	const pickModel = useCallback(
+		async (m) => {
+			setOverlay(null);
+			if (conversationId) {
+				try {
+					await updateConversation({ id: conversationId, model_id: m.id });
+				} catch {
+					/* ignore */
+				}
+			}
+		},
+		[conversationId],
+	);
+
+	const saveTitle = useCallback(async () => {
+		const t = titleDraft.trim();
+		setOverlay(null);
+		if (t && conversationId) {
+			try {
+				await updateConversation({ id: conversationId, title: t });
+			} catch {
+				/* ignore */
+			}
+		}
+	}, [titleDraft, conversationId]);
+
+	// Slash menu: client commands + the active agent's macros, filtered by the
+	// typed token (active only while the input is a single `/word`).
+	const slashMatches =
+		input.startsWith("/") && !/\s/.test(input)
+			? (() => {
+					const q = input.slice(1).toLowerCase();
+					const client = CLIENT_COMMANDS.map((c) => ({ ...c, kind: "client" }));
+					const agent = (
+						Array.isArray(agentCommands) ? agentCommands : []
+					).map((c) => ({ ...c, kind: "agent" }));
+					return [...client, ...agent].filter((c) =>
+						(c.name || "").toLowerCase().startsWith(q),
+					);
+				})()
+			: [];
+
+	const runCommand = useCallback(
+		async (cmd) => {
+			if (cmd.kind === "agent") {
+				setInput(cmd.prompt || "");
+				return;
+			}
+			setInput("");
+			if (cmd.name === "new" || cmd.name === "clear") return startNewChat();
+			if (cmd.name === "title") {
+				if (!conversationId) return;
+				setTitleDraft("");
+				setOverlay("title");
+				return;
+			}
+			if (cmd.name === "models") {
+				try {
+					setPickList(await fetchAllModels());
+					setOverlay("models");
+				} catch {
+					/* ignore */
+				}
+				return;
+			}
+			if (cmd.name === "sessions") {
+				try {
+					setPickList(await fetchConversations());
+					setOverlay("sessions");
+				} catch {
+					/* ignore */
+				}
+			}
+		},
+		[conversationId, startNewChat],
+	);
 
 	const sendMessage = useCallback(async () => {
 		const text = input.trim();
@@ -564,6 +685,27 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 						) : null}
 					</View>
 
+					{slashMatches.length > 0 ? (
+						<View style={styles.slashMenu}>
+							{slashMatches.map((c) => (
+								<Pressable
+									key={`${c.kind}-${c.name}`}
+									onPress={() => runCommand(c)}
+									style={({ pressed }) => [
+										styles.slashItem,
+										pressed && styles.slashItemPressed,
+									]}
+								>
+									<Text style={styles.slashName}>/{c.name}</Text>
+									<Text style={styles.slashDesc} numberOfLines={1}>
+										{c.description}
+										{c.kind === "agent" ? " · agent" : ""}
+									</Text>
+								</Pressable>
+							))}
+						</View>
+					) : null}
+
 					<View
 						style={[
 							styles.composer,
@@ -630,6 +772,97 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 						</View>
 					</View>
 				</View>
+
+				<Modal
+					visible={!!overlay}
+					transparent
+					animationType="fade"
+					onRequestClose={() => setOverlay(null)}
+				>
+					<Pressable
+						style={styles.overlayBackdrop}
+						onPress={() => setOverlay(null)}
+					>
+						<Pressable style={styles.overlaySheet} onPress={() => {}}>
+							<View style={styles.overlayHeader}>
+								<Text style={styles.overlayTitle}>
+									{overlay === "models"
+										? "Pick a model"
+										: overlay === "sessions"
+											? "Switch conversation"
+											: "Rename conversation"}
+								</Text>
+								<Pressable onPress={() => setOverlay(null)} hitSlop={8}>
+									<Ionicons name="close" size={18} color={colors.muted} />
+								</Pressable>
+							</View>
+
+							{overlay === "title" ? (
+								<View style={styles.overlayTitleForm}>
+									<TextInput
+										style={styles.overlayInput}
+										value={titleDraft}
+										onChangeText={setTitleDraft}
+										placeholder="New title…"
+										placeholderTextColor={colors.muted}
+										autoFocus
+										returnKeyType="done"
+										onSubmitEditing={saveTitle}
+									/>
+									<Pressable
+										onPress={saveTitle}
+										style={({ pressed }) => [
+											styles.overlaySave,
+											pressed && styles.sendBtnPressed,
+										]}
+									>
+										<Text style={styles.sendLabel}>save</Text>
+									</Pressable>
+								</View>
+							) : (
+								<ScrollView style={styles.overlayList}>
+									{pickList.length === 0 ? (
+										<Text style={styles.overlayEmpty}>None</Text>
+									) : overlay === "models" ? (
+										pickList.map((m) => (
+											<Pressable
+												key={m.id}
+												onPress={() => pickModel(m)}
+												style={({ pressed }) => [
+													styles.overlayRow,
+													pressed && styles.slashItemPressed,
+												]}
+											>
+												<Text style={styles.overlayRowText}>
+													{m.display_name}
+												</Text>
+												<Text style={styles.overlayRowMeta} numberOfLines={1}>
+													{m.provider}
+													{m.is_default ? " · default" : ""}
+												</Text>
+											</Pressable>
+										))
+									) : (
+										pickList.map((c) => (
+											<Pressable
+												key={c.id}
+												onPress={() => switchConversation(c.id)}
+												style={({ pressed }) => [
+													styles.overlayRow,
+													pressed && styles.slashItemPressed,
+												]}
+											>
+												<Text style={styles.overlayRowText} numberOfLines={1}>
+													{c.title || "Untitled"}
+												</Text>
+											</Pressable>
+										))
+									)}
+								</ScrollView>
+							)}
+						</Pressable>
+					</Pressable>
+				</Modal>
 			</SafeAreaView>
 		</KeyboardAvoidingView>
 	);
@@ -957,4 +1190,116 @@ const styles = StyleSheet.create({
 		textTransform: "uppercase",
 	},
 	sendLabelDisabled: { color: colors.muted },
+
+	// ── SLASH COMMAND MENU ───────────────────────────────────
+	slashMenu: {
+		marginHorizontal: 12,
+		marginBottom: 6,
+		borderWidth: 1,
+		borderColor: colors.border,
+		backgroundColor: colors.panel,
+		maxHeight: 220,
+	},
+	slashItem: {
+		flexDirection: "row",
+		alignItems: "baseline",
+		gap: 8,
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		borderBottomWidth: 1,
+		borderBottomColor: colors.bgSoft,
+	},
+	slashItemPressed: { backgroundColor: colors.bgSoft },
+	slashName: {
+		color: colors.accent2,
+		fontFamily: MONO,
+		fontSize: 13,
+		fontWeight: "800",
+	},
+	slashDesc: {
+		flexShrink: 1,
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 12,
+	},
+
+	// ── OVERLAY (models / sessions / rename) ─────────────────
+	overlayBackdrop: {
+		flex: 1,
+		backgroundColor: "rgba(0,0,0,0.55)",
+		justifyContent: "flex-end",
+	},
+	overlaySheet: {
+		maxHeight: "60%",
+		borderTopWidth: 2,
+		borderColor: colors.borderStrong,
+		backgroundColor: colors.panel,
+		paddingHorizontal: 12,
+		paddingTop: 12,
+		paddingBottom: 24,
+	},
+	overlayHeader: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		marginBottom: 8,
+	},
+	overlayTitle: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 11,
+		fontWeight: "800",
+		letterSpacing: 1,
+		textTransform: "uppercase",
+	},
+	overlayList: { maxHeight: 320 },
+	overlayEmpty: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 12,
+		paddingVertical: 12,
+		textAlign: "center",
+	},
+	overlayRow: {
+		paddingHorizontal: 8,
+		paddingVertical: 10,
+		borderBottomWidth: 1,
+		borderBottomColor: colors.bgSoft,
+	},
+	overlayRowText: {
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 14,
+	},
+	overlayRowMeta: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 11,
+		marginTop: 2,
+	},
+	overlayTitleForm: {
+		flexDirection: "row",
+		gap: 8,
+		alignItems: "stretch",
+	},
+	overlayInput: {
+		flex: 1,
+		minHeight: 44,
+		backgroundColor: colors.bg,
+		borderWidth: 2,
+		borderColor: colors.borderStrong,
+		paddingHorizontal: 10,
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 14,
+	},
+	overlaySave: {
+		minWidth: 80,
+		paddingHorizontal: 12,
+		alignItems: "center",
+		justifyContent: "center",
+		backgroundColor: colors.bgSoft,
+		borderWidth: 2,
+		borderColor: colors.accent2,
+	},
 });
