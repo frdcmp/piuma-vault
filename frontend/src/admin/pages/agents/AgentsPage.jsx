@@ -1,16 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { streamChat } from "../../../api/agentChatApi";
+import { useEffect, useState } from "react";
 import {
 	useAgentList,
 	useAgentPersonas,
 	useAgentProfile,
-	useConversation,
-	useConversations,
-	useCreateConversation,
 	useCreateModel,
 	useCreateProvider,
 	useDefaultAgent,
-	useDeleteConversation,
 	useDeleteModel,
 	useDeleteProvider,
 	useModels,
@@ -387,6 +382,7 @@ function ConfigTab({ agent }) {
 							</span>
 							{commands.map((cmd, i) => (
 								<div
+									// biome-ignore lint/suspicious/noArrayIndexKey: rows are positional and have no stable id
 									key={`cmd-${i}`}
 									className="ag-row"
 									style={{ alignItems: "flex-start", marginBottom: 6 }}
@@ -527,231 +523,6 @@ function ConfigTab({ agent }) {
 	);
 }
 
-// ── Chat ─────────────────────────────────────────────────────────────────────
-
-function renderBlocks(content) {
-	const blocks = Array.isArray(content) ? content : [];
-	const thinking = blocks
-		.filter((b) => b.type === "thinking")
-		.map((b) => b.text)
-		.join("");
-	const text = blocks
-		.filter((b) => b.type === "text")
-		.map((b) => b.text)
-		.join("");
-	return { thinking, text };
-}
-
-function Bubble({ sender, text, thinking }) {
-	const isUser = sender === "user";
-	return (
-		<div
-			className={`ag-bubble ${isUser ? "ag-bubble--user" : "ag-bubble--assistant"}`}
-		>
-			{thinking ? (
-				<details className="ag-thinking">
-					<summary>💭 thinking</summary>
-					<div className="ag-thinking-body">{thinking}</div>
-				</details>
-			) : null}
-			<div>{text}</div>
-		</div>
-	);
-}
-
-function ChatTab({ agents }) {
-	const { data: conversations = [] } = useConversations();
-	const { data: def } = useDefaultAgent();
-	const createConversation = useCreateConversation();
-	const deleteConversation = useDeleteConversation();
-	const [newAgent, setNewAgent] = useState("");
-	const [activeId, setActiveId] = useState(null);
-	// Initialise the new-chat agent from the admin default once it loads.
-	useEffect(() => {
-		if (def?.agent && !newAgent) setNewAgent(def.agent);
-	}, [def, newAgent]);
-	const pickAgent = newAgent || def?.agent || agents[0]?.kind || "vault_agent";
-	const { data: convData, refetch } = useConversation(activeId);
-	const [input, setInput] = useState("");
-	const [streaming, setStreaming] = useState(false);
-	const [liveText, setLiveText] = useState("");
-	const [liveThinking, setLiveThinking] = useState("");
-	const [optimisticUser, setOptimisticUser] = useState(null);
-	const [error, setError] = useState("");
-	const scrollRef = useRef(null);
-
-	const messages = convData?.messages || [];
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: re-scroll when new content arrives
-	useEffect(() => {
-		scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
-	}, [messages, liveText, liveThinking]);
-
-	const newConversation = async () => {
-		try {
-			const conv = await createConversation.mutateAsync({ agent: pickAgent });
-			setActiveId(conv.id);
-		} catch (e) {
-			setError(errMsg(e, "Failed to start conversation"));
-		}
-	};
-
-	const send = async () => {
-		const text = input.trim();
-		if (!text || streaming) return;
-		setError("");
-		let convId = activeId;
-		if (!convId) {
-			try {
-				const conv = await createConversation.mutateAsync({ agent: pickAgent });
-				convId = conv.id;
-				setActiveId(conv.id);
-			} catch (e) {
-				setError(errMsg(e, "Failed to start conversation"));
-				return;
-			}
-		}
-		setInput("");
-		setOptimisticUser(text);
-		setLiveText("");
-		setLiveThinking("");
-		setStreaming(true);
-		await streamChat({
-			conversationId: convId,
-			message: text,
-			onText: (d) => setLiveText((t) => t + d),
-			onThinking: (d) => setLiveThinking((t) => t + d),
-			onError: (e) => setError(e.message || "Chat error"),
-			onDone: () => {},
-		});
-		setStreaming(false);
-		setOptimisticUser(null);
-		setLiveText("");
-		setLiveThinking("");
-		await refetch();
-	};
-
-	return (
-		<div className="ag-chat">
-			<div className="ag-conv-list">
-				{agents.length > 1 && (
-					<select
-						className="ag-select"
-						value={newAgent}
-						onChange={(e) => setNewAgent(e.target.value)}
-						title="Agent for new chats"
-						style={{ marginBottom: 8 }}
-					>
-						{agents.map((a) => (
-							<option key={a.kind} value={a.kind}>
-								{a.display_name}
-							</option>
-						))}
-					</select>
-				)}
-				<button
-					type="button"
-					className="ag-btn ag-btn--block"
-					onClick={newConversation}
-					style={{ marginBottom: 8 }}
-				>
-					+ New chat
-				</button>
-				{conversations.length === 0 && (
-					<div
-						className="ag-muted"
-						style={{ textAlign: "center", padding: 12 }}
-					>
-						No conversations
-					</div>
-				)}
-				{conversations.map((c) => (
-					<div
-						key={c.id}
-						className={`ag-conv-item ${c.id === activeId ? "ag-conv-item--active" : ""}`}
-					>
-						<button
-							type="button"
-							className="ag-conv-title-btn ag-conv-title"
-							onClick={() => setActiveId(c.id)}
-						>
-							{c.title || "Untitled"}
-						</button>
-						<button
-							type="button"
-							className="ag-btn--icon ag-btn--danger"
-							title="Delete"
-							onClick={() => {
-								if (window.confirm("Delete conversation?")) {
-									deleteConversation.mutate(c.id);
-									if (c.id === activeId) setActiveId(null);
-								}
-							}}
-						>
-							✕
-						</button>
-					</div>
-				))}
-			</div>
-
-			<div className="ag-chat-main">
-				<div className="ag-msgs" ref={scrollRef}>
-					{messages.length === 0 && !optimisticUser && !streaming && (
-						<div className="ag-empty">Say hi to Piuma 🐾</div>
-					)}
-					{messages.map((m) => {
-						const { thinking, text } = renderBlocks(m.content);
-						return (
-							<Bubble
-								key={m.id}
-								sender={m.role}
-								text={text}
-								thinking={thinking}
-							/>
-						);
-					})}
-					{optimisticUser && <Bubble sender="user" text={optimisticUser} />}
-					{streaming && (
-						<Bubble
-							sender="assistant"
-							text={liveText || "…"}
-							thinking={liveThinking}
-						/>
-					)}
-				</div>
-				{error && (
-					<div className="ag-error" style={{ padding: "0 10px" }}>
-						{error}
-					</div>
-				)}
-				<div className="ag-composer">
-					<textarea
-						className="ag-textarea"
-						rows={1}
-						value={input}
-						onChange={(e) => setInput(e.target.value)}
-						placeholder="Message Piuma…"
-						onKeyDown={(e) => {
-							if (e.key === "Enter" && !e.shiftKey) {
-								e.preventDefault();
-								send();
-							}
-						}}
-					/>
-					<button
-						type="button"
-						className="ag-btn ag-btn--primary"
-						onClick={send}
-						disabled={streaming}
-					>
-						{streaming ? "…" : "Send"}
-					</button>
-				</div>
-			</div>
-		</div>
-	);
-}
-
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AgentsPage() {
@@ -759,14 +530,14 @@ export default function AgentsPage() {
 	const { data: def } = useDefaultAgent();
 	const setDefault = useSetDefaultAgent();
 	const agent = agents[0]?.kind || "vault_agent";
-	const [tab, setTab] = useState("chat");
+	const [tab, setTab] = useState("providers");
 
 	return (
 		<div className="ag-page">
 			<h1 className="ag-title">Agents</h1>
 			<p className="ag-sub">
-				Multi-provider LLM chat. Add a provider + model, tune the agent's
-				config, and chat.
+				Multi-provider LLM setup. Add a provider + model and tune the agent's
+				config. Chat lives in the main app (and mobile).
 			</p>
 			{agents.length > 0 && (
 				<div className="ag-row" style={{ marginBottom: 16 }}>
@@ -787,7 +558,6 @@ export default function AgentsPage() {
 			)}
 			<div className="ag-tabs">
 				{[
-					["chat", "Chat"],
 					["providers", "Providers & models"],
 					["config", "Agent config"],
 				].map(([key, label]) => (
@@ -801,7 +571,6 @@ export default function AgentsPage() {
 					</button>
 				))}
 			</div>
-			{tab === "chat" && <ChatTab agents={agents} />}
 			{tab === "providers" && <ProvidersTab />}
 			{tab === "config" && <ConfigTab agent={agent} />}
 		</div>
