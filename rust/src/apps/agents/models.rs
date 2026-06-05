@@ -246,6 +246,14 @@ pub struct ChatTurnReq {
     pub message: String,
     #[serde(default)]
     pub context_note_ids: Vec<Uuid>,
+    /// IANA timezone of the client (e.g. "Europe/Rome"), so the agent can
+    /// resolve relative dates and emit correctly-offset timestamps.
+    #[serde(default)]
+    pub timezone: Option<String>,
+    /// The client's current local datetime as RFC3339 *with offset*
+    /// (e.g. "2026-06-05T14:52:00+02:00").
+    #[serde(default)]
+    pub client_now: Option<String>,
 }
 
 // ── Agent listing (registry + profile) ──────────────────────────────────────
