@@ -78,6 +78,29 @@
 	padding: 12px;
 }
 
+.tasks-sidebar-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.tasks-manage-btn {
+	background: none;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	color: var(--muted);
+	font: inherit;
+	font-size: 0.72rem;
+	padding: 3px 6px;
+	cursor: pointer;
+}
+
+.tasks-manage-btn:hover {
+	color: var(--text);
+	border-color: var(--accent-2);
+}
+
 .tag-search {
 	width: 100%;
 	box-sizing: border-box;

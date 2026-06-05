@@ -63,6 +63,8 @@ pub struct ListTasksQuery {
     pub due_before: Option<DateTime<Utc>>,
     pub due_after: Option<DateTime<Utc>>,
     pub tag: Option<String>,
+    // Filter to tasks carrying any tag that belongs to this bucket.
+    pub bucket: Option<uuid::Uuid>,
 }
 
 // ── Recurring-task template DB Model ──

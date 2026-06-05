@@ -11,10 +11,13 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PvModal } from "@/admin/components/ui";
 import {
+	clearConversation,
 	createConversation,
+	deleteConversation,
 	fetchAllModels,
 	fetchConversation,
 	fetchConversations,
+	retitleConversation,
 	streamChat,
 	updateConversation,
 } from "../api/agentChatApi";
@@ -24,10 +27,20 @@ import { useAgentList, useDefaultAgent } from "../queries";
 // the prompt macros from db_agent_profiles.commands, merged in at render time.
 const CLIENT_COMMANDS = [
 	{ name: "new", description: "Start a new conversation" },
-	{ name: "clear", description: "Start a new conversation" },
+	{ name: "clear", description: "Wipe this conversation's messages" },
 	{ name: "sessions", description: "Switch to another conversation" },
 	{ name: "models", description: "Pick the model for this chat" },
 	{ name: "title", description: "Rename this conversation" },
+];
+
+// The two options shown after `/title`.
+const TITLE_ACTIONS = [
+	{
+		key: "auto",
+		label: "Auto-rename with AI",
+		desc: "Generate a title from the conversation",
+	},
+	{ key: "manual", label: "Edit manually", desc: "Type a new title yourself" },
 ];
 
 import useNotesWorkspaceStore from "../store/notesWorkspaceStore";
@@ -273,6 +286,11 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 	const [overlay, setOverlay] = useState(null); // null | "models" | "sessions"
 	const [pickList, setPickList] = useState([]);
+	const [slashActive, setSlashActive] = useState(0); // highlighted slash item
+	const [overlayActive, setOverlayActive] = useState(0); // highlighted picker row
+	const [sessionQuery, setSessionQuery] = useState(""); // sessions search box
+	const [titleMenu, setTitleMenu] = useState(false); // /title two-option menu
+	const [titleActive, setTitleActive] = useState(0); // highlighted title option
 	const [conversationId, setConversationId] = useState(
 		() => localStorage.getItem(STORAGE_KEY) || null,
 	);
@@ -285,6 +303,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
 	const inputRef = useRef(null);
+	const slashActiveRef = useRef(null);
+	const overlayActiveRef = useRef(null);
 
 	// Restore the stored conversation once on mount.
 	useEffect(() => {
@@ -504,6 +524,36 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		);
 	}, [input, agentCommands]);
 
+	// Keep the keyboard-highlighted slash item scrolled into view.
+	useEffect(() => {
+		if (slashActive >= 0) {
+			slashActiveRef.current?.scrollIntoView({ block: "nearest" });
+		}
+	}, [slashActive]);
+
+	// Keep the keyboard-highlighted picker (sessions/models) row in view.
+	useEffect(() => {
+		if (overlayActive >= 0) {
+			overlayActiveRef.current?.scrollIntoView({ block: "nearest" });
+		}
+	}, [overlayActive]);
+
+	// Load the sessions list (debounced) whenever the picker is open and the
+	// search query changes. `q` matches conversation title or message text.
+	useEffect(() => {
+		if (overlay !== "sessions") return;
+		const q = sessionQuery.trim();
+		const t = setTimeout(async () => {
+			try {
+				setPickList(await fetchConversations(undefined, q || undefined));
+				setOverlayActive(0);
+			} catch {
+				/* ignore */
+			}
+		}, 200);
+		return () => clearTimeout(t);
+	}, [overlay, sessionQuery]);
+
 	const startNewChat = useCallback(() => {
 		abortRef.current?.abort();
 		abortRef.current = null;
@@ -512,10 +562,30 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		setConversationId(null);
 		localStorage.removeItem(STORAGE_KEY);
 		setInput("");
+		setTitleMenu(false);
 	}, []);
+
+	// Wipe the current conversation's messages but keep the same conversation
+	// (and its id), so the thread continues in place. With no active
+	// conversation this is just a local reset.
+	const clearMessages = useCallback(async () => {
+		abortRef.current?.abort();
+		abortRef.current = null;
+		setIsStreaming(false);
+		setMessages([]);
+		setInput("");
+		setTitleMenu(false);
+		if (!conversationId) return;
+		try {
+			await clearConversation(conversationId);
+		} catch {
+			/* ignore */
+		}
+	}, [conversationId]);
 
 	const switchConversation = useCallback(async (id) => {
 		setOverlay(null);
+		setTitleMenu(false);
 		setConversationId(id);
 		localStorage.setItem(STORAGE_KEY, id);
 		try {
@@ -533,6 +603,49 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		}
 	}, []);
 
+	// Delete a conversation straight from the /sessions list. Optimistically
+	// drops it from the list; if it's the open one, reset to a fresh chat.
+	const removeConversation = useCallback(
+		async (id) => {
+			setPickList((prev) => prev.filter((c) => c.id !== id));
+			if (id === conversationId) startNewChat();
+			try {
+				await deleteConversation(id);
+			} catch {
+				/* ignore */
+			}
+		},
+		[conversationId, startNewChat],
+	);
+
+	// Resolve a /title menu choice: auto-rename via the LLM, or manual prompt.
+	const runTitleAction = useCallback(
+		async (key) => {
+			setTitleMenu(false);
+			if (!conversationId) return;
+			if (key === "auto") {
+				try {
+					await retitleConversation(conversationId);
+				} catch {
+					/* ignore */
+				}
+				return;
+			}
+			const t =
+				typeof window !== "undefined"
+					? window.prompt("Rename conversation")
+					: null;
+			if (t?.trim()) {
+				try {
+					await updateConversation({ id: conversationId, title: t.trim() });
+				} catch {
+					/* ignore */
+				}
+			}
+		},
+		[conversationId],
+	);
+
 	const runCommand = useCallback(
 		async (cmd) => {
 			if (cmd.kind === "agent") {
@@ -541,25 +654,19 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				return;
 			}
 			setInput("");
-			if (cmd.name === "new" || cmd.name === "clear") return startNewChat();
+			if (cmd.name === "new") return startNewChat();
+			if (cmd.name === "clear") return clearMessages();
 			if (cmd.name === "title") {
 				if (!conversationId) return;
-				const t =
-					typeof window !== "undefined"
-						? window.prompt("Rename conversation")
-						: null;
-				if (t) {
-					try {
-						await updateConversation({ id: conversationId, title: t });
-					} catch {
-						/* ignore */
-					}
-				}
+				// Offer auto (LLM) vs manual rename instead of jumping to a prompt.
+				setTitleActive(0);
+				setTitleMenu(true);
 				return;
 			}
 			if (cmd.name === "models") {
 				try {
 					setPickList(await fetchAllModels());
+					setOverlayActive(0);
 					setOverlay("models");
 				} catch {
 					/* ignore */
@@ -567,15 +674,15 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				return;
 			}
 			if (cmd.name === "sessions") {
-				try {
-					setPickList(await fetchConversations());
-					setOverlay("sessions");
-				} catch {
-					/* ignore */
-				}
+				// The list is loaded (and re-loaded on search) by the debounced
+				// effect below, keyed on the open overlay + query.
+				setPickList([]);
+				setSessionQuery("");
+				setOverlayActive(0);
+				setOverlay("sessions");
 			}
 		},
-		[conversationId, startNewChat],
+		[conversationId, startNewChat, clearMessages],
 	);
 
 	const pickModel = useCallback(
@@ -592,13 +699,92 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		[conversationId],
 	);
 
-	const onKeyDown = (e) => {
-		if (e.key === "Enter" && !e.shiftKey) {
+	// Shared picker (sessions/models) keyboard nav. Used by both the composer
+	// textarea and the sessions search box. Returns true once it handles a key.
+	const handleOverlayNav = (e) => {
+		if (!overlay) return false;
+		// Escape closes the picker even when a search returns no rows.
+		if (e.key === "Escape") {
 			e.preventDefault();
-			if (slashMatches.length > 0) {
-				runCommand(slashMatches[0]);
+			setOverlay(null);
+			return true;
+		}
+		const n = pickList.length;
+		if (n === 0) return false;
+		if (e.key === "ArrowDown") {
+			e.preventDefault();
+			setOverlayActive((i) => (i + 1) % n);
+			return true;
+		}
+		if (e.key === "ArrowUp") {
+			e.preventDefault();
+			setOverlayActive((i) => (i - 1 + n) % n);
+			return true;
+		}
+		if (e.key === "Enter") {
+			e.preventDefault();
+			const item = pickList[Math.min(overlayActive, n - 1)];
+			if (overlay === "models") pickModel(item);
+			else switchConversation(item.id);
+			return true;
+		}
+		return false;
+	};
+
+	const onKeyDown = (e) => {
+		if (handleOverlayNav(e)) return;
+		// While the /title menu is open, arrows move the highlight, Enter picks,
+		// and Escape dismisses it.
+		if (titleMenu) {
+			const n = TITLE_ACTIONS.length;
+			if (e.key === "ArrowDown") {
+				e.preventDefault();
+				setTitleActive((i) => (i + 1) % n);
 				return;
 			}
+			if (e.key === "ArrowUp") {
+				e.preventDefault();
+				setTitleActive((i) => (i - 1 + n) % n);
+				return;
+			}
+			if (e.key === "Escape") {
+				e.preventDefault();
+				setTitleMenu(false);
+				return;
+			}
+			if (e.key === "Enter") {
+				e.preventDefault();
+				runTitleAction(TITLE_ACTIONS[Math.min(titleActive, n - 1)].key);
+				return;
+			}
+		}
+		// While the slash menu is open, arrows move the highlight, Enter/Tab run
+		// the highlighted command, and Escape dismisses it.
+		if (slashMatches.length > 0) {
+			const n = slashMatches.length;
+			if (e.key === "ArrowDown") {
+				e.preventDefault();
+				setSlashActive((i) => (i + 1) % n);
+				return;
+			}
+			if (e.key === "ArrowUp") {
+				e.preventDefault();
+				setSlashActive((i) => (i - 1 + n) % n);
+				return;
+			}
+			if (e.key === "Escape") {
+				e.preventDefault();
+				setInput("");
+				return;
+			}
+			if (e.key === "Enter" || e.key === "Tab") {
+				e.preventDefault();
+				runCommand(slashMatches[Math.min(slashActive, n - 1)]);
+				return;
+			}
+		}
+		if (e.key === "Enter" && !e.shiftKey) {
+			e.preventDefault();
 			sendMessage();
 		}
 	};
@@ -722,43 +908,18 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 						</div>
 					) : null}
 					{slashMatches.length > 0 ? (
-						<div
-							style={{
-								background: "var(--vp-panel,#1b1e25)",
-								border: "1px solid var(--vp-border-soft,#2a2f39)",
-								marginBottom: 6,
-								maxHeight: 200,
-								overflowY: "auto",
-							}}
-						>
-							{slashMatches.map((c) => (
+						<div className="slash-menu">
+							{slashMatches.map((c, i) => (
 								<button
 									key={`${c.kind}-${c.name}`}
 									type="button"
+									ref={i === slashActive ? slashActiveRef : null}
+									className={`slash-item${i === slashActive ? " is-active" : ""}${c.kind === "agent" ? " slash-item--agent" : ""}`}
 									onClick={() => runCommand(c)}
-									style={{
-										display: "block",
-										width: "100%",
-										textAlign: "left",
-										background: "none",
-										border: "none",
-										color: "var(--vp-text,#d6dbe5)",
-										padding: "6px 10px",
-										cursor: "pointer",
-										fontFamily: "inherit",
-										fontSize: 13,
-									}}
+									onMouseEnter={() => setSlashActive(i)}
 								>
-									<span style={{ color: "var(--vp-accent-2,#5cd0a9)" }}>
-										/{c.name}
-									</span>
-									<span
-										style={{
-											color: "var(--vp-muted,#8a93a3)",
-											marginLeft: 8,
-											fontSize: 12,
-										}}
-									>
+									<span className="slash-item-name">/{c.name}</span>
+									<span className="slash-item-desc">
 										{c.description}
 										{c.kind === "agent" ? " · agent" : ""}
 									</span>
@@ -766,104 +927,99 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 							))}
 						</div>
 					) : null}
-					{overlay ? (
-						<div
-							style={{
-								background: "var(--vp-panel,#1b1e25)",
-								border: "1px solid var(--vp-border-soft,#2a2f39)",
-								marginBottom: 6,
-								maxHeight: 240,
-								overflowY: "auto",
-								padding: 8,
-							}}
-						>
-							<div
-								style={{
-									display: "flex",
-									justifyContent: "space-between",
-									alignItems: "center",
-									marginBottom: 6,
-								}}
-							>
-								<strong
-									style={{ fontSize: 12, color: "var(--vp-muted,#8a93a3)" }}
+					{titleMenu ? (
+						<div className="slash-menu">
+							{TITLE_ACTIONS.map((a, i) => (
+								<button
+									key={a.key}
+									type="button"
+									className={`slash-item${i === titleActive ? " is-active" : ""}`}
+									onClick={() => runTitleAction(a.key)}
+									onMouseEnter={() => setTitleActive(i)}
 								>
+									<span className="slash-item-name">{a.label}</span>
+									<span className="slash-item-desc">{a.desc}</span>
+								</button>
+							))}
+						</div>
+					) : null}
+					{overlay ? (
+						<div className="picker-overlay">
+							<div className="picker-head">
+								<strong className="picker-title">
 									{overlay === "models"
 										? "Pick a model"
 										: "Switch conversation"}
 								</strong>
 								<button
 									type="button"
+									className="picker-close"
 									onClick={() => setOverlay(null)}
-									style={{
-										background: "none",
-										border: "none",
-										color: "var(--vp-muted,#8a93a3)",
-										cursor: "pointer",
-										fontSize: 16,
-									}}
 								>
 									×
 								</button>
 							</div>
-							{pickList.length === 0 ? (
-								<div style={{ color: "var(--vp-faint,#5b6373)", fontSize: 12 }}>
-									None
-								</div>
-							) : overlay === "models" ? (
-								pickList.map((m) => (
-									<button
-										key={m.id}
-										type="button"
-										onClick={() => pickModel(m)}
-										style={{
-											display: "block",
-											width: "100%",
-											textAlign: "left",
-											background: "none",
-											border: "none",
-											color: "var(--vp-text,#d6dbe5)",
-											padding: "5px 8px",
-											cursor: "pointer",
-											fontFamily: "inherit",
-											fontSize: 13,
-										}}
-									>
-										{m.display_name}{" "}
-										<span
-											style={{ color: "var(--vp-muted,#8a93a3)", fontSize: 12 }}
+							{overlay === "sessions" ? (
+								<input
+									className="picker-search"
+									type="text"
+									value={sessionQuery}
+									onChange={(e) => setSessionQuery(e.target.value)}
+									onKeyDown={handleOverlayNav}
+									placeholder="Search title or message text…"
+									// biome-ignore lint/a11y/noAutofocus: focus the search box when the picker opens
+									autoFocus
+								/>
+							) : null}
+							<div className="picker-list">
+								{pickList.length === 0 ? (
+									<div className="picker-empty">None</div>
+								) : overlay === "models" ? (
+									pickList.map((m, i) => (
+										<button
+											key={m.id}
+											type="button"
+											ref={i === overlayActive ? overlayActiveRef : null}
+											className={`picker-item${i === overlayActive ? " is-active" : ""}`}
+											onClick={() => pickModel(m)}
+											onMouseEnter={() => setOverlayActive(i)}
 										>
-											{m.provider}
-											{m.is_default ? " · default" : ""}
-										</span>
-									</button>
-								))
-							) : (
-								pickList.map((c) => (
-									<button
-										key={c.id}
-										type="button"
-										onClick={() => switchConversation(c.id)}
-										style={{
-											display: "block",
-											width: "100%",
-											textAlign: "left",
-											background: "none",
-											border: "none",
-											color: "var(--vp-text,#d6dbe5)",
-											padding: "5px 8px",
-											cursor: "pointer",
-											fontFamily: "inherit",
-											fontSize: 13,
-											overflow: "hidden",
-											textOverflow: "ellipsis",
-											whiteSpace: "nowrap",
-										}}
-									>
-										{c.title || "Untitled"}
-									</button>
-								))
-							)}
+											{m.display_name}{" "}
+											<span className="picker-item-meta">
+												{m.provider}
+												{m.is_default ? " · default" : ""}
+											</span>
+										</button>
+									))
+								) : (
+									pickList.map((c, i) => (
+										<div
+											key={c.id}
+											ref={i === overlayActive ? overlayActiveRef : null}
+											className={`picker-row${i === overlayActive ? " is-active" : ""}`}
+										>
+											<button
+												type="button"
+												className="picker-item ellipsis"
+												onClick={() => switchConversation(c.id)}
+												onMouseEnter={() => setOverlayActive(i)}
+											>
+												{c.title || "Untitled"}
+											</button>
+											<button
+												type="button"
+												className="picker-del"
+												onClick={() => removeConversation(c.id)}
+												onMouseEnter={() => setOverlayActive(i)}
+												aria-label="Delete conversation"
+												title="Delete conversation"
+											>
+												<DeleteOutlined />
+											</button>
+										</div>
+									))
+								)}
+							</div>
 						</div>
 					) : null}
 					<div className="chat-composer-row">
@@ -871,7 +1027,11 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 							ref={inputRef}
 							className="chat-input"
 							value={input}
-							onChange={(e) => setInput(e.target.value)}
+							onChange={(e) => {
+								setInput(e.target.value);
+								setSlashActive(0);
+								setTitleMenu(false);
+							}}
 							onKeyDown={onKeyDown}
 							placeholder={
 								compact ? `Ask ${agentLabel}…` : `Ask ${agentLabel} anything...`

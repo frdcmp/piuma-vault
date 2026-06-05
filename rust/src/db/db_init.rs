@@ -1,3 +1,16 @@
+// ⚠️ NOTE FOR HUMANS AND LLM AGENTS ⚠️
+// db_init is NOT a migration tool. It only CREATEs tables/indices if they don't
+// already exist (create-if-not-exists) — it never ALTERs or drops anything on an
+// existing database. The `TABLES` list below is the canonical description of a
+// FRESH database's schema.
+//
+// To change an EXISTING database (add/alter/drop a column, drop/rename an index,
+// backfill data, etc.), perform it MANUALLY via the Postgres connector in the
+// terminal (see CLAUDE.md for the psql command).
+// THEN update the `TABLES` definitions here to match, so a fresh
+// DB and the schema-drift verifier stay in sync. Do not try to express a
+// migration by editing db_init alone — it won't run against existing data.
+
 use sqlx;
 use crate::db::db::DbPool;
 
@@ -303,7 +316,6 @@ const TABLES: &[TableDefinition] = &[
                 ends_at TIMESTAMPTZ,
                 all_day BOOLEAN NOT NULL DEFAULT FALSE,
                 color TEXT,
-                tags TEXT[] DEFAULT '{}',
                 rrule TEXT,
                 alerts JSONB NOT NULL DEFAULT '[]',
                 created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -314,7 +326,49 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_calendar_user ON db_calendar_events USING btree (user_id)",
             "CREATE INDEX IF NOT EXISTS idx_calendar_starts_at ON db_calendar_events USING btree (starts_at)",
             "CREATE INDEX IF NOT EXISTS idx_calendar_user_range ON db_calendar_events USING btree (user_id, starts_at)",
-            "CREATE INDEX IF NOT EXISTS idx_calendar_tags ON db_calendar_events USING gin (tags)",
+        ],
+    },
+    // Buckets: top-level grouping for tags, shared across tasks and calendar.
+    // Created before db_tags because db_tags.bucket_id references this table.
+    TableDefinition {
+        name: "db_buckets",
+        sql: r#"
+            CREATE TABLE db_buckets (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                color TEXT,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_buckets_user_name ON db_buckets (user_id, lower(name))",
+            "CREATE INDEX IF NOT EXISTS idx_buckets_user_sort ON db_buckets USING btree (user_id, sort_order)",
+        ],
+    },
+    // Tag registry shared by tasks + calendar. Tasks/events still store tag names
+    // in their own `tags TEXT[]`; this table maps each name (per user) to an
+    // optional bucket + colour. bucket_id NULL = uncategorized (virtual "Inbox"
+    // group). ON DELETE SET NULL: deleting a bucket drops its tags to Inbox.
+    TableDefinition {
+        name: "db_tags",
+        sql: r#"
+            CREATE TABLE db_tags (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                bucket_id UUID REFERENCES db_buckets(id) ON DELETE SET NULL,
+                name TEXT NOT NULL,
+                color TEXT,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_user_name ON db_tags (user_id, lower(name))",
+            "CREATE INDEX IF NOT EXISTS idx_tags_user_bucket ON db_tags USING btree (user_id, bucket_id)",
         ],
     },
     // Recurring-task templates. Created before db_tasks because db_tasks.recurrence_id
@@ -328,7 +382,6 @@ const TABLES: &[TableDefinition] = &[
                 title TEXT NOT NULL,
                 notes TEXT,
                 priority SMALLINT NOT NULL DEFAULT 0,
-                tags TEXT[] DEFAULT '{}',
                 rrule TEXT NOT NULL,
                 dtstart TIMESTAMPTZ NOT NULL,
                 until TIMESTAMPTZ,
@@ -341,7 +394,6 @@ const TABLES: &[TableDefinition] = &[
         indices: &[
             "CREATE INDEX IF NOT EXISTS idx_recurring_tasks_user ON db_recurring_tasks USING btree (user_id)",
             "CREATE INDEX IF NOT EXISTS idx_recurring_tasks_user_active ON db_recurring_tasks USING btree (user_id, active)",
-            "CREATE INDEX IF NOT EXISTS idx_recurring_tasks_tags ON db_recurring_tasks USING gin (tags)",
         ],
     },
     TableDefinition {
@@ -356,7 +408,6 @@ const TABLES: &[TableDefinition] = &[
                 completed_at TIMESTAMPTZ,
                 due_at TIMESTAMPTZ,
                 priority SMALLINT NOT NULL DEFAULT 0,
-                tags TEXT[] DEFAULT '{}',
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 recurrence_id UUID REFERENCES db_recurring_tasks(id) ON DELETE CASCADE,
                 occurrence_date DATE,
@@ -370,7 +421,47 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_tasks_user ON db_tasks USING btree (user_id)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_user_done ON db_tasks USING btree (user_id, done)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_due ON db_tasks USING btree (due_at)",
-            "CREATE INDEX IF NOT EXISTS idx_tasks_tags ON db_tasks USING gin (tags)",
+        ],
+    },
+    // Tag↔entity join tables (relational tags). Created after the entity tables
+    // and db_tags they reference. Migrated from the old `tags TEXT[]` columns.
+    TableDefinition {
+        name: "db_task_tags",
+        sql: r#"
+            CREATE TABLE db_task_tags (
+                task_id UUID NOT NULL REFERENCES db_tasks(id) ON DELETE CASCADE,
+                tag_id  UUID NOT NULL REFERENCES db_tags(id)  ON DELETE CASCADE,
+                PRIMARY KEY (task_id, tag_id)
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_task_tags_tag ON db_task_tags (tag_id)",
+        ],
+    },
+    TableDefinition {
+        name: "db_recurring_task_tags",
+        sql: r#"
+            CREATE TABLE db_recurring_task_tags (
+                recurring_id UUID NOT NULL REFERENCES db_recurring_tasks(id) ON DELETE CASCADE,
+                tag_id       UUID NOT NULL REFERENCES db_tags(id)            ON DELETE CASCADE,
+                PRIMARY KEY (recurring_id, tag_id)
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_recurring_task_tags_tag ON db_recurring_task_tags (tag_id)",
+        ],
+    },
+    TableDefinition {
+        name: "db_event_tags",
+        sql: r#"
+            CREATE TABLE db_event_tags (
+                event_id UUID NOT NULL REFERENCES db_calendar_events(id) ON DELETE CASCADE,
+                tag_id   UUID NOT NULL REFERENCES db_tags(id)            ON DELETE CASCADE,
+                PRIMARY KEY (event_id, tag_id)
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_event_tags_tag ON db_event_tags (tag_id)",
         ],
     },
     // Materialized alert schedule. The notification-worker polls this table for

@@ -100,6 +100,7 @@ async fn main() -> io::Result<()> {
             .configure(apps::notes::routes::configure_routes)
             .configure(apps::calendar::routes::configure_routes)
             .configure(apps::tasks::routes::configure_routes)
+            .configure(apps::buckets::routes::configure_routes)
             .configure(apps::agenda::routes::configure_routes)
             .configure(apps::notifications::routes::configure_routes)
             .configure(apps::shares::routes::configure_routes)

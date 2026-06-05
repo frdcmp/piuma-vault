@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
+use crate::apps::buckets::sync_tags;
 use crate::apps::realtime::ResourceAction;
 use crate::db::db::DbPool;
 
@@ -13,11 +14,18 @@ use super::models::{
     RecurringTask, Task, TasksApiError, UpdateRecurringTaskRequest, UpdateTaskRequest,
 };
 
+// `tags` is assembled from the join table (db_task_tags → db_tags) as a name
+// array, so the API shape (Task.tags: Vec<String>) is unchanged. FromRow maps by
+// column name, so the aliased subquery slots in regardless of position.
 const TASK_FIELDS: &str = "id, user_id, title, notes, done, completed_at, due_at, priority, \
-     tags, sort_order, recurrence_id, occurrence_date, alerts, created_at, updated_at";
+     (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_task_tags tt \
+      JOIN db_tags tg ON tg.id = tt.tag_id WHERE tt.task_id = db_tasks.id) AS tags, \
+     sort_order, recurrence_id, occurrence_date, alerts, created_at, updated_at";
 
-const RECURRING_FIELDS: &str = "id, user_id, title, notes, priority, tags, rrule, dtstart, \
-     until, active, alerts, created_at, updated_at";
+const RECURRING_FIELDS: &str = "id, user_id, title, notes, priority, \
+     (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_recurring_task_tags rtt \
+      JOIN db_tags tg ON tg.id = rtt.tag_id WHERE rtt.recurring_id = db_recurring_tasks.id) AS tags, \
+     rrule, dtstart, until, active, alerts, created_at, updated_at";
 
 fn err(msg: impl Into<String>) -> TasksApiError {
     TasksApiError { error: msg.into() }
@@ -30,6 +38,30 @@ async fn reschedule(pool: &DbPool, source_type: &str, source_id: Uuid) {
     {
         log::error!("tasks reschedule failed for {source_type} {source_id}: {e}");
     }
+}
+
+async fn fetch_task(pool: &DbPool, id: Uuid, user_id: &str) -> Result<Option<Task>, sqlx::Error> {
+    sqlx::query_as::<_, Task>(&format!(
+        "SELECT {TASK_FIELDS} FROM db_tasks WHERE id = $1 AND user_id = $2"
+    ))
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+}
+
+async fn fetch_recurring(
+    pool: &DbPool,
+    id: Uuid,
+    user_id: &str,
+) -> Result<Option<RecurringTask>, sqlx::Error> {
+    sqlx::query_as::<_, RecurringTask>(&format!(
+        "SELECT {RECURRING_FIELDS} FROM db_recurring_tasks WHERE id = $1 AND user_id = $2"
+    ))
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
 }
 
 fn require_read(user: &AuthenticatedUser) -> Option<HttpResponse> {
@@ -100,7 +132,17 @@ pub async fn list_tasks(
         idx += 1;
     }
     if query.tag.is_some() {
-        clauses.push(format!("${idx} = ANY(tags)"));
+        clauses.push(format!(
+            "EXISTS (SELECT 1 FROM db_task_tags tt JOIN db_tags tg ON tg.id = tt.tag_id \
+             WHERE tt.task_id = db_tasks.id AND tg.name = ${idx})"
+        ));
+        idx += 1;
+    }
+    if query.bucket.is_some() {
+        clauses.push(format!(
+            "EXISTS (SELECT 1 FROM db_task_tags tt JOIN db_tags tg ON tg.id = tt.tag_id \
+             WHERE tt.task_id = db_tasks.id AND tg.bucket_id = ${idx})"
+        ));
     }
 
     let sql = format!(
@@ -121,6 +163,9 @@ pub async fn list_tasks(
     }
     if let Some(ref tag) = query.tag {
         q = q.bind(tag);
+    }
+    if let Some(bucket) = query.bucket {
+        q = q.bind(bucket);
     }
 
     match q.fetch_all(pool.get_ref()).await {
@@ -150,30 +195,35 @@ pub async fn create_task(
         return HttpResponse::BadRequest().json(err("A due date is required to set alerts"));
     }
 
-    let sql = format!(
-        "INSERT INTO db_tasks (user_id, title, notes, due_at, priority, tags, alerts) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {TASK_FIELDS}"
-    );
-    match sqlx::query_as::<_, Task>(&sql)
-        .bind(&user.user_id)
-        .bind(&body.title)
-        .bind(&body.notes)
-        .bind(body.due_at)
-        .bind(body.priority)
-        .bind(&body.tags)
-        .bind(&body.alerts)
-        .fetch_one(pool.get_ref())
-        .await
+    let id: Uuid = match sqlx::query_scalar(
+        "INSERT INTO db_tasks (user_id, title, notes, due_at, priority, alerts) \
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+    )
+    .bind(&user.user_id)
+    .bind(&body.title)
+    .bind(&body.notes)
+    .bind(body.due_at)
+    .bind(body.priority)
+    .bind(&body.alerts)
+    .fetch_one(pool.get_ref())
+    .await
     {
-        Ok(task) => {
-            reschedule(pool.get_ref(), "task", task.id).await;
-            bus.publish(ResourceAction::Created, task.id);
-            HttpResponse::Created().json(task)
-        }
+        Ok(id) => id,
         Err(e) => {
             log::error!("tasks create failed: {e}");
-            HttpResponse::BadRequest().json(err("Failed to create task"))
+            return HttpResponse::BadRequest().json(err("Failed to create task"));
         }
+    };
+
+    if let Err(e) = sync_tags(pool.get_ref(), &user.user_id, "db_task_tags", "task_id", id, &body.tags).await {
+        log::error!("task tag sync failed: {e}");
+    }
+    reschedule(pool.get_ref(), "task", id).await;
+    bus.publish(ResourceAction::Created, id);
+
+    match fetch_task(pool.get_ref(), id, &user.user_id).await {
+        Ok(Some(task)) => HttpResponse::Created().json(task),
+        _ => HttpResponse::InternalServerError().json(err("Created but failed to load task")),
     }
 }
 
@@ -187,14 +237,7 @@ pub async fn get_task(
     if let Some(r) = require_read(&user) {
         return r;
     }
-    let id = path.into_inner();
-    let sql = format!("SELECT {TASK_FIELDS} FROM db_tasks WHERE id = $1 AND user_id = $2");
-    match sqlx::query_as::<_, Task>(&sql)
-        .bind(id)
-        .bind(&user.user_id)
-        .fetch_optional(pool.get_ref())
-        .await
-    {
+    match fetch_task(pool.get_ref(), path.into_inner(), &user.user_id).await {
         Ok(Some(task)) => HttpResponse::Ok().json(task),
         Ok(None) => HttpResponse::NotFound().json(err("Task not found")),
         Err(e) => {
@@ -224,8 +267,7 @@ pub async fn update_task(
     }
 
     // Alerts need a due_at anchor. Compute the effective state after this patch
-    // and reject "alerts without a due date". Only touch the DB for the fields
-    // the request omits (a patch clearing due_at, or adding alerts).
+    // and reject "alerts without a due date".
     let touches_alerts = body.alerts.is_some();
     let clears_due = matches!(body.due_at, Some(None));
     if touches_alerts || clears_due {
@@ -245,8 +287,8 @@ pub async fn update_task(
         };
         if let Some((cur_due, cur_alerts)) = current {
             let effective_due = match body.due_at {
-                Some(v) => v,           // explicit set or clear
-                None => cur_due,        // omitted → keep stored
+                Some(v) => v,
+                None => cur_due,
             };
             let effective_alerts = body.alerts.as_ref().unwrap_or(&cur_alerts);
             if alerts_present(effective_alerts) && effective_due.is_none() {
@@ -257,21 +299,18 @@ pub async fn update_task(
     }
 
     // `done` toggling also stamps/clears completed_at in the same statement.
-    let sql = format!(
-        "UPDATE db_tasks SET \
+    let sql = "UPDATE db_tasks SET \
             title = COALESCE($3, title), \
             notes = CASE WHEN $4 THEN $5 ELSE notes END, \
             due_at = CASE WHEN $6 THEN $7 ELSE due_at END, \
             priority = COALESCE($8, priority), \
-            tags = COALESCE($9, tags), \
-            sort_order = COALESCE($10, sort_order), \
-            done = COALESCE($11, done), \
-            completed_at = CASE WHEN $11 IS NULL THEN completed_at \
-                                WHEN $11 THEN NOW() ELSE NULL END, \
-            alerts = COALESCE($12, alerts), \
+            sort_order = COALESCE($9, sort_order), \
+            done = COALESCE($10, done), \
+            completed_at = CASE WHEN $10 IS NULL THEN completed_at \
+                                WHEN $10 THEN NOW() ELSE NULL END, \
+            alerts = COALESCE($11, alerts), \
             updated_at = NOW() \
-         WHERE id = $1 AND user_id = $2 RETURNING {TASK_FIELDS}"
-    );
+         WHERE id = $1 AND user_id = $2 RETURNING id";
 
     let (set_notes, notes) = match &body.notes {
         Some(v) => (true, v.clone()),
@@ -282,7 +321,7 @@ pub async fn update_task(
         None => (false, None),
     };
 
-    match sqlx::query_as::<_, Task>(&sql)
+    let found: Option<Uuid> = match sqlx::query_scalar(sql)
         .bind(id)
         .bind(&user.user_id)
         .bind(&body.title)
@@ -291,23 +330,33 @@ pub async fn update_task(
         .bind(set_due)
         .bind(due)
         .bind(body.priority)
-        .bind(&body.tags)
         .bind(body.sort_order)
         .bind(body.done)
         .bind(&body.alerts)
         .fetch_optional(pool.get_ref())
         .await
     {
-        Ok(Some(task)) => {
-            reschedule(pool.get_ref(), "task", task.id).await;
-            bus.publish(ResourceAction::Updated, task.id);
-            HttpResponse::Ok().json(task)
-        }
-        Ok(None) => HttpResponse::NotFound().json(err("Task not found")),
+        Ok(v) => v,
         Err(e) => {
             log::error!("tasks update failed: {e}");
-            HttpResponse::BadRequest().json(err("Failed to update task"))
+            return HttpResponse::BadRequest().json(err("Failed to update task"));
         }
+    };
+    if found.is_none() {
+        return HttpResponse::NotFound().json(err("Task not found"));
+    }
+
+    if let Some(ref tags) = body.tags {
+        if let Err(e) = sync_tags(pool.get_ref(), &user.user_id, "db_task_tags", "task_id", id, tags).await {
+            log::error!("task tag sync failed: {e}");
+        }
+    }
+    reschedule(pool.get_ref(), "task", id).await;
+    bus.publish(ResourceAction::Updated, id);
+
+    match fetch_task(pool.get_ref(), id, &user.user_id).await {
+        Ok(Some(task)) => HttpResponse::Ok().json(task),
+        _ => HttpResponse::InternalServerError().json(err("Updated but failed to load task")),
     }
 }
 
@@ -323,7 +372,8 @@ pub async fn toggle_task(
         return r;
     }
     let id = path.into_inner();
-    // Flip `done` and stamp/clear completed_at accordingly, atomically.
+    // Flip `done` and stamp/clear completed_at accordingly, atomically. Tag links
+    // are unchanged, so the RETURNING subquery reflects current tags.
     let sql = format!(
         "UPDATE db_tasks SET \
             done = NOT done, \
@@ -372,6 +422,7 @@ pub async fn delete_task(
         return r;
     }
     let id = path.into_inner();
+    // db_task_tags rows cascade on delete.
     match sqlx::query("DELETE FROM db_tasks WHERE id = $1 AND user_id = $2")
         .bind(id)
         .bind(&user.user_id)
@@ -394,10 +445,7 @@ pub async fn delete_task(
 
 // ── RECURRING TASKS: LIST ──────────────────────────────────────────────────────
 
-pub async fn list_recurring(
-    user: AuthenticatedUser,
-    pool: web::Data<DbPool>,
-) -> impl Responder {
+pub async fn list_recurring(user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
     if let Some(r) = require_read(&user) {
         return r;
     }
@@ -435,32 +483,37 @@ pub async fn create_recurring(
         return HttpResponse::BadRequest().json(err("rrule is required"));
     }
 
-    let sql = format!(
-        "INSERT INTO db_recurring_tasks (user_id, title, notes, priority, tags, rrule, dtstart, until, alerts) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING {RECURRING_FIELDS}"
-    );
-    match sqlx::query_as::<_, RecurringTask>(&sql)
-        .bind(&user.user_id)
-        .bind(&body.title)
-        .bind(&body.notes)
-        .bind(body.priority)
-        .bind(&body.tags)
-        .bind(&body.rrule)
-        .bind(body.dtstart)
-        .bind(body.until)
-        .bind(&body.alerts)
-        .fetch_one(pool.get_ref())
-        .await
+    let id: Uuid = match sqlx::query_scalar(
+        "INSERT INTO db_recurring_tasks (user_id, title, notes, priority, rrule, dtstart, until, alerts) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+    )
+    .bind(&user.user_id)
+    .bind(&body.title)
+    .bind(&body.notes)
+    .bind(body.priority)
+    .bind(&body.rrule)
+    .bind(body.dtstart)
+    .bind(body.until)
+    .bind(&body.alerts)
+    .fetch_one(pool.get_ref())
+    .await
     {
-        Ok(rt) => {
-            reschedule(pool.get_ref(), "recurring", rt.id).await;
-            bus.publish(ResourceAction::Created, rt.id);
-            HttpResponse::Created().json(rt)
-        }
+        Ok(id) => id,
         Err(e) => {
             log::error!("recurring create failed: {e}");
-            HttpResponse::BadRequest().json(err("Failed to create recurring task"))
+            return HttpResponse::BadRequest().json(err("Failed to create recurring task"));
         }
+    };
+
+    if let Err(e) = sync_tags(pool.get_ref(), &user.user_id, "db_recurring_task_tags", "recurring_id", id, &body.tags).await {
+        log::error!("recurring tag sync failed: {e}");
+    }
+    reschedule(pool.get_ref(), "recurring", id).await;
+    bus.publish(ResourceAction::Created, id);
+
+    match fetch_recurring(pool.get_ref(), id, &user.user_id).await {
+        Ok(Some(rt)) => HttpResponse::Created().json(rt),
+        _ => HttpResponse::InternalServerError().json(err("Created but failed to load recurring task")),
     }
 }
 
@@ -474,15 +527,7 @@ pub async fn get_recurring(
     if let Some(r) = require_read(&user) {
         return r;
     }
-    let id = path.into_inner();
-    let sql =
-        format!("SELECT {RECURRING_FIELDS} FROM db_recurring_tasks WHERE id = $1 AND user_id = $2");
-    match sqlx::query_as::<_, RecurringTask>(&sql)
-        .bind(id)
-        .bind(&user.user_id)
-        .fetch_optional(pool.get_ref())
-        .await
-    {
+    match fetch_recurring(pool.get_ref(), path.into_inner(), &user.user_id).await {
         Ok(Some(rt)) => HttpResponse::Ok().json(rt),
         Ok(None) => HttpResponse::NotFound().json(err("Recurring task not found")),
         Err(e) => {
@@ -511,20 +556,17 @@ pub async fn update_recurring(
         }
     }
 
-    let sql = format!(
-        "UPDATE db_recurring_tasks SET \
+    let sql = "UPDATE db_recurring_tasks SET \
             title = COALESCE($3, title), \
             notes = CASE WHEN $4 THEN $5 ELSE notes END, \
             priority = COALESCE($6, priority), \
-            tags = COALESCE($7, tags), \
-            rrule = COALESCE($8, rrule), \
-            dtstart = COALESCE($9, dtstart), \
-            until = CASE WHEN $10 THEN $11 ELSE until END, \
-            active = COALESCE($12, active), \
-            alerts = COALESCE($13, alerts), \
+            rrule = COALESCE($7, rrule), \
+            dtstart = COALESCE($8, dtstart), \
+            until = CASE WHEN $9 THEN $10 ELSE until END, \
+            active = COALESCE($11, active), \
+            alerts = COALESCE($12, alerts), \
             updated_at = NOW() \
-         WHERE id = $1 AND user_id = $2 RETURNING {RECURRING_FIELDS}"
-    );
+         WHERE id = $1 AND user_id = $2 RETURNING id";
 
     let (set_notes, notes) = match &body.notes {
         Some(v) => (true, v.clone()),
@@ -535,14 +577,13 @@ pub async fn update_recurring(
         None => (false, None),
     };
 
-    match sqlx::query_as::<_, RecurringTask>(&sql)
+    let found: Option<Uuid> = match sqlx::query_scalar(sql)
         .bind(id)
         .bind(&user.user_id)
         .bind(&body.title)
         .bind(set_notes)
         .bind(notes)
         .bind(body.priority)
-        .bind(&body.tags)
         .bind(&body.rrule)
         .bind(body.dtstart)
         .bind(set_until)
@@ -552,23 +593,31 @@ pub async fn update_recurring(
         .fetch_optional(pool.get_ref())
         .await
     {
-        Ok(Some(rt)) => {
-            // Rebuild the rolling window from scratch (rrule/dtstart/active/alerts may have changed).
-            let _ = crate::apps::notifications::schedule::purge_source(
-                pool.get_ref(),
-                "recurring",
-                rt.id,
-            )
-            .await;
-            reschedule(pool.get_ref(), "recurring", rt.id).await;
-            bus.publish(ResourceAction::Updated, rt.id);
-            HttpResponse::Ok().json(rt)
-        }
-        Ok(None) => HttpResponse::NotFound().json(err("Recurring task not found")),
+        Ok(v) => v,
         Err(e) => {
             log::error!("recurring update failed: {e}");
-            HttpResponse::BadRequest().json(err("Failed to update recurring task"))
+            return HttpResponse::BadRequest().json(err("Failed to update recurring task"));
         }
+    };
+    if found.is_none() {
+        return HttpResponse::NotFound().json(err("Recurring task not found"));
+    }
+
+    if let Some(ref tags) = body.tags {
+        if let Err(e) =
+            sync_tags(pool.get_ref(), &user.user_id, "db_recurring_task_tags", "recurring_id", id, tags).await
+        {
+            log::error!("recurring tag sync failed: {e}");
+        }
+    }
+    // Rebuild the rolling window from scratch (rrule/dtstart/active/alerts may have changed).
+    let _ = crate::apps::notifications::schedule::purge_source(pool.get_ref(), "recurring", id).await;
+    reschedule(pool.get_ref(), "recurring", id).await;
+    bus.publish(ResourceAction::Updated, id);
+
+    match fetch_recurring(pool.get_ref(), id, &user.user_id).await {
+        Ok(Some(rt)) => HttpResponse::Ok().json(rt),
+        _ => HttpResponse::InternalServerError().json(err("Updated but failed to load recurring task")),
     }
 }
 
@@ -584,7 +633,8 @@ pub async fn delete_recurring(
         return r;
     }
     let id = path.into_inner();
-    // ON DELETE CASCADE drops materialized occurrence rows in db_tasks too.
+    // ON DELETE CASCADE drops materialized occurrence rows in db_tasks (and the
+    // recurring template's tag links) too.
     match sqlx::query("DELETE FROM db_recurring_tasks WHERE id = $1 AND user_id = $2")
         .bind(id)
         .bind(&user.user_id)
@@ -614,8 +664,9 @@ pub async fn delete_recurring(
 // ── RECURRING TASKS: COMPLETE / UNCOMPLETE one occurrence ────────────────────────
 //
 // Materialize-on-complete: marking a virtual occurrence done writes (or upserts)
-// a concrete db_tasks row carrying recurrence_id + occurrence_date. Unchecking it
-// deletes that row, reverting the occurrence to a pending virtual to-do.
+// a concrete db_tasks row carrying recurrence_id + occurrence_date, and copies
+// the template's tag links onto it. Unchecking deletes that row (its links
+// cascade), reverting the occurrence to a pending virtual to-do.
 
 pub async fn complete_occurrence(
     user: AuthenticatedUser,
@@ -636,15 +687,8 @@ pub async fn complete_occurrence(
     };
     let done = body.map(|b| b.done).unwrap_or(true);
 
-    // Confirm the template belongs to the user before materializing.
-    let template = match sqlx::query_as::<_, RecurringTask>(&format!(
-        "SELECT {RECURRING_FIELDS} FROM db_recurring_tasks WHERE id = $1 AND user_id = $2"
-    ))
-    .bind(recurrence_id)
-    .bind(&user.user_id)
-    .fetch_optional(pool.get_ref())
-    .await
-    {
+    // Confirm the template belongs to the user before materializing (and get its tags).
+    let template = match fetch_recurring(pool.get_ref(), recurrence_id, &user.user_id).await {
         Ok(Some(t)) => t,
         Ok(None) => return HttpResponse::NotFound().json(err("Recurring task not found")),
         Err(e) => {
@@ -654,7 +698,6 @@ pub async fn complete_occurrence(
     };
 
     if !done {
-        // Undo: remove the materialized completion → occurrence goes back to virtual/pending.
         match sqlx::query(
             "DELETE FROM db_tasks WHERE recurrence_id = $1 AND occurrence_date = $2 AND user_id = $3",
         )
@@ -677,34 +720,40 @@ pub async fn complete_occurrence(
     }
 
     // Complete: idempotent upsert keyed by the unique (recurrence_id, occurrence_date).
-    // due_at stays NULL — occurrence_date is the authoritative day the client uses
-    // to place this completion on the calendar (in the user's local timezone).
-    let sql = format!(
+    let task_id: Uuid = match sqlx::query_scalar(
         "INSERT INTO db_tasks \
-            (user_id, title, notes, done, completed_at, priority, tags, recurrence_id, occurrence_date) \
-         VALUES ($1, $2, $3, TRUE, NOW(), $4, $5, $6, $7) \
+            (user_id, title, notes, done, completed_at, priority, recurrence_id, occurrence_date) \
+         VALUES ($1, $2, $3, TRUE, NOW(), $4, $5, $6) \
          ON CONFLICT (recurrence_id, occurrence_date) \
          DO UPDATE SET done = TRUE, completed_at = NOW(), updated_at = NOW() \
-         RETURNING {TASK_FIELDS}"
-    );
-    match sqlx::query_as::<_, Task>(&sql)
-        .bind(&user.user_id)
-        .bind(&template.title)
-        .bind(&template.notes)
-        .bind(template.priority)
-        .bind(&template.tags)
-        .bind(recurrence_id)
-        .bind(occurrence_date)
-        .fetch_one(pool.get_ref())
-        .await
+         RETURNING id",
+    )
+    .bind(&user.user_id)
+    .bind(&template.title)
+    .bind(&template.notes)
+    .bind(template.priority)
+    .bind(recurrence_id)
+    .bind(occurrence_date)
+    .fetch_one(pool.get_ref())
+    .await
     {
-        Ok(task) => {
-            bus.publish(ResourceAction::Updated, recurrence_id);
-            HttpResponse::Ok().json(task)
-        }
+        Ok(id) => id,
         Err(e) => {
             log::error!("occurrence complete failed: {e}");
-            HttpResponse::InternalServerError().json(err("Failed to complete occurrence"))
+            return HttpResponse::InternalServerError().json(err("Failed to complete occurrence"));
         }
+    };
+
+    // Mirror the template's tags onto the materialized occurrence.
+    if let Err(e) =
+        sync_tags(pool.get_ref(), &user.user_id, "db_task_tags", "task_id", task_id, &template.tags).await
+    {
+        log::error!("occurrence tag sync failed: {e}");
+    }
+    bus.publish(ResourceAction::Updated, recurrence_id);
+
+    match fetch_task(pool.get_ref(), task_id, &user.user_id).await {
+        Ok(Some(task)) => HttpResponse::Ok().json(task),
+        _ => HttpResponse::InternalServerError().json(err("Completed but failed to load occurrence")),
     }
 }

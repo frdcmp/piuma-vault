@@ -46,10 +46,10 @@ export const updatePersona = async ({ id, ...payload }) =>
 	(await axiosInstance.patch(`/agents/personas/${id}`, payload)).data;
 
 // ── Conversations ────────────────────────────────────────────────────────────
-export const fetchConversations = async (agent) =>
+export const fetchConversations = async (agent, q) =>
 	(
 		await axiosInstance.get("/agents/conversations", {
-			params: agent ? { agent } : {},
+			params: { ...(agent ? { agent } : {}), ...(q ? { q } : {}) },
 		})
 	).data;
 export const createConversation = async (payload) =>
@@ -60,6 +60,12 @@ export const updateConversation = async ({ id, ...payload }) =>
 	(await axiosInstance.patch(`/agents/conversations/${id}`, payload)).data;
 export const deleteConversation = async (id) =>
 	(await axiosInstance.delete(`/agents/conversations/${id}`)).data;
+// Wipe a conversation's messages in place, keeping the same conversation id.
+export const clearConversation = async (id) =>
+	(await axiosInstance.delete(`/agents/conversations/${id}/messages`)).data;
+// Force an AI re-title of a conversation; returns { title }.
+export const retitleConversation = async (id) =>
+	(await axiosInstance.post(`/agents/conversations/${id}/retitle`)).data;
 
 // All enabled models across providers — for the /models command picker.
 export const fetchAllModels = async () =>

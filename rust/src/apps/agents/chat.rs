@@ -21,7 +21,7 @@ use super::{identities, registry, tools};
 
 const MAX_ROUNDS: usize = 12;
 
-fn blocks_to_text(content: &Value) -> String {
+pub(super) fn blocks_to_text(content: &Value) -> String {
     match content {
         Value::String(s) => s.clone(),
         Value::Array(blocks) => blocks
@@ -198,7 +198,10 @@ pub async fn chat(
         log::error!("chat: persist user msg: {e}");
         return HttpResponse::InternalServerError().json(ApiError::new("database error"));
     }
-    if conv.title.as_deref().unwrap_or("").is_empty() {
+    // First turn: set a cheap fallback title now; an AI title replaces it once
+    // the exchange completes (see end of the stream task).
+    let first_turn = conv.title.as_deref().unwrap_or("").is_empty();
+    if first_turn {
         let title: String = msg.chars().take(60).collect();
         let _ = sqlx::query("UPDATE db_chat_conversations SET title = $2 WHERE id = $1")
             .bind(conv_id)
@@ -379,6 +382,12 @@ pub async fn chat(
                 "tokens_input": tin,
                 "tokens_output": tout,
             }))));
+
+            // Replace the fallback title with an AI-generated subject line now
+            // that the first exchange exists. Best-effort, after `done`.
+            if first_turn {
+                super::title::generate(&pool2, conv_id).await;
+            }
         }
     });
 
@@ -415,7 +424,11 @@ async fn gateway_turn(
         log::error!("gateway chat: persist user msg: {e}");
         return HttpResponse::InternalServerError().json(ApiError::new("database error"));
     }
-    if conv.title.as_deref().unwrap_or("").is_empty() {
+    // First turn: cheap fallback title now; AI title replaces it after the
+    // exchange. Titling always uses the default agent model, even though the
+    // chat itself runs through the gateway.
+    let first_turn = conv.title.as_deref().unwrap_or("").is_empty();
+    if first_turn {
         let title: String = msg.chars().take(60).collect();
         let _ = sqlx::query("UPDATE db_chat_conversations SET title = $2 WHERE id = $1")
             .bind(conv.id)
@@ -473,6 +486,10 @@ async fn gateway_turn(
                 let _ = tx.unbounded_send(Ok(frame(json!({
                     "type": "done", "stop_reason": out.stop, "message_id": msg_id,
                 }))));
+
+                if first_turn {
+                    super::title::generate(&pool2, conv_id).await;
+                }
             }
             Err(e) => {
                 log::error!("gateway chat: {e}");

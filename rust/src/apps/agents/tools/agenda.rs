@@ -34,7 +34,10 @@ pub async fn get_agenda(pool: &DbPool, user_id: &str, args: &Value) -> Result<Va
 
     // One-off tasks due in the window.
     let task_rows: Vec<(Uuid, String, bool, Option<DateTime<Utc>>, i16, Vec<String>)> = sqlx::query_as(
-        "SELECT id, title, done, due_at, priority, tags FROM db_tasks \
+        "SELECT id, title, done, due_at, priority, \
+         (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_task_tags tt \
+          JOIN db_tags tg ON tg.id = tt.tag_id WHERE tt.task_id = db_tasks.id) AS tags \
+         FROM db_tasks \
          WHERE user_id = $1 AND recurrence_id IS NULL AND due_at >= $2 AND due_at < $3 \
          ORDER BY due_at",
     )
@@ -88,7 +91,10 @@ pub async fn get_agenda(pool: &DbPool, user_id: &str, args: &Value) -> Result<Va
     // Active recurring templates → expand across the window.
     let tmpl_rows: Vec<(Uuid, String, i16, Vec<String>, String, DateTime<Utc>, Option<DateTime<Utc>>)> =
         sqlx::query_as(
-            "SELECT id, title, priority, tags, rrule, dtstart, until FROM db_recurring_tasks \
+            "SELECT id, title, priority, \
+             (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_recurring_task_tags rtt \
+              JOIN db_tags tg ON tg.id = rtt.tag_id WHERE rtt.recurring_id = db_recurring_tasks.id) AS tags, \
+             rrule, dtstart, until FROM db_recurring_tasks \
              WHERE user_id = $1 AND active = TRUE",
         )
         .bind(user_id)

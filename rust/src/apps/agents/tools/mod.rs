@@ -159,3 +159,26 @@ pub(super) fn parse_dt(args: &Value, key: &str) -> Option<DateTime<Utc>> {
         .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
         .map(|d| d.with_timezone(&Utc))
 }
+
+/// Normalise an `alerts` argument into the `[{ offset_minutes, channels? }]`
+/// JSONB shape stored on tasks/events. Accepts either bare integers (minutes
+/// before the anchor) or `{ offset_minutes, channels? }` objects. Returns
+/// `None` when the key is absent (so callers can leave the column untouched on
+/// update); `Some([])` for an explicit empty array.
+pub(super) fn parse_alerts(args: &Value, key: &str) -> Option<Value> {
+    let arr = args.get(key)?.as_array()?;
+    let alerts: Vec<Value> = arr
+        .iter()
+        .filter_map(|v| {
+            let offset = v
+                .as_i64()
+                .or_else(|| v.get("offset_minutes").and_then(|m| m.as_i64()))?;
+            let mut obj = json!({ "offset_minutes": offset.max(0) });
+            if let Some(ch) = v.get("channels") {
+                obj["channels"] = ch.clone();
+            }
+            Some(obj)
+        })
+        .collect();
+    Some(Value::Array(alerts))
+}

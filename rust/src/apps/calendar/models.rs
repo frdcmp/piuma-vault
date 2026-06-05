@@ -75,6 +75,8 @@ pub struct ListEventsQuery {
     pub from: DateTime<Utc>,
     pub to: DateTime<Utc>,
     pub tag: Option<String>,
+    // Filter to events carrying any tag that belongs to this bucket.
+    pub bucket: Option<uuid::Uuid>,
 }
 
 // ── Error ──

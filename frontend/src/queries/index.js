@@ -21,6 +21,7 @@ export * from "./notesQuery";
 export * from "./notificationsQuery";
 export * from "./servicesQuery";
 export * from "./storageQuery";
+export * from "./tagsQuery";
 export * from "./tasksQuery";
 export * from "./userQuery";
 export { useUpdateProfile, useUserMe } from "./userQuery";

@@ -14,13 +14,20 @@ use super::models::{AgendaError, AgendaOccurrence, AgendaQuery, AgendaResponse};
 use super::recurrence::expand_dates;
 
 const TASK_FIELDS: &str = "id, user_id, title, notes, done, completed_at, due_at, priority, \
-     tags, sort_order, recurrence_id, occurrence_date, created_at, updated_at";
+     (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_task_tags tt \
+      JOIN db_tags tg ON tg.id = tt.tag_id WHERE tt.task_id = db_tasks.id) AS tags, \
+     sort_order, recurrence_id, occurrence_date, alerts, created_at, updated_at";
 
-const RECURRING_FIELDS: &str = "id, user_id, title, notes, priority, tags, rrule, dtstart, \
-     until, active, created_at, updated_at";
+const RECURRING_FIELDS: &str = "id, user_id, title, notes, priority, \
+     (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_recurring_task_tags rtt \
+      JOIN db_tags tg ON tg.id = rtt.tag_id WHERE rtt.recurring_id = db_recurring_tasks.id) AS tags, \
+     rrule, dtstart, until, active, alerts, created_at, updated_at";
 
 const EVENT_FIELDS: &str = "id, user_id, title, description, location, starts_at, ends_at, \
-     all_day, color, tags, rrule, created_at, updated_at";
+     all_day, color, \
+     (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_event_tags et \
+      JOIN db_tags tg ON tg.id = et.tag_id WHERE et.event_id = db_calendar_events.id) AS tags, \
+     rrule, alerts, created_at, updated_at";
 
 fn err(msg: impl Into<String>) -> AgendaError {
     AgendaError { error: msg.into() }
@@ -74,7 +81,10 @@ pub async fn get_agenda(
              WHERE user_id = $1 AND due_at >= $2 AND due_at < $3"
         );
         if tag.is_some() {
-            task_sql.push_str(" AND $4 = ANY(tags)");
+            task_sql.push_str(
+                " AND EXISTS (SELECT 1 FROM db_task_tags tt JOIN db_tags tg ON tg.id = tt.tag_id \
+                  WHERE tt.task_id = db_tasks.id AND tg.name = $4)",
+            );
         }
         task_sql.push_str(" ORDER BY due_at ASC");
 
@@ -98,7 +108,10 @@ pub async fn get_agenda(
             "SELECT {RECURRING_FIELDS} FROM db_recurring_tasks WHERE user_id = $1 AND active = TRUE"
         );
         if tag.is_some() {
-            tmpl_sql.push_str(" AND $2 = ANY(tags)");
+            tmpl_sql.push_str(
+                " AND EXISTS (SELECT 1 FROM db_recurring_task_tags rtt JOIN db_tags tg ON tg.id = rtt.tag_id \
+                  WHERE rtt.recurring_id = db_recurring_tasks.id AND tg.name = $2)",
+            );
         }
         let mut tmplq = sqlx::query_as::<_, RecurringTask>(&tmpl_sql).bind(&user.user_id);
         if let Some(ref t) = tag {
@@ -160,7 +173,10 @@ pub async fn get_agenda(
              WHERE user_id = $1 AND starts_at < $2 AND COALESCE(ends_at, starts_at) >= $3"
         );
         if tag.is_some() {
-            ev_sql.push_str(" AND $4 = ANY(tags)");
+            ev_sql.push_str(
+                " AND EXISTS (SELECT 1 FROM db_event_tags et JOIN db_tags tg ON tg.id = et.tag_id \
+                  WHERE et.event_id = db_calendar_events.id AND tg.name = $4)",
+            );
         }
         ev_sql.push_str(" ORDER BY starts_at ASC");
 

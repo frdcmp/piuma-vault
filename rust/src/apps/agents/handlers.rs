@@ -13,6 +13,7 @@ use crate::db::db::DbPool;
 
 use super::models::*;
 use super::registry;
+use super::title;
 
 const DEFAULT_AGENT_KEY: &str = "agents_default_agent";
 
@@ -418,6 +419,8 @@ pub async fn patch_persona(
 #[derive(Debug, Deserialize)]
 pub struct ListConvQuery {
     pub agent: Option<String>,
+    /// Free-text filter: matches conversation title or any message's text.
+    pub q: Option<String>,
 }
 
 pub async fn list_conversations(
@@ -425,21 +428,25 @@ pub async fn list_conversations(
     pool: web::Data<DbPool>,
     q: web::Query<ListConvQuery>,
 ) -> impl Responder {
-    let res = if let Some(agent) = &q.agent {
-        sqlx::query_as::<_, ConversationRow>(
-            "SELECT * FROM db_chat_conversations WHERE archived_at IS NULL AND agent = $1 \
-             ORDER BY updated_at DESC",
-        )
-        .bind(agent)
-        .fetch_all(pool.get_ref())
-        .await
-    } else {
-        sqlx::query_as::<_, ConversationRow>(
-            "SELECT * FROM db_chat_conversations WHERE archived_at IS NULL ORDER BY updated_at DESC",
-        )
-        .fetch_all(pool.get_ref())
-        .await
-    };
+    // Optional filters: agent (exact) and free-text q (title or message text).
+    // Both treat absent/blank as "no filter" via the `$n IS NULL` guards.
+    let agent = q.agent.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let search = q.q.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let res = sqlx::query_as::<_, ConversationRow>(
+        "SELECT * FROM db_chat_conversations c \
+         WHERE c.archived_at IS NULL \
+           AND ($1::text IS NULL OR c.agent = $1) \
+           AND ($2::text IS NULL \
+                OR c.title ILIKE '%' || $2 || '%' \
+                OR EXISTS (SELECT 1 FROM db_chat_messages m \
+                           WHERE m.conversation_id = c.id \
+                             AND m.content::text ILIKE '%' || $2 || '%')) \
+         ORDER BY c.updated_at DESC",
+    )
+    .bind(agent)
+    .bind(search)
+    .fetch_all(pool.get_ref())
+    .await;
     match res {
         Ok(rows) => HttpResponse::Ok().json(rows),
         Err(e) => db_err(e),
@@ -556,6 +563,55 @@ pub async fn delete_conversation(
         .execute(pool.get_ref())
         .await
     {
+        Ok(_) => HttpResponse::Ok().json(json!({ "ok": true })),
+        Err(e) => db_err(e),
+    }
+}
+
+/// Force an AI re-title of a conversation (the `/title → auto-rename` action).
+/// Returns the new title, or 400 if there's nothing to summarize / no model.
+pub async fn retitle_conversation(
+    _user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    match title::regenerate(pool.get_ref(), path.into_inner()).await {
+        Some(t) => HttpResponse::Ok().json(json!({ "title": t })),
+        None => HttpResponse::BadRequest().json(ApiError::new(
+            "could not generate a title (no messages yet, or no default model configured)",
+        )),
+    }
+}
+
+/// Clear a conversation in place: delete all its messages and reset the title
+/// (and the `ai_titled` marker) so the next turn re-titles a fresh slate. The
+/// conversation row and its id are preserved, so the thread keeps streaming to
+/// the same session.
+pub async fn clear_conversation(
+    _user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let id = path.into_inner();
+    if let Err(e) = sqlx::query("DELETE FROM db_chat_messages WHERE conversation_id = $1")
+        .bind(id)
+        .execute(pool.get_ref())
+        .await
+    {
+        return db_err(e);
+    }
+    match sqlx::query(
+        "UPDATE db_chat_conversations \
+         SET title = NULL, metadata = metadata - 'ai_titled', updated_at = NOW() \
+         WHERE id = $1",
+    )
+    .bind(id)
+    .execute(pool.get_ref())
+    .await
+    {
+        Ok(r) if r.rows_affected() == 0 => {
+            HttpResponse::NotFound().json(ApiError::new("conversation not found"))
+        }
         Ok(_) => HttpResponse::Ok().json(json!({ "ok": true })),
         Err(e) => db_err(e),
     }

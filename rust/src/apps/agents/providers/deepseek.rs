@@ -43,6 +43,60 @@ fn map_finish(reason: &str) -> &'static str {
     }
 }
 
+/// One non-streaming completion. Returns the assistant's text only. Used for
+/// short utility calls (e.g. generating conversation titles) where SSE and the
+/// tool loop aren't needed.
+pub async fn complete(
+    api_key: &str,
+    base_url: Option<&str>,
+    model: &str,
+    messages: &[Value],
+    max_tokens: u32,
+) -> Result<String, String> {
+    let base = base_url
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(DEFAULT_BASE_URL)
+        .trim_end_matches('/')
+        .to_string();
+    let url = format!("{base}/chat/completions");
+
+    let payload = json!({
+        "model": model,
+        "messages": messages,
+        "stream": false,
+        "max_tokens": max_tokens,
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .bearer_auth(api_key)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("deepseek request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("deepseek HTTP {status}: {body}"));
+    }
+
+    let v: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("deepseek decode failed: {e}"))?;
+    let text = v
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string();
+    Ok(text)
+}
+
 /// One streaming model round. `messages`/`tools` are raw OpenAI-shaped JSON.
 pub async fn call(
     api_key: &str,

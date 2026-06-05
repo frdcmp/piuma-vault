@@ -665,3 +665,185 @@ button.chat-context-tag-main {
 	font-size: 12px;
 	color: var(--vp-muted, #8a93a3);
 }
+
+/* Slash-command menu — keyboard + mouse navigable. */
+.slash-menu {
+	background: var(--vp-panel, #1b1e25);
+	border: 1px solid var(--vp-border-soft, #2a2f39);
+	border-radius: 6px;
+	margin-bottom: 6px;
+	max-height: 200px;
+	overflow-y: auto;
+}
+.slash-item {
+	display: block;
+	width: 100%;
+	text-align: left;
+	background: none;
+	border: none;
+	color: var(--vp-text, #d6dbe5);
+	padding: 6px 10px;
+	cursor: pointer;
+	font-family: inherit;
+	font-size: 13px;
+	transition: background 0.1s ease;
+}
+.slash-item:hover,
+.slash-item.is-active {
+	background: var(--vp-hover, rgba(92, 208, 169, 0.12));
+}
+.slash-item.is-active {
+	box-shadow: inset 2px 0 0 var(--vp-accent-2, #5cd0a9);
+}
+.slash-item:active {
+	background: var(--vp-active, rgba(92, 208, 169, 0.2));
+}
+.slash-item-name {
+	color: var(--vp-accent-2, #5cd0a9);
+}
+/* Agent-specific commands use a distinct hue so they read apart from the
+   global/client commands (which stay accent-2 green). */
+.slash-item--agent .slash-item-name {
+	color: var(--vp-accent-4, #6ab0ff);
+}
+.slash-item--agent.is-active {
+	box-shadow: inset 2px 0 0 var(--vp-accent-4, #6ab0ff);
+}
+.slash-item-desc {
+	color: var(--vp-muted, #8a93a3);
+	margin-left: 8px;
+	font-size: 12px;
+}
+
+/* Sessions / models picker rows — keyboard + mouse navigable. */
+.picker-item {
+	display: block;
+	width: 100%;
+	text-align: left;
+	background: none;
+	border: none;
+	color: var(--vp-text, #d6dbe5);
+	padding: 5px 8px;
+	border-radius: 4px;
+	cursor: pointer;
+	font-family: inherit;
+	font-size: 13px;
+	transition: background 0.1s ease;
+}
+.picker-item.ellipsis {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.picker-item:hover,
+.picker-item.is-active {
+	background: var(--vp-hover, rgba(92, 208, 169, 0.12));
+}
+.picker-item.is-active {
+	box-shadow: inset 2px 0 0 var(--vp-accent-2, #5cd0a9);
+}
+.picker-item:active {
+	background: var(--vp-active, rgba(92, 208, 169, 0.2));
+}
+.picker-item-meta {
+	color: var(--vp-muted, #8a93a3);
+	font-size: 12px;
+}
+
+/* Session row: title (fills) + a delete button on the right. The row owns the
+   highlight so it covers both children. */
+.picker-row {
+	display: flex;
+	align-items: center;
+	border-radius: 4px;
+}
+.picker-row:hover,
+.picker-row.is-active {
+	background: var(--vp-hover, rgba(92, 208, 169, 0.12));
+}
+.picker-row.is-active {
+	box-shadow: inset 2px 0 0 var(--vp-accent-2, #5cd0a9);
+}
+.picker-row .picker-item {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.picker-row .picker-item:hover,
+.picker-row .picker-item:active {
+	background: none;
+	box-shadow: none;
+}
+.picker-del {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	background: none;
+	border: none;
+	padding: 4px 8px;
+	color: var(--vp-muted, #8a93a3);
+	cursor: pointer;
+	font-size: 13px;
+	transition: color 0.1s ease;
+}
+.picker-del:hover {
+	color: var(--vp-accent-3, #ff6b6b);
+}
+
+/* Sessions picker search box. */
+.picker-search {
+	width: 100%;
+	box-sizing: border-box;
+	margin-bottom: 6px;
+	padding: 6px 8px;
+	background: var(--vp-input-bg, #14171d);
+	border: 1px solid var(--vp-border-soft, #2a2f39);
+	border-radius: 4px;
+	color: var(--vp-text, #d6dbe5);
+	font-family: inherit;
+	font-size: 13px;
+	outline: none;
+}
+.picker-search:focus {
+	border-color: var(--vp-accent-2, #5cd0a9);
+}
+.picker-search::placeholder {
+	color: var(--vp-faint, #5b6373);
+}
+
+/* Picker overlay (sessions/models): header + search stay pinned, list scrolls. */
+.picker-overlay {
+	display: flex;
+	flex-direction: column;
+	max-height: 280px;
+	margin-bottom: 6px;
+	padding: 8px;
+	background: var(--vp-panel, #1b1e25);
+	border: 1px solid var(--vp-border-soft, #2a2f39);
+	border-radius: 6px;
+}
+.picker-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 6px;
+}
+.picker-title {
+	font-size: 12px;
+	color: var(--vp-muted, #8a93a3);
+}
+.picker-close {
+	background: none;
+	border: none;
+	color: var(--vp-muted, #8a93a3);
+	cursor: pointer;
+	font-size: 16px;
+}
+.picker-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+}
+.picker-empty {
+	color: var(--vp-faint, #5b6373);
+	font-size: 12px;
+}

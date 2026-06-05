@@ -9,11 +9,14 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import WorkspaceShell from "../../../chat/WorkspaceShell";
+import BucketTagFilter from "../../../components/BucketTagFilter";
+import ManageBucketsModal from "../../../components/ManageBucketsModal";
 import {
 	useCalendarEvents,
 	useCalendarLiveUpdates,
 	useCompleteOccurrence,
 	useRecurringTasks,
+	useTagsLiveUpdates,
 	useTasks,
 	useTasksLiveUpdates,
 	useToggleTask,
@@ -23,6 +26,8 @@ import { PvButton } from "../../components/ui";
 import "./Calendar.css";
 import EventModal from "./EventModal";
 import MonthBlock from "./MonthGrid";
+
+const ALL = { key: "all", names: null, label: "All" };
 
 const KEY = (d) => d.format("YYYY-MM-DD");
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -51,6 +56,7 @@ export default function CalendarPage() {
 	// to reflect changes made in another tab/device.
 	useCalendarLiveUpdates();
 	useTasksLiveUpdates();
+	useTagsLiveUpdates("calendar");
 
 	const scrollRef = useRef(null);
 	const todayBlockRef = useRef(null);
@@ -67,6 +73,9 @@ export default function CalendarPage() {
 		dayjs().format("MMMM YYYY"),
 	);
 	const [modal, setModal] = useState(null); // { event } | { date } | null
+	const [sel, setSel] = useState(ALL); // bucket/tag filter selection
+	const [filterOpen, setFilterOpen] = useState(false);
+	const [manageOpen, setManageOpen] = useState(false);
 
 	const months = useMemo(() => {
 		const arr = [];
@@ -110,15 +119,22 @@ export default function CalendarPage() {
 			return map.get(key);
 		};
 
+		// Bucket/tag filter: null names = show everything, else require an overlap
+		// with the selection (applied uniformly to events, deadlines, occurrences).
+		const matches = (t) => !sel.names || t?.some((n) => sel.names.includes(n));
+
 		for (const ev of events) {
+			if (!matches(ev.tags)) continue;
 			bucket(KEY(dayjs(ev.starts_at))).events.push(ev);
 		}
 		for (const t of tasks) {
 			if (t.recurrence_id) continue; // materialized occurrences handled below
-			if (t.due_at) bucket(KEY(dayjs(t.due_at))).deadlines.push(t);
+			if (t.due_at && matches(t.tags))
+				bucket(KEY(dayjs(t.due_at))).deadlines.push(t);
 		}
 		for (const tpl of recurring) {
 			if (!tpl.active) continue;
+			if (!matches(tpl.tags)) continue;
 			const occs = expandRecurrence({
 				rrule: tpl.rrule,
 				dtstart: tpl.dtstart,
@@ -136,7 +152,7 @@ export default function CalendarPage() {
 			}
 		}
 		return map;
-	}, [events, tasks, recurring, materialized, rangeStart, rangeEnd]);
+	}, [events, tasks, recurring, materialized, rangeStart, rangeEnd, sel.names]);
 
 	// Grow the window when scrolling near either edge. A single `busy` latch
 	// prevents adding many chunks in one scroll burst; it clears once the new
@@ -230,6 +246,14 @@ export default function CalendarPage() {
 						<h1>{visibleLabel}</h1>
 					</div>
 					<div className="cal-nav">
+						<PvButton
+							variant={sel.key === "all" ? "ghost" : "accent"}
+							onClick={() =>
+								sel.key === "all" ? setFilterOpen((o) => !o) : setSel(ALL)
+							}
+						>
+							{sel.key === "all" ? "tags ▾" : `${sel.label} ✕`}
+						</PvButton>
 						<PvButton onClick={scrollToToday}>today</PvButton>
 						<PvButton
 							variant="accent"
@@ -239,6 +263,35 @@ export default function CalendarPage() {
 						</PvButton>
 					</div>
 				</header>
+
+				{filterOpen ? (
+					<div className="cal-filter-panel">
+						<div className="cal-filter-head">
+							<button
+								type="button"
+								className="tasks-manage-btn"
+								onClick={() => setManageOpen(true)}
+							>
+								⚙ manage
+							</button>
+							<button
+								type="button"
+								className="tasks-manage-btn"
+								onClick={() => setFilterOpen(false)}
+							>
+								close ✕
+							</button>
+						</div>
+						<BucketTagFilter
+							scope="calendar"
+							selectedKey={sel.key}
+							onSelect={(s) => {
+								setSel(s);
+								setFilterOpen(false);
+							}}
+						/>
+					</div>
+				) : null}
 
 				<div className="cal-weekdays">
 					{WEEKDAYS.map((w) => (
@@ -270,6 +323,9 @@ export default function CalendarPage() {
 						initialDate={modal.date}
 						onClose={() => setModal(null)}
 					/>
+				) : null}
+				{manageOpen ? (
+					<ManageBucketsModal onClose={() => setManageOpen(false)} />
 				) : null}
 			</div>
 		</WorkspaceShell>

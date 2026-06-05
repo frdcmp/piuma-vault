@@ -43,7 +43,12 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                     "location": { "type": "string" },
                     "all_day": { "type": "boolean" },
                     "tags": { "type": "array", "items": { "type": "string" } },
-                    "rrule": { "type": "string", "description": "iCal RRULE (optional)" }
+                    "rrule": { "type": "string", "description": "iCal RRULE (optional)" },
+                    "alerts": {
+                        "type": "array",
+                        "items": { "type": "integer" },
+                        "description": "Reminder/alarm offsets in MINUTES BEFORE starts_at; these fire push notifications + a full-screen alarm. 0 = ring exactly at the start. e.g. [0] alarms at the start, [15, 0] alarms 15 min before and at the start."
+                    }
                 },
                 "required": ["title", "starts_at"]
             }),
@@ -62,7 +67,12 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                     "location": { "type": "string" },
                     "all_day": { "type": "boolean" },
                     "tags": { "type": "array", "items": { "type": "string" } },
-                    "rrule": { "type": "string" }
+                    "rrule": { "type": "string" },
+                    "alerts": {
+                        "type": "array",
+                        "items": { "type": "integer" },
+                        "description": "Replace the event's reminders/alarms. Minutes before starts_at; 0 = at the start. [] clears them."
+                    }
                 },
                 "required": ["id"]
             }),
@@ -124,8 +134,10 @@ pub async fn get_event(pool: &DbPool, user_id: &str, args: &Value) -> Result<Val
         Vec<String>,
         Option<String>,
     )> = sqlx::query_as(
-        "SELECT id, title, description, location, starts_at, ends_at, all_day, tags, rrule \
-         FROM db_calendar_events WHERE id = $1 AND user_id = $2",
+        "SELECT id, title, description, location, starts_at, ends_at, all_day, \
+         (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_event_tags et \
+          JOIN db_tags tg ON tg.id = et.tag_id WHERE et.event_id = db_calendar_events.id) AS tags, \
+         rrule FROM db_calendar_events WHERE id = $1 AND user_id = $2",
     )
     .bind(id)
     .bind(user_id)
@@ -150,9 +162,10 @@ pub async fn create_event(pool: &DbPool, user_id: &str, args: &Value) -> Result<
     let all_day = opt_bool(args, "all_day").unwrap_or(false);
     let tags = opt_str_array(args, "tags").unwrap_or_default();
     let rrule = opt_string(args, "rrule");
+    let alerts = parse_alerts(args, "alerts").unwrap_or_else(|| json!([]));
     let id: Uuid = sqlx::query_scalar(
         "INSERT INTO db_calendar_events \
-           (user_id, title, description, location, starts_at, ends_at, all_day, tags, rrule) \
+           (user_id, title, description, location, starts_at, ends_at, all_day, rrule, alerts) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
     )
     .bind(user_id)
@@ -162,11 +175,14 @@ pub async fn create_event(pool: &DbPool, user_id: &str, args: &Value) -> Result<
     .bind(starts_at)
     .bind(ends_at)
     .bind(all_day)
-    .bind(&tags)
     .bind(&rrule)
+    .bind(&alerts)
     .fetch_one(pool)
     .await
     .map_err(|e| e.to_string())?;
+    crate::apps::buckets::sync_tags(pool, user_id, "db_event_tags", "event_id", id, &tags)
+        .await
+        .map_err(|e| e.to_string())?;
     reschedule(pool, id).await;
     Ok(json!({ "id": id, "title": title }))
 }
@@ -181,6 +197,7 @@ pub async fn update_event(pool: &DbPool, user_id: &str, args: &Value) -> Result<
     let all_day = opt_bool(args, "all_day");
     let tags = opt_str_array(args, "tags");
     let rrule = opt_string(args, "rrule");
+    let alerts = parse_alerts(args, "alerts");
     let row: Option<(Uuid, String)> = sqlx::query_as(
         "UPDATE db_calendar_events SET \
            title = COALESCE($3, title), \
@@ -189,8 +206,8 @@ pub async fn update_event(pool: &DbPool, user_id: &str, args: &Value) -> Result<
            description = COALESCE($6, description), \
            location = COALESCE($7, location), \
            all_day = COALESCE($8, all_day), \
-           tags = COALESCE($9, tags), \
-           rrule = COALESCE($10, rrule), \
+           rrule = COALESCE($9, rrule), \
+           alerts = COALESCE($10, alerts), \
            updated_at = NOW() \
          WHERE id = $1 AND user_id = $2 RETURNING id, title",
     )
@@ -202,13 +219,18 @@ pub async fn update_event(pool: &DbPool, user_id: &str, args: &Value) -> Result<
     .bind(&description)
     .bind(&location)
     .bind(all_day)
-    .bind(&tags)
     .bind(&rrule)
+    .bind(&alerts)
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?;
     match row {
         Some((id, title)) => {
+            if let Some(t) = &tags {
+                crate::apps::buckets::sync_tags(pool, user_id, "db_event_tags", "event_id", id, t)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
             reschedule(pool, id).await;
             Ok(json!({ "id": id, "title": title }))
         }

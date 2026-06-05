@@ -55,6 +55,14 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             web::resource("/agents/conversations/{id}/chat")
                 .route(web::post().to(chat::chat)),
         )
+        .service(
+            web::resource("/agents/conversations/{id}/messages")
+                .route(web::delete().to(handlers::clear_conversation)),
+        )
+        .service(
+            web::resource("/agents/conversations/{id}/retitle")
+                .route(web::post().to(handlers::retitle_conversation)),
+        )
         // Agent config (profile + personas) — registered last so the static
         // segments above win over the `{agent}` wildcard.
         .service(

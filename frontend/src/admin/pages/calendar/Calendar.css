@@ -36,6 +36,24 @@
 	flex: 0 0 auto;
 }
 
+.cal-filter-panel {
+	flex: 0 0 auto;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--panel);
+	padding: 10px;
+	margin-bottom: 12px;
+	max-height: 40vh;
+	overflow-y: auto;
+}
+
+.cal-filter-head {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+
 .cal-title {
 	display: flex;
 	align-items: center;
