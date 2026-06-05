@@ -283,15 +283,18 @@ function ConfigTab({ agent }) {
 		allowed_tools: "",
 	});
 	const [status, setStatus] = useState("");
+	const [commands, setCommands] = useState([]);
 
 	useEffect(() => {
-		if (profile)
+		if (profile) {
 			setPf({
 				display_name: profile.display_name || "",
 				instructions: profile.instructions || "",
 				user_context: profile.user_context || "",
 				memory: profile.memory || "",
 			});
+			setCommands(Array.isArray(profile.commands) ? profile.commands : []);
+		}
 	}, [profile]);
 	useEffect(() => {
 		if (persona)
@@ -305,7 +308,7 @@ function ConfigTab({ agent }) {
 
 	const saveProfile = async () => {
 		try {
-			await updateProfile.mutateAsync({ agent, ...pf });
+			await updateProfile.mutateAsync({ agent, ...pf, commands });
 			setStatus("Profile saved ✓");
 		} catch {
 			setStatus("Failed to save profile");
@@ -377,6 +380,75 @@ function ConfigTab({ agent }) {
 								value={pf.memory}
 								onChange={(e) => setPf({ ...pf, memory: e.target.value })}
 							/>
+						</div>
+						<div className="ag-field">
+							<span className="ag-label">
+								Slash commands (chat macros for this agent)
+							</span>
+							{commands.map((cmd, i) => (
+								<div
+									key={`cmd-${i}`}
+									className="ag-row"
+									style={{ alignItems: "flex-start", marginBottom: 6 }}
+								>
+									<input
+										className="ag-input"
+										style={{ maxWidth: 120 }}
+										placeholder="name"
+										value={cmd.name || ""}
+										onChange={(e) => {
+											const next = [...commands];
+											next[i] = { ...next[i], name: e.target.value };
+											setCommands(next);
+										}}
+									/>
+									<input
+										className="ag-input"
+										style={{ maxWidth: 160 }}
+										placeholder="description"
+										value={cmd.description || ""}
+										onChange={(e) => {
+											const next = [...commands];
+											next[i] = { ...next[i], description: e.target.value };
+											setCommands(next);
+										}}
+									/>
+									<textarea
+										className="ag-textarea"
+										style={{ flex: 1 }}
+										rows={1}
+										placeholder="prompt sent when invoked"
+										value={cmd.prompt || ""}
+										onChange={(e) => {
+											const next = [...commands];
+											next[i] = { ...next[i], prompt: e.target.value };
+											setCommands(next);
+										}}
+									/>
+									<button
+										type="button"
+										className="ag-btn--icon ag-btn--danger"
+										title="Remove command"
+										onClick={() =>
+											setCommands(commands.filter((_, j) => j !== i))
+										}
+									>
+										✕
+									</button>
+								</div>
+							))}
+							<button
+								type="button"
+								className="ag-btn ag-btn--sm"
+								onClick={() =>
+									setCommands([
+										...commands,
+										{ name: "", description: "", prompt: "" },
+									])
+								}
+							>
+								+ Add command
+							</button>
 						</div>
 						<button
 							type="button"

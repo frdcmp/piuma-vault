@@ -33,19 +33,26 @@ fn db_err(e: sqlx::Error) -> HttpResponse {
 pub async fn list_agents(_user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
     let mut out: Vec<AgentInfo> = Vec::new();
     for def in registry::all() {
-        let display_name: Option<String> =
-            sqlx::query_scalar("SELECT display_name FROM db_agent_profiles WHERE agent = $1")
+        let row: Option<(String, serde_json::Value)> =
+            sqlx::query_as("SELECT display_name, commands FROM db_agent_profiles WHERE agent = $1")
                 .bind(def.kind)
                 .fetch_optional(pool.get_ref())
                 .await
                 .ok()
-                .flatten()
-                .filter(|s: &String| !s.trim().is_empty());
+                .flatten();
+        let (display_name, commands) = match row {
+            Some((dn, cmds)) => (
+                if dn.trim().is_empty() { def.display_name.to_string() } else { dn },
+                cmds,
+            ),
+            None => (def.display_name.to_string(), json!([])),
+        };
         out.push(AgentInfo {
             kind: def.kind.to_string(),
-            display_name: display_name.unwrap_or_else(|| def.display_name.to_string()),
+            display_name,
             persona: def.persona.to_string(),
             tool_count: def.tools.len(),
+            commands,
         });
     }
     HttpResponse::Ok().json(out)
@@ -180,6 +187,25 @@ pub async fn list_models(
     }
 }
 
+/// All enabled models across providers — for the `/models` chat command picker.
+pub async fn list_all_models(_user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
+    let rows: Vec<(Uuid, String, String, bool, String)> = sqlx::query_as(
+        "SELECT m.id, m.model_id, m.display_name, m.is_default, p.display_name \
+         FROM db_llm_models m JOIN db_llm_providers p ON p.id = m.provider_id \
+         WHERE m.enabled AND p.enabled ORDER BY p.display_name, m.display_name",
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default();
+    let models: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(id, model_id, display_name, is_default, provider)| {
+            json!({ "id": id, "model_id": model_id, "display_name": display_name, "is_default": is_default, "provider": provider })
+        })
+        .collect();
+    HttpResponse::Ok().json(models)
+}
+
 pub async fn create_model(
     _user: AuthenticatedUser,
     pool: web::Data<DbPool>,
@@ -312,13 +338,14 @@ pub async fn patch_profile(
     let b = body.into_inner();
     // Upsert — PATCH also seeds the row if it doesn't exist yet.
     match sqlx::query_as::<_, AgentProfileRow>(
-        "INSERT INTO db_agent_profiles (agent, display_name, instructions, user_context, memory, updated_at) \
-         VALUES ($1, COALESCE($2,''), COALESCE($3,''), COALESCE($4,''), COALESCE($5,''), NOW()) \
+        "INSERT INTO db_agent_profiles (agent, display_name, instructions, user_context, memory, commands, updated_at) \
+         VALUES ($1, COALESCE($2,''), COALESCE($3,''), COALESCE($4,''), COALESCE($5,''), COALESCE($6,'[]'::jsonb), NOW()) \
          ON CONFLICT (agent) DO UPDATE SET \
             display_name = COALESCE($2, db_agent_profiles.display_name), \
             instructions = COALESCE($3, db_agent_profiles.instructions), \
             user_context = COALESCE($4, db_agent_profiles.user_context), \
             memory = COALESCE($5, db_agent_profiles.memory), \
+            commands = COALESCE($6, db_agent_profiles.commands), \
             updated_at = NOW() \
          RETURNING *",
     )
@@ -327,6 +354,7 @@ pub async fn patch_profile(
     .bind(&b.instructions)
     .bind(&b.user_context)
     .bind(&b.memory)
+    .bind(&b.commands)
     .fetch_one(pool.get_ref())
     .await
     {

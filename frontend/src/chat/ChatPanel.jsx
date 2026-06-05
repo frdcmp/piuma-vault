@@ -12,10 +12,24 @@ import remarkGfm from "remark-gfm";
 import { PvModal } from "@/admin/components/ui";
 import {
 	createConversation,
+	fetchAllModels,
 	fetchConversation,
+	fetchConversations,
 	streamChat,
+	updateConversation,
 } from "../api/agentChatApi";
 import { useAgentList, useDefaultAgent } from "../queries";
+
+// Universal client commands (same for every agent). Agent-specific commands are
+// the prompt macros from db_agent_profiles.commands, merged in at render time.
+const CLIENT_COMMANDS = [
+	{ name: "new", description: "Start a new conversation" },
+	{ name: "clear", description: "Start a new conversation" },
+	{ name: "sessions", description: "Switch to another conversation" },
+	{ name: "models", description: "Pick the model for this chat" },
+	{ name: "title", description: "Rename this conversation" },
+];
+
 import useNotesWorkspaceStore from "../store/notesWorkspaceStore";
 import PiumaRunning from "./PiumaRunning";
 import "./ChatPage.css";
@@ -156,6 +170,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const [isStreaming, setIsStreaming] = useState(false);
 	const [compact, setCompact] = useState(false);
 	const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+	const [overlay, setOverlay] = useState(null); // null | "models" | "sessions"
+	const [pickList, setPickList] = useState([]);
 	const [conversationId, setConversationId] = useState(
 		() => localStorage.getItem(STORAGE_KEY) || null,
 	);
@@ -336,9 +352,121 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		sentContextIds,
 	]);
 
+	// Slash commands: client commands + the active agent's macros, filtered by
+	// the typed token (active only while the input is a single `/word`).
+	const agentCommands = useMemo(
+		() => agents.find((a) => a.kind === effectiveAgent)?.commands || [],
+		[agents, effectiveAgent],
+	);
+	const slashMatches = useMemo(() => {
+		if (!input.startsWith("/") || /\s/.test(input)) return [];
+		const q = input.slice(1).toLowerCase();
+		const client = CLIENT_COMMANDS.map((c) => ({ ...c, kind: "client" }));
+		const agent = (Array.isArray(agentCommands) ? agentCommands : []).map(
+			(c) => ({
+				...c,
+				kind: "agent",
+			}),
+		);
+		return [...client, ...agent].filter((c) =>
+			(c.name || "").toLowerCase().startsWith(q),
+		);
+	}, [input, agentCommands]);
+
+	const startNewChat = useCallback(() => {
+		abortRef.current?.abort();
+		abortRef.current = null;
+		setIsStreaming(false);
+		setMessages([]);
+		setConversationId(null);
+		localStorage.removeItem(STORAGE_KEY);
+		setInput("");
+	}, []);
+
+	const switchConversation = useCallback(async (id) => {
+		setOverlay(null);
+		setConversationId(id);
+		localStorage.setItem(STORAGE_KEY, id);
+		try {
+			const d = await fetchConversation(id);
+			setMessages(
+				(d.messages || []).map((m) => ({
+					id: m.id,
+					role: m.role,
+					content: blocksToText(m.content),
+				})),
+			);
+		} catch {
+			/* ignore */
+		}
+	}, []);
+
+	const runCommand = useCallback(
+		async (cmd) => {
+			if (cmd.kind === "agent") {
+				setInput(cmd.prompt || "");
+				inputRef.current?.focus();
+				return;
+			}
+			setInput("");
+			if (cmd.name === "new" || cmd.name === "clear") return startNewChat();
+			if (cmd.name === "title") {
+				if (!conversationId) return;
+				const t =
+					typeof window !== "undefined"
+						? window.prompt("Rename conversation")
+						: null;
+				if (t) {
+					try {
+						await updateConversation({ id: conversationId, title: t });
+					} catch {
+						/* ignore */
+					}
+				}
+				return;
+			}
+			if (cmd.name === "models") {
+				try {
+					setPickList(await fetchAllModels());
+					setOverlay("models");
+				} catch {
+					/* ignore */
+				}
+				return;
+			}
+			if (cmd.name === "sessions") {
+				try {
+					setPickList(await fetchConversations());
+					setOverlay("sessions");
+				} catch {
+					/* ignore */
+				}
+			}
+		},
+		[conversationId, startNewChat],
+	);
+
+	const pickModel = useCallback(
+		async (m) => {
+			setOverlay(null);
+			if (conversationId) {
+				try {
+					await updateConversation({ id: conversationId, model_id: m.id });
+				} catch {
+					/* ignore */
+				}
+			}
+		},
+		[conversationId],
+	);
+
 	const onKeyDown = (e) => {
 		if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault();
+			if (slashMatches.length > 0) {
+				runCommand(slashMatches[0]);
+				return;
+			}
 			sendMessage();
 		}
 	};
@@ -458,6 +586,151 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 									}
 								/>
 							))}
+						</div>
+					) : null}
+					{slashMatches.length > 0 ? (
+						<div
+							style={{
+								background: "var(--vp-panel,#1b1e25)",
+								border: "1px solid var(--vp-border-soft,#2a2f39)",
+								marginBottom: 6,
+								maxHeight: 200,
+								overflowY: "auto",
+							}}
+						>
+							{slashMatches.map((c) => (
+								<button
+									key={`${c.kind}-${c.name}`}
+									type="button"
+									onClick={() => runCommand(c)}
+									style={{
+										display: "block",
+										width: "100%",
+										textAlign: "left",
+										background: "none",
+										border: "none",
+										color: "var(--vp-text,#d6dbe5)",
+										padding: "6px 10px",
+										cursor: "pointer",
+										fontFamily: "inherit",
+										fontSize: 13,
+									}}
+								>
+									<span style={{ color: "var(--vp-accent-2,#5cd0a9)" }}>
+										/{c.name}
+									</span>
+									<span
+										style={{
+											color: "var(--vp-muted,#8a93a3)",
+											marginLeft: 8,
+											fontSize: 12,
+										}}
+									>
+										{c.description}
+										{c.kind === "agent" ? " · agent" : ""}
+									</span>
+								</button>
+							))}
+						</div>
+					) : null}
+					{overlay ? (
+						<div
+							style={{
+								background: "var(--vp-panel,#1b1e25)",
+								border: "1px solid var(--vp-border-soft,#2a2f39)",
+								marginBottom: 6,
+								maxHeight: 240,
+								overflowY: "auto",
+								padding: 8,
+							}}
+						>
+							<div
+								style={{
+									display: "flex",
+									justifyContent: "space-between",
+									alignItems: "center",
+									marginBottom: 6,
+								}}
+							>
+								<strong
+									style={{ fontSize: 12, color: "var(--vp-muted,#8a93a3)" }}
+								>
+									{overlay === "models"
+										? "Pick a model"
+										: "Switch conversation"}
+								</strong>
+								<button
+									type="button"
+									onClick={() => setOverlay(null)}
+									style={{
+										background: "none",
+										border: "none",
+										color: "var(--vp-muted,#8a93a3)",
+										cursor: "pointer",
+										fontSize: 16,
+									}}
+								>
+									×
+								</button>
+							</div>
+							{pickList.length === 0 ? (
+								<div style={{ color: "var(--vp-faint,#5b6373)", fontSize: 12 }}>
+									None
+								</div>
+							) : overlay === "models" ? (
+								pickList.map((m) => (
+									<button
+										key={m.id}
+										type="button"
+										onClick={() => pickModel(m)}
+										style={{
+											display: "block",
+											width: "100%",
+											textAlign: "left",
+											background: "none",
+											border: "none",
+											color: "var(--vp-text,#d6dbe5)",
+											padding: "5px 8px",
+											cursor: "pointer",
+											fontFamily: "inherit",
+											fontSize: 13,
+										}}
+									>
+										{m.display_name}{" "}
+										<span
+											style={{ color: "var(--vp-muted,#8a93a3)", fontSize: 12 }}
+										>
+											{m.provider}
+											{m.is_default ? " · default" : ""}
+										</span>
+									</button>
+								))
+							) : (
+								pickList.map((c) => (
+									<button
+										key={c.id}
+										type="button"
+										onClick={() => switchConversation(c.id)}
+										style={{
+											display: "block",
+											width: "100%",
+											textAlign: "left",
+											background: "none",
+											border: "none",
+											color: "var(--vp-text,#d6dbe5)",
+											padding: "5px 8px",
+											cursor: "pointer",
+											fontFamily: "inherit",
+											fontSize: 13,
+											overflow: "hidden",
+											textOverflow: "ellipsis",
+											whiteSpace: "nowrap",
+										}}
+									>
+										{c.title || "Untitled"}
+									</button>
+								))
+							)}
 						</div>
 					) : null}
 					<div className="chat-composer-row">

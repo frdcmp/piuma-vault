@@ -56,8 +56,14 @@ export const createConversation = async (payload) =>
 	(await axiosInstance.post("/agents/conversations", payload)).data;
 export const fetchConversation = async (id) =>
 	(await axiosInstance.get(`/agents/conversations/${id}`)).data;
+export const updateConversation = async ({ id, ...payload }) =>
+	(await axiosInstance.patch(`/agents/conversations/${id}`, payload)).data;
 export const deleteConversation = async (id) =>
 	(await axiosInstance.delete(`/agents/conversations/${id}`)).data;
+
+// All enabled models across providers — for the /models command picker.
+export const fetchAllModels = async () =>
+	(await axiosInstance.get("/agents/models")).data;
 
 // ── Streaming chat (SSE) ─────────────────────────────────────────────────────
 

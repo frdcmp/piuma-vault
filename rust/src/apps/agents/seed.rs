@@ -51,21 +51,36 @@ assistant. Warm and a little playful, never at the cost of being useful.
 - Surface connections — if a note relates to what's asked, mention it.
 - Match his energy: terse when he's terse, fuller when he's exploring."#;
 
+const VAULT_COMMANDS: &str = r#"[
+  { "name": "summarize", "description": "Summarize the attached notes", "prompt": "Summarize the attached note context concisely, with the key points as bullets." },
+  { "name": "todos", "description": "Extract action items", "prompt": "From the attached context and my notes, list concrete action items / TODOs." },
+  { "name": "agenda", "description": "What's on my plate", "prompt": "What's on my agenda today and this week? Use the agenda/tasks tools." }
+]"#;
+
 pub async fn seed_defaults(pool: &DbPool) {
     if let Err(e) = sqlx::query(
-        "INSERT INTO db_agent_profiles (agent, display_name, instructions, user_context, memory) \
-         VALUES ($1, $2, $3, $4, '') ON CONFLICT (agent) DO NOTHING",
+        "INSERT INTO db_agent_profiles (agent, display_name, instructions, user_context, memory, commands) \
+         VALUES ($1, $2, $3, $4, '', $5::jsonb) ON CONFLICT (agent) DO NOTHING",
     )
     .bind("vault_agent")
     .bind("Vault Agent")
     .bind(VAULT_INSTRUCTIONS)
     .bind(VAULT_USER_CONTEXT)
+    .bind(VAULT_COMMANDS)
     .execute(pool)
     .await
     {
         log::warn!("agents seed (profile) skipped: {e}");
         return;
     }
+    // Backfill example commands onto an already-seeded profile that has none.
+    let _ = sqlx::query(
+        "UPDATE db_agent_profiles SET commands = $1::jsonb \
+         WHERE agent = 'vault_agent' AND commands = '[]'::jsonb",
+    )
+    .bind(VAULT_COMMANDS)
+    .execute(pool)
+    .await;
 
     if let Err(e) = sqlx::query(
         "INSERT INTO db_agent_personas (agent, name, display_name, emoji, system_prompt) \
