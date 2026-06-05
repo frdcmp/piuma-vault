@@ -4,7 +4,7 @@ import {
 	SettingOutlined,
 } from "@ant-design/icons";
 import { Link, useNavigate } from "react-router-dom";
-import piumaLogo from "../../../img/dogs/piuma.png";
+import piumaLogo from "../../../img/piuma-icon.png";
 import useUiStore, { SCREEN_MODES } from "../../../store/uiStore";
 import AppBreadcrumbs from "./Breadcrumbs";
 import UserMenu from "./UserMenu";
