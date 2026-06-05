@@ -328,8 +328,10 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_calendar_user_range ON db_calendar_events USING btree (user_id, starts_at)",
         ],
     },
-    // Buckets: top-level grouping for tags, shared across tasks and calendar.
-    // Created before db_tags because db_tags.bucket_id references this table.
+    // Buckets: top-level grouping for TASKS (a task belongs to at most one
+    // bucket via db_tasks.bucket_id / db_recurring_tasks.bucket_id). Created
+    // before db_tasks/db_recurring_tasks because they reference this table.
+    // (Tags are flat/independent of buckets — see db_tags below.)
     TableDefinition {
         name: "db_buckets",
         sql: r#"
@@ -348,17 +350,15 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_buckets_user_sort ON db_buckets USING btree (user_id, sort_order)",
         ],
     },
-    // Tag registry shared by tasks + calendar. Tasks/events still store tag names
-    // in their own `tags TEXT[]`; this table maps each name (per user) to an
-    // optional bucket + colour. bucket_id NULL = uncategorized (virtual "Inbox"
-    // group). ON DELETE SET NULL: deleting a bucket drops its tags to Inbox.
+    // Flat tag registry shared by tasks + calendar. Maps each tag name (per user)
+    // to a colour. Tags are independent of buckets — buckets group tasks directly
+    // (db_tasks.bucket_id), not tags.
     TableDefinition {
         name: "db_tags",
         sql: r#"
             CREATE TABLE db_tags (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 user_id TEXT NOT NULL,
-                bucket_id UUID REFERENCES db_buckets(id) ON DELETE SET NULL,
                 name TEXT NOT NULL,
                 color TEXT,
                 sort_order INTEGER NOT NULL DEFAULT 0,
@@ -368,7 +368,6 @@ const TABLES: &[TableDefinition] = &[
         "#,
         indices: &[
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_user_name ON db_tags (user_id, lower(name))",
-            "CREATE INDEX IF NOT EXISTS idx_tags_user_bucket ON db_tags USING btree (user_id, bucket_id)",
         ],
     },
     // Recurring-task templates. Created before db_tasks because db_tasks.recurrence_id
@@ -382,6 +381,7 @@ const TABLES: &[TableDefinition] = &[
                 title TEXT NOT NULL,
                 notes TEXT,
                 priority SMALLINT NOT NULL DEFAULT 0,
+                bucket_id UUID REFERENCES db_buckets(id) ON DELETE SET NULL,
                 rrule TEXT NOT NULL,
                 dtstart TIMESTAMPTZ NOT NULL,
                 until TIMESTAMPTZ,
@@ -409,6 +409,7 @@ const TABLES: &[TableDefinition] = &[
                 due_at TIMESTAMPTZ,
                 priority SMALLINT NOT NULL DEFAULT 0,
                 sort_order INTEGER NOT NULL DEFAULT 0,
+                bucket_id UUID REFERENCES db_buckets(id) ON DELETE SET NULL,
                 recurrence_id UUID REFERENCES db_recurring_tasks(id) ON DELETE CASCADE,
                 occurrence_date DATE,
                 alerts JSONB NOT NULL DEFAULT '[]',
@@ -420,6 +421,7 @@ const TABLES: &[TableDefinition] = &[
         indices: &[
             "CREATE INDEX IF NOT EXISTS idx_tasks_user ON db_tasks USING btree (user_id)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_user_done ON db_tasks USING btree (user_id, done)",
+            "CREATE INDEX IF NOT EXISTS idx_tasks_user_bucket ON db_tasks USING btree (user_id, bucket_id)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_due ON db_tasks USING btree (due_at)",
         ],
     },

@@ -6,7 +6,6 @@ import {
 	deleteTag,
 	fetchBuckets,
 	fetchTags,
-	fetchTagTree,
 	updateBucket,
 	updateTag,
 } from "../api/tags";
@@ -18,7 +17,6 @@ export const tagKeys = {
 	all: ["tags"],
 	buckets: () => ["tags", "buckets"],
 	list: () => ["tags", "list"],
-	tree: (scope) => ["tags", "tree", scope ?? null],
 };
 
 // Buckets/tags are shared by tasks + calendar. A bucket/tag change can rewrite
@@ -46,16 +44,6 @@ export const useTagRegistry = (options = {}) =>
 		queryKey: tagKeys.list(),
 		queryFn: fetchTags,
 		staleTime: 60_000,
-		...options,
-	});
-
-// `scope` ("tasks" | "calendar") selects which surface the per-tag counts cover.
-export const useTagTree = (scope, options = {}) =>
-	useQuery({
-		queryKey: tagKeys.tree(scope),
-		queryFn: () => fetchTagTree(scope),
-		keepPreviousData: true,
-		staleTime: 15_000,
 		...options,
 	});
 

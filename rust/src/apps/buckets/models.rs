@@ -15,11 +15,12 @@ pub struct Bucket {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
+// Tags are flat, independent labels (NOT grouped by bucket — buckets group
+// tasks directly via db_tasks.bucket_id). The registry maps each name to a colour.
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct Tag {
     pub id: uuid::Uuid,
     pub user_id: String,
-    pub bucket_id: Option<uuid::Uuid>,
     pub name: String,
     pub color: Option<String>,
     pub sort_order: i32,
@@ -51,8 +52,6 @@ pub struct UpdateBucketRequest {
 pub struct CreateTagRequest {
     pub name: String,
     #[serde(default)]
-    pub bucket_id: Option<uuid::Uuid>,
-    #[serde(default)]
     pub color: Option<String>,
     #[serde(default)]
     pub sort_order: i32,
@@ -61,45 +60,9 @@ pub struct CreateTagRequest {
 #[derive(Debug, Deserialize)]
 pub struct UpdateTagRequest {
     pub name: Option<String>,
-    // Three-state: omitted = keep, null = move to Inbox (uncategorized), value = move to bucket.
-    #[serde(default, deserialize_with = "double_option")]
-    pub bucket_id: Option<Option<uuid::Uuid>>,
     #[serde(default, deserialize_with = "double_option")]
     pub color: Option<Option<String>>,
     pub sort_order: Option<i32>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct TreeQuery {
-    // "tasks" | "calendar" — which surface to count tag usage against. Omitted = no counts.
-    pub counts: Option<String>,
-}
-
-// ── Tree response (filter UI feed) ──
-
-#[derive(Debug, Serialize)]
-pub struct TagNode {
-    pub id: uuid::Uuid,
-    pub name: String,
-    pub color: Option<String>,
-    pub sort_order: i32,
-    pub count: i64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct BucketNode {
-    pub id: uuid::Uuid,
-    pub name: String,
-    pub color: Option<String>,
-    pub sort_order: i32,
-    pub tags: Vec<TagNode>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct TreeResponse {
-    pub buckets: Vec<BucketNode>,
-    // NULL-bucket tags — the virtual "Inbox" group.
-    pub inbox: Vec<TagNode>,
 }
 
 // ── Error ──

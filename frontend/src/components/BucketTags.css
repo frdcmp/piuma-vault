@@ -80,6 +80,15 @@
 	margin-top: 6px;
 }
 
+.btf-section-label {
+	margin: 6px 0 2px;
+	padding: 0 8px;
+	font-size: 0.68rem;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--muted);
+}
+
 .btf .btf-bucket .btf-bucket-name {
 	font-weight: 600;
 	text-transform: uppercase;

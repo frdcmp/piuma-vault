@@ -103,13 +103,6 @@ pub async fn list_events(
               WHERE et.event_id = db_calendar_events.id AND tg.name = $4)",
         );
     }
-    if query.bucket.is_some() {
-        let idx = if query.tag.is_some() { 5 } else { 4 };
-        sql.push_str(&format!(
-            " AND EXISTS (SELECT 1 FROM db_event_tags et JOIN db_tags tg ON tg.id = et.tag_id \
-              WHERE et.event_id = db_calendar_events.id AND tg.bucket_id = ${idx})"
-        ));
-    }
     sql.push_str(" ORDER BY starts_at");
 
     let mut q = sqlx::query_as::<_, CalendarEvent>(&sql)
@@ -118,9 +111,6 @@ pub async fn list_events(
         .bind(query.from);
     if let Some(ref tag) = query.tag {
         q = q.bind(tag);
-    }
-    if let Some(bucket) = query.bucket {
-        q = q.bind(bucket);
     }
 
     match q.fetch_all(pool.get_ref()).await {

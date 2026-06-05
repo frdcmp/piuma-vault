@@ -8,6 +8,33 @@ use uuid::Uuid;
 
 use crate::db::db::DbPool;
 
+/// Resolve a bucket (task group) by name for this user, creating it if missing.
+/// Used by the agent tools so the model can drop a task into a bucket by name.
+pub async fn find_or_create_bucket(
+    pool: &DbPool,
+    user_id: &str,
+    name: &str,
+) -> Result<Uuid, sqlx::Error> {
+    let name = name.trim();
+    if let Some(id) = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM db_buckets WHERE user_id = $1 AND lower(name) = lower($2)",
+    )
+    .bind(user_id)
+    .bind(name)
+    .fetch_optional(pool)
+    .await?
+    {
+        return Ok(id);
+    }
+    sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO db_buckets (user_id, name) VALUES ($1, $2) RETURNING id",
+    )
+    .bind(user_id)
+    .bind(name)
+    .fetch_one(pool)
+    .await
+}
+
 /// Replace an entity's tags with `names` (by name; unknown names are created
 /// uncategorized). `link_table`/`id_col` identify the join table, e.g.
 /// ("db_task_tags", "task_id"). Names are trimmed + lowercased + de-duped.

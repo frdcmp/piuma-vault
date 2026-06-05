@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::db::db::DbPool;
 
 mod agenda;
+mod buckets;
 mod calendar;
 mod notes;
 mod self_config;
@@ -29,6 +30,7 @@ fn all_defs() -> Vec<(&'static str, &'static str, Value)> {
     defs.extend(tasks::defs());
     defs.extend(calendar::defs());
     defs.extend(agenda::defs());
+    defs.extend(buckets::defs());
     defs.extend(storage::defs());
     defs.extend(shares::defs());
     defs.extend(self_config::defs());
@@ -92,6 +94,11 @@ pub async fn dispatch(
         "delete_event" => calendar::delete_event(pool, user_id, args).await,
         // ── Agenda ──
         "get_agenda" => agenda::get_agenda(pool, user_id, args).await,
+        // ── Buckets (task groups) ──
+        "list_buckets" => buckets::list_buckets(pool, user_id).await,
+        "create_bucket" => buckets::create_bucket(pool, user_id, args).await,
+        "rename_bucket" => buckets::rename_bucket(pool, user_id, args).await,
+        "delete_bucket" => buckets::delete_bucket(pool, user_id, args).await,
         // ── Storage ──
         "list_storage" => storage::list_storage(pool, user_id, args).await,
         "signed_url" => storage::signed_url(pool, args).await,

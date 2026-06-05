@@ -103,7 +103,7 @@ export default function ManageBucketsModal({ onClose }) {
 									className="mbm-del"
 									onClick={() => deleteBucket.mutate(b.id)}
 									aria-label={`Delete ${b.name}`}
-									title="Delete bucket (its tags fall back to Inbox)"
+									title="Delete bucket (its tasks fall back to no bucket)"
 								>
 									✕
 								</button>
@@ -137,24 +137,6 @@ export default function ManageBucketsModal({ onClose }) {
 									onBlur={(e) => renameTag(t, e.target.value)}
 									onKeyDown={onCommitKey(() => {})}
 								/>
-								<select
-									className="mbm-select"
-									value={t.bucket_id || ""}
-									onChange={(e) =>
-										updateTag.mutate({
-											id: t.id,
-											bucket_id: e.target.value || null,
-										})
-									}
-									aria-label={`Bucket for #${t.name}`}
-								>
-									<option value="">Inbox</option>
-									{buckets.map((b) => (
-										<option key={b.id} value={b.id}>
-											{b.name}
-										</option>
-									))}
-								</select>
 								<button
 									type="button"
 									className="mbm-del"
@@ -174,7 +156,7 @@ export default function ManageBucketsModal({ onClose }) {
 					</ul>
 					<p className="mbm-hint">
 						Renaming a tag updates it everywhere it's used (tasks, recurring,
-						events). Tags with no bucket live under Inbox.
+						events). Tags are flat labels — buckets group tasks, not tags.
 					</p>
 				</section>
 			</div>

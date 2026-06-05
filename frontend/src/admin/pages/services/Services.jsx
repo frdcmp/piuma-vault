@@ -36,6 +36,15 @@ const EMPTY = {
 	websearch_exa_api_key: "",
 };
 
+// Service tabs. Each maps to one panel below; the form state is shared, so a
+// single "Save changes" persists edits across every tab.
+const TABS = [
+	{ id: "embeddings", label: "Embeddings" },
+	{ id: "chat", label: "Chat" },
+	{ id: "search", label: "Search" },
+	{ id: "storage", label: "Storage" },
+];
+
 // Web-search providers we ship adapters for. Each has its own key setting.
 const WEBSEARCH_PROVIDERS = [
 	{
@@ -114,24 +123,23 @@ const Services = () => {
 	const [s3Result, setS3Result] = useState(null);
 	const [wsResult, setWsResult] = useState(null);
 	const [vendor, setVendor] = useState("aws");
+	const [activeTab, setActiveTab] = useState("embeddings");
 	const v = VENDORS[vendor];
 
-	// Toggle the storage preset between AWS and Bunny. Switching to Bunny imports
+	// Pick the storage adapter preset (AWS ⇄ Bunny). Switching to Bunny imports
 	// its S3 conventions into blank fields (Bunny uses the zone name as both
 	// bucket and access key, so mirror them).
-	const toggleVendor = () => {
-		setVendor((prev) => {
-			const next = prev === "aws" ? "bunny" : "aws";
-			if (next === "bunny") {
-				setForm((f) => ({
-					...f,
-					s3_endpoint: f.s3_endpoint || BUNNY_DEFAULTS.s3_endpoint,
-					s3_region: f.s3_region || BUNNY_DEFAULTS.s3_region,
-					s3_access_key_id: f.s3_access_key_id || f.s3_bucket,
-				}));
-			}
-			return next;
-		});
+	const selectVendor = (e) => {
+		const next = e.target.value;
+		setVendor(next);
+		if (next === "bunny") {
+			setForm((f) => ({
+				...f,
+				s3_endpoint: f.s3_endpoint || BUNNY_DEFAULTS.s3_endpoint,
+				s3_region: f.s3_region || BUNNY_DEFAULTS.s3_region,
+				s3_access_key_id: f.s3_access_key_id || f.s3_bucket,
+			}));
+		}
 	};
 
 	// Seed the non-secret fields from the server; secrets stay blank (write-only).
@@ -357,302 +365,370 @@ const Services = () => {
 				</p>
 			)}
 
-			{data && (
-				<div className="vp-stack">
-					{/* Embeddings (Azure OpenAI) */}
-					<PvPanel title="embeddings · azure openai">
-						<p className="vp-card-desc" style={{ marginBottom: 16 }}>
-							Used to generate note embeddings and embed search queries
-							(text-embedding-3-large, 1536 dims).
-						</p>
-						<div className="vp-field">
-							<span className="vp-label">Embedding URL</span>
-							<input
-								className="vp-input"
-								type="text"
-								spellCheck={false}
-								placeholder="https://<resource>.openai.azure.com/openai/deployments/<deployment>/embeddings?api-version=2023-05-15"
-								value={form.azure_embedding_url}
-								onChange={set("azure_embedding_url")}
-							/>
-						</div>
-						<div className="vp-field" style={{ marginBottom: 0 }}>
-							<span className="vp-label">
-								API Key{" "}
-								{data.azure_embedding_api_key_set ? (
-									<span className="vp-tag vp-tag--green vp-svc-chip">set</span>
-								) : (
-									<span className="vp-tag vp-tag--red vp-svc-chip">unset</span>
-								)}
-							</span>
-							<input
-								className="vp-input"
-								type="password"
-								autoComplete="new-password"
-								placeholder={secretPlaceholder(
-									data.azure_embedding_api_key_set,
-								)}
-								value={form.azure_embedding_api_key}
-								onChange={set("azure_embedding_api_key")}
-							/>
-						</div>
-						<TestRow
-							pending={testEmb.isPending}
-							onTest={() => runTest(testEmb, setEmbResult, embTestPayload())}
-							onClear={() =>
-								requestClear(EMB_KEYS, setEmbResult, "Azure embedding")
-							}
-							result={embResult}
-						/>
-					</PvPanel>
-
-					{/* OpenClaw (chat gateway) */}
-					<PvPanel title="chat · openclaw gateway">
-						<p className="vp-card-desc" style={{ marginBottom: 16 }}>
-							LLM chat is proxied through the OpenClaw gateway.
-						</p>
-						<div className="vp-field">
-							<span className="vp-label">Gateway URL</span>
-							<input
-								className="vp-input"
-								type="text"
-								spellCheck={false}
-								placeholder="http://host:port"
-								value={form.openclaw_url}
-								onChange={set("openclaw_url")}
-							/>
-						</div>
-						<div className="vp-field" style={{ marginBottom: 0 }}>
-							<span className="vp-label">
-								Gateway Token{" "}
-								{data.openclaw_gateway_token_set ? (
-									<span className="vp-tag vp-tag--green vp-svc-chip">set</span>
-								) : (
-									<span className="vp-tag vp-tag--red vp-svc-chip">unset</span>
-								)}
-							</span>
-							<input
-								className="vp-input"
-								type="password"
-								autoComplete="new-password"
-								placeholder={secretPlaceholder(data.openclaw_gateway_token_set)}
-								value={form.openclaw_gateway_token}
-								onChange={set("openclaw_gateway_token")}
-							/>
-						</div>
-						<TestRow
-							pending={testOc.isPending}
-							onTest={() => runTest(testOc, setOcResult, ocTestPayload())}
-							onClear={() => requestClear(OC_KEYS, setOcResult, "OpenClaw")}
-							result={ocResult}
-						/>
-					</PvPanel>
-
-					{/* Web search (agent web_search tool) — pick a provider + key. */}
-					<PvPanel title="search · web">
-						<p className="vp-card-desc" style={{ marginBottom: 16 }}>
-							Powers the agent's <code>web_search</code> tool. Pick a provider
-							and set its API key. Swap providers anytime without touching the
-							agent.
-						</p>
-						<div className="vp-field">
-							<span className="vp-label">Provider</span>
-							<select
-								className="vp-input"
-								value={wsProvider}
-								onChange={set("websearch_provider")}
-							>
-								{WEBSEARCH_PROVIDERS.map((p) => (
-									<option key={p.id} value={p.id}>
-										{p.label}
-									</option>
+			{data &&
+				(() => {
+					// Which services have credentials saved — drives the tab status dots.
+					const wsAnySet = WEBSEARCH_PROVIDERS.some(
+						(p) => data[`${p.key}_set`],
+					);
+					const configured = {
+						embeddings: !!data.azure_embedding_api_key_set,
+						chat: !!data.openclaw_gateway_token_set,
+						search: wsAnySet,
+						storage: !!data.s3_secret_access_key_set,
+					};
+					return (
+						<div className="vp-stack">
+							<div className="vp-svc-tabs" role="tablist">
+								{TABS.map((t) => (
+									<button
+										key={t.id}
+										type="button"
+										role="tab"
+										aria-selected={activeTab === t.id}
+										className={`vp-svc-tab ${activeTab === t.id ? "is-active" : ""}`}
+										onClick={() => setActiveTab(t.id)}
+									>
+										<span
+											className={`vp-svc-tab-dot ${configured[t.id] ? "is-on" : "is-off"}`}
+											title={configured[t.id] ? "Configured" : "Not configured"}
+										/>
+										{t.label}
+									</button>
 								))}
-							</select>
-						</div>
-						<div className="vp-field" style={{ marginBottom: 0 }}>
-							<span className="vp-label">
-								{wsMeta.label} API Key{" "}
-								{wsKeySet ? (
-									<span className="vp-tag vp-tag--green vp-svc-chip">set</span>
-								) : (
-									<span className="vp-tag vp-tag--red vp-svc-chip">unset</span>
-								)}
-							</span>
-							<input
-								className="vp-input"
-								type="password"
-								autoComplete="new-password"
-								placeholder={secretPlaceholder(wsKeySet)}
-								value={form[wsMeta.key]}
-								onChange={set(wsMeta.key)}
-							/>
-							<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
-								{wsMeta.hint}
-							</span>
-						</div>
-						<TestRow
-							pending={testWs.isPending}
-							onTest={() => runTest(testWs, setWsResult, wsTestPayload())}
-							onClear={() =>
-								requestClear(
-									[wsMeta.key],
-									setWsResult,
-									`${wsMeta.label} search`,
-								)
-							}
-							result={wsResult}
-						/>
-					</PvPanel>
-
-					{/* Object storage (S3) — click the title to swap naming preset. */}
-					<PvPanel
-						title={
-							<>
-								storage ·{" "}
-								<button
-									type="button"
-									className="vp-svc-vendor"
-									onClick={toggleVendor}
-									title="Switch S3 naming convention (AWS ⇄ Bunny)"
-								>
-									{v.label}
-								</button>
-							</>
-						}
-					>
-						<p className="vp-card-desc" style={{ marginBottom: 16 }}>
-							{v.desc}
-						</p>
-						<div className="vp-field">
-							<span className="vp-label">{v.endpoint.label}</span>
-							<input
-								className="vp-input"
-								type="text"
-								spellCheck={false}
-								placeholder={v.endpoint.ph}
-								value={form.s3_endpoint}
-								onChange={set("s3_endpoint")}
-							/>
-						</div>
-						<div className="vp-field">
-							<span className="vp-label">{v.region.label}</span>
-							<input
-								className="vp-input"
-								type="text"
-								spellCheck={false}
-								placeholder={v.region.ph}
-								value={form.s3_region}
-								onChange={set("s3_region")}
-							/>
-						</div>
-						{vendor === "bunny" ? (
-							<div className="vp-field">
-								<span className="vp-label">{v.bucket.label}</span>
-								<input
-									className="vp-input"
-									type="text"
-									spellCheck={false}
-									placeholder={v.bucket.ph}
-									value={form.s3_bucket}
-									onChange={setZone}
-								/>
 							</div>
-						) : (
-							<>
-								<div className="vp-field">
-									<span className="vp-label">{v.bucket.label}</span>
-									<input
-										className="vp-input"
-										type="text"
-										spellCheck={false}
-										placeholder={v.bucket.ph}
-										value={form.s3_bucket}
-										onChange={set("s3_bucket")}
-									/>
-								</div>
-								<div className="vp-field">
-									<span className="vp-label">{v.accessKey.label}</span>
-									<input
-										className="vp-input"
-										type="text"
-										spellCheck={false}
-										placeholder={v.accessKey.ph}
-										value={form.s3_access_key_id}
-										onChange={set("s3_access_key_id")}
-									/>
-								</div>
-							</>
-						)}
-						<div className="vp-field">
-							<span className="vp-label">
-								{v.secret.label}{" "}
-								{data.s3_secret_access_key_set ? (
-									<span className="vp-tag vp-tag--green vp-svc-chip">set</span>
-								) : (
-									<span className="vp-tag vp-tag--red vp-svc-chip">unset</span>
-								)}
-							</span>
-							<input
-								className="vp-input"
-								type="password"
-								autoComplete="new-password"
-								placeholder={secretPlaceholder(data.s3_secret_access_key_set)}
-								value={form.s3_secret_access_key}
-								onChange={set("s3_secret_access_key")}
-							/>
-						</div>
 
-						{/* CDN — optional accelerator on top of the bucket above. */}
-						<div className="vp-field">
-							<span className="vp-label">
-								{v.cdnUrl.label}{" "}
-								<span className="vp-muted vp-svc-chip">optional</span>
-							</span>
-							<input
-								className="vp-input"
-								type="text"
-								spellCheck={false}
-								placeholder={v.cdnUrl.ph}
-								value={form.s3_cdn_url}
-								onChange={set("s3_cdn_url")}
-							/>
-						</div>
-						<div className="vp-field">
-							<span className="vp-label">
-								{v.cdnToken.label}{" "}
-								<span className="vp-muted vp-svc-chip">optional</span>
-								{data.s3_cdn_token_key_set && (
-									<span className="vp-tag vp-tag--green vp-svc-chip">set</span>
-								)}
-							</span>
-							<input
-								className="vp-input"
-								type="password"
-								autoComplete="new-password"
-								placeholder={secretPlaceholder(data.s3_cdn_token_key_set)}
-								value={form.s3_cdn_token_key}
-								onChange={set("s3_cdn_token_key")}
-							/>
-						</div>
-						<TestRow
-							pending={testS3.isPending}
-							onTest={() => runTest(testS3, setS3Result, s3TestPayload())}
-							onClear={() => requestClear(S3_KEYS, setS3Result, "storage")}
-							result={s3Result}
-						/>
-					</PvPanel>
+							{/* Embeddings (Azure OpenAI) */}
+							{activeTab === "embeddings" && (
+								<PvPanel title="embeddings · azure openai">
+									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
+										Used to generate note embeddings and embed search queries
+										(text-embedding-3-large, 1536 dims).
+									</p>
+									<div className="vp-field">
+										<span className="vp-label">Embedding URL</span>
+										<input
+											className="vp-input"
+											type="text"
+											spellCheck={false}
+											placeholder="https://<resource>.openai.azure.com/openai/deployments/<deployment>/embeddings?api-version=2023-05-15"
+											value={form.azure_embedding_url}
+											onChange={set("azure_embedding_url")}
+										/>
+									</div>
+									<div className="vp-field" style={{ marginBottom: 0 }}>
+										<span className="vp-label">
+											API Key{" "}
+											{data.azure_embedding_api_key_set ? (
+												<span className="vp-tag vp-tag--green vp-svc-chip">
+													set
+												</span>
+											) : (
+												<span className="vp-tag vp-tag--red vp-svc-chip">
+													unset
+												</span>
+											)}
+										</span>
+										<input
+											className="vp-input"
+											type="password"
+											autoComplete="new-password"
+											placeholder={secretPlaceholder(
+												data.azure_embedding_api_key_set,
+											)}
+											value={form.azure_embedding_api_key}
+											onChange={set("azure_embedding_api_key")}
+										/>
+									</div>
+									<TestRow
+										pending={testEmb.isPending}
+										onTest={() =>
+											runTest(testEmb, setEmbResult, embTestPayload())
+										}
+										onClear={() =>
+											requestClear(EMB_KEYS, setEmbResult, "Azure embedding")
+										}
+										result={embResult}
+									/>
+								</PvPanel>
+							)}
 
-					<div className="vp-row" style={{ justifyContent: "flex-end" }}>
-						<PvButton
-							variant="primary"
-							onClick={handleSave}
-							disabled={update.isPending}
-						>
-							{update.isPending ? "Saving…" : "Save changes"}
-						</PvButton>
-					</div>
-				</div>
-			)}
+							{/* OpenClaw (chat gateway) */}
+							{activeTab === "chat" && (
+								<PvPanel title="chat · openclaw gateway">
+									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
+										LLM chat is proxied through the OpenClaw gateway.
+									</p>
+									<div className="vp-field">
+										<span className="vp-label">Gateway URL</span>
+										<input
+											className="vp-input"
+											type="text"
+											spellCheck={false}
+											placeholder="http://host:port"
+											value={form.openclaw_url}
+											onChange={set("openclaw_url")}
+										/>
+									</div>
+									<div className="vp-field" style={{ marginBottom: 0 }}>
+										<span className="vp-label">
+											Gateway Token{" "}
+											{data.openclaw_gateway_token_set ? (
+												<span className="vp-tag vp-tag--green vp-svc-chip">
+													set
+												</span>
+											) : (
+												<span className="vp-tag vp-tag--red vp-svc-chip">
+													unset
+												</span>
+											)}
+										</span>
+										<input
+											className="vp-input"
+											type="password"
+											autoComplete="new-password"
+											placeholder={secretPlaceholder(
+												data.openclaw_gateway_token_set,
+											)}
+											value={form.openclaw_gateway_token}
+											onChange={set("openclaw_gateway_token")}
+										/>
+									</div>
+									<TestRow
+										pending={testOc.isPending}
+										onTest={() => runTest(testOc, setOcResult, ocTestPayload())}
+										onClear={() =>
+											requestClear(OC_KEYS, setOcResult, "OpenClaw")
+										}
+										result={ocResult}
+									/>
+								</PvPanel>
+							)}
+
+							{/* Web search (agent web_search tool) — pick a provider + key. */}
+							{activeTab === "search" && (
+								<PvPanel title="search · web">
+									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
+										Powers the agent's <code>web_search</code> tool. Pick a
+										provider and set its API key. Swap providers anytime without
+										touching the agent.
+									</p>
+									<div className="vp-field">
+										<span className="vp-label">Provider</span>
+										<select
+											className="vp-input"
+											value={wsProvider}
+											onChange={set("websearch_provider")}
+										>
+											{WEBSEARCH_PROVIDERS.map((p) => (
+												<option key={p.id} value={p.id}>
+													{p.label}
+												</option>
+											))}
+										</select>
+									</div>
+									<div className="vp-field" style={{ marginBottom: 0 }}>
+										<span className="vp-label">
+											{wsMeta.label} API Key{" "}
+											{wsKeySet ? (
+												<span className="vp-tag vp-tag--green vp-svc-chip">
+													set
+												</span>
+											) : (
+												<span className="vp-tag vp-tag--red vp-svc-chip">
+													unset
+												</span>
+											)}
+										</span>
+										<input
+											className="vp-input"
+											type="password"
+											autoComplete="new-password"
+											placeholder={secretPlaceholder(wsKeySet)}
+											value={form[wsMeta.key]}
+											onChange={set(wsMeta.key)}
+										/>
+										<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
+											{wsMeta.hint}
+										</span>
+									</div>
+									<TestRow
+										pending={testWs.isPending}
+										onTest={() => runTest(testWs, setWsResult, wsTestPayload())}
+										onClear={() =>
+											requestClear(
+												[wsMeta.key],
+												setWsResult,
+												`${wsMeta.label} search`,
+											)
+										}
+										result={wsResult}
+									/>
+								</PvPanel>
+							)}
+
+							{/* Object storage (S3) — pick the adapter preset, then fill it. */}
+							{activeTab === "storage" && (
+								<PvPanel title="storage · s3">
+									<div className="vp-field">
+										<span className="vp-label">Adapter</span>
+										<select
+											className="vp-input"
+											value={vendor}
+											onChange={selectVendor}
+										>
+											{Object.entries(VENDORS).map(([id, preset]) => (
+												<option key={id} value={id}>
+													{preset.label}
+												</option>
+											))}
+										</select>
+									</div>
+									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
+										{v.desc}
+									</p>
+									<div className="vp-field">
+										<span className="vp-label">{v.endpoint.label}</span>
+										<input
+											className="vp-input"
+											type="text"
+											spellCheck={false}
+											placeholder={v.endpoint.ph}
+											value={form.s3_endpoint}
+											onChange={set("s3_endpoint")}
+										/>
+									</div>
+									<div className="vp-field">
+										<span className="vp-label">{v.region.label}</span>
+										<input
+											className="vp-input"
+											type="text"
+											spellCheck={false}
+											placeholder={v.region.ph}
+											value={form.s3_region}
+											onChange={set("s3_region")}
+										/>
+									</div>
+									{vendor === "bunny" ? (
+										<div className="vp-field">
+											<span className="vp-label">{v.bucket.label}</span>
+											<input
+												className="vp-input"
+												type="text"
+												spellCheck={false}
+												placeholder={v.bucket.ph}
+												value={form.s3_bucket}
+												onChange={setZone}
+											/>
+										</div>
+									) : (
+										<>
+											<div className="vp-field">
+												<span className="vp-label">{v.bucket.label}</span>
+												<input
+													className="vp-input"
+													type="text"
+													spellCheck={false}
+													placeholder={v.bucket.ph}
+													value={form.s3_bucket}
+													onChange={set("s3_bucket")}
+												/>
+											</div>
+											<div className="vp-field">
+												<span className="vp-label">{v.accessKey.label}</span>
+												<input
+													className="vp-input"
+													type="text"
+													spellCheck={false}
+													placeholder={v.accessKey.ph}
+													value={form.s3_access_key_id}
+													onChange={set("s3_access_key_id")}
+												/>
+											</div>
+										</>
+									)}
+									<div className="vp-field">
+										<span className="vp-label">
+											{v.secret.label}{" "}
+											{data.s3_secret_access_key_set ? (
+												<span className="vp-tag vp-tag--green vp-svc-chip">
+													set
+												</span>
+											) : (
+												<span className="vp-tag vp-tag--red vp-svc-chip">
+													unset
+												</span>
+											)}
+										</span>
+										<input
+											className="vp-input"
+											type="password"
+											autoComplete="new-password"
+											placeholder={secretPlaceholder(
+												data.s3_secret_access_key_set,
+											)}
+											value={form.s3_secret_access_key}
+											onChange={set("s3_secret_access_key")}
+										/>
+									</div>
+
+									{/* CDN — optional accelerator on top of the bucket above. */}
+									<div className="vp-field">
+										<span className="vp-label">
+											{v.cdnUrl.label}{" "}
+											<span className="vp-muted vp-svc-chip">optional</span>
+										</span>
+										<input
+											className="vp-input"
+											type="text"
+											spellCheck={false}
+											placeholder={v.cdnUrl.ph}
+											value={form.s3_cdn_url}
+											onChange={set("s3_cdn_url")}
+										/>
+									</div>
+									<div className="vp-field">
+										<span className="vp-label">
+											{v.cdnToken.label}{" "}
+											<span className="vp-muted vp-svc-chip">optional</span>
+											{data.s3_cdn_token_key_set && (
+												<span className="vp-tag vp-tag--green vp-svc-chip">
+													set
+												</span>
+											)}
+										</span>
+										<input
+											className="vp-input"
+											type="password"
+											autoComplete="new-password"
+											placeholder={secretPlaceholder(data.s3_cdn_token_key_set)}
+											value={form.s3_cdn_token_key}
+											onChange={set("s3_cdn_token_key")}
+										/>
+									</div>
+									<TestRow
+										pending={testS3.isPending}
+										onTest={() => runTest(testS3, setS3Result, s3TestPayload())}
+										onClear={() =>
+											requestClear(S3_KEYS, setS3Result, "storage")
+										}
+										result={s3Result}
+									/>
+								</PvPanel>
+							)}
+
+							<div className="vp-row" style={{ justifyContent: "flex-end" }}>
+								<PvButton
+									variant="primary"
+									onClick={handleSave}
+									disabled={update.isPending}
+								>
+									{update.isPending ? "Saving…" : "Save changes"}
+								</PvButton>
+							</div>
+						</div>
+					);
+				})()}
 
 			<PvModal
 				open={!!confirmClear}

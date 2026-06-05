@@ -1,60 +1,65 @@
 import { useState } from "react";
-import { useTagTree } from "../queries";
+import { useTagRegistry } from "../queries";
 import { tagColor } from "../utils/tagColor";
 import "./BucketTags.css";
 
-const sumCounts = (tags) => tags.reduce((s, t) => s + (t.count || 0), 0);
-
 /**
- * Two-level tag filter shared by Tasks and Calendar. Renders the bucket → tag
- * tree for `scope` ("tasks" | "calendar"), plus an "all" row and the virtual
- * "Inbox" group (uncategorized tags).
+ * Sidebar filter shared by Tasks and Calendar.
  *
- * Selection is identified by `selectedKey` ("all" | `bucket:<id>` | "inbox" |
- * `tag:<name>`). `onSelect` receives { key, names, label }, where `names` is the
- * array of tag names the selection matches (null for "all") — the page filters
- * its items with it, so this component owns the tree and the page stays simple.
+ * - scope="tasks": a "Buckets" section (filters by the task's own `bucket_id`,
+ *   plus a "no bucket" row) followed by a flat "Tags" section.
+ * - scope="calendar": flat "Tags" only — calendar events have no bucket.
+ *
+ * Buckets group *tasks*; tags are flat, independent labels. Counts are derived
+ * from `items` (the loaded tasks/events, each with `tags: string[]` and, for
+ * tasks, `bucket_id`), so they stay in sync without a separate counts endpoint.
+ *
+ * Selection key: "all" | "nobucket" | `bucket:<id>` | `tag:<name>`. `onSelect`
+ * gets { key, label, names, bucketId }: `names` is the tag-name array for tag
+ * selections (null otherwise); `bucketId` the bucket for bucket selections. The
+ * page owns the actual filtering.
  */
 export default function BucketTagFilter({
 	scope,
+	items = [],
+	buckets = [],
 	selectedKey = "all",
 	onSelect,
 	totalCount,
 }) {
-	const { data: tree } = useTagTree(scope);
+	const { data: registry = [] } = useTagRegistry();
 	const [q, setQ] = useState("");
 
-	const buckets = tree?.buckets ?? [];
-	const inbox = tree?.inbox ?? [];
 	const filter = q.trim().toLowerCase();
 	const match = (name) => !filter || name.toLowerCase().includes(filter);
+	const colorOf = (name) =>
+		registry.find((r) => r.name === name)?.color || tagColor(name);
 
-	const tagRow = (t) => (
-		<li key={t.id}>
+	// Tag usage counts, derived from the loaded items.
+	const tagCounts = new Map();
+	for (const it of items) {
+		for (const n of it.tags ?? [])
+			tagCounts.set(n, (tagCounts.get(n) ?? 0) + 1);
+	}
+	const tagNames = [...tagCounts.keys()].filter(match).sort();
+
+	const showBuckets = scope === "tasks" && buckets.length > 0;
+	const total = typeof totalCount === "number" ? totalCount : items.length;
+
+	const navBtn = ({ key, label, count, onClick, extraClass = "", color }) => (
+		<li key={key}>
 			<button
 				type="button"
-				className={`tag-nav-btn${selectedKey === `tag:${t.name}` ? " is-active" : ""}`}
-				onClick={() =>
-					onSelect?.({
-						key: `tag:${t.name}`,
-						names: [t.name],
-						label: `#${t.name}`,
-					})
-				}
+				className={`tag-nav-btn${extraClass}${selectedKey === key ? " is-active" : ""}`}
+				onClick={onClick}
 			>
-				<span
-					className="tag-nav-name"
-					style={{ color: t.color || tagColor(t.name) }}
-				>
-					#{t.name}
+				<span className="tag-nav-name" style={color ? { color } : undefined}>
+					{label}
 				</span>
-				<span className="tag-nav-count">{t.count}</span>
+				<span className="tag-nav-count">{count}</span>
 			</button>
 		</li>
 	);
-
-	const hasInbox = inbox.filter((t) => match(t.name)).length > 0;
-	const empty = buckets.length === 0 && inbox.length === 0;
 
 	return (
 		<div className="btf">
@@ -68,76 +73,72 @@ export default function BucketTagFilter({
 			/>
 
 			<ul className="tag-nav">
-				<li>
-					<button
-						type="button"
-						className={`tag-nav-btn${selectedKey === "all" ? " is-active" : ""}`}
-						onClick={() =>
-							onSelect?.({ key: "all", names: null, label: "All" })
-						}
-					>
-						<span className="tag-nav-name">all</span>
-						{typeof totalCount === "number" ? (
-							<span className="tag-nav-count">{totalCount}</span>
-						) : null}
-					</button>
-				</li>
+				{navBtn({
+					key: "all",
+					label: "all",
+					count: total,
+					onClick: () => onSelect?.({ key: "all", names: null, label: "All" }),
+				})}
 			</ul>
 
-			{buckets.map((b) => {
-				const tags = b.tags.filter((t) => match(t.name));
-				if (filter && tags.length === 0) return null;
-				return (
-					<div key={b.id} className="btf-group">
-						<button
-							type="button"
-							className={`tag-nav-btn btf-bucket${selectedKey === `bucket:${b.id}` ? " is-active" : ""}`}
-							onClick={() =>
-								onSelect?.({
-									key: `bucket:${b.id}`,
-									names: b.tags.map((t) => t.name),
-									label: b.name,
-								})
-							}
-						>
-							<span
-								className="tag-nav-name btf-bucket-name"
-								style={{ color: b.color || undefined }}
-							>
-								{b.name}
-							</span>
-							<span className="tag-nav-count">{sumCounts(b.tags)}</span>
-						</button>
-						{tags.length ? (
-							<ul className="tag-nav btf-tags">{tags.map(tagRow)}</ul>
-						) : null}
-					</div>
-				);
-			})}
-
-			{hasInbox ? (
+			{showBuckets ? (
 				<div className="btf-group">
-					<button
-						type="button"
-						className={`tag-nav-btn btf-bucket${selectedKey === "inbox" ? " is-active" : ""}`}
-						onClick={() =>
-							onSelect?.({
-								key: "inbox",
-								names: inbox.map((t) => t.name),
-								label: "Inbox",
-							})
-						}
-					>
-						<span className="tag-nav-name btf-inbox-name">⊕ inbox</span>
-						<span className="tag-nav-count">{sumCounts(inbox)}</span>
-					</button>
-					<ul className="tag-nav btf-tags">
-						{inbox.filter((t) => match(t.name)).map(tagRow)}
+					<div className="btf-section-label">Buckets</div>
+					<ul className="tag-nav">
+						{buckets.map((b) =>
+							navBtn({
+								key: `bucket:${b.id}`,
+								label: b.name,
+								count: items.filter((it) => it.bucket_id === b.id).length,
+								onClick: () =>
+									onSelect?.({
+										key: `bucket:${b.id}`,
+										names: null,
+										bucketId: b.id,
+										label: b.name,
+									}),
+								extraClass: " btf-bucket",
+								color: b.color || undefined,
+							}),
+						)}
+						{navBtn({
+							key: "nobucket",
+							label: "no bucket",
+							count: items.filter((it) => !it.bucket_id).length,
+							onClick: () =>
+								onSelect?.({
+									key: "nobucket",
+									names: null,
+									label: "No bucket",
+								}),
+							extraClass: " btf-bucket btf-inbox-name",
+						})}
 					</ul>
 				</div>
 			) : null}
 
-			{empty ? <p className="btf-empty">No tags yet.</p> : null}
+			<div className="btf-group">
+				{showBuckets ? <div className="btf-section-label">Tags</div> : null}
+				<ul className="tag-nav btf-tags">
+					{tagNames.map((name) =>
+						navBtn({
+							key: `tag:${name}`,
+							label: `#${name}`,
+							count: tagCounts.get(name),
+							onClick: () =>
+								onSelect?.({
+									key: `tag:${name}`,
+									names: [name],
+									label: `#${name}`,
+								}),
+							color: colorOf(name),
+						}),
+					)}
+					{tagNames.length === 0 ? (
+						<li className="btf-empty">No tags{filter ? " match" : " yet"}.</li>
+					) : null}
+				</ul>
+			</div>
 		</div>
 	);
 }

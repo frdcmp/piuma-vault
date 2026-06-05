@@ -26,7 +26,10 @@ pub static DEF: AgentDef = AgentDef {
         "list_tasks",
         "get_task",
         "list_recurring",
+        "list_buckets",
         // Tier 2 — create/edit
+        "create_bucket",
+        "rename_bucket",
         "create_note",
         "update_note",
         "append_to_note",
@@ -43,6 +46,7 @@ pub static DEF: AgentDef = AgentDef {
         "delete_task",
         "delete_recurring",
         "delete_event",
+        "delete_bucket",
         "delete_object",
         "delete_folder",
         "bulk_move",

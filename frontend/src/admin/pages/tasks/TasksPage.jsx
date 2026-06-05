@@ -5,6 +5,7 @@ import BucketTagFilter from "../../../components/BucketTagFilter";
 import ManageBucketsModal from "../../../components/ManageBucketsModal";
 import TimeAgo from "../../../components/TimeAgo";
 import {
+	useBuckets,
 	useDeleteRecurringTask,
 	useRecurringTasks,
 	useTagRegistry,
@@ -37,6 +38,7 @@ export default function TasksPage() {
 	useTagsLiveUpdates("tasks"); // keep the tag tree + counts fresh
 	const { data: tasks = [] } = useTasks();
 	const { data: recurring = [] } = useRecurringTasks();
+	const { data: buckets = [] } = useBuckets();
 	const { data: tagRegistry = [] } = useTagRegistry();
 	const toggleTask = useToggleTask();
 	const deleteRecurring = useDeleteRecurringTask();
@@ -51,14 +53,20 @@ export default function TasksPage() {
 	const tagColorOf = (name) =>
 		tagRegistry.find((r) => r.name === name)?.color || tagColor(name);
 
+	// Bucket lookup for the per-task badge.
+	const bucketById = new Map(buckets.map((b) => [b.id, b]));
+
 	// One-off tasks only (materialized recurring occurrences are history, hidden here).
 	const oneOff = tasks.filter((t) => !t.recurrence_id);
 
-	// `sel.names` is null for "all", else the set of tag names the selection
-	// matches (a single tag, every tag in a bucket, or the Inbox group).
-	const visible = sel.names
-		? oneOff.filter((t) => t.tags?.some((n) => sel.names.includes(n)))
-		: oneOff;
+	// Apply the sidebar selection: a bucket (by the task's own bucket_id), the
+	// "no bucket" group, a single tag, or everything.
+	let visible = oneOff;
+	if (sel.key.startsWith("bucket:"))
+		visible = oneOff.filter((t) => t.bucket_id === sel.bucketId);
+	else if (sel.key === "nobucket") visible = oneOff.filter((t) => !t.bucket_id);
+	else if (sel.names)
+		visible = oneOff.filter((t) => t.tags?.some((n) => sel.names.includes(n)));
 
 	// Highest priority first; within a priority tier, cluster tasks that share
 	// tags (by normalized tag signature). Untagged tasks (→ "￿") trail.
@@ -82,6 +90,7 @@ export default function TasksPage() {
 	};
 
 	const defaultTags = sel.key.startsWith("tag:") ? sel.names : [];
+	const defaultBucket = sel.key.startsWith("bucket:") ? sel.bucketId : null;
 
 	return (
 		<WorkspaceShell>
@@ -105,7 +114,7 @@ export default function TasksPage() {
 						</PvButton>
 						<PvButton
 							variant="accent"
-							onClick={() => setTaskModal({ defaultTags })}
+							onClick={() => setTaskModal({ defaultTags, defaultBucket })}
 						>
 							+ task
 						</PvButton>
@@ -113,10 +122,10 @@ export default function TasksPage() {
 				</header>
 
 				<div className="tasks-body">
-					{/* ── Bucket → tag filter ── */}
+					{/* ── Bucket + tag filter ── */}
 					<aside className="tasks-sidebar">
 						<div className="tasks-sidebar-head">
-							<h2 className="tasks-panel-title">Tags</h2>
+							<h2 className="tasks-panel-title">Filter</h2>
 							<button
 								type="button"
 								className="tasks-manage-btn"
@@ -127,6 +136,8 @@ export default function TasksPage() {
 						</div>
 						<BucketTagFilter
 							scope="tasks"
+							items={oneOff}
+							buckets={buckets}
 							selectedKey={showRecurring ? null : sel.key}
 							onSelect={(s) => {
 								setShowRecurring(false);
@@ -184,8 +195,20 @@ export default function TasksPage() {
 														onClick={() => setTaskModal({ task: t })}
 													>
 														<span className="task-title">{t.title}</span>
-														{t.priority || t.due_at ? (
+														{t.priority || t.due_at || t.bucket_id ? (
 															<span className="task-meta">
+																{bucketById.get(t.bucket_id) ? (
+																	<span
+																		className="task-bucket"
+																		style={{
+																			color:
+																				bucketById.get(t.bucket_id).color ||
+																				undefined,
+																		}}
+																	>
+																		{bucketById.get(t.bucket_id).name}
+																	</span>
+																) : null}
 																{t.priority ? (
 																	<span
 																		className={`task-prio prio-${t.priority}`}
@@ -323,6 +346,7 @@ export default function TasksPage() {
 					<TaskModal
 						task={taskModal.task}
 						defaultTags={taskModal.defaultTags}
+						defaultBucket={taskModal.defaultBucket}
 						onClose={() => setTaskModal(null)}
 					/>
 				) : null}
