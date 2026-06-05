@@ -8,7 +8,8 @@ import axiosInstance, { refreshAccessToken } from "./axiosInstance";
 const BASE_PATH =
 	process.env.EXPO_PUBLIC_API_URL || "https://vault.example.com/api/v1";
 
-export const fetchAgents = async () => (await axiosInstance.get("/agents")).data;
+export const fetchAgents = async () =>
+	(await axiosInstance.get("/agents")).data;
 export const fetchDefaultAgent = async () =>
 	(await axiosInstance.get("/agents/default-agent")).data; // { agent }
 export const createConversation = async (payload) =>
@@ -27,6 +28,26 @@ export const updateConversation = async ({ id, ...payload }) =>
 export const fetchAllModels = async () =>
 	(await axiosInstance.get("/agents/models")).data;
 
+// Device "now" as RFC3339 *with* the local UTC offset (e.g.
+// "2026-06-05T14:52:00+02:00") — gives the agent a real clock + timezone.
+const localNowIso = () => {
+	const d = new Date();
+	const p = (n) => String(n).padStart(2, "0");
+	const off = -d.getTimezoneOffset(); // minutes east of UTC
+	const sign = off >= 0 ? "+" : "-";
+	const oh = p(Math.floor(Math.abs(off) / 60));
+	const om = p(Math.abs(off) % 60);
+	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sign}${oh}:${om}`;
+};
+
+const localTimezone = () => {
+	try {
+		return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+	} catch {
+		return null;
+	}
+};
+
 const buildChatRequest = (conversationId, message, contextNoteIds, signal) => {
 	const token = useAuthStore.getState().token;
 	return fetch(`${BASE_PATH}/agents/conversations/${conversationId}/chat`, {
@@ -35,7 +56,12 @@ const buildChatRequest = (conversationId, message, contextNoteIds, signal) => {
 			"Content-Type": "application/json",
 			...(token ? { Authorization: `Bearer ${token}` } : {}),
 		},
-		body: JSON.stringify({ message, context_note_ids: contextNoteIds || [] }),
+		body: JSON.stringify({
+			message,
+			context_note_ids: contextNoteIds || [],
+			timezone: localTimezone(),
+			client_now: localNowIso(),
+		}),
 		signal,
 	});
 };

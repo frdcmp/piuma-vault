@@ -38,6 +38,31 @@ fn frame(payload: Value) -> Bytes {
     Bytes::from(format!("data: {payload}\n\n"))
 }
 
+/// Build the "current time" system block. Prefers the client's local time
+/// (RFC3339 with offset) + IANA timezone; falls back to server UTC so the agent
+/// always has *some* clock. Without this the model guesses the date/timezone.
+fn current_time_context(timezone: Option<&str>, client_now: Option<&str>) -> String {
+    let tz = timezone.map(str::trim).filter(|s| !s.is_empty());
+    let now = client_now.map(str::trim).filter(|s| !s.is_empty());
+    let tail = "When you call tools, emit RFC3339 timestamps that include this UTC offset (e.g. 2026-06-05T15:00:00+02:00), and interpret relative dates like \"today\" or \"tomorrow 3pm\" in this timezone.";
+    match (now, tz) {
+        (Some(n), Some(z)) => format!(
+            "# Current time\nThe user's current local date and time is {n} (timezone {z}). {tail}"
+        ),
+        (Some(n), None) => format!(
+            "# Current time\nThe user's current local date and time is {n}. {tail}"
+        ),
+        (None, Some(z)) => format!(
+            "# Current time\nThe current UTC time is {}. The user's timezone is {z} — convert relative dates into it and emit RFC3339 timestamps with the correct offset.",
+            chrono::Utc::now().to_rfc3339()
+        ),
+        (None, None) => format!(
+            "# Current time\nThe current UTC time is {}. Emit RFC3339 timestamps with an explicit offset (Z for UTC) when calling tools.",
+            chrono::Utc::now().to_rfc3339()
+        ),
+    }
+}
+
 /// Build a context preamble from the user's attached notes (the "locked" chips).
 async fn build_context(pool: &DbPool, user_id: &str, ids: &[Uuid]) -> String {
     if ids.is_empty() {
@@ -84,6 +109,8 @@ pub async fn chat(
     let req = body.into_inner();
     let msg = req.message;
     let context_ids = req.context_note_ids;
+    let timezone = req.timezone;
+    let client_now = req.client_now;
     let db = pool.get_ref();
 
     let conv = match sqlx::query_as::<_, ConversationRow>("SELECT * FROM db_chat_conversations WHERE id = $1")
@@ -198,8 +225,15 @@ pub async fn chat(
         hist.drain(..hist.len() - 50);
     }
     let mut messages: Vec<Value> = Vec::with_capacity(hist.len() + 1);
-    if !resolved.system_prompt.trim().is_empty() {
-        messages.push(json!({ "role": "system", "content": resolved.system_prompt }));
+    // Prepend a dynamic "current time" block so the agent can resolve relative
+    // dates and emit correctly-offset timestamps (it otherwise has no clock).
+    let now_block = current_time_context(timezone.as_deref(), client_now.as_deref());
+    let system = match resolved.system_prompt.trim().is_empty() {
+        true => now_block,
+        false => format!("{now_block}\n\n{}", resolved.system_prompt),
+    };
+    if !system.trim().is_empty() {
+        messages.push(json!({ "role": "system", "content": system }));
     }
     for (role, text) in hist {
         messages.push(json!({ "role": role, "content": text }));
