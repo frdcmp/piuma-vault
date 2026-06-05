@@ -9,10 +9,12 @@ import {
 	fetchAgents,
 	fetchConversation,
 	fetchConversations,
+	fetchDefaultAgent,
 	fetchModels,
 	fetchPersonas,
 	fetchProfile,
 	fetchProviders,
+	setDefaultAgent,
 	updateModel,
 	updatePersona,
 	updateProfile,
@@ -45,6 +47,22 @@ export const useProviders = (options = {}) =>
 		queryFn: fetchProviders,
 		...options,
 	});
+
+export const useDefaultAgent = (options = {}) =>
+	useQuery({
+		queryKey: ["agents", "default"],
+		queryFn: fetchDefaultAgent,
+		staleTime: 60_000,
+		...options,
+	});
+
+export const useSetDefaultAgent = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: setDefaultAgent,
+		onSuccess: (data) => qc.setQueryData(["agents", "default"], data),
+	});
+};
 
 export const useModels = (providerId, options = {}) =>
 	useQuery({

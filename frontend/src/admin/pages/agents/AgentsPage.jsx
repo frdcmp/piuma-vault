@@ -9,11 +9,13 @@ import {
 	useCreateConversation,
 	useCreateModel,
 	useCreateProvider,
+	useDefaultAgent,
 	useDeleteConversation,
 	useDeleteModel,
 	useDeleteProvider,
 	useModels,
 	useProviders,
+	useSetDefaultAgent,
 	useUpdateAgentProfile,
 	useUpdateModel,
 	useUpdatePersona,
@@ -487,10 +489,16 @@ function Bubble({ sender, text, thinking }) {
 
 function ChatTab({ agents }) {
 	const { data: conversations = [] } = useConversations();
+	const { data: def } = useDefaultAgent();
 	const createConversation = useCreateConversation();
 	const deleteConversation = useDeleteConversation();
-	const [newAgent, setNewAgent] = useState(agents[0]?.kind || "vault_agent");
+	const [newAgent, setNewAgent] = useState("");
 	const [activeId, setActiveId] = useState(null);
+	// Initialise the new-chat agent from the admin default once it loads.
+	useEffect(() => {
+		if (def?.agent && !newAgent) setNewAgent(def.agent);
+	}, [def, newAgent]);
+	const pickAgent = newAgent || def?.agent || agents[0]?.kind || "vault_agent";
 	const { data: convData, refetch } = useConversation(activeId);
 	const [input, setInput] = useState("");
 	const [streaming, setStreaming] = useState(false);
@@ -509,7 +517,7 @@ function ChatTab({ agents }) {
 
 	const newConversation = async () => {
 		try {
-			const conv = await createConversation.mutateAsync({ agent: newAgent });
+			const conv = await createConversation.mutateAsync({ agent: pickAgent });
 			setActiveId(conv.id);
 		} catch (e) {
 			setError(errMsg(e, "Failed to start conversation"));
@@ -523,7 +531,7 @@ function ChatTab({ agents }) {
 		let convId = activeId;
 		if (!convId) {
 			try {
-				const conv = await createConversation.mutateAsync({ agent: newAgent });
+				const conv = await createConversation.mutateAsync({ agent: pickAgent });
 				convId = conv.id;
 				setActiveId(conv.id);
 			} catch (e) {
@@ -676,6 +684,8 @@ function ChatTab({ agents }) {
 
 export default function AgentsPage() {
 	const { data: agents = [] } = useAgentList();
+	const { data: def } = useDefaultAgent();
+	const setDefault = useSetDefaultAgent();
 	const agent = agents[0]?.kind || "vault_agent";
 	const [tab, setTab] = useState("chat");
 
@@ -686,6 +696,23 @@ export default function AgentsPage() {
 				Multi-provider LLM chat. Add a provider + model, tune the agent's
 				config, and chat.
 			</p>
+			{agents.length > 0 && (
+				<div className="ag-row" style={{ marginBottom: 16 }}>
+					<span className="ag-muted">Default agent for new chats:</span>
+					<select
+						className="ag-select"
+						style={{ width: 200 }}
+						value={def?.agent || ""}
+						onChange={(e) => setDefault.mutate(e.target.value)}
+					>
+						{agents.map((a) => (
+							<option key={a.kind} value={a.kind}>
+								{a.display_name}
+							</option>
+						))}
+					</select>
+				</div>
+			)}
 			<div className="ag-tabs">
 				{[
 					["chat", "Chat"],

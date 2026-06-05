@@ -9,6 +9,11 @@ const BASE_PATH = `${import.meta.env.BASE_URL}api/v1`;
 export const fetchAgents = async () =>
 	(await axiosInstance.get("/agents")).data;
 
+export const fetchDefaultAgent = async () =>
+	(await axiosInstance.get("/agents/default-agent")).data; // { agent }
+export const setDefaultAgent = async (agent) =>
+	(await axiosInstance.put("/agents/default-agent", { agent })).data;
+
 // ── Providers ────────────────────────────────────────────────────────────────
 export const fetchProviders = async () =>
 	(await axiosInstance.get("/agents/providers")).data;
