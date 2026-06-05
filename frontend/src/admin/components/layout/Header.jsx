@@ -31,7 +31,7 @@ const HeaderComponent = ({ onSidebarToggle, showSidebarToggle = false }) => {
 						</button>
 					)}
 					{isPhone ? (
-						<Link to="/" style={{ display: "flex", alignItems: "center" }}>
+						<Link to="/notes" style={{ display: "flex", alignItems: "center" }}>
 							<img src={piumaLogo} alt="Piuma" className="vp-header-logo" />
 						</Link>
 					) : (

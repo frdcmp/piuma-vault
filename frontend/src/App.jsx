@@ -36,9 +36,9 @@ function AppContent() {
 			future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
 		>
 			<Routes>
-				{/* Vault (notes) — served at the app root */}
+				{/* Vault (notes) — served at /notes */}
 				<Route
-					path="/"
+					path="/notes"
 					element={
 						<ProtectedRoute requiredPermission="admin_access">
 							<NotesLayout />
@@ -47,6 +47,9 @@ function AppContent() {
 				>
 					<Route path=":id" element={<NoteEditor />} />
 				</Route>
+
+				{/* App root redirects to the notes vault */}
+				<Route path="/" element={<Navigate to="/notes" replace />} />
 
 				{/* Public shared note viewer */}
 				<Route path="/share/v/:slug" element={<SharedNotePage />} />
@@ -85,9 +88,12 @@ function AppContent() {
 					<Route path="test" element={<ApiTest />} />
 				</Route>
 
-				{/* Old vault path moved to / — keep redirects so admin links still work */}
-				<Route path="/admin/notes" element={<Navigate to="/" replace />} />
-				<Route path="/admin/notes/:id" element={<Navigate to="/" replace />} />
+				{/* Old vault paths — keep redirects so existing links still work */}
+				<Route path="/admin/notes" element={<Navigate to="/notes" replace />} />
+				<Route
+					path="/admin/notes/:id"
+					element={<Navigate to="/notes" replace />}
+				/>
 
 				{/* Storage explorer — top-level, auth-only (standalone pixel layout) */}
 				<Route

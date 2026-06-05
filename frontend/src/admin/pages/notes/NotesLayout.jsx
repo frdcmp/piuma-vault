@@ -76,16 +76,16 @@ export default function NotesLayout() {
 	}, []);
 
 	// Guard: if :id param is present but not a valid UUID and not "new",
-	// redirect to root (e.g. /undefined → /)
+	// redirect to root (e.g. /notes/undefined → /notes)
 	useEffect(() => {
 		if (id && id !== "new" && !UUID_RE.test(id)) {
-			navigate("/", { replace: true });
+			navigate("/notes", { replace: true });
 		}
 	}, [id, navigate]);
 
 	const isRoot =
-		location.pathname === "/" ||
-		location.pathname === "" ||
+		location.pathname === "/notes" ||
+		location.pathname === "/notes/" ||
 		(id && id !== "new" && !UUID_RE.test(id));
 	const activeNoteId = UUID_RE.test(id)
 		? id
@@ -196,9 +196,9 @@ export default function NotesLayout() {
 
 	const handleSelectNote = (noteId) => {
 		if (noteId) {
-			navigate(`/${noteId}`);
+			navigate(`/notes/${noteId}`);
 		} else {
-			navigate("/");
+			navigate("/notes");
 		}
 	};
 
@@ -209,7 +209,7 @@ export default function NotesLayout() {
 			if (tabId === activeNoteId) {
 				const idx = tabs.findIndex((t) => t.id === tabId);
 				const next = tabs[idx + 1] || tabs[idx - 1];
-				navigate(next ? `/${next.id}` : "/");
+				navigate(next ? `/notes/${next.id}` : "/notes");
 			}
 			closeTab(tabId);
 		},
@@ -296,7 +296,7 @@ export default function NotesLayout() {
 							{controlsPresent && (
 								<NoteControls
 									openChat={chatOpen ? null : openChat}
-									onClose={() => navigate("/")}
+									onClose={() => navigate("/notes")}
 									compact={contentNarrow}
 								/>
 							)}
