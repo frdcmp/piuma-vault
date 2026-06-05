@@ -30,8 +30,8 @@ const buildChatRequest = (conversationId, message, contextNoteIds, signal) => {
 };
 
 /**
- * Stream a chat turn. Callbacks: onText(delta), onThinking(delta), onDone(meta),
- * onError(err). Resolves when the stream closes.
+ * Stream a chat turn. Callbacks: onText(delta), onThinking(delta), onTool(evt),
+ * onDone(meta), onError(err). Resolves when the stream closes.
  */
 export async function streamChat({
 	conversationId,
@@ -40,6 +40,7 @@ export async function streamChat({
 	signal,
 	onText,
 	onThinking,
+	onTool,
 	onDone,
 	onError,
 }) {
@@ -89,6 +90,7 @@ export async function streamChat({
 					const json = JSON.parse(data);
 					if (json.type === "text") onText?.(json.delta || "");
 					else if (json.type === "thinking") onThinking?.(json.delta || "");
+					else if (json.type === "tool") onTool?.(json);
 					else if (json.type === "done") onDone?.(json);
 					else if (json.type === "error") onError?.(new Error(json.error));
 				} catch {

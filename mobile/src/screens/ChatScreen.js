@@ -20,6 +20,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
 	createConversation,
+	fetchAgents,
 	fetchConversation,
 	fetchDefaultAgent,
 	streamChat,
@@ -64,36 +65,6 @@ const blocksToText = (content) => {
 	return "";
 };
 
-// Map a gateway transcript entry ({role, content, context?}) to our UI message
-// shape. The backend recovers the per-turn note chip from the stored <context>
-// block; `tools` activity isn't persisted, so reloaded assistant turns get an
-// empty tool list.
-const historyToMessage = (m) => ({
-	id: newMessageId(),
-	role: m.role,
-	content: m.content,
-	...(m.context?.length ? { context: m.context } : {}),
-	...(m.role === "assistant" ? { tools: [] } : {}),
-});
-
-const escapeXmlAttr = (value) =>
-	value
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;");
-
-// Wrap a turn's text with its attached note as a structured <context> block,
-// byte-identical to the web composer (frontend/src/chat/ChatPanel.jsx) so the
-// gateway gets the same parseable delimiters and resolves note paths the same.
-const withContextBlock = (content, context) => {
-	if (!context?.length) return content;
-	const notes = context
-		.map((p) => `  <note path="${escapeXmlAttr(p)}" />`)
-		.join("\n");
-	return `<context>\n${notes}\n</context>\n\n${content}`;
-};
-
 // "/folder/sub/My Note" → "My Note" for the chip label.
 const noteTitleFromPath = (path) => {
 	if (!path) return "";
@@ -115,14 +86,15 @@ const summarizeToolArgs = (args) => {
 };
 
 // Fold a `tool`-stream event into the assistant message's tool list, keyed by
-// toolCallId: `start` adds a running entry, `result` flips it to done/error.
+// the tool-call id: a start frame ({id,name,args}) adds a running entry; a
+// completion frame ({id,done,ok}) flips it to done/error.
 const applyToolEvent = (tools = [], evt) => {
-	const id = evt.toolCallId || evt.name;
+	const id = evt.id || evt.name;
 	const idx = tools.findIndex((t) => t.id === id);
-	if (evt.phase === "result") {
+	if (evt.done) {
 		if (idx < 0) return tools;
 		const next = [...tools];
-		next[idx] = { ...next[idx], status: evt.isError ? "error" : "done" };
+		next[idx] = { ...next[idx], status: evt.ok ? "done" : "error" };
 		return next;
 	}
 	const entry = {
@@ -133,12 +105,33 @@ const applyToolEvent = (tools = [], evt) => {
 	};
 	if (idx < 0) return [...tools, entry];
 	const next = [...tools];
-	const prev = next[idx];
-	next[idx] =
-		prev.status === "done" || prev.status === "error"
-			? { ...prev, ...entry, status: prev.status }
-			: { ...prev, ...entry };
+	next[idx] = { ...next[idx], ...entry };
 	return next;
+};
+
+// Reconstruct a reloaded turn's tool chips from persisted content blocks: each
+// `tool_use` is a chip; the following `tool_result` sets its status.
+const blocksToTools = (content) => {
+	if (!Array.isArray(content)) return [];
+	const tools = [];
+	for (const b of content) {
+		if (b.type === "tool_use") {
+			tools.push({
+				id: String(tools.length),
+				name: b.name,
+				args: summarizeToolArgs(b.input),
+				status: "done",
+			});
+		} else if (b.type === "tool_result") {
+			const t = [...tools].reverse().find((x) => x.name === b.name);
+			if (t) {
+				const out = b.output;
+				const isErr = out && typeof out === "object" && "error" in out;
+				t.status = isErr ? "error" : "done";
+			}
+		}
+	}
+	return tools;
 };
 
 const TOOL_GLYPH = { running: "⛏", done: "✓", error: "✕" };
@@ -232,6 +225,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	// Active agents conversation + the agent for new chats (admin default).
 	const [conversationId, setConversationId] = useState(null);
 	const [agentKind, setAgentKind] = useState("vault_agent");
+	const [agentLabel, setAgentLabel] = useState("Piuma");
 	// The open note is attached as context by default; tapping the chip toggles
 	// it off for the next send. Mobile keeps it to a single note (no tabs, no
 	// lock state) — the chip just mirrors whatever note opened this chat.
@@ -266,11 +260,22 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	useEffect(() => {
 		let cancelled = false;
 		(async () => {
+			// Pick up the admin default agent for new chats, and resolve its
+			// display name for the header.
+			let kind = "vault_agent";
 			try {
 				const def = await fetchDefaultAgent();
-				if (!cancelled && def?.agent) setAgentKind(def.agent);
+				if (def?.agent) kind = def.agent;
 			} catch {
 				/* fall back to vault_agent */
+			}
+			if (!cancelled) setAgentKind(kind);
+			try {
+				const agents = await fetchAgents();
+				const a = agents.find((x) => x.kind === kind);
+				if (!cancelled && a?.display_name) setAgentLabel(a.display_name);
+			} catch {
+				/* keep the default label */
 			}
 			try {
 				const stored = await AsyncStorage.getItem(CONV_STORAGE_KEY);
@@ -283,7 +288,9 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 						id: m.id,
 						role: m.role,
 						content: blocksToText(m.content),
-						...(m.role === "assistant" ? { tools: [] } : {}),
+						...(m.role === "assistant"
+							? { tools: blocksToTools(m.content) }
+							: {}),
 					})),
 				);
 			} catch {
@@ -296,7 +303,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	}, []);
 
 	const handleClearConversation = useCallback(() => {
-		// Start a new gateway conversation; the old one is orphaned in OpenClaw.
+		// Start a fresh agents conversation; the old one stays saved server-side.
 		const wipe = async () => {
 			abortRef.current?.abort();
 			abortRef.current = null;
@@ -394,6 +401,17 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					});
 				},
 				onThinking: () => {},
+				onTool: (evt) => {
+					setMessages((curr) => {
+						const updated = [...curr];
+						const last = updated[updated.length - 1];
+						updated[updated.length - 1] = {
+							...last,
+							tools: applyToolEvent(last.tools, evt),
+						};
+						return updated;
+					});
+				},
 				onError: (e) => {
 					setMessages((curr) => {
 						const updated = [...curr];
@@ -428,7 +446,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 						</Pressable>
 						<View style={styles.headerText}>
 							<Text style={styles.headerEyebrow}>chat /</Text>
-							<Text style={styles.headerTitle}>OpenClaw</Text>
+							<Text style={styles.headerTitle}>{agentLabel}</Text>
 						</View>
 						<View style={styles.headerStatus}>
 							<View
