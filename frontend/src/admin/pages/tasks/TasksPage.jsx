@@ -1,14 +1,19 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import WorkspaceShell from "../../../chat/WorkspaceShell";
+import BucketTagFilter from "../../../components/BucketTagFilter";
+import ManageBucketsModal from "../../../components/ManageBucketsModal";
+import TimeAgo from "../../../components/TimeAgo";
 import {
 	useDeleteRecurringTask,
 	useRecurringTasks,
+	useTagRegistry,
+	useTagsLiveUpdates,
 	useTasks,
 	useTasksLiveUpdates,
 	useToggleTask,
 } from "../../../queries";
-import { formatDate, timeAgo } from "../../../utils/dateTime";
+import { formatDate } from "../../../utils/dateTime";
 import { tagColor } from "../../../utils/tagColor";
 import { PvButton } from "../../components/ui";
 import RecurringTaskModal from "./RecurringTaskModal";
@@ -24,44 +29,37 @@ const PRIORITY_COLOR = [
 	"var(--accent-3)",
 ];
 
+const ALL = { key: "all", names: null, label: "All" };
+
 export default function TasksPage() {
 	const navigate = useNavigate();
 	useTasksLiveUpdates(); // refetch when tasks change in another tab/device
+	useTagsLiveUpdates("tasks"); // keep the tag tree + counts fresh
 	const { data: tasks = [] } = useTasks();
 	const { data: recurring = [] } = useRecurringTasks();
+	const { data: tagRegistry = [] } = useTagRegistry();
 	const toggleTask = useToggleTask();
 	const deleteRecurring = useDeleteRecurringTask();
 
 	const [taskModal, setTaskModal] = useState(null); // { task } | {} | null
 	const [recModal, setRecModal] = useState(null);
-	const [selectedTag, setSelectedTag] = useState(null); // tag string | null (= all)
+	const [manageOpen, setManageOpen] = useState(false);
+	const [sel, setSel] = useState(ALL); // { key, names, label }
 	const [showRecurring, setShowRecurring] = useState(false); // sidebar view toggle
-	const [tagQuery, setTagQuery] = useState(""); // filters the tag list
+
+	// Per-tag colour from the registry (falls back to the derived hue).
+	const tagColorOf = (name) =>
+		tagRegistry.find((r) => r.name === name)?.color || tagColor(name);
 
 	// One-off tasks only (materialized recurring occurrences are history, hidden here).
 	const oneOff = tasks.filter((t) => !t.recurrence_id);
 
-	// Tags-as-groups: tally every tag in use across one-off tasks.
-	const tagCounts = new Map();
-	for (const t of oneOff) {
-		for (const tag of t.tags ?? []) {
-			tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
-		}
-	}
-	const tagList = [...tagCounts.entries()]
-		.map(([tag, count]) => ({ tag, count }))
-		.sort((a, b) => a.tag.localeCompare(b.tag));
-	const tagFilter = tagQuery.trim().toLowerCase();
-	const shownTags = tagFilter
-		? tagList.filter(({ tag }) => tag.includes(tagFilter))
-		: tagList;
-
-	// A removed/emptied tag may still be selected — fall back to "all".
-	const activeTag =
-		selectedTag && tagCounts.has(selectedTag) ? selectedTag : null;
-	const visible = activeTag
-		? oneOff.filter((t) => t.tags?.includes(activeTag))
+	// `sel.names` is null for "all", else the set of tag names the selection
+	// matches (a single tag, every tag in a bucket, or the Inbox group).
+	const visible = sel.names
+		? oneOff.filter((t) => t.tags?.some((n) => sel.names.includes(n)))
 		: oneOff;
+
 	// Highest priority first; within a priority tier, cluster tasks that share
 	// tags (by normalized tag signature). Untagged tasks (→ "￿") trail.
 	const pending = visible
@@ -77,6 +75,13 @@ export default function TasksPage() {
 
 	// The id of the task whose toggle is in flight, so we can spin just its box.
 	const togglingId = toggleTask.isPending ? toggleTask.variables : null;
+
+	const selectTag = (tag) => {
+		setShowRecurring(false);
+		setSel({ key: `tag:${tag}`, names: [tag], label: `#${tag}` });
+	};
+
+	const defaultTags = sel.key.startsWith("tag:") ? sel.names : [];
 
 	return (
 		<WorkspaceShell>
@@ -100,9 +105,7 @@ export default function TasksPage() {
 						</PvButton>
 						<PvButton
 							variant="accent"
-							onClick={() =>
-								setTaskModal({ defaultTags: activeTag ? [activeTag] : [] })
-							}
+							onClick={() => setTaskModal({ defaultTags })}
 						>
 							+ task
 						</PvButton>
@@ -110,57 +113,27 @@ export default function TasksPage() {
 				</header>
 
 				<div className="tasks-body">
-					{/* ── Tag groups ── */}
+					{/* ── Bucket → tag filter ── */}
 					<aside className="tasks-sidebar">
-						<h2 className="tasks-panel-title">Tags</h2>
-						<input
-							className="tag-search"
-							type="text"
-							value={tagQuery}
-							onChange={(e) => setTagQuery(e.target.value)}
-							placeholder="Filter tags…"
-							aria-label="Filter tags"
+						<div className="tasks-sidebar-head">
+							<h2 className="tasks-panel-title">Tags</h2>
+							<button
+								type="button"
+								className="tasks-manage-btn"
+								onClick={() => setManageOpen(true)}
+							>
+								⚙ manage
+							</button>
+						</div>
+						<BucketTagFilter
+							scope="tasks"
+							selectedKey={showRecurring ? null : sel.key}
+							onSelect={(s) => {
+								setShowRecurring(false);
+								setSel(s);
+							}}
+							totalCount={oneOff.length}
 						/>
-						<ul className="tag-nav">
-							<li>
-								<button
-									type="button"
-									className={`tag-nav-btn${!showRecurring && activeTag === null ? " is-active" : ""}`}
-									onClick={() => {
-										setShowRecurring(false);
-										setSelectedTag(null);
-									}}
-								>
-									<span className="tag-nav-name">all</span>
-									<span className="tag-nav-count">{oneOff.length}</span>
-								</button>
-							</li>
-							{shownTags.map(({ tag, count }) => (
-								<li key={tag}>
-									<button
-										type="button"
-										className={`tag-nav-btn${!showRecurring && activeTag === tag ? " is-active" : ""}`}
-										onClick={() => {
-											setShowRecurring(false);
-											setSelectedTag(tag);
-										}}
-									>
-										<span
-											className="tag-nav-name"
-											style={{ color: tagColor(tag) }}
-										>
-											#{tag}
-										</span>
-										<span className="tag-nav-count">{count}</span>
-									</button>
-								</li>
-							))}
-							{tagList.length === 0 ? (
-								<li className="tasks-empty">No tags yet.</li>
-							) : shownTags.length === 0 ? (
-								<li className="tasks-empty">No matching tags.</li>
-							) : null}
-						</ul>
 
 						<div className="tag-nav-divider" aria-hidden="true" />
 
@@ -184,7 +157,7 @@ export default function TasksPage() {
 								{/* ── To-do ── */}
 								<section className="tasks-panel">
 									<h2 className="tasks-panel-title">
-										{activeTag ? `#${activeTag} · ` : "To do · "}
+										{sel.key !== "all" ? `${sel.label} · ` : "To do · "}
 										{pending.length}
 									</h2>
 									<ul className="tasks-list">
@@ -222,7 +195,7 @@ export default function TasksPage() {
 																) : null}
 																{t.due_at ? (
 																	<span className="task-due">
-																		due {timeAgo(t.due_at)}
+																		due <TimeAgo value={t.due_at} />
 																	</span>
 																) : null}
 															</span>
@@ -235,11 +208,8 @@ export default function TasksPage() {
 																	type="button"
 																	key={tag}
 																	className="task-tag"
-																	style={{ color: tagColor(tag) }}
-																	onClick={() => {
-																		setShowRecurring(false);
-																		setSelectedTag(tag);
-																	}}
+																	style={{ color: tagColorOf(tag) }}
+																	onClick={() => selectTag(tag)}
 																>
 																	#{tag}
 																</button>
@@ -361,6 +331,9 @@ export default function TasksPage() {
 						recurring={recModal.recurring}
 						onClose={() => setRecModal(null)}
 					/>
+				) : null}
+				{manageOpen ? (
+					<ManageBucketsModal onClose={() => setManageOpen(false)} />
 				) : null}
 			</div>
 		</WorkspaceShell>

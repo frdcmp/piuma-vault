@@ -9,6 +9,7 @@ pub mod api_keys;
 pub mod notes;
 pub mod calendar;
 pub mod tasks;
+pub mod buckets;
 pub mod agenda;
 pub mod notifications;
 pub mod shares;

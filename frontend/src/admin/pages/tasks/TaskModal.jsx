@@ -1,4 +1,5 @@
 import { useState } from "react";
+import TagPicker from "../../../components/TagPicker";
 import { useCreateTask, useDeleteTask, useUpdateTask } from "../../../queries";
 import AlertsField from "../../components/AlertsField";
 import {
@@ -22,7 +23,7 @@ export default function TaskModal({ task, defaultTags = [], onClose }) {
 	const [notes, setNotes] = useState(task?.notes ?? "");
 	const [dueAt, setDueAt] = useState(task?.due_at ?? null);
 	const [priority, setPriority] = useState(task?.priority ?? 0);
-	const [tags, setTags] = useState((task?.tags ?? defaultTags).join(", "));
+	const [tags, setTags] = useState(task?.tags ?? defaultTags);
 	const [alerts, setAlerts] = useState(task?.alerts ?? []);
 	const [error, setError] = useState("");
 
@@ -38,16 +39,12 @@ export default function TaskModal({ task, defaultTags = [], onClose }) {
 			setError("Set a due date to use alerts");
 			return;
 		}
-		const tagList = tags
-			.split(",")
-			.map((s) => s.trim().toLowerCase())
-			.filter(Boolean);
 		const payload = {
 			title: title.trim(),
 			notes: notes.trim() || null,
 			due_at: dueAt || null,
 			priority: Number(priority),
-			tags: tagList,
+			tags,
 			alerts,
 		};
 		const onDone = {
@@ -102,14 +99,10 @@ export default function TaskModal({ task, defaultTags = [], onClose }) {
 						<option value={3}>high</option>
 					</select>
 				</label>
-				<label className="tasks-field">
-					<span>Tags (comma-separated)</span>
-					<input
-						value={tags}
-						onChange={(e) => setTags(e.target.value)}
-						placeholder="fitness, admin"
-					/>
-				</label>
+				<div className="tasks-field">
+					<span>Tags</span>
+					<TagPicker value={tags} onChange={setTags} />
+				</div>
 				<label className="tasks-field">
 					<span>Notes</span>
 					<textarea

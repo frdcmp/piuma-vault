@@ -21,11 +21,14 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
 	createConversation,
+	clearConversation,
+	deleteConversation,
 	fetchAgents,
 	fetchAllModels,
 	fetchConversation,
 	fetchConversations,
 	fetchDefaultAgent,
+	retitleConversation,
 	streamChat,
 	updateConversation,
 } from "../api/agentChatApi";
@@ -54,7 +57,7 @@ const CONV_STORAGE_KEY = "agents_active_conv";
 // in from the agent's `commands`. Mirrors the web ChatPanel.
 const CLIENT_COMMANDS = [
 	{ name: "new", description: "Start a new conversation" },
-	{ name: "clear", description: "Start a new conversation" },
+	{ name: "clear", description: "Wipe this conversation's messages" },
 	{ name: "sessions", description: "Switch to another conversation" },
 	{ name: "models", description: "Pick the model for this chat" },
 	{ name: "title", description: "Rename this conversation" },
@@ -245,6 +248,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	const [overlay, setOverlay] = useState(null);
 	const [pickList, setPickList] = useState([]);
 	const [titleDraft, setTitleDraft] = useState("");
+	const [sessionQuery, setSessionQuery] = useState(""); // sessions search box
 	// The open note is attached as context by default; tapping the chip toggles
 	// it off for the next send. Mobile keeps it to a single note (no tabs, no
 	// lock state) — the chip just mirrors whatever note opened this chat.
@@ -340,6 +344,24 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		}
 	}, []);
 
+	// Wipe the current conversation's messages but keep the same conversation
+	// (and its id) so the thread continues in place. With no active conversation
+	// this is just a local reset.
+	const clearMessages = useCallback(async () => {
+		abortRef.current?.abort();
+		abortRef.current = null;
+		setIsStreaming(false);
+		setOverlay(null);
+		setMessages([]);
+		setInput("");
+		if (!conversationId) return;
+		try {
+			await clearConversation(conversationId);
+		} catch {
+			/* ignore */
+		}
+	}, [conversationId]);
+
 	const handleClearConversation = useCallback(() => {
 		const message =
 			"This starts a fresh chat. The current conversation stays saved but won't be shown here anymore.";
@@ -405,6 +427,47 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		}
 	}, [titleDraft, conversationId]);
 
+	// /title → auto: regenerate the title with the LLM.
+	const autoRename = useCallback(async () => {
+		setOverlay(null);
+		if (!conversationId) return;
+		try {
+			await retitleConversation(conversationId);
+		} catch {
+			/* ignore */
+		}
+	}, [conversationId]);
+
+	// Delete a conversation straight from the /sessions list. Optimistically
+	// drops it; if it's the open one, reset to a fresh chat.
+	const removeConversation = useCallback(
+		async (id) => {
+			setPickList((prev) => prev.filter((c) => c.id !== id));
+			if (id === conversationId) startNewChat();
+			try {
+				await deleteConversation(id);
+			} catch {
+				/* ignore */
+			}
+		},
+		[conversationId, startNewChat],
+	);
+
+	// Load the sessions list (debounced) whenever the picker is open and the
+	// query changes. `q` matches conversation title or message text.
+	useEffect(() => {
+		if (overlay !== "sessions") return;
+		const q = sessionQuery.trim();
+		const t = setTimeout(async () => {
+			try {
+				setPickList(await fetchConversations(undefined, q || undefined));
+			} catch {
+				/* ignore */
+			}
+		}, 200);
+		return () => clearTimeout(t);
+	}, [overlay, sessionQuery]);
+
 	// Slash menu: client commands + the active agent's macros, filtered by the
 	// typed token (active only while the input is a single `/word`).
 	const slashMatches =
@@ -428,7 +491,8 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				return;
 			}
 			setInput("");
-			if (cmd.name === "new" || cmd.name === "clear") return startNewChat();
+			if (cmd.name === "new") return startNewChat();
+			if (cmd.name === "clear") return clearMessages();
 			if (cmd.name === "title") {
 				if (!conversationId) return;
 				setTitleDraft("");
@@ -445,15 +509,14 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				return;
 			}
 			if (cmd.name === "sessions") {
-				try {
-					setPickList(await fetchConversations());
-					setOverlay("sessions");
-				} catch {
-					/* ignore */
-				}
+				// The list is loaded (and re-loaded on search) by the debounced
+				// effect, keyed on the open overlay + query.
+				setPickList([]);
+				setSessionQuery("");
+				setOverlay("sessions");
 			}
 		},
-		[conversationId, startNewChat],
+		[conversationId, startNewChat, clearMessages],
 	);
 
 	const sendMessage = useCallback(async () => {
@@ -696,7 +759,14 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 										pressed && styles.slashItemPressed,
 									]}
 								>
-									<Text style={styles.slashName}>/{c.name}</Text>
+									<Text
+										style={[
+											styles.slashName,
+											c.kind === "agent" && styles.slashNameAgent,
+										]}
+									>
+										/{c.name}
+									</Text>
 									<Text style={styles.slashDesc} numberOfLines={1}>
 										{c.description}
 										{c.kind === "agent" ? " · agent" : ""}
@@ -798,29 +868,64 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 							</View>
 
 							{overlay === "title" ? (
-								<View style={styles.overlayTitleForm}>
-									<TextInput
-										style={styles.overlayInput}
-										value={titleDraft}
-										onChangeText={setTitleDraft}
-										placeholder="New title…"
-										placeholderTextColor={colors.muted}
-										autoFocus
-										returnKeyType="done"
-										onSubmitEditing={saveTitle}
-									/>
+								<View style={styles.overlayTitleWrap}>
 									<Pressable
-										onPress={saveTitle}
+										onPress={autoRename}
 										style={({ pressed }) => [
-											styles.overlaySave,
-											pressed && styles.sendBtnPressed,
+											styles.overlayAuto,
+											pressed && styles.slashItemPressed,
 										]}
 									>
-										<Text style={styles.sendLabel}>save</Text>
+										<Ionicons
+											name="sparkles-outline"
+											size={16}
+											color={colors.accent2}
+										/>
+										<View style={{ flex: 1 }}>
+											<Text style={styles.overlayAutoText}>
+												Auto-rename with AI
+											</Text>
+											<Text style={styles.overlayAutoDesc}>
+												Generate a title from the conversation
+											</Text>
+										</View>
 									</Pressable>
+									<Text style={styles.overlayOr}>or edit manually</Text>
+									<View style={styles.overlayTitleForm}>
+										<TextInput
+											style={styles.overlayInput}
+											value={titleDraft}
+											onChangeText={setTitleDraft}
+											placeholder="New title…"
+											placeholderTextColor={colors.muted}
+											returnKeyType="done"
+											onSubmitEditing={saveTitle}
+										/>
+										<Pressable
+											onPress={saveTitle}
+											style={({ pressed }) => [
+												styles.overlaySave,
+												pressed && styles.sendBtnPressed,
+											]}
+										>
+											<Text style={styles.sendLabel}>save</Text>
+										</Pressable>
+									</View>
 								</View>
 							) : (
-								<ScrollView style={styles.overlayList}>
+								<>
+									{overlay === "sessions" ? (
+										<TextInput
+											style={styles.overlaySearch}
+											value={sessionQuery}
+											onChangeText={setSessionQuery}
+											placeholder="Search title or message text…"
+											placeholderTextColor={colors.muted}
+											autoFocus
+											returnKeyType="search"
+										/>
+									) : null}
+									<ScrollView style={styles.overlayList}>
 									{pickList.length === 0 ? (
 										<Text style={styles.overlayEmpty}>None</Text>
 									) : overlay === "models" ? (
@@ -844,21 +949,40 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 										))
 									) : (
 										pickList.map((c) => (
-											<Pressable
-												key={c.id}
-												onPress={() => switchConversation(c.id)}
-												style={({ pressed }) => [
-													styles.overlayRow,
-													pressed && styles.slashItemPressed,
-												]}
-											>
-												<Text style={styles.overlayRowText} numberOfLines={1}>
-													{c.title || "Untitled"}
-												</Text>
-											</Pressable>
+											<View key={c.id} style={styles.overlaySessionRow}>
+												<Pressable
+													onPress={() => switchConversation(c.id)}
+													style={({ pressed }) => [
+														styles.overlaySessionMain,
+														pressed && styles.slashItemPressed,
+													]}
+												>
+													<Text
+														style={styles.overlayRowText}
+														numberOfLines={1}
+													>
+														{c.title || "Untitled"}
+													</Text>
+												</Pressable>
+												<Pressable
+													onPress={() => removeConversation(c.id)}
+													hitSlop={8}
+													style={({ pressed }) => [
+														styles.overlayDel,
+														pressed && styles.slashItemPressed,
+													]}
+												>
+													<Ionicons
+														name="trash-outline"
+														size={16}
+														color={colors.accent3}
+													/>
+												</Pressable>
+											</View>
 										))
 									)}
 								</ScrollView>
+								</>
 							)}
 						</Pressable>
 					</Pressable>
@@ -1216,6 +1340,8 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		fontWeight: "800",
 	},
+	// Agent-specific commands use a distinct hue vs the global/client ones.
+	slashNameAgent: { color: colors.accent4 },
 	slashDesc: {
 		flexShrink: 1,
 		color: colors.muted,
@@ -1253,6 +1379,17 @@ const styles = StyleSheet.create({
 		textTransform: "uppercase",
 	},
 	overlayList: { maxHeight: 320 },
+	overlaySearch: {
+		minHeight: 42,
+		marginBottom: 8,
+		backgroundColor: colors.bg,
+		borderWidth: 2,
+		borderColor: colors.borderStrong,
+		paddingHorizontal: 10,
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 14,
+	},
 	overlayEmpty: {
 		color: colors.muted,
 		fontFamily: MONO,
@@ -1266,6 +1403,22 @@ const styles = StyleSheet.create({
 		borderBottomWidth: 1,
 		borderBottomColor: colors.bgSoft,
 	},
+	// Session row: title (fills) + a delete button on the right.
+	overlaySessionRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		borderBottomWidth: 1,
+		borderBottomColor: colors.bgSoft,
+	},
+	overlaySessionMain: {
+		flex: 1,
+		paddingHorizontal: 8,
+		paddingVertical: 10,
+	},
+	overlayDel: {
+		paddingHorizontal: 10,
+		paddingVertical: 10,
+	},
 	overlayRowText: {
 		color: colors.text,
 		fontFamily: MONO,
@@ -1276,6 +1429,35 @@ const styles = StyleSheet.create({
 		fontFamily: MONO,
 		fontSize: 11,
 		marginTop: 2,
+	},
+	overlayTitleWrap: { gap: 10 },
+	overlayAuto: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
+		paddingHorizontal: 10,
+		paddingVertical: 10,
+		backgroundColor: colors.bg,
+		borderWidth: 2,
+		borderColor: colors.accent2,
+	},
+	overlayAutoText: {
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 14,
+		fontWeight: "800",
+	},
+	overlayAutoDesc: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 11,
+		marginTop: 2,
+	},
+	overlayOr: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 11,
+		textAlign: "center",
 	},
 	overlayTitleForm: {
 		flexDirection: "row",

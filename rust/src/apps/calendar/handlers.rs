@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
+use crate::apps::buckets::sync_tags;
 use crate::apps::realtime::ResourceAction;
 use crate::db::db::DbPool;
 
@@ -11,17 +12,33 @@ use super::models::{
     CalendarApiError, CalendarEvent, CreateEventRequest, ListEventsQuery, UpdateEventRequest,
 };
 
+// `tags` is assembled from db_event_tags → db_tags as a name array (FromRow maps
+// by name), so the API shape is unchanged.
 const EVENT_FIELDS: &str = "id, user_id, title, description, location, starts_at, ends_at, \
-     all_day, color, tags, rrule, alerts, created_at, updated_at";
+     all_day, color, \
+     (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_event_tags et \
+      JOIN db_tags tg ON tg.id = et.tag_id WHERE et.event_id = db_calendar_events.id) AS tags, \
+     rrule, alerts, created_at, updated_at";
 
 fn err(msg: impl Into<String>) -> CalendarApiError {
     CalendarApiError { error: msg.into() }
 }
 
+async fn fetch_event(
+    pool: &DbPool,
+    id: Uuid,
+    user_id: &str,
+) -> Result<Option<CalendarEvent>, sqlx::Error> {
+    sqlx::query_as::<_, CalendarEvent>(&format!(
+        "SELECT {EVENT_FIELDS} FROM db_calendar_events WHERE id = $1 AND user_id = $2"
+    ))
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+}
+
 fn require_read(user: &AuthenticatedUser) -> Option<HttpResponse> {
-    // `calendar.manage` is the full-control scope for third-party calendar
-    // managers; it satisfies both read and write. `admin_access` is handled by
-    // check_permission.
     if check_permission(user, "calendar.read") || check_permission(user, "calendar.manage") {
         None
     } else {
@@ -54,6 +71,15 @@ fn validate_event(title: &str, tags: &[String]) -> Option<HttpResponse> {
     None
 }
 
+// Best-effort (re)materialization of an event's alert schedule.
+async fn reschedule(pool: &DbPool, event_id: Uuid) {
+    if let Err(e) =
+        crate::apps::notifications::schedule::reschedule_source(pool, "event", event_id).await
+    {
+        log::error!("calendar reschedule failed for {event_id}: {e}");
+    }
+}
+
 // ── LIST (visible range) ────────────────────────────────────────────────────
 
 pub async fn list_events(
@@ -72,7 +98,17 @@ pub async fn list_events(
          WHERE user_id = $1 AND starts_at < $2 AND COALESCE(ends_at, starts_at) >= $3"
     );
     if query.tag.is_some() {
-        sql.push_str(" AND $4 = ANY(tags)");
+        sql.push_str(
+            " AND EXISTS (SELECT 1 FROM db_event_tags et JOIN db_tags tg ON tg.id = et.tag_id \
+              WHERE et.event_id = db_calendar_events.id AND tg.name = $4)",
+        );
+    }
+    if query.bucket.is_some() {
+        let idx = if query.tag.is_some() { 5 } else { 4 };
+        sql.push_str(&format!(
+            " AND EXISTS (SELECT 1 FROM db_event_tags et JOIN db_tags tg ON tg.id = et.tag_id \
+              WHERE et.event_id = db_calendar_events.id AND tg.bucket_id = ${idx})"
+        ));
     }
     sql.push_str(" ORDER BY starts_at");
 
@@ -82,6 +118,9 @@ pub async fn list_events(
         .bind(query.from);
     if let Some(ref tag) = query.tag {
         q = q.bind(tag);
+    }
+    if let Some(bucket) = query.bucket {
+        q = q.bind(bucket);
     }
 
     match q.fetch_all(pool.get_ref()).await {
@@ -113,46 +152,40 @@ pub async fn create_event(
         }
     }
 
-    let sql = format!(
+    let id: Uuid = match sqlx::query_scalar(
         "INSERT INTO db_calendar_events \
-         (user_id, title, description, location, starts_at, ends_at, all_day, color, tags, rrule, alerts) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING {EVENT_FIELDS}"
-    );
-
-    match sqlx::query_as::<_, CalendarEvent>(&sql)
-        .bind(&user.user_id)
-        .bind(&body.title)
-        .bind(&body.description)
-        .bind(&body.location)
-        .bind(body.starts_at)
-        .bind(body.ends_at)
-        .bind(body.all_day)
-        .bind(&body.color)
-        .bind(&body.tags)
-        .bind(&body.rrule)
-        .bind(&body.alerts)
-        .fetch_one(pool.get_ref())
-        .await
+         (user_id, title, description, location, starts_at, ends_at, all_day, color, rrule, alerts) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id",
+    )
+    .bind(&user.user_id)
+    .bind(&body.title)
+    .bind(&body.description)
+    .bind(&body.location)
+    .bind(body.starts_at)
+    .bind(body.ends_at)
+    .bind(body.all_day)
+    .bind(&body.color)
+    .bind(&body.rrule)
+    .bind(&body.alerts)
+    .fetch_one(pool.get_ref())
+    .await
     {
-        Ok(event) => {
-            reschedule(pool.get_ref(), event.id).await;
-            bus.publish(ResourceAction::Created, event.id);
-            HttpResponse::Created().json(event)
-        }
+        Ok(id) => id,
         Err(e) => {
             log::error!("calendar create failed: {e}");
-            HttpResponse::BadRequest().json(err("Failed to create event"))
+            return HttpResponse::BadRequest().json(err("Failed to create event"));
         }
-    }
-}
+    };
 
-// Best-effort (re)materialization of an event's alert schedule. Never fails the
-// request — logs and moves on.
-async fn reschedule(pool: &DbPool, event_id: Uuid) {
-    if let Err(e) =
-        crate::apps::notifications::schedule::reschedule_source(pool, "event", event_id).await
-    {
-        log::error!("calendar reschedule failed for {event_id}: {e}");
+    if let Err(e) = sync_tags(pool.get_ref(), &user.user_id, "db_event_tags", "event_id", id, &body.tags).await {
+        log::error!("event tag sync failed: {e}");
+    }
+    reschedule(pool.get_ref(), id).await;
+    bus.publish(ResourceAction::Created, id);
+
+    match fetch_event(pool.get_ref(), id, &user.user_id).await {
+        Ok(Some(event)) => HttpResponse::Created().json(event),
+        _ => HttpResponse::InternalServerError().json(err("Created but failed to load event")),
     }
 }
 
@@ -166,15 +199,7 @@ pub async fn get_event(
     if let Some(r) = require_read(&user) {
         return r;
     }
-    let id = path.into_inner();
-    let sql =
-        format!("SELECT {EVENT_FIELDS} FROM db_calendar_events WHERE id = $1 AND user_id = $2");
-    match sqlx::query_as::<_, CalendarEvent>(&sql)
-        .bind(id)
-        .bind(&user.user_id)
-        .fetch_optional(pool.get_ref())
-        .await
-    {
+    match fetch_event(pool.get_ref(), path.into_inner(), &user.user_id).await {
         Ok(Some(event)) => HttpResponse::Ok().json(event),
         Ok(None) => HttpResponse::NotFound().json(err("Event not found")),
         Err(e) => {
@@ -204,11 +229,9 @@ pub async fn update_event(
         }
     }
 
-    // Partial update via COALESCE-style binds. Each Option maps to "keep existing
-    // value when None". ends_at and rrule are double-Option so an explicit null
-    // clears them while an omitted field keeps the stored value.
-    let sql = format!(
-        "UPDATE db_calendar_events SET \
+    // ends_at and rrule are double-Option so an explicit null clears them while an
+    // omitted field keeps the stored value.
+    let sql = "UPDATE db_calendar_events SET \
             title = COALESCE($3, title), \
             description = CASE WHEN $4 THEN $5 ELSE description END, \
             location = CASE WHEN $6 THEN $7 ELSE location END, \
@@ -216,12 +239,10 @@ pub async fn update_event(
             ends_at = CASE WHEN $9 THEN $10 ELSE ends_at END, \
             all_day = COALESCE($11, all_day), \
             color = CASE WHEN $12 THEN $13 ELSE color END, \
-            tags = COALESCE($14, tags), \
-            rrule = CASE WHEN $15 THEN $16 ELSE rrule END, \
-            alerts = COALESCE($17, alerts), \
+            rrule = CASE WHEN $14 THEN $15 ELSE rrule END, \
+            alerts = COALESCE($16, alerts), \
             updated_at = NOW() \
-         WHERE id = $1 AND user_id = $2 RETURNING {EVENT_FIELDS}"
-    );
+         WHERE id = $1 AND user_id = $2 RETURNING id";
 
     let (set_desc, desc) = match &body.description {
         Some(v) => (true, Some(v.clone())),
@@ -244,7 +265,7 @@ pub async fn update_event(
         None => (false, None),
     };
 
-    match sqlx::query_as::<_, CalendarEvent>(&sql)
+    let found: Option<Uuid> = match sqlx::query_scalar(sql)
         .bind(id)
         .bind(&user.user_id)
         .bind(&body.title)
@@ -258,23 +279,33 @@ pub async fn update_event(
         .bind(body.all_day)
         .bind(set_color)
         .bind(color)
-        .bind(&body.tags)
         .bind(set_rrule)
         .bind(rrule)
         .bind(&body.alerts)
         .fetch_optional(pool.get_ref())
         .await
     {
-        Ok(Some(event)) => {
-            reschedule(pool.get_ref(), event.id).await;
-            bus.publish(ResourceAction::Updated, event.id);
-            HttpResponse::Ok().json(event)
-        }
-        Ok(None) => HttpResponse::NotFound().json(err("Event not found")),
+        Ok(v) => v,
         Err(e) => {
             log::error!("calendar update failed: {e}");
-            HttpResponse::BadRequest().json(err("Failed to update event"))
+            return HttpResponse::BadRequest().json(err("Failed to update event"));
         }
+    };
+    if found.is_none() {
+        return HttpResponse::NotFound().json(err("Event not found"));
+    }
+
+    if let Some(ref tags) = body.tags {
+        if let Err(e) = sync_tags(pool.get_ref(), &user.user_id, "db_event_tags", "event_id", id, tags).await {
+            log::error!("event tag sync failed: {e}");
+        }
+    }
+    reschedule(pool.get_ref(), id).await;
+    bus.publish(ResourceAction::Updated, id);
+
+    match fetch_event(pool.get_ref(), id, &user.user_id).await {
+        Ok(Some(event)) => HttpResponse::Ok().json(event),
+        _ => HttpResponse::InternalServerError().json(err("Updated but failed to load event")),
     }
 }
 
@@ -290,15 +321,14 @@ pub async fn delete_event(
         return r;
     }
     let id = path.into_inner();
+    // db_event_tags rows cascade on delete.
     match sqlx::query("DELETE FROM db_calendar_events WHERE id = $1 AND user_id = $2")
         .bind(id)
         .bind(&user.user_id)
         .execute(pool.get_ref())
         .await
     {
-        Ok(res) if res.rows_affected() == 0 => {
-            HttpResponse::NotFound().json(err("Event not found"))
-        }
+        Ok(res) if res.rows_affected() == 0 => HttpResponse::NotFound().json(err("Event not found")),
         Ok(_) => {
             let _ =
                 crate::apps::notifications::schedule::purge_source(pool.get_ref(), "event", id).await;

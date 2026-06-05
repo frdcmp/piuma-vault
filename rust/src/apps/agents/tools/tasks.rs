@@ -42,7 +42,12 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                     "notes": { "type": "string" },
                     "due_at": { "type": "string", "description": "ISO-8601 timestamp (optional)" },
                     "priority": { "type": "integer", "description": "0 none, 1 low, 2 med, 3 high" },
-                    "tags": { "type": "array", "items": { "type": "string" } }
+                    "tags": { "type": "array", "items": { "type": "string" } },
+                    "alerts": {
+                        "type": "array",
+                        "items": { "type": "integer" },
+                        "description": "Reminder/alarm offsets in MINUTES BEFORE due_at; these fire push notifications + a full-screen alarm. 0 = ring exactly at due_at. e.g. [0] alarms at the due time, [10, 0] alarms 10 min before and at the due time. Requires due_at."
+                    }
                 },
                 "required": ["title"]
             }),
@@ -59,7 +64,12 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                     "due_at": { "type": "string", "description": "ISO-8601 timestamp" },
                     "priority": { "type": "integer" },
                     "tags": { "type": "array", "items": { "type": "string" } },
-                    "done": { "type": "boolean" }
+                    "done": { "type": "boolean" },
+                    "alerts": {
+                        "type": "array",
+                        "items": { "type": "integer" },
+                        "description": "Replace the task's reminders/alarms. Minutes before due_at; 0 = at the due time. [] clears them. Requires due_at."
+                    }
                 },
                 "required": ["id"]
             }),
@@ -85,7 +95,12 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                     "notes": { "type": "string" },
                     "priority": { "type": "integer" },
                     "tags": { "type": "array", "items": { "type": "string" } },
-                    "until": { "type": "string", "description": "ISO-8601 end (optional)" }
+                    "until": { "type": "string", "description": "ISO-8601 end (optional)" },
+                    "alerts": {
+                        "type": "array",
+                        "items": { "type": "integer" },
+                        "description": "Reminder/alarm offsets in minutes before each occurrence; 0 = at the occurrence time."
+                    }
                 },
                 "required": ["title", "rrule", "dtstart"]
             }),
@@ -103,7 +118,12 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                     "notes": { "type": "string" },
                     "priority": { "type": "integer" },
                     "tags": { "type": "array", "items": { "type": "string" } },
-                    "active": { "type": "boolean" }
+                    "active": { "type": "boolean" },
+                    "alerts": {
+                        "type": "array",
+                        "items": { "type": "integer" },
+                        "description": "Replace the template's reminders/alarms. Minutes before each occurrence; 0 = at the occurrence time. [] clears them."
+                    }
                 },
                 "required": ["id"]
             }),
@@ -175,8 +195,10 @@ pub async fn get_task(pool: &DbPool, user_id: &str, args: &Value) -> Result<Valu
     let id = uuid_arg(args, "id")?;
     let row: Option<(Uuid, String, Option<String>, bool, Option<DateTime<Utc>>, i16, Vec<String>)> =
         sqlx::query_as(
-            "SELECT id, title, notes, done, due_at, priority, tags FROM db_tasks \
-             WHERE id = $1 AND user_id = $2",
+            "SELECT id, title, notes, done, due_at, priority, \
+             (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_task_tags tt \
+              JOIN db_tags tg ON tg.id = tt.tag_id WHERE tt.task_id = db_tasks.id) AS tags \
+             FROM db_tasks WHERE id = $1 AND user_id = $2",
         )
         .bind(id)
         .bind(user_id)
@@ -217,8 +239,12 @@ pub async fn create_task(pool: &DbPool, user_id: &str, args: &Value) -> Result<V
     let due_at = parse_dt(args, "due_at");
     let priority = opt_i16(args, "priority").unwrap_or(0);
     let tags = opt_str_array(args, "tags").unwrap_or_default();
+    let alerts = parse_alerts(args, "alerts").unwrap_or_else(|| json!([]));
+    if alerts.as_array().is_some_and(|a| !a.is_empty()) && due_at.is_none() {
+        return Err("a due_at is required to set alerts/alarms".into());
+    }
     let id: Uuid = sqlx::query_scalar(
-        "INSERT INTO db_tasks (user_id, title, notes, due_at, priority, tags) \
+        "INSERT INTO db_tasks (user_id, title, notes, due_at, priority, alerts) \
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
     )
     .bind(user_id)
@@ -226,10 +252,13 @@ pub async fn create_task(pool: &DbPool, user_id: &str, args: &Value) -> Result<V
     .bind(&notes)
     .bind(due_at)
     .bind(priority)
-    .bind(&tags)
+    .bind(&alerts)
     .fetch_one(pool)
     .await
     .map_err(|e| e.to_string())?;
+    crate::apps::buckets::sync_tags(pool, user_id, "db_task_tags", "task_id", id, &tags)
+        .await
+        .map_err(|e| e.to_string())?;
     reschedule(pool, "task", id).await;
     Ok(json!({ "id": id, "title": title }))
 }
@@ -242,15 +271,16 @@ pub async fn update_task(pool: &DbPool, user_id: &str, args: &Value) -> Result<V
     let priority = opt_i16(args, "priority");
     let tags = opt_str_array(args, "tags");
     let done = opt_bool(args, "done");
+    let alerts = parse_alerts(args, "alerts");
     let row: Option<(Uuid, String, bool)> = sqlx::query_as(
         "UPDATE db_tasks SET \
            title = COALESCE($3, title), \
            notes = COALESCE($4, notes), \
            due_at = COALESCE($5, due_at), \
            priority = COALESCE($6, priority), \
-           tags = COALESCE($7, tags), \
-           done = COALESCE($8, done), \
-           completed_at = CASE WHEN $8 IS NULL THEN completed_at WHEN $8 THEN NOW() ELSE NULL END, \
+           done = COALESCE($7, done), \
+           alerts = COALESCE($8, alerts), \
+           completed_at = CASE WHEN $7 IS NULL THEN completed_at WHEN $7 THEN NOW() ELSE NULL END, \
            updated_at = NOW() \
          WHERE id = $1 AND user_id = $2 \
          RETURNING id, title, done",
@@ -261,13 +291,18 @@ pub async fn update_task(pool: &DbPool, user_id: &str, args: &Value) -> Result<V
     .bind(&notes)
     .bind(due_at)
     .bind(priority)
-    .bind(&tags)
     .bind(done)
+    .bind(&alerts)
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?;
     match row {
         Some((id, title, done)) => {
+            if let Some(t) = &tags {
+                crate::apps::buckets::sync_tags(pool, user_id, "db_task_tags", "task_id", id, t)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
             reschedule(pool, "task", id).await;
             Ok(json!({ "id": id, "title": title, "done": done }))
         }
@@ -304,21 +339,25 @@ pub async fn create_recurring(pool: &DbPool, user_id: &str, args: &Value) -> Res
     let priority = opt_i16(args, "priority").unwrap_or(0);
     let tags = opt_str_array(args, "tags").unwrap_or_default();
     let until = parse_dt(args, "until");
+    let alerts = parse_alerts(args, "alerts").unwrap_or_else(|| json!([]));
     let id: Uuid = sqlx::query_scalar(
-        "INSERT INTO db_recurring_tasks (user_id, title, notes, priority, tags, rrule, dtstart, until) \
+        "INSERT INTO db_recurring_tasks (user_id, title, notes, priority, rrule, dtstart, until, alerts) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
     )
     .bind(user_id)
     .bind(&title)
     .bind(&notes)
     .bind(priority)
-    .bind(&tags)
     .bind(&rrule)
     .bind(dtstart)
     .bind(until)
+    .bind(&alerts)
     .fetch_one(pool)
     .await
     .map_err(|e| e.to_string())?;
+    crate::apps::buckets::sync_tags(pool, user_id, "db_recurring_task_tags", "recurring_id", id, &tags)
+        .await
+        .map_err(|e| e.to_string())?;
     reschedule(pool, "recurring", id).await;
     Ok(json!({ "id": id, "title": title }))
 }
@@ -332,6 +371,7 @@ pub async fn update_recurring(pool: &DbPool, user_id: &str, args: &Value) -> Res
     let priority = opt_i16(args, "priority");
     let tags = opt_str_array(args, "tags");
     let active = opt_bool(args, "active");
+    let alerts = parse_alerts(args, "alerts");
     let row: Option<(Uuid, String)> = sqlx::query_as(
         "UPDATE db_recurring_tasks SET \
            title = COALESCE($3, title), \
@@ -339,8 +379,8 @@ pub async fn update_recurring(pool: &DbPool, user_id: &str, args: &Value) -> Res
            dtstart = COALESCE($5, dtstart), \
            notes = COALESCE($6, notes), \
            priority = COALESCE($7, priority), \
-           tags = COALESCE($8, tags), \
-           active = COALESCE($9, active), \
+           active = COALESCE($8, active), \
+           alerts = COALESCE($9, alerts), \
            updated_at = NOW() \
          WHERE id = $1 AND user_id = $2 RETURNING id, title",
     )
@@ -351,13 +391,18 @@ pub async fn update_recurring(pool: &DbPool, user_id: &str, args: &Value) -> Res
     .bind(dtstart)
     .bind(&notes)
     .bind(priority)
-    .bind(&tags)
     .bind(active)
+    .bind(&alerts)
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?;
     match row {
         Some((id, title)) => {
+            if let Some(t) = &tags {
+                crate::apps::buckets::sync_tags(pool, user_id, "db_recurring_task_tags", "recurring_id", id, t)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
             reschedule(pool, "recurring", id).await;
             Ok(json!({ "id": id, "title": title }))
         }
@@ -387,7 +432,10 @@ pub async fn complete_occurrence(pool: &DbPool, user_id: &str, args: &Value) -> 
 
     // Pull the template fields to materialise a completed occurrence row.
     let tmpl: Option<(String, Option<String>, i16, Vec<String>)> = sqlx::query_as(
-        "SELECT title, notes, priority, tags FROM db_recurring_tasks WHERE id = $1 AND user_id = $2",
+        "SELECT title, notes, priority, \
+         (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_recurring_task_tags rtt \
+          JOIN db_tags tg ON tg.id = rtt.tag_id WHERE rtt.recurring_id = db_recurring_tasks.id) AS tags \
+         FROM db_recurring_tasks WHERE id = $1 AND user_id = $2",
     )
     .bind(recurrence_id)
     .bind(user_id)
@@ -395,23 +443,26 @@ pub async fn complete_occurrence(pool: &DbPool, user_id: &str, args: &Value) -> 
     .await
     .map_err(|e| e.to_string())?;
     let (title, notes, priority, tags) = tmpl.ok_or("recurring task not found")?;
-    sqlx::query(
+    let task_id: Uuid = sqlx::query_scalar(
         "INSERT INTO db_tasks \
-           (user_id, title, notes, done, completed_at, priority, tags, recurrence_id, occurrence_date) \
-         VALUES ($1, $2, $3, TRUE, NOW(), $4, $5, $6, $7) \
+           (user_id, title, notes, done, completed_at, priority, recurrence_id, occurrence_date) \
+         VALUES ($1, $2, $3, TRUE, NOW(), $4, $5, $6) \
          ON CONFLICT (recurrence_id, occurrence_date) \
-         DO UPDATE SET done = TRUE, completed_at = NOW(), updated_at = NOW()",
+         DO UPDATE SET done = TRUE, completed_at = NOW(), updated_at = NOW() \
+         RETURNING id",
     )
     .bind(user_id)
     .bind(&title)
     .bind(&notes)
     .bind(priority)
-    .bind(&tags)
     .bind(recurrence_id)
     .bind(occurrence_date)
-    .execute(pool)
+    .fetch_one(pool)
     .await
     .map_err(|e| e.to_string())?;
+    crate::apps::buckets::sync_tags(pool, user_id, "db_task_tags", "task_id", task_id, &tags)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(json!({ "recurrence_id": recurrence_id, "occurrence_date": date_str, "done": true }))
 }
 

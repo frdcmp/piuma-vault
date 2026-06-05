@@ -15,6 +15,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AlertsField from "../components/AlertsField";
 import BottomSheet from "../components/BottomSheet";
 import DateTimePickerField from "../components/DateTimePickerField";
+import ManageBucketsSheet from "../components/ManageBucketsSheet";
+import TagPicker from "../components/TagPicker";
 import {
 	useCalendarEvents,
 	useCalendarLiveUpdates,
@@ -22,6 +24,7 @@ import {
 	useDeleteEvent,
 	useUpdateEvent,
 } from "../queries/calendarQuery";
+import { useTagsLiveUpdates, useTagTree } from "../queries/tagsQuery";
 import {
 	useCompleteOccurrence,
 	useRecurringTasks,
@@ -32,7 +35,10 @@ import {
 import { formatTime } from "../utils/dateTime";
 import { syncLocalAlerts } from "../utils/notifications";
 import { expandRecurrence } from "../utils/recurrence";
+import { tagColor } from "../utils/tagColor";
 import { colors } from "../utils/theme";
+
+const ALL = { key: "all", names: null, label: "all" };
 
 const KEY = (d) => d.format("YYYY-MM-DD");
 const WEEKDAYS = [
@@ -183,6 +189,10 @@ export default function CalendarScreen({ navigation }) {
 	const [daySheet, setDaySheet] = useState(null); // dayjs | null
 	const [eventSheet, setEventSheet] = useState(null); // { event } | { date } | null
 	const pendingEvent = useRef(null); // chains daySheet -> eventSheet across the close animation
+	const [sel, setSel] = useState(ALL); // bucket/tag filter selection
+	const [expanded, setExpanded] = useState(null); // expanded bucket/inbox key
+	const [filterOpen, setFilterOpen] = useState(false);
+	const [manageSheet, setManageSheet] = useState(false);
 
 	const months = useMemo(() => {
 		const arr = [];
@@ -211,8 +221,36 @@ export default function CalendarScreen({ navigation }) {
 	});
 	const { data: tasks = [] } = useTasks();
 	const { data: recurring = [] } = useRecurringTasks();
+	const { data: tree } = useTagTree("calendar");
+	useTagsLiveUpdates("calendar");
 	const toggleTask = useToggleTask();
 	const completeOccurrence = useCompleteOccurrence();
+
+	const buckets = tree?.buckets ?? [];
+	const inbox = tree?.inbox ?? [];
+	const expandedTags =
+		expanded === "inbox"
+			? inbox
+			: (buckets.find((b) => `bucket:${b.id}` === expanded)?.tags ?? []);
+
+	const selectAll = () => {
+		setSel(ALL);
+		setExpanded(null);
+	};
+	const selectBucket = (b) => {
+		setSel({
+			key: `bucket:${b.id}`,
+			names: b.tags.map((t) => t.name),
+			label: b.name,
+		});
+		setExpanded((e) => (e === `bucket:${b.id}` ? null : `bucket:${b.id}`));
+	};
+	const selectInbox = () => {
+		setSel({ key: "inbox", names: inbox.map((t) => t.name), label: "inbox" });
+		setExpanded((e) => (e === "inbox" ? null : "inbox"));
+	};
+	const selectTag = (name) =>
+		setSel({ key: `tag:${name}`, names: [name], label: `#${name}` });
 
 	// Keep on-device local notifications in sync with the loaded agenda data, so
 	// alerts fire offline. Remote push (notification-worker) covers anything
@@ -237,13 +275,21 @@ export default function CalendarScreen({ navigation }) {
 				map.set(k, { events: [], deadlines: [], occurrences: [] });
 			return map.get(k);
 		};
-		for (const ev of events) bucket(KEY(dayjs(ev.starts_at))).events.push(ev);
+		// Bucket/tag filter (null names = show everything), applied uniformly.
+		const matches = (tg) =>
+			!sel.names || tg?.some((n) => sel.names.includes(n));
+		for (const ev of events) {
+			if (!matches(ev.tags)) continue;
+			bucket(KEY(dayjs(ev.starts_at))).events.push(ev);
+		}
 		for (const t of tasks) {
 			if (t.recurrence_id) continue;
-			if (t.due_at) bucket(KEY(dayjs(t.due_at))).deadlines.push(t);
+			if (t.due_at && matches(t.tags))
+				bucket(KEY(dayjs(t.due_at))).deadlines.push(t);
 		}
 		for (const tpl of recurring) {
 			if (!tpl.active) continue;
+			if (!matches(tpl.tags)) continue;
 			for (const occ of expandRecurrence({
 				rrule: tpl.rrule,
 				dtstart: tpl.dtstart,
@@ -259,7 +305,7 @@ export default function CalendarScreen({ navigation }) {
 			}
 		}
 		return map;
-	}, [events, tasks, recurring, materialized, rangeStart, rangeEnd]);
+	}, [events, tasks, recurring, materialized, rangeStart, rangeEnd, sel.names]);
 
 	const todayKey = dayjs().format("YYYY-MM-DD");
 
@@ -317,10 +363,76 @@ export default function CalendarScreen({ navigation }) {
 					<Ionicons name="chevron-back" size={22} color={colors.text} />
 				</Pressable>
 				<Text style={s.title}>{visibleLabel}</Text>
-				<Pressable onPress={scrollToToday} hitSlop={8}>
-					<Text style={s.today}>today</Text>
-				</Pressable>
+				<View style={s.headerRight}>
+					<Pressable
+						onPress={() =>
+							sel.key === "all" ? setFilterOpen((o) => !o) : selectAll()
+						}
+						hitSlop={8}
+					>
+						<Ionicons
+							name={sel.key === "all" ? "filter-outline" : "close-circle"}
+							size={18}
+							color={sel.key === "all" ? colors.muted : colors.accent2}
+						/>
+					</Pressable>
+					<Pressable onPress={scrollToToday} hitSlop={8}>
+						<Text style={s.today}>today</Text>
+					</Pressable>
+				</View>
 			</View>
+
+			{filterOpen ? (
+				<View style={s.filterBar}>
+					<ScrollView
+						horizontal
+						showsHorizontalScrollIndicator={false}
+						keyboardShouldPersistTaps="handled"
+						contentContainerStyle={s.filterRow}
+					>
+						<CalChip
+							label="all"
+							active={sel.key === "all"}
+							onPress={selectAll}
+						/>
+						{buckets.map((b) => (
+							<CalChip
+								key={b.id}
+								label={b.name}
+								color={b.color || undefined}
+								active={expanded === `bucket:${b.id}`}
+								onPress={() => selectBucket(b)}
+							/>
+						))}
+						{inbox.length ? (
+							<CalChip
+								label="⊕ inbox"
+								active={expanded === "inbox"}
+								onPress={selectInbox}
+							/>
+						) : null}
+						<CalChip label="⚙ manage" onPress={() => setManageSheet(true)} />
+					</ScrollView>
+					{expanded ? (
+						<ScrollView
+							horizontal
+							showsHorizontalScrollIndicator={false}
+							keyboardShouldPersistTaps="handled"
+							contentContainerStyle={[s.filterRow, s.filterRowSub]}
+						>
+							{expandedTags.map((t) => (
+								<CalChip
+									key={t.id}
+									label={`#${t.name}`}
+									color={t.color || tagColor(t.name)}
+									active={sel.key === `tag:${t.name}`}
+									onPress={() => selectTag(t.name)}
+								/>
+							))}
+						</ScrollView>
+					) : null}
+				</View>
+			) : null}
 
 			<View style={s.weekRow}>
 				{WEEKDAYS.map((w) => (
@@ -380,6 +492,10 @@ export default function CalendarScreen({ navigation }) {
 					initialDate={eventSheet.date}
 					onClose={() => setEventSheet(null)}
 				/>
+			) : null}
+
+			{manageSheet ? (
+				<ManageBucketsSheet onClose={() => setManageSheet(false)} />
 			) : null}
 		</View>
 	);
@@ -476,6 +592,7 @@ function EventSheet({ event, initialDate, onClose }) {
 	const [startsAt, setStartsAt] = useState(event?.starts_at ?? defaultStart);
 	const [endsAt, setEndsAt] = useState(event?.ends_at ?? null);
 	const [location, setLocation] = useState(event?.location ?? "");
+	const [tags, setTags] = useState(event?.tags ?? []);
 	const [alerts, setAlerts] = useState(event?.alerts ?? []);
 
 	const save = () => {
@@ -486,6 +603,7 @@ function EventSheet({ event, initialDate, onClose }) {
 			ends_at: endsAt || null,
 			all_day: allDay,
 			location: location.trim() || null,
+			tags,
 			alerts,
 		};
 		const done = { onSuccess: onClose };
@@ -535,6 +653,8 @@ function EventSheet({ event, initialDate, onClose }) {
 					placeholder="Optional"
 					placeholderTextColor={colors.muted}
 				/>
+				<Text style={s.label}>Tags</Text>
+				<TagPicker value={tags} onChange={setTags} />
 				<Text style={s.label}>Alerts</Text>
 				<AlertsField value={alerts} onChange={setAlerts} />
 				<Pressable style={s.saveBtn} onPress={save}>
@@ -550,6 +670,24 @@ function EventSheet({ event, initialDate, onClose }) {
 				) : null}
 			</View>
 		</BottomSheet>
+	);
+}
+
+// Filter chip for the calendar bucket/tag bar.
+function CalChip({ label, active, color, onPress }) {
+	return (
+		<Pressable
+			style={[s.calChip, active && s.calChipOn]}
+			onPress={onPress}
+			hitSlop={6}
+		>
+			<Text
+				style={[s.calChipText, active && s.calChipTextOn, color && { color }]}
+				numberOfLines={1}
+			>
+				{label}
+			</Text>
+		</Pressable>
 	);
 }
 
@@ -572,6 +710,28 @@ const s = StyleSheet.create({
 		marginLeft: 12,
 	},
 	today: { color: colors.accent, fontSize: 13 },
+	headerRight: { flexDirection: "row", alignItems: "center", gap: 14 },
+	filterBar: {
+		borderBottomWidth: 1,
+		borderBottomColor: colors.border,
+	},
+	filterRow: {
+		flexDirection: "row",
+		gap: 6,
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+	},
+	filterRowSub: { paddingTop: 0 },
+	calChip: {
+		borderWidth: 1,
+		borderColor: colors.border,
+		backgroundColor: colors.bgSoft,
+		paddingHorizontal: 10,
+		paddingVertical: 5,
+	},
+	calChipOn: { borderColor: colors.accent2, backgroundColor: colors.bg },
+	calChipText: { color: colors.text, fontSize: 12 },
+	calChipTextOn: { color: colors.accent2 },
 	weekRow: {
 		flexDirection: "row",
 		paddingVertical: 8,

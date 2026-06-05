@@ -61,6 +61,8 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_PORT=${DB_PORT}
+      # boot-time schema-drift verifier (db_init stays as-is).
+      - DB_VERIFY_SCHEMA=${DB_VERIFY_SCHEMA:-0}
       # Email
       - EMAIL_HOST=${EMAIL_HOST}
       - EMAIL_PORT=${EMAIL_PORT}

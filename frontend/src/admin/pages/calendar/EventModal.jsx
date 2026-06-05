@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
 import { useState } from "react";
+import TagPicker from "../../../components/TagPicker";
 import {
 	useCreateEvent,
 	useDeleteEvent,
@@ -36,6 +37,7 @@ export default function EventModal({ event, initialDate, onClose }) {
 	const [location, setLocation] = useState(event?.location ?? "");
 	const [color, setColor] = useState(event?.color ?? "#6cb6ff");
 	const [description, setDescription] = useState(event?.description ?? "");
+	const [tags, setTags] = useState(event?.tags ?? []);
 	const [alerts, setAlerts] = useState(event?.alerts ?? []);
 	const [error, setError] = useState("");
 
@@ -55,6 +57,7 @@ export default function EventModal({ event, initialDate, onClose }) {
 			location: location.trim() || null,
 			color,
 			description: description.trim() || null,
+			tags,
 			alerts,
 		};
 		const onDone = {
@@ -138,6 +141,11 @@ export default function EventModal({ event, initialDate, onClose }) {
 						onChange={(e) => setColor(e.target.value)}
 					/>
 				</label>
+
+				<div className="cal-field">
+					<span>Tags</span>
+					<TagPicker value={tags} onChange={setTags} />
+				</div>
 
 				<label className="cal-field">
 					<span>Notes</span>

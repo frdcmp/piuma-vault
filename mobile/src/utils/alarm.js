@@ -30,7 +30,9 @@ export async function ensureAlarmChannel() {
 		importance: AndroidImportance.HIGH,
 		visibility: AndroidVisibility.PUBLIC,
 		vibration: true,
-		vibrationPattern: [0, 500, 500, 500],
+		// Notifee requires an even number of POSITIVE values: [vibrate, pause, …]
+		// (no leading 0 like Android's native / expo-notifications convention).
+		vibrationPattern: [500, 500, 500, 500],
 		bypassDnd: true,
 	});
 	channelReady = true;

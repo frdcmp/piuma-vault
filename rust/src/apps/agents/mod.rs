@@ -9,4 +9,5 @@ pub mod providers;
 pub mod registry;
 pub mod routes;
 pub mod seed;
+pub mod title;
 pub mod tools;
