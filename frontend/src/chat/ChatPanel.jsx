@@ -9,124 +9,38 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { PvButton, PvModal } from "@/admin/components/ui";
+import { PvModal } from "@/admin/components/ui";
 import {
-	getSessionKey,
-	rotateSessionKey,
+	createConversation,
+	fetchConversation,
 	streamChat,
-} from "../api/openclawChat";
-import { useOpenclawHistory, useServices } from "../queries";
+} from "../api/agentChatApi";
+import { useAgentList, useDefaultAgent } from "../queries";
 import useNotesWorkspaceStore from "../store/notesWorkspaceStore";
 import PiumaRunning from "./PiumaRunning";
 import "./ChatPage.css";
 
-const ASSISTANT_LABEL = "openclaw stream";
-const SUBMIT_LABEL = "ask claw";
+// Persists the active conversation so the panel restores it across mounts.
+const STORAGE_KEY = "pv:agents-active-conv";
 
-// Last path segment, used as the compact chip label (full path lives in the
-// title attr). Falls back to the raw path if there's no separator.
 const noteLabel = (path) => path.split("/").filter(Boolean).pop() || path;
-
-// Escape a path for safe use inside an XML attribute value.
-const escapeXmlAttr = (value) =>
-	value
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;");
-
-// Wrap a turn's text with its attached notes as a structured <context> block
-// so the gateway gets clear, parseable delimiters instead of a loose prefix.
-const withContextBlock = (content, context) => {
-	if (!context?.length) return content;
-	const notes = context
-		.map((p) => `  <note path="${escapeXmlAttr(p)}" />`)
-		.join("\n");
-	return `<context>\n${notes}\n</context>\n\n${content}`;
-};
 
 const newMessageId = () =>
 	`msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-// Map a gateway transcript entry ({role, content, context?}) to our UI message
-// shape. The backend recovers the per-turn note chips from the stored <context>
-// block; `tools` activity isn't persisted, so reloaded assistant turns get an
-// empty tool list.
-const historyToMessage = (m) => ({
-	id: newMessageId(),
-	role: m.role,
-	content: m.content,
-	...(m.context?.length ? { context: m.context } : {}),
-	...(m.role === "assistant" ? { tools: [] } : {}),
-});
-
-// Compact one-line summary of a tool call's args object, e.g.
-// `{ query: "16khz" }` → `query: "16khz"`. Long values are clipped.
-const summarizeToolArgs = (args) => {
-	if (!args || typeof args !== "object") return "";
-	return Object.entries(args)
-		.map(([k, v]) => {
-			const raw = typeof v === "string" ? v : JSON.stringify(v);
-			const clipped = raw.length > 48 ? `${raw.slice(0, 47)}…` : raw;
-			return `${k}: ${clipped}`;
-		})
-		.join(", ");
+// Normalised content blocks → plain text (for rendering + history seed).
+const blocksToText = (content) => {
+	if (typeof content === "string") return content;
+	if (Array.isArray(content))
+		return content
+			.filter((b) => b.type === "text")
+			.map((b) => b.text)
+			.join("");
+	return "";
 };
 
-// Fold a `tool`-stream event into the assistant message's tool list, keyed by
-// toolCallId: `start` adds a running entry, `result` flips it to done/error.
-const applyToolEvent = (tools = [], evt) => {
-	const id = evt.toolCallId || evt.name;
-	const idx = tools.findIndex((t) => t.id === id);
-	if (evt.phase === "result") {
-		if (idx < 0) return tools;
-		const next = [...tools];
-		next[idx] = { ...next[idx], status: evt.isError ? "error" : "done" };
-		return next;
-	}
-	const entry = {
-		id,
-		name: evt.name || "tool",
-		args: summarizeToolArgs(evt.args),
-		status: "running",
-	};
-	if (idx < 0) return [...tools, entry];
-	const next = [...tools];
-	// Keep a terminal status if a stray start/update arrives after the result.
-	const prev = next[idx];
-	next[idx] =
-		prev.status === "done" || prev.status === "error"
-			? { ...prev, ...entry, status: prev.status }
-			: { ...prev, ...entry };
-	return next;
-};
-
-const TOOL_GLYPH = { running: "⛏", done: "✓", error: "✕" };
-
-// Persistent list of tools the agent ran/is running for one assistant turn.
-function ToolActivity({ tools }) {
-	if (!tools?.length) return null;
-	return (
-		<div className="chat-tools">
-			{tools.map((t) => (
-				<div key={t.id} className={`chat-tool chat-tool--${t.status}`}>
-					<span className="chat-tool-icon" aria-hidden="true">
-						{TOOL_GLYPH[t.status] || "⛏"}
-					</span>
-					<span className="chat-tool-name">{t.name}</span>
-					{t.args ? <span className="chat-tool-args">{t.args}</span> : null}
-				</div>
-			))}
-		</div>
-	);
-}
-
-// One context chip. Two states (Copilot-style):
-//   • transient — derived from an open tab, dimmed; `onClick` locks it in.
-//   • locked    — pinned into context, solid; `onRemove` unlocks it.
-// A transient chip whose source tab is a PREVIEW tab renders italic, mirroring
-// the editor tab strip — `preview` only matters while the chip isn't locked.
-// Read-only chips inside a sent bubble pass neither handler.
+// One context chip — transient (from an open tab, dimmed; click to lock) or
+// locked (pinned, solid; × to unlock). Read-only inside a sent bubble.
 function ContextTag({ label, title, locked, preview, onClick, onRemove }) {
 	const inner = (
 		<>
@@ -195,20 +109,17 @@ function UserBubble({ content, context }) {
 	);
 }
 
-function AssistantBubble({ content, tools, isStreaming }) {
+function AssistantBubble({ content, isStreaming, label }) {
 	const empty = !content;
 	return (
 		<div className="chat-assistant-row">
-			<span className="chat-role">{ASSISTANT_LABEL}</span>
+			<span className="chat-role">{label}</span>
 			<div className="chat-assistant-body">
-				<ToolActivity tools={tools} />
 				{empty && isStreaming ? (
 					<div className="chat-thinking">
 						<PiumaRunning pixelSize={2} />
 						<div className="chat-thinking-body">
-							<span className="chat-thinking-label">
-								openclaw is sniffing the trail
-							</span>
+							<span className="chat-thinking-label">thinking…</span>
 							<span className="chat-thinking-dots" aria-hidden="true">
 								<i />
 								<i />
@@ -227,32 +138,59 @@ function AssistantBubble({ content, tools, isStreaming }) {
 	);
 }
 
-// Embedded chat panel — same wiring as the old /admin/chat page minus the
-// route chrome (no back link, no title-bar navigation). The `onClose` prop
-// hides the panel; the host (NotesLayout) owns the open/closed state.
+// Embedded chat panel — runs on the agents API. Pick the agent (default set in
+// admin → Agents), stream the reply, and attach "locked" notes as context.
 export default function ChatPanel({ onClose, onOpenNote }) {
+	const { data: agents = [] } = useAgentList();
+	const { data: def } = useDefaultAgent();
+	const [agentKind, setAgentKind] = useState("");
+	useEffect(() => {
+		if (def?.agent && !agentKind) setAgentKind(def.agent);
+	}, [def, agentKind]);
+	const effectiveAgent = agentKind || def?.agent || "vault_agent";
+	const agentLabel =
+		agents.find((a) => a.kind === effectiveAgent)?.display_name || "Piuma";
+
 	const [messages, setMessages] = useState([]);
 	const [input, setInput] = useState("");
 	const [isStreaming, setIsStreaming] = useState(false);
-	const [hydrated, setHydrated] = useState(false);
-	const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 	const [compact, setCompact] = useState(false);
-	// The OpenClaw session key IS the conversation identity — the transcript is
-	// loaded from the gateway, never stored locally. Rotating it starts a new
-	// chat (see confirmClear) and re-keys the history query.
-	const [sessionKey, setSessionKey] = useState(getSessionKey);
+	const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+	const [conversationId, setConversationId] = useState(
+		() => localStorage.getItem(STORAGE_KEY) || null,
+	);
+	const [hydrated, setHydrated] = useState(false);
 	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
 	const inputRef = useRef(null);
 
-	// OpenClaw config lives in the DB now. Until services load we assume it's
-	// configured (avoid a flash); once loaded, a missing gateway URL means chat
-	// can't work, so we surface a banner and block sending.
-	const { data: services } = useServices();
-	const openclawConfigured = services ? Boolean(services.openclaw_url) : true;
+	// Restore the stored conversation once on mount.
+	useEffect(() => {
+		if (hydrated || !conversationId) return;
+		let cancelled = false;
+		fetchConversation(conversationId)
+			.then((d) => {
+				if (cancelled) return;
+				setMessages(
+					(d.messages || []).map((m) => ({
+						id: m.id,
+						role: m.role,
+						content: blocksToText(m.content),
+					})),
+				);
+				setHydrated(true);
+			})
+			.catch(() => {
+				localStorage.removeItem(STORAGE_KEY);
+				setConversationId(null);
+				setHydrated(true);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [conversationId, hydrated]);
 
-	// Track the composer width so a narrow panel can swap to a shorter
-	// placeholder instead of letting the long one wrap onto two lines.
+	// Swap to a shorter placeholder when the panel is narrow.
 	useEffect(() => {
 		const el = inputRef.current;
 		if (!el || typeof ResizeObserver === "undefined") return;
@@ -263,10 +201,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		return () => ro.disconnect();
 	}, []);
 
-	// Auto-grow the composer with its content: collapse to measure the real
-	// scrollHeight, then set it as the height. CSS caps it at 5 lines and
-	// switches on scrolling past that.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: re-measure whenever the input text changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: re-measure when input text changes
 	useLayoutEffect(() => {
 		const el = inputRef.current;
 		if (!el) return;
@@ -279,12 +214,6 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const lockContext = useNotesWorkspaceStore((s) => s.lockContext);
 	const unlockContext = useNotesWorkspaceStore((s) => s.unlockContext);
 
-	// Chat context chips, derived from the workspace, in display order:
-	//   1. locked notes (pinned) first, shown solid — these are the context sent.
-	//   2. then unlocked open tabs, shown transient/dim — click to lock in. These
-	//      keep their tab (open) order, i.e. by the time each note was opened;
-	//      the active note is NOT hoisted to the front. Closing a tab drops its
-	//      transient chip; locked ones stay.
 	const contextChips = useMemo(() => {
 		const lockedIds = new Set(lockedContext.map((t) => t.id));
 		const unlocked = openTabs.filter((t) => !lockedIds.has(t.id));
@@ -294,45 +223,30 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		];
 	}, [openTabs, lockedContext]);
 
-	// Only locked (selected) notes with a known path are sent as context.
 	const sentContextPaths = useMemo(
 		() => lockedContext.map((t) => t.path).filter(Boolean),
+		[lockedContext],
+	);
+	const sentContextIds = useMemo(
+		() => lockedContext.map((t) => t.id).filter(Boolean),
 		[lockedContext],
 	);
 
 	useEffect(() => () => abortRef.current?.abort(), []);
 
-	// The conversation lives in OpenClaw, keyed by the session key. Load it once
-	// per mount and seed local state. We wait for the fetch to settle (so a
-	// remount picks up the freshest transcript, not a stale cache) and seed only
-	// once — after that, streaming owns local state and we never re-seed.
-	const { data: history, isFetching: historyFetching } =
-		useOpenclawHistory(sessionKey);
-
-	useEffect(() => {
-		if (hydrated || historyFetching || !history) return;
-		setMessages(history.map(historyToMessage));
-		setHydrated(true);
-	}, [history, historyFetching, hydrated]);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: scroll-to-bottom must fire when messages change
+	// biome-ignore lint/correctness/useExhaustiveDependencies: scroll on new messages
 	useEffect(() => {
 		if (!scrollRef.current) return;
 		scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
 	}, [messages]);
-
-	const handleClear = useCallback(() => {
-		setConfirmClearOpen(true);
-	}, []);
 
 	const confirmClear = useCallback(() => {
 		abortRef.current?.abort();
 		abortRef.current = null;
 		setIsStreaming(false);
 		setMessages([]);
-		// Start a new gateway conversation; the old one is orphaned in OpenClaw.
-		// Re-keying the history query just returns the (empty) new transcript.
-		setSessionKey(rotateSessionKey());
+		setConversationId(null);
+		localStorage.removeItem(STORAGE_KEY);
 		setConfirmClearOpen(false);
 	}, []);
 
@@ -340,41 +254,46 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		const text = input.trim();
 		if (!text || isStreaming) return;
 
-		// Snapshot the locked context paths onto the message so its bubble can
-		// render them as chips. Locked notes stay pinned for the next turn too,
-		// so we don't clear anything here.
+		let convId = conversationId;
+		if (!convId) {
+			try {
+				const conv = await createConversation({ agent: effectiveAgent });
+				convId = conv.id;
+				setConversationId(conv.id);
+				localStorage.setItem(STORAGE_KEY, conv.id);
+			} catch {
+				setMessages((c) => [
+					...c,
+					{
+						id: newMessageId(),
+						role: "assistant",
+						content: "**Error:** failed to start conversation",
+					},
+				]);
+				return;
+			}
+		}
+
 		const userMsg = {
 			id: newMessageId(),
 			role: "user",
 			content: text,
 			...(sentContextPaths.length ? { context: sentContextPaths } : {}),
 		};
-		const assistantMsg = {
-			id: newMessageId(),
-			role: "assistant",
-			content: "",
-			tools: [],
-		};
-		const history = [...messages, userMsg];
-		setMessages([...history, assistantMsg]);
+		const assistantMsg = { id: newMessageId(), role: "assistant", content: "" };
+		setMessages((curr) => [...curr, userMsg, assistantMsg]);
 		setInput("");
 		setIsStreaming(true);
 
 		const controller = new AbortController();
 		abortRef.current = controller;
 
-		// Fold each turn's context into a structured <context> block on the wire
-		// so the gateway gets clear delimiters, while the stored/displayed
-		// content stays clean.
-		const wireHistory = history.map(({ role, content, context }) => ({
-			role,
-			content: withContextBlock(content, context),
-		}));
-
 		await streamChat({
-			messages: wireHistory,
+			conversationId: convId,
+			message: text,
+			contextNoteIds: sentContextIds,
 			signal: controller.signal,
-			onToken: (delta) => {
+			onText: (delta) =>
 				setMessages((curr) => {
 					const updated = [...curr];
 					const last = updated[updated.length - 1];
@@ -383,20 +302,9 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 						content: last.content + delta,
 					};
 					return updated;
-				});
-			},
-			onTool: (evt) => {
-				setMessages((curr) => {
-					const updated = [...curr];
-					const last = updated[updated.length - 1];
-					updated[updated.length - 1] = {
-						...last,
-						tools: applyToolEvent(last.tools, evt),
-					};
-					return updated;
-				});
-			},
-			onError: (e) => {
+				}),
+			onThinking: () => {},
+			onError: (e) =>
 				setMessages((curr) => {
 					const updated = [...curr];
 					const last = updated[updated.length - 1];
@@ -405,13 +313,20 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 						content: `**Error:** ${e.message}`,
 					};
 					return updated;
-				});
-			},
+				}),
+			onDone: () => {},
 		});
 
 		setIsStreaming(false);
 		abortRef.current = null;
-	}, [input, isStreaming, messages, sentContextPaths]);
+	}, [
+		input,
+		isStreaming,
+		conversationId,
+		effectiveAgent,
+		sentContextPaths,
+		sentContextIds,
+	]);
 
 	const onKeyDown = (e) => {
 		if (e.key === "Enter" && !e.shiftKey) {
@@ -420,14 +335,36 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		}
 	};
 
-	const canSend = input.trim().length > 0 && !isStreaming && openclawConfigured;
+	const canSend = input.trim().length > 0 && !isStreaming;
 
 	return (
 		<div className="chat-root chat-panel">
 			<div className="chat-header">
 				<div className="chat-title">
-					<span className="chat-eyebrow">llm brief /</span>
-					<span className="chat-name">OpenClaw</span>
+					<span className="chat-eyebrow">agent /</span>
+					{agents.length > 1 ? (
+						<select
+							className="chat-agent-select"
+							value={effectiveAgent}
+							onChange={(e) => setAgentKind(e.target.value)}
+							title="Agent for new chats"
+							style={{
+								background: "var(--vp-bg-soft, #15171c)",
+								color: "var(--vp-text, #d6dbe5)",
+								border: "1px solid var(--vp-border-soft, #2a2f39)",
+								padding: "2px 6px",
+								fontSize: 13,
+							}}
+						>
+							{agents.map((a) => (
+								<option key={a.kind} value={a.kind}>
+									{a.display_name}
+								</option>
+							))}
+						</select>
+					) : (
+						<span className="chat-name">{agentLabel}</span>
+					)}
 				</div>
 				<div
 					className={`chat-status${isStreaming ? " streaming" : ""}`}
@@ -439,9 +376,9 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 					<button
 						type="button"
 						className="chat-clear"
-						onClick={handleClear}
-						aria-label="Clear conversation"
-						title="Clear conversation"
+						onClick={() => setConfirmClearOpen(true)}
+						aria-label="New conversation"
+						title="New conversation"
 					>
 						<DeleteOutlined />
 					</button>
@@ -458,30 +395,16 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				) : null}
 			</div>
 
-			{!openclawConfigured ? (
-				<div className="chat-config-alert" role="alert">
-					<div className="chat-config-alert-text">
-						<strong>OpenClaw isn't configured</strong>
-						<span>Add the gateway URL &amp; token to start chatting.</span>
-					</div>
-					<PvButton to="/admin/services" size="sm" variant="accent">
-						Configure
-					</PvButton>
-				</div>
-			) : null}
-
 			<div ref={scrollRef} className="chat-messages">
 				<div className="chat-messages-inner">
 					{messages.length === 0 ? (
-						historyFetching ? null : (
-							<div className="chat-empty">
-								<div className="chat-empty-title">Claw is on the leash.</div>
-								<div className="chat-empty-sub">
-									Ask anything — markdown, code, plans. Streams back token by
-									token.
-								</div>
+						<div className="chat-empty">
+							<div className="chat-empty-title">{agentLabel} is ready.</div>
+							<div className="chat-empty-sub">
+								Ask anything — markdown, code, plans. Streams back token by
+								token.
 							</div>
-						)
+						</div>
 					) : (
 						messages.map((m, i) => {
 							const isLast = i === messages.length - 1;
@@ -497,8 +420,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 								<AssistantBubble
 									key={m.id}
 									content={m.content}
-									tools={m.tools}
 									isStreaming={streamingThis}
+									label={agentLabel}
 								/>
 							);
 						})
@@ -536,7 +459,9 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 							value={input}
 							onChange={(e) => setInput(e.target.value)}
 							onKeyDown={onKeyDown}
-							placeholder={compact ? "Ask Claw…" : "Ask Claw about anything..."}
+							placeholder={
+								compact ? `Ask ${agentLabel}…` : `Ask ${agentLabel} anything...`
+							}
 							rows={1}
 						/>
 						<button
@@ -545,7 +470,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 							onClick={sendMessage}
 							disabled={!canSend}
 						>
-							{isStreaming ? "…" : `${SUBMIT_LABEL} ↑`}
+							{isStreaming ? "…" : "send ↑"}
 						</button>
 					</div>
 				</div>
@@ -560,8 +485,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				onConfirm={confirmClear}
 				onCancel={() => setConfirmClearOpen(false)}
 			>
-				This starts a fresh chat. The current conversation stays in OpenClaw but
-				won't be shown here anymore.
+				This starts a fresh chat. The current conversation stays saved but won't
+				be shown here anymore.
 			</PvModal>
 		</div>
 	);

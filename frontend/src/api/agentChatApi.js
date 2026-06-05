@@ -76,7 +76,7 @@ async function refreshAccessToken() {
 	return data.access_token;
 }
 
-const buildChatRequest = (conversationId, message, signal) => {
+const buildChatRequest = (conversationId, message, contextNoteIds, signal) => {
 	const token = localStorage.getItem("token");
 	return fetch(`${BASE_PATH}/agents/conversations/${conversationId}/chat`, {
 		method: "POST",
@@ -84,7 +84,7 @@ const buildChatRequest = (conversationId, message, signal) => {
 			"Content-Type": "application/json",
 			...(token ? { Authorization: `Bearer ${token}` } : {}),
 		},
-		body: JSON.stringify({ message }),
+		body: JSON.stringify({ message, context_note_ids: contextNoteIds || [] }),
 		signal,
 	});
 };
@@ -96,6 +96,7 @@ const buildChatRequest = (conversationId, message, signal) => {
 export async function streamChat({
 	conversationId,
 	message,
+	contextNoteIds,
 	signal,
 	onText,
 	onThinking,
@@ -103,11 +104,21 @@ export async function streamChat({
 	onError,
 }) {
 	try {
-		let resp = await buildChatRequest(conversationId, message, signal);
+		let resp = await buildChatRequest(
+			conversationId,
+			message,
+			contextNoteIds,
+			signal,
+		);
 		if (resp.status === 401 && localStorage.getItem("refreshToken")) {
 			try {
 				await refreshAccessToken();
-				resp = await buildChatRequest(conversationId, message, signal);
+				resp = await buildChatRequest(
+					conversationId,
+					message,
+					contextNoteIds,
+					signal,
+				);
 			} catch (refreshErr) {
 				localStorage.removeItem("token");
 				localStorage.removeItem("refreshToken");

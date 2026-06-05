@@ -38,6 +38,42 @@ fn frame(payload: Value) -> Bytes {
     Bytes::from(format!("data: {payload}\n\n"))
 }
 
+/// Build a context preamble from the user's attached notes (the "locked" chips).
+async fn build_context(pool: &DbPool, user_id: &str, ids: &[Uuid]) -> String {
+    if ids.is_empty() {
+        return String::new();
+    }
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT title, COALESCE(folder, '/'), content FROM notes \
+         WHERE id = ANY($1) AND user_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(ids)
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    if rows.is_empty() {
+        return String::new();
+    }
+    let mut s = String::from("The user attached these notes as context:\n\n");
+    for (title, folder, content) in rows {
+        s.push_str(&format!("## {title} ({folder})\n{content}\n\n"));
+    }
+    s
+}
+
+/// Prepend the context block to the latest (user) message sent to the model —
+/// the persisted user message stays raw, so the transcript shows what was typed.
+fn inject_context(messages: &mut [Value], context: &str) {
+    if context.is_empty() {
+        return;
+    }
+    if let Some(last) = messages.last_mut() {
+        let orig = last.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
+        last["content"] = json!(format!("{context}\n{orig}"));
+    }
+}
+
 pub async fn chat(
     user: AuthenticatedUser,
     pool: web::Data<DbPool>,
@@ -45,7 +81,9 @@ pub async fn chat(
     body: web::Json<ChatTurnReq>,
 ) -> impl Responder {
     let conv_id = path.into_inner();
-    let msg = body.into_inner().message;
+    let req = body.into_inner();
+    let msg = req.message;
+    let context_ids = req.context_note_ids;
     let db = pool.get_ref();
 
     let conv = match sqlx::query_as::<_, ConversationRow>("SELECT * FROM db_chat_conversations WHERE id = $1")
@@ -67,7 +105,7 @@ pub async fn chat(
         .map(|d| d.agent_type == registry::AgentType::Gateway)
         .unwrap_or(false);
     if is_gateway {
-        return gateway_turn(db.clone(), conv, msg).await;
+        return gateway_turn(db.clone(), user.user_id.clone(), conv, msg, context_ids).await;
     }
 
     let model_row: Option<ModelRow> = match conv.model_id {
@@ -166,6 +204,8 @@ pub async fn chat(
     for (role, text) in hist {
         messages.push(json!({ "role": role, "content": text }));
     }
+    let context = build_context(db, &user.user_id, &context_ids).await;
+    inject_context(&mut messages, &context);
 
     // ── Stream + tool loop ──
     let (tx, rx) = mpsc::unbounded::<Result<Bytes, actix_web::Error>>();
@@ -277,7 +317,13 @@ pub async fn chat(
 /// Proxy a turn for a `gateway` agent (OpenClaw). Persists user + assistant to
 /// db_chat_* (so the agents conversation list/history is uniform) and uses the
 /// conversation id as the OpenClaw session key.
-async fn gateway_turn(pool: DbPool, conv: ConversationRow, msg: String) -> HttpResponse {
+async fn gateway_turn(
+    pool: DbPool,
+    user_id: String,
+    conv: ConversationRow,
+    msg: String,
+    context_ids: Vec<Uuid>,
+) -> HttpResponse {
     let (base, token) = match settings::store::openclaw_config(&pool).await {
         Ok(c) => c,
         Err(e) => return HttpResponse::BadRequest().json(ApiError::new(e)),
@@ -322,6 +368,8 @@ async fn gateway_turn(pool: DbPool, conv: ConversationRow, msg: String) -> HttpR
         }
         messages.push(json!({ "role": role, "content": text }));
     }
+    let context = build_context(&pool, &user_id, &context_ids).await;
+    inject_context(&mut messages, &context);
 
     let (tx, rx) = mpsc::unbounded::<Result<Bytes, actix_web::Error>>();
     let pool2 = pool.clone();

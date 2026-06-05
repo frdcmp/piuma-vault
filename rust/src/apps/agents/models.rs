@@ -235,10 +235,14 @@ pub struct MessageRow {
     pub created_at: DateTime<Utc>,
 }
 
-/// Body of POST /agents/conversations/{id}/chat — just the new user message.
+/// Body of POST /agents/conversations/{id}/chat — the new user message, plus
+/// optional note ids whose content is injected as context for this turn (the
+/// "locked note" chips in the chat UI).
 #[derive(Debug, Deserialize)]
 pub struct ChatTurnReq {
     pub message: String,
+    #[serde(default)]
+    pub context_note_ids: Vec<Uuid>,
 }
 
 // ── Agent listing (registry + profile) ──────────────────────────────────────
