@@ -8,7 +8,7 @@ use crate::apps::auth::models::Claims;
 
 /// Validate a JWT Bearer access token (mirrors `auth::middleware::Auth::validate_token`).
 fn validate_bearer(req: &HttpRequest) -> Result<Claims, String> {
-    const PUBLIC_KEY: &[u8] = include_bytes!("../../../keys/jwt-public.pem");
+    const PUBLIC_KEY: &[u8] = include_bytes!("../../keys/jwt-public.pem");
 
     let header = req
         .headers()

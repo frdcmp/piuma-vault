@@ -159,7 +159,7 @@ async fn list_with_search(
     limit: i64,
     offset: i64,
 ) -> HttpResponse {
-    use crate::apps::llm::providers::embedding;
+    use crate::apps::embeddings as embedding;
 
     // Build a prefix-aware tsquery so "decalitr" matches indexed "decalitro".
     // Each whitespace-separated token is stripped of punctuation, escaped, and

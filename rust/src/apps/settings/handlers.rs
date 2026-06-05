@@ -7,7 +7,7 @@ use super::models::{
 use super::store;
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
-use crate::apps::llm::providers::embedding;
+use crate::apps::embeddings as embedding;
 use crate::db::db::DbPool;
 
 fn forbidden() -> HttpResponse {
