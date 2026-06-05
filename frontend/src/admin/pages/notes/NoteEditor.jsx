@@ -269,7 +269,7 @@ export default function NoteEditor() {
 							initializedNoteIdRef.current = data.id;
 							finishSave(data);
 							if (data.id && UUID_RE.test(data.id)) {
-								navigate(`/${data.id}`, { replace: true });
+								navigate(`/notes/${data.id}`, { replace: true });
 							}
 						},
 						onError: failSave,
@@ -459,7 +459,7 @@ export default function NoteEditor() {
 						{isMobile && (
 							<button
 								className="pixel-btn icon-only"
-								onClick={() => navigate("/")}
+								onClick={() => navigate("/notes")}
 							>
 								◀
 							</button>
@@ -672,7 +672,7 @@ export default function NoteEditor() {
 							<button
 								type="button"
 								className="pixel-btn icon-only editor-close-btn"
-								onClick={() => navigate("/")}
+								onClick={() => navigate("/notes")}
 								title="Close note"
 								aria-label="Close note"
 							>

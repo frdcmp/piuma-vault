@@ -32,7 +32,7 @@ const COMMANDS = [
 		group: "Navigation",
 		icon: <BookOutlined />,
 		label: "Vault",
-		to: "/",
+		to: "/notes",
 		keywords: "notes editor",
 	},
 	{

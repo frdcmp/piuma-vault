@@ -107,7 +107,7 @@ export default function UserMenu({ size = 42 }) {
 							</Link>
 							<Link
 								className="user-menu-item"
-								to="/admin/notes"
+								to="/notes"
 								onClick={() => setOpen(false)}
 							>
 								&gt; vault

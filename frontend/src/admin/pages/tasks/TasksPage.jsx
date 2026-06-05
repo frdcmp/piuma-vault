@@ -87,7 +87,7 @@ export default function TasksPage() {
 					<h1>Tasks</h1>
 				</div>
 				<div className="tasks-actions">
-					<PvButton variant="ghost" onClick={() => navigate("/")}>
+					<PvButton variant="ghost" onClick={() => navigate("/notes")}>
 						‹ home
 					</PvButton>
 					<PvButton

@@ -40,7 +40,7 @@ const AppBreadcrumbs = () => {
 	const fileUuid = batchUuid && isUuid(segments[4]) ? segments[4] : null;
 
 	// Build a flat list of { label, to? } crumbs.
-	const items = [{ label: <HomeOutlined />, to: "/" }];
+	const items = [{ label: <HomeOutlined />, to: "/notes" }];
 
 	if (segments[0] === "admin") {
 		items.push(

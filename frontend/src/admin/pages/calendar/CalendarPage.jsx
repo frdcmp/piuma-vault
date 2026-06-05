@@ -131,7 +131,7 @@ export default function CalendarPage() {
 					<h1>{cursor.format("MMMM YYYY")}</h1>
 				</div>
 				<div className="cal-nav">
-					<PvButton onClick={() => navigate("/")} variant="ghost">
+					<PvButton onClick={() => navigate("/notes")} variant="ghost">
 						‹ home
 					</PvButton>
 					<PvButton
