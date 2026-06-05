@@ -8,10 +8,20 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::apps::auth::models::AuthenticatedUser;
+use crate::apps::settings;
 use crate::db::db::DbPool;
 
 use super::models::*;
 use super::registry;
+
+const DEFAULT_AGENT_KEY: &str = "agents_default_agent";
+
+fn fallback_agent() -> String {
+    registry::all()
+        .first()
+        .map(|a| a.kind.to_string())
+        .unwrap_or_else(|| "vault_agent".to_string())
+}
 
 fn db_err(e: sqlx::Error) -> HttpResponse {
     log::error!("agents db error: {e}");
@@ -39,6 +49,30 @@ pub async fn list_agents(_user: AuthenticatedUser, pool: web::Data<DbPool>) -> i
         });
     }
     HttpResponse::Ok().json(out)
+}
+
+// ── Default agent (new conversations start with this) ───────────────────────
+
+pub async fn get_default_agent(_user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
+    let stored = settings::store::get(pool.get_ref(), DEFAULT_AGENT_KEY).await;
+    let agent = stored
+        .filter(|s| registry::get(s).is_some())
+        .unwrap_or_else(fallback_agent);
+    HttpResponse::Ok().json(json!({ "agent": agent }))
+}
+
+pub async fn set_default_agent(
+    _user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    body: web::Json<DefaultAgentReq>,
+) -> impl Responder {
+    if registry::get(&body.agent).is_none() {
+        return HttpResponse::BadRequest().json(ApiError::new("unknown agent"));
+    }
+    match settings::store::set(pool.get_ref(), DEFAULT_AGENT_KEY, &body.agent).await {
+        Ok(_) => HttpResponse::Ok().json(json!({ "agent": body.agent })),
+        Err(e) => db_err(e),
+    }
 }
 
 // ── Providers ────────────────────────────────────────────────────────────────

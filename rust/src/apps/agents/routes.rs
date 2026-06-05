@@ -6,6 +6,11 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg
         // Agents listing
         .service(web::resource("/agents").route(web::get().to(handlers::list_agents)))
+        .service(
+            web::resource("/agents/default-agent")
+                .route(web::get().to(handlers::get_default_agent))
+                .route(web::put().to(handlers::set_default_agent)),
+        )
         // Providers
         .service(
             web::resource("/agents/providers")

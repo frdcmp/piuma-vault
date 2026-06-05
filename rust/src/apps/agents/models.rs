@@ -251,6 +251,11 @@ pub struct AgentInfo {
     pub tool_count: usize,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DefaultAgentReq {
+    pub agent: String,
+}
+
 // ── Error ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
