@@ -1,9 +1,10 @@
 pub mod realtime;
 pub mod agents;
+pub mod embeddings;
+pub mod openclaw;
 pub mod health;
 pub mod auth;
 pub mod email;
-pub mod llm;
 pub mod api_keys;
 pub mod notes;
 pub mod calendar;

@@ -94,7 +94,7 @@ async fn main() -> io::Result<()> {
             .app_data(web::Data::new(calendar_bus.clone()))
             .configure(apps::health::routes::configure_routes)
             .configure(apps::auth::routes::configure_routes)
-            .configure(apps::llm::routes::configure_routes)
+            .configure(apps::openclaw::routes::configure_routes)
             .configure(apps::agents::routes::configure_routes)
             .configure(apps::api_keys::routes::configure_routes)
             .configure(apps::notes::routes::configure_routes)
