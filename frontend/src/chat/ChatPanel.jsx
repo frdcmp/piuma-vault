@@ -159,7 +159,12 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const [conversationId, setConversationId] = useState(
 		() => localStorage.getItem(STORAGE_KEY) || null,
 	);
-	const [hydrated, setHydrated] = useState(false);
+	// Only restore when a stored conversation exists; a fresh panel (and any
+	// conversation created later this session) starts already-hydrated so the
+	// restore effect never clobbers live streaming state.
+	const [hydrated, setHydrated] = useState(
+		() => !localStorage.getItem(STORAGE_KEY),
+	);
 	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
 	const inputRef = useRef(null);
@@ -288,37 +293,40 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		const controller = new AbortController();
 		abortRef.current = controller;
 
-		await streamChat({
-			conversationId: convId,
-			message: text,
-			contextNoteIds: sentContextIds,
-			signal: controller.signal,
-			onText: (delta) =>
-				setMessages((curr) => {
-					const updated = [...curr];
-					const last = updated[updated.length - 1];
-					updated[updated.length - 1] = {
-						...last,
-						content: last.content + delta,
-					};
-					return updated;
-				}),
-			onThinking: () => {},
-			onError: (e) =>
-				setMessages((curr) => {
-					const updated = [...curr];
-					const last = updated[updated.length - 1];
-					updated[updated.length - 1] = {
-						...last,
-						content: `**Error:** ${e.message}`,
-					};
-					return updated;
-				}),
-			onDone: () => {},
-		});
-
-		setIsStreaming(false);
-		abortRef.current = null;
+		try {
+			await streamChat({
+				conversationId: convId,
+				message: text,
+				contextNoteIds: sentContextIds,
+				signal: controller.signal,
+				onText: (delta) =>
+					setMessages((curr) => {
+						const updated = [...curr];
+						const last = updated[updated.length - 1];
+						updated[updated.length - 1] = {
+							...last,
+							content: last.content + delta,
+						};
+						return updated;
+					}),
+				onThinking: () => {},
+				onError: (e) =>
+					setMessages((curr) => {
+						const updated = [...curr];
+						const last = updated[updated.length - 1];
+						updated[updated.length - 1] = {
+							...last,
+							content: `**Error:** ${e.message}`,
+						};
+						return updated;
+					}),
+				onDone: () => setIsStreaming(false),
+			});
+		} finally {
+			// Always re-enable the composer, even if the stream throws.
+			setIsStreaming(false);
+			abortRef.current = null;
+		}
 	}, [
 		input,
 		isStreaming,
