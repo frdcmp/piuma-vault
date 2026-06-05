@@ -255,12 +255,20 @@ pub async fn chat(
                     }
                     for tc in &res.tool_calls {
                         let args: Value = serde_json::from_str(&tc.arguments).unwrap_or_else(|_| json!({}));
-                        let _ = tx.unbounded_send(Ok(frame(json!({ "type": "tool", "name": tc.name }))));
+                        // Announce the tool (with its args) so the client can show it
+                        // live, then signal completion once it has run.
+                        let _ = tx.unbounded_send(Ok(frame(
+                            json!({ "type": "tool", "id": tc.id, "name": tc.name, "args": args.clone() }),
+                        )));
                         display.push(json!({ "type": "tool_use", "name": tc.name, "input": args.clone() }));
                         let result = match tools::dispatch(&pool2, &user_id, &tc.name, &args).await {
                             Ok(v) => v,
                             Err(e) => json!({ "error": e }),
                         };
+                        let ok = result.get("error").is_none();
+                        let _ = tx.unbounded_send(Ok(frame(
+                            json!({ "type": "tool", "id": tc.id, "done": true, "ok": ok }),
+                        )));
                         display.push(json!({ "type": "tool_result", "name": tc.name, "output": result.clone() }));
                         let content_str = serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string());
                         messages.push(json!({ "role": "tool", "tool_call_id": tc.id, "content": content_str }));

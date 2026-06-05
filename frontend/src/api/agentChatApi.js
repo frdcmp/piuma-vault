@@ -106,6 +106,7 @@ export async function streamChat({
 	signal,
 	onText,
 	onThinking,
+	onTool,
 	onDone,
 	onError,
 }) {
@@ -156,6 +157,7 @@ export async function streamChat({
 					const json = JSON.parse(data);
 					if (json.type === "text") onText?.(json.delta || "");
 					else if (json.type === "thinking") onThinking?.(json.delta || "");
+					else if (json.type === "tool") onTool?.(json);
 					else if (json.type === "done") onDone?.(json);
 					else if (json.type === "error") onError?.(new Error(json.error));
 				} catch {

@@ -53,6 +53,62 @@ const blocksToText = (content) => {
 	return "";
 };
 
+// Derive the per-turn tool activity from persisted content blocks: each
+// `tool_use` becomes a chip; the following `tool_result` sets its status.
+const blocksToTools = (content) => {
+	if (!Array.isArray(content)) return [];
+	const tools = [];
+	for (const b of content) {
+		if (b.type === "tool_use") {
+			tools.push({
+				id: String(tools.length),
+				name: b.name,
+				args: b.input,
+				status: "done",
+			});
+		} else if (b.type === "tool_result") {
+			const t = [...tools].reverse().find((x) => x.name === b.name);
+			if (t) {
+				const out = b.output;
+				const isErr = out && typeof out === "object" && "error" in out;
+				t.status = isErr ? "error" : "done";
+			}
+		}
+	}
+	return tools;
+};
+
+const TOOL_ICON = { running: "⚙", done: "✓", error: "✗" };
+
+// Compact one-line summary of a tool's arguments for the chip.
+const toolArgsSummary = (args) => {
+	if (!args || typeof args !== "object") return "";
+	return Object.entries(args)
+		.filter(([, v]) => v !== null && v !== undefined && v !== "")
+		.map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`)
+		.join(", ");
+};
+
+function ToolList({ tools }) {
+	if (!tools?.length) return null;
+	return (
+		<div className="chat-tools">
+			{tools.map((t) => {
+				const summary = toolArgsSummary(t.args);
+				return (
+					<div key={t.id} className={`chat-tool chat-tool--${t.status}`}>
+						<span className="chat-tool-icon" aria-hidden="true">
+							{TOOL_ICON[t.status] || "⚙"}
+						</span>
+						<span className="chat-tool-name">{t.name}</span>
+						{summary ? <span className="chat-tool-args">{summary}</span> : null}
+					</div>
+				);
+			})}
+		</div>
+	);
+}
+
 // One context chip — transient (from an open tab, dimmed; click to lock) or
 // locked (pinned, solid; × to unlock). Read-only inside a sent bubble.
 function ContextTag({ label, title, locked, preview, onClick, onRemove }) {
@@ -123,12 +179,13 @@ function UserBubble({ content, context }) {
 	);
 }
 
-function AssistantBubble({ content, isStreaming, label }) {
+function AssistantBubble({ content, tools, isStreaming, label }) {
 	const empty = !content;
 	return (
 		<div className="chat-assistant-row">
 			<span className="chat-role">{label}</span>
 			<div className="chat-assistant-body">
+				<ToolList tools={tools} />
 				{empty && isStreaming ? (
 					<div className="chat-thinking">
 						<PiumaRunning pixelSize={2} />
@@ -197,6 +254,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 						id: m.id,
 						role: m.role,
 						content: blocksToText(m.content),
+						tools: blocksToTools(m.content),
 					})),
 				);
 				setHydrated(true);
@@ -301,7 +359,12 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			content: text,
 			...(sentContextPaths.length ? { context: sentContextPaths } : {}),
 		};
-		const assistantMsg = { id: newMessageId(), role: "assistant", content: "" };
+		const assistantMsg = {
+			id: newMessageId(),
+			role: "assistant",
+			content: "",
+			tools: [],
+		};
 		setMessages((curr) => [...curr, userMsg, assistantMsg]);
 		setInput("");
 		setIsStreaming(true);
@@ -326,6 +389,30 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 						return updated;
 					}),
 				onThinking: () => {},
+				onTool: (t) =>
+					setMessages((curr) => {
+						const updated = [...curr];
+						const last = { ...updated[updated.length - 1] };
+						const tools = [...(last.tools || [])];
+						if (t.done) {
+							const idx = tools.findIndex((x) => x.id === t.id);
+							if (idx >= 0)
+								tools[idx] = {
+									...tools[idx],
+									status: t.ok ? "done" : "error",
+								};
+						} else {
+							tools.push({
+								id: t.id,
+								name: t.name,
+								args: t.args,
+								status: "running",
+							});
+						}
+						last.tools = tools;
+						updated[updated.length - 1] = last;
+						return updated;
+					}),
 				onError: (e) =>
 					setMessages((curr) => {
 						const updated = [...curr];
@@ -394,6 +481,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 					id: m.id,
 					role: m.role,
 					content: blocksToText(m.content),
+					tools: blocksToTools(m.content),
 				})),
 			);
 		} catch {
@@ -556,6 +644,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 								<AssistantBubble
 									key={m.id}
 									content={m.content}
+									tools={m.tools}
 									isStreaming={streamingThis}
 									label={agentLabel}
 								/>

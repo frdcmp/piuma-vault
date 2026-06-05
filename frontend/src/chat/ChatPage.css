@@ -315,6 +315,51 @@
 .chat-assistant-body a {
 	color: var(--accent-4);
 }
+/* Horizontal rule (markdown `---`). Without this it falls back to the browser
+   default inset border, which shows as a white line on the dark theme. Match
+   the dashed dividers used elsewhere in the pixel layout. */
+.chat-assistant-body hr {
+	height: 0;
+	margin: 14px 0;
+	border: 0;
+	border-top: 2px dashed var(--border-strong);
+}
+/* GFM tables — bordered grid with a tinted header, sized to the (often narrow)
+   chat column. Cells wrap; very wide tables scroll horizontally instead of
+   crushing the layout. */
+.chat-assistant-body table {
+	display: block;
+	width: 100%;
+	max-width: 100%;
+	overflow-x: auto;
+	border-collapse: collapse;
+	margin: 0.75em 0;
+	font-size: 9.5pt;
+	border: 1px solid var(--border-strong);
+}
+.chat-assistant-body thead {
+	background: var(--bg-soft);
+}
+.chat-assistant-body th,
+.chat-assistant-body td {
+	padding: 6px 10px;
+	border: 1px solid var(--border);
+	text-align: left;
+	vertical-align: top;
+}
+.chat-assistant-body th {
+	color: var(--accent);
+	font-weight: 800;
+	letter-spacing: 0.3px;
+	white-space: nowrap;
+}
+.chat-assistant-body tbody tr:nth-child(even) {
+	background: rgba(255, 255, 255, 0.02);
+}
+/* Inline code inside cells shouldn't wrap mid-token (IDs, subnets, hostnames). */
+.chat-assistant-body td code {
+	white-space: nowrap;
+}
 .chat-cursor {
 	display: inline-block;
 	width: 8px;

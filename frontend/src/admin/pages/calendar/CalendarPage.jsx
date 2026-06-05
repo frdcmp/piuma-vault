@@ -125,15 +125,15 @@ export default function CalendarPage() {
 		<div className="cal-page">
 			<header className="cal-header">
 				<div className="cal-title">
+					<PvButton onClick={() => navigate("/notes")} variant="ghost">
+						‹ home
+					</PvButton>
 					<span className="cal-glyph" aria-hidden="true">
 						▤
 					</span>
 					<h1>{cursor.format("MMMM YYYY")}</h1>
 				</div>
 				<div className="cal-nav">
-					<PvButton onClick={() => navigate("/notes")} variant="ghost">
-						‹ home
-					</PvButton>
 					<PvButton
 						onClick={() => setCursor((c) => c.subtract(1, "month"))}
 					>
