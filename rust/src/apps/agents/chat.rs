@@ -19,7 +19,7 @@ use super::models::{ApiError, ChatTurnReq, ConversationRow, ModelRow, ProviderRo
 use super::providers::{deepseek, openclaw as oc_gateway};
 use super::{identities, registry, tools};
 
-const MAX_ROUNDS: usize = 8;
+const MAX_ROUNDS: usize = 12;
 
 fn blocks_to_text(content: &Value) -> String {
     match content {
@@ -224,6 +224,7 @@ pub async fn chat(
         let mut tout = 0;
         let mut stop = "end_turn".to_string();
         let mut errored = false;
+        let mut answered = false;
 
         for _round in 0..MAX_ROUNDS {
             match deepseek::call(&api_key, base_url.as_deref(), &model, &messages, &tool_schemas, &tx).await {
@@ -238,6 +239,7 @@ pub async fn chat(
                         if !res.text.trim().is_empty() {
                             display.push(json!({ "type": "text", "text": res.text }));
                         }
+                        answered = true;
                         break;
                     }
                     // Assistant turn that requested tools.
@@ -280,6 +282,36 @@ pub async fn chat(
                     let _ = tx.unbounded_send(Ok(frame(json!({ "type": "error", "error": e }))));
                     errored = true;
                     break;
+                }
+            }
+        }
+
+        // The loop ran out of rounds while the model still wanted tools. Make one
+        // final turn with tools disabled so it must synthesise an answer from what
+        // it has gathered — otherwise the turn ends on a tool_use with no reply.
+        if !errored && !answered {
+            messages.push(json!({
+                "role": "user",
+                "content": "You've reached the tool-call limit for this turn. Answer now \
+                            using the information you've already gathered — do not request \
+                            more tools. If something is still unknown, say so briefly.",
+            }));
+            match deepseek::call(&api_key, base_url.as_deref(), &model, &messages, &[], &tx).await {
+                Ok(res) => {
+                    tin += res.tokens_in;
+                    tout += res.tokens_out;
+                    stop = res.finish.clone();
+                    if !res.thinking.trim().is_empty() {
+                        display.push(json!({ "type": "thinking", "text": res.thinking }));
+                    }
+                    if !res.text.trim().is_empty() {
+                        display.push(json!({ "type": "text", "text": res.text }));
+                    }
+                }
+                Err(e) => {
+                    log::error!("chat: deepseek final answer failed: {e}");
+                    let _ = tx.unbounded_send(Ok(frame(json!({ "type": "error", "error": e }))));
+                    errored = true;
                 }
             }
         }

@@ -12,7 +12,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         (
             "search_notes",
-            "Search the user's notes by keyword (matches title and body). Returns id, title, folder and a snippet for each hit. Use this FIRST for anything that might be written down.",
+            "Search the user's notes by meaning and keywords (hybrid: vector similarity + full-text + fuzzy title). Returns id, title, folder and a snippet for each hit. Use this FIRST for anything that might be written down; one good query usually suffices — re-phrasing rarely surfaces new notes.",
             json!({
                 "type": "object",
                 "properties": {
@@ -126,24 +126,106 @@ async fn enqueue_embedding(pool: &DbPool, note_id: Uuid, content: &str) {
 }
 
 pub async fn search_notes(pool: &DbPool, user_id: &str, args: &Value) -> Result<Value, String> {
+    use crate::apps::embeddings;
+
     let q = req_str(args, "query")?;
     let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(8).clamp(1, 25);
-    let like = format!("%{q}%");
-    let rows: Vec<(Uuid, String, String, String)> = sqlx::query_as(
-        "SELECT id, title, COALESCE(folder, '/'), left(content, 240) FROM notes \
-         WHERE user_id = $1 AND deleted_at IS NULL AND (title ILIKE $2 OR content ILIKE $2) \
-         ORDER BY updated_at DESC LIMIT $3",
-    )
-    .bind(user_id)
-    .bind(&like)
-    .bind(limit)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+
+    // Prefix-aware tsquery so partial words ("decalitr") still match indexed
+    // lexemes ("decalitro") — mirrors the notes HTTP search handler.
+    let terms: Vec<String> = q
+        .split_whitespace()
+        .map(|tok| tok.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect::<String>())
+        .filter(|s| !s.is_empty())
+        .map(|clean| format!("{}:*", clean.replace('\'', "''")))
+        .collect();
+    let tsquery = if terms.is_empty() {
+        format!("plainto_tsquery('english', '{}')", q.replace('\'', "''"))
+    } else {
+        format!("to_tsquery('english', '{}')", terms.join(" & "))
+    };
+    let search_esc = q.replace('\'', "''");
+
+    // A query embedding unlocks hybrid (vector) search; if it can't be produced
+    // (provider down / unconfigured) we fall back to FTS-only, then substring.
+    let emb = embeddings::embed(pool, &q, 1536).await.ok();
+
+    let rows: Vec<(Uuid, String, String, Option<String>)> = if let Some(emb) = emb {
+        let vec_str = format!("[{}]", emb.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","));
+        // Reciprocal-rank-fusion over three candidate pools (FTS / vector /
+        // fuzzy-title), k = 60. user_id is bound; the rest is escaped above.
+        let sql = format!(
+            r#"
+            WITH
+            fts AS (
+                SELECT id, title, COALESCE(folder, '/') AS folder, left(content, 240) AS snippet,
+                       ROW_NUMBER() OVER (ORDER BY ts_rank(content_tsv, {tsq}) DESC) AS rn
+                FROM notes WHERE user_id = $1 AND deleted_at IS NULL AND content_tsv @@ {tsq}
+                LIMIT 50
+            ),
+            vec AS (
+                SELECT id, title, COALESCE(folder, '/') AS folder, left(content, 240) AS snippet,
+                       ROW_NUMBER() OVER (ORDER BY (embedding <=> '{vec}'::vector) ASC) AS rn
+                FROM notes WHERE user_id = $1 AND deleted_at IS NULL AND embedding IS NOT NULL
+                LIMIT 50
+            ),
+            tri AS (
+                SELECT id, title, COALESCE(folder, '/') AS folder, left(content, 240) AS snippet,
+                       ROW_NUMBER() OVER (ORDER BY similarity(title, '{search}') DESC) AS rn
+                FROM notes WHERE user_id = $1 AND deleted_at IS NULL AND title % '{search}'
+                LIMIT 50
+            ),
+            combined AS (
+                SELECT id, title, folder, snippet, 1.0 / (60 + rn) AS s FROM fts
+                UNION ALL SELECT id, title, folder, snippet, 1.0 / (60 + rn) FROM vec
+                UNION ALL SELECT id, title, folder, snippet, 1.0 / (60 + rn) FROM tri
+            )
+            SELECT id, title, folder, MAX(snippet) AS snippet
+            FROM combined
+            GROUP BY id, title, folder
+            ORDER BY SUM(s) DESC
+            LIMIT $2
+            "#,
+            tsq = tsquery,
+            vec = vec_str,
+            search = search_esc,
+        );
+        sqlx::query_as(&sql).bind(user_id).bind(limit).fetch_all(pool).await.map_err(|e| e.to_string())?
+    } else {
+        let sql = format!(
+            "SELECT id, title, COALESCE(folder, '/'), left(content, 240) FROM notes \
+             WHERE user_id = $1 AND deleted_at IS NULL AND content_tsv @@ {tsq} \
+             ORDER BY ts_rank(content_tsv, {tsq}) DESC, updated_at DESC LIMIT $2",
+            tsq = tsquery,
+        );
+        sqlx::query_as(&sql).bind(user_id).bind(limit).fetch_all(pool).await.map_err(|e| e.to_string())?
+    };
+
+    // Last-resort substring match: catches queries with no indexed lexemes (and
+    // no embedding) so the tool never silently returns nothing it could've found.
+    let rows = if rows.is_empty() {
+        let like = format!("%{q}%");
+        sqlx::query_as::<_, (Uuid, String, String, Option<String>)>(
+            "SELECT id, title, COALESCE(folder, '/'), left(content, 240) FROM notes \
+             WHERE user_id = $1 AND deleted_at IS NULL AND (title ILIKE $2 OR content ILIKE $2) \
+             ORDER BY updated_at DESC LIMIT $3",
+        )
+        .bind(user_id)
+        .bind(&like)
+        .bind(limit)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?
+    } else {
+        rows
+    };
+
     let count = rows.len();
     let results: Vec<Value> = rows
         .into_iter()
-        .map(|(id, title, folder, snippet)| json!({ "id": id, "title": title, "folder": folder, "snippet": snippet }))
+        .map(|(id, title, folder, snippet)| {
+            json!({ "id": id, "title": title, "folder": folder, "snippet": snippet.unwrap_or_default() })
+        })
         .collect();
     Ok(json!({ "count": count, "results": results }))
 }
