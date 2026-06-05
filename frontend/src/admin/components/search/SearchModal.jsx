@@ -3,7 +3,6 @@ import {
 	AppstoreOutlined,
 	BookOutlined,
 	CloudServerOutlined,
-	ExperimentOutlined,
 	FolderOpenOutlined,
 	HeartOutlined,
 	HomeOutlined,
@@ -68,13 +67,6 @@ const COMMANDS = [
 		label: "Services",
 		to: "/admin/services",
 		keywords: "azure openclaw config",
-	},
-	{
-		group: "Resources",
-		icon: <ExperimentOutlined />,
-		label: "LLM",
-		to: "/admin/llm",
-		keywords: "chat ai model",
 	},
 	{
 		group: "Resources",

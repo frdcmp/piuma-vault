@@ -15,7 +15,6 @@ import DbDump from "./admin/pages/dbDump";
 import Files from "./admin/pages/files";
 import Health from "./admin/pages/health";
 import Homepage from "./admin/pages/homepage";
-import LLMPage from "./admin/pages/llm";
 import NoteEditor from "./admin/pages/notes/NoteEditor";
 import NotesLayout from "./admin/pages/notes/NotesLayout";
 import Profile from "./admin/pages/profile";
@@ -78,7 +77,6 @@ function AppContent() {
 					<Route path="files" element={<Files />} />
 					<Route path="api-keys" element={<ApiKeysPage />} />
 					<Route path="health" element={<Health />} />
-					<Route path="llm" element={<LLMPage />} />
 					<Route path="profile" element={<Profile />} />
 					<Route path="settings" element={<Settings />} />
 					<Route path="settings/:tab" element={<Settings />} />
