@@ -4,7 +4,6 @@ import {
 	ActivityIndicator,
 	Alert,
 	Keyboard,
-	Modal,
 	Platform,
 	Pressable,
 	ScrollView,
@@ -32,6 +31,7 @@ import {
 	streamChat,
 	updateConversation,
 } from "../api/agentChatApi";
+import BottomSheet from "../components/BottomSheet";
 import MarkdownView from "../components/MarkdownView";
 import PiumaAvatar from "../components/PiumaAvatar";
 import StreamingCursor from "../components/StreamingCursor";
@@ -843,31 +843,20 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					</View>
 				</View>
 
-				<Modal
+				<BottomSheet
 					visible={!!overlay}
-					transparent
-					animationType="fade"
-					onRequestClose={() => setOverlay(null)}
+					onClose={() => setOverlay(null)}
+					title={
+						overlay === "models"
+							? "Pick a model"
+							: overlay === "sessions"
+								? "Switch conversation"
+								: overlay === "title"
+									? "Rename conversation"
+									: ""
+					}
 				>
-					<Pressable
-						style={styles.overlayBackdrop}
-						onPress={() => setOverlay(null)}
-					>
-						<Pressable style={styles.overlaySheet} onPress={() => {}}>
-							<View style={styles.overlayHeader}>
-								<Text style={styles.overlayTitle}>
-									{overlay === "models"
-										? "Pick a model"
-										: overlay === "sessions"
-											? "Switch conversation"
-											: "Rename conversation"}
-								</Text>
-								<Pressable onPress={() => setOverlay(null)} hitSlop={8}>
-									<Ionicons name="close" size={18} color={colors.muted} />
-								</Pressable>
-							</View>
-
-							{overlay === "title" ? (
+					{overlay === "title" ? (
 								<View style={styles.overlayTitleWrap}>
 									<Pressable
 										onPress={autoRename}
@@ -914,18 +903,10 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 								</View>
 							) : (
 								<>
-									{overlay === "sessions" ? (
-										<TextInput
-											style={styles.overlaySearch}
-											value={sessionQuery}
-											onChangeText={setSessionQuery}
-											placeholder="Search title or message text…"
-											placeholderTextColor={colors.muted}
-											autoFocus
-											returnKeyType="search"
-										/>
-									) : null}
-									<ScrollView style={styles.overlayList}>
+									<ScrollView
+										style={styles.overlayList}
+										keyboardShouldPersistTaps="handled"
+									>
 									{pickList.length === 0 ? (
 										<Text style={styles.overlayEmpty}>None</Text>
 									) : overlay === "models" ? (
@@ -982,11 +963,20 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 										))
 									)}
 								</ScrollView>
-								</>
-							)}
-						</Pressable>
-					</Pressable>
-				</Modal>
+								{overlay === "sessions" ? (
+									<TextInput
+										style={styles.overlaySearch}
+										value={sessionQuery}
+										onChangeText={setSessionQuery}
+										placeholder="Search title or message text…"
+										placeholderTextColor={colors.muted}
+										autoFocus
+										returnKeyType="search"
+									/>
+								) : null}
+							</>
+						)}
+				</BottomSheet>
 			</SafeAreaView>
 		</KeyboardAvoidingView>
 	);
@@ -1350,38 +1340,10 @@ const styles = StyleSheet.create({
 	},
 
 	// ── OVERLAY (models / sessions / rename) ─────────────────
-	overlayBackdrop: {
-		flex: 1,
-		backgroundColor: "rgba(0,0,0,0.55)",
-		justifyContent: "flex-end",
-	},
-	overlaySheet: {
-		maxHeight: "60%",
-		borderTopWidth: 2,
-		borderColor: colors.borderStrong,
-		backgroundColor: colors.panel,
-		paddingHorizontal: 12,
-		paddingTop: 12,
-		paddingBottom: 24,
-	},
-	overlayHeader: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		marginBottom: 8,
-	},
-	overlayTitle: {
-		color: colors.muted,
-		fontFamily: MONO,
-		fontSize: 11,
-		fontWeight: "800",
-		letterSpacing: 1,
-		textTransform: "uppercase",
-	},
 	overlayList: { maxHeight: 320 },
 	overlaySearch: {
 		minHeight: 42,
-		marginBottom: 8,
+		marginTop: 8,
 		backgroundColor: colors.bg,
 		borderWidth: 2,
 		borderColor: colors.borderStrong,

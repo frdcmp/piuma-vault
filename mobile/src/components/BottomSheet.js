@@ -140,7 +140,16 @@ export default function BottomSheet({
 								transform: [{ translateY }],
 								// Raise the sheet to sit on top of the keyboard; drop the
 								// safe-area padding while it's up (the keyboard covers the bar).
-								bottom: kbHeight,
+								// In Android edge-to-edge mode the keyboard height reported by
+								// the Keyboard events excludes the nav/gesture bar, but the
+								// sheet is anchored at the physical screen bottom (under that
+								// bar), so add insets.bottom back or it sits a nav-bar-height
+								// too low. iOS already includes the home indicator in the
+								// reported height, so no correction there.
+								bottom:
+									kbHeight > 0
+										? kbHeight + (Platform.OS === "android" ? insets.bottom : 0)
+										: 0,
 								paddingBottom:
 									kbHeight > 0 ? 12 : Math.max(insets.bottom, 8) + 12,
 							},
@@ -196,8 +205,8 @@ const styles = StyleSheet.create({
 	},
 	sheet: {
 		position: "absolute",
-		left: 8,
-		right: 8,
+		left: 0,
+		right: 0,
 		bottom: 0,
 		backgroundColor: colors.panel,
 		// Inset from the screen edges with gently rounded top corners. A 2px top

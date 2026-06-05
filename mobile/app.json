@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#5cd0a9"
+      "backgroundColor": "#0e0f12"
     },
     "ios": {
       "supportsTablet": true
@@ -19,7 +19,7 @@
       "googleServicesFile": "./google-services.json",
       "versionCode": 4,
       "adaptiveIcon": {
-        "backgroundColor": "#5cd0a9",
+        "backgroundColor": "#0e0f12",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
