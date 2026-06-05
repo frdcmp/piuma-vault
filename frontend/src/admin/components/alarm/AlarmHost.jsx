@@ -1,9 +1,9 @@
-import { Button, Dropdown, Modal, Space } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useUpcomingAlarms, useUserMe } from "../../../queries";
 import { startAlarm, stopAlarm } from "../../../utils/alarmSound";
 import { formatDateTime } from "../../../utils/dateTime";
 import { formatOffset } from "../AlertsField";
+import { PvAlarm } from "../ui";
 
 // If an alert's fire_at is already in the past by more than this, don't ring
 // (the OS notification covered it) — but a fire within this window when the tab
@@ -165,41 +165,19 @@ export default function AlarmHost() {
 				: "Task";
 
 	return (
-		<Modal
+		<PvAlarm
 			open
-			closable={false}
-			maskClosable={false}
-			keyboard={false}
-			centered
-			title={`🔔 ${kind} reminder`}
-			footer={
-				<Space>
-					<Dropdown
-						menu={{
-							items: SNOOZE_OPTIONS.map((m) => ({
-								key: m,
-								label: `${m} min`,
-								onClick: () => handleSnooze(m),
-							})),
-						}}
-					>
-						<Button>Snooze</Button>
-					</Dropdown>
-					<Button type="primary" danger onClick={handleDismiss}>
-						Dismiss
-					</Button>
-				</Space>
-			}
-		>
-			<h2 style={{ margin: "0 0 8px" }}>{active.title}</h2>
-			<p style={{ margin: 0, opacity: 0.85 }}>
-				{active.offset_minutes > 0
+			kind={kind}
+			title={active.title}
+			timeText={
+				active.offset_minutes > 0
 					? `${formatOffset(active.offset_minutes)} — due at ${time}`
-					: `Now — ${time}`}
-			</p>
-			{active.body ? (
-				<p style={{ marginTop: 8, opacity: 0.7 }}>{active.body}</p>
-			) : null}
-		</Modal>
+					: `Now — ${time}`
+			}
+			body={active.body}
+			snoozeOptions={SNOOZE_OPTIONS}
+			onSnooze={handleSnooze}
+			onDismiss={handleDismiss}
+		/>
 	);
 }

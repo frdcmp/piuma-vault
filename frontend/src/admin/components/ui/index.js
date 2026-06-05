@@ -1,3 +1,4 @@
+export { default as PvAlarm } from "./PvAlarm";
 export { default as PvButton } from "./PvButton";
 export { default as PvDateTimePicker } from "./PvDateTimePicker";
 export { default as PvMenu } from "./PvMenu";

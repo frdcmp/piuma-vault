@@ -4,15 +4,37 @@
    ambient (e.g. AntD) --border would otherwise resolve to a light value, showing
    a white delimiter instead of the dark one. */
 
-/* Wrapper that turns a column-layout page into a [page | chat] row. The dark
-   background matches .notes-pixel-layout's --bg so the 6px resizer's transparent
-   track shows the dark layout color instead of the ambient (white) page. */
-.workspace-row {
+/* Shared layout shell (WorkspaceShell.jsx): a [page content | chat] flex row
+   used by Notes, Storage, Tasks and Calendar. The dark background matches
+   .notes-pixel-layout's --bg so the 6px resizer's transparent track shows the
+   dark layout color instead of the ambient (white) page. The pixel design
+   tokens are re-declared here so descendant content resolves var(--*) even
+   though the page's own wrapper may sit inside this shell. */
+.workspace-shell {
+	--bg: #0e0f12;
+	--bg-soft: #15171c;
+	--panel: #1b1e25;
+	--border: #2a2f3a;
+	--border-strong: #3a4150;
+	--text: #d6dbe5;
+	--muted: #8a93a3;
+	--accent: #f7c948;
+	--accent-2: #5cd0a9;
+	--accent-3: #ff6b6b;
+	--accent-4: #6cb6ff;
+
 	display: flex;
 	height: 100vh;
 	width: 100%;
 	overflow: hidden;
 	background: #0e0f12;
+}
+
+/* The page's own content wrapper (the first child) fills the space left of the
+   chat column; min-width:0 lets it shrink instead of overflowing the row. */
+.workspace-shell > :first-child {
+	flex: 1 1 0%;
+	min-width: 0;
 }
 
 .chat-dock-col {

@@ -8,6 +8,7 @@ import {
 	useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
+import WorkspaceShell from "../../../chat/WorkspaceShell";
 import {
 	useCalendarEvents,
 	useCalendarLiveUpdates,
@@ -216,59 +217,61 @@ export default function CalendarPage() {
 	};
 
 	return (
-		<div className="cal-page">
-			<header className="cal-header">
-				<div className="cal-title">
-					<PvButton onClick={() => navigate("/notes")} variant="ghost">
-						‹ home
-					</PvButton>
-					<span className="cal-glyph" aria-hidden="true">
-						▤
-					</span>
-					<h1>{visibleLabel}</h1>
-				</div>
-				<div className="cal-nav">
-					<PvButton onClick={scrollToToday}>today</PvButton>
-					<PvButton
-						variant="accent"
-						onClick={() => setModal({ date: dayjs() })}
-					>
-						+ event
-					</PvButton>
-				</div>
-			</header>
-
-			<div className="cal-weekdays">
-				{WEEKDAYS.map((w) => (
-					<div key={w} className="cal-weekday">
-						{w}
+		<WorkspaceShell>
+			<div className="cal-page">
+				<header className="cal-header">
+					<div className="cal-title">
+						<PvButton onClick={() => navigate("/notes")} variant="ghost">
+							‹ home
+						</PvButton>
+						<span className="cal-glyph" aria-hidden="true">
+							▤
+						</span>
+						<h1>{visibleLabel}</h1>
 					</div>
-				))}
-			</div>
+					<div className="cal-nav">
+						<PvButton onClick={scrollToToday}>today</PvButton>
+						<PvButton
+							variant="accent"
+							onClick={() => setModal({ date: dayjs() })}
+						>
+							+ event
+						</PvButton>
+					</div>
+				</header>
 
-			<div className="cal-scroll" ref={scrollRef} onScroll={onScroll}>
-				{months.map((m) => (
-					<MonthBlock
-						key={m.format("YYYY-MM")}
-						ref={m.isSame(base, "month") ? todayBlockRef : undefined}
-						month={m}
-						byDay={byDay}
-						keyOf={KEY}
-						onEventClick={(ev) => setModal({ event: ev })}
-						onDayClick={(d) => setModal({ date: d })}
-						onToggleDeadline={(t) => toggleTask.mutate(t.id)}
-						onToggleOccurrence={onToggleOccurrence}
+				<div className="cal-weekdays">
+					{WEEKDAYS.map((w) => (
+						<div key={w} className="cal-weekday">
+							{w}
+						</div>
+					))}
+				</div>
+
+				<div className="cal-scroll" ref={scrollRef} onScroll={onScroll}>
+					{months.map((m) => (
+						<MonthBlock
+							key={m.format("YYYY-MM")}
+							ref={m.isSame(base, "month") ? todayBlockRef : undefined}
+							month={m}
+							byDay={byDay}
+							keyOf={KEY}
+							onEventClick={(ev) => setModal({ event: ev })}
+							onDayClick={(d) => setModal({ date: d })}
+							onToggleDeadline={(t) => toggleTask.mutate(t.id)}
+							onToggleOccurrence={onToggleOccurrence}
+						/>
+					))}
+				</div>
+
+				{modal ? (
+					<EventModal
+						event={modal.event}
+						initialDate={modal.date}
+						onClose={() => setModal(null)}
 					/>
-				))}
+				) : null}
 			</div>
-
-			{modal ? (
-				<EventModal
-					event={modal.event}
-					initialDate={modal.date}
-					onClose={() => setModal(null)}
-				/>
-			) : null}
-		</div>
+		</WorkspaceShell>
 	);
 }

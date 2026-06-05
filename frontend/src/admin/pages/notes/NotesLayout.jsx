@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
-import ChatPanel from "../../../chat/ChatPanel";
+import WorkspaceShell from "../../../chat/WorkspaceShell";
 import { useNotesLiveUpdates } from "../../../queries/notesQuery";
+import useChatDockStore from "../../../store/chatDockStore";
 import useNoteControlsStore from "../../../store/noteControlsStore";
 import useNotesWorkspaceStore from "../../../store/notesWorkspaceStore";
 import useUiStore from "../../../store/uiStore";
@@ -16,12 +17,6 @@ const SIDEBAR_MAX = 560;
 const SIDEBAR_DEFAULT = 320;
 const SIDEBAR_STORAGE_KEY = "pv:notes-sidebar-width";
 
-const CHAT_MIN = 220;
-const CHAT_MAX = 860;
-const CHAT_DEFAULT = 360;
-const CHAT_WIDTH_STORAGE_KEY = "pv:notes-chat-width";
-const CHAT_OPEN_STORAGE_KEY = "pv:notes-chat-open";
-
 const clampWidth = (n, min, max) => Math.min(max, Math.max(min, Math.round(n)));
 
 const readStoredNumber = (key, fallback, min, max) => {
@@ -34,19 +29,11 @@ const readStoredNumber = (key, fallback, min, max) => {
 	}
 };
 
-const readStoredBool = (key) => {
-	try {
-		return localStorage.getItem(key) === "1";
-	} catch {
-		return false;
-	}
-};
-
 /**
  * Three-column shell: notes tree (left) | editor / empty (middle) | chat (right).
- * Each side is resizable and persists its width to localStorage. Chat panel is
- * collapsed by default; opened via the editor header button or empty-state
- * Chat button. On mobile only one column is visible at a time.
+ * The left sidebar is resizable and persists its width to localStorage; the
+ * right chat column is the shared dock provided by WorkspaceShell (open/width
+ * state lives in chatDockStore). On mobile only one column is visible at a time.
  */
 const UUID_RE =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -60,6 +47,12 @@ export default function NotesLayout() {
 	const closeTab = useNotesWorkspaceStore((s) => s.closeTab);
 	const pinTab = useNotesWorkspaceStore((s) => s.pinTab);
 	const controlsPresent = useNoteControlsStore((s) => s.present);
+
+	// Chat dock chrome lives in the shared store; the layout only needs `open`
+	// (mobile single-column gating) and `closeChat` (collapse after opening a
+	// note on mobile). Opening the chat is wired directly in the child controls.
+	const chatOpen = useChatDockStore((s) => s.open);
+	const closeChat = useChatDockStore((s) => s.closeChat);
 
 	// When the content column is narrow (e.g. chat panel open), the top-bar
 	// controls collapse into a ⋯ overflow menu.
@@ -111,17 +104,6 @@ export default function NotesLayout() {
 	);
 	const [isResizingSidebar, setIsResizingSidebar] = useState(false);
 
-	const [chatOpen, setChatOpen] = useState(() =>
-		readStoredBool(CHAT_OPEN_STORAGE_KEY),
-	);
-	const [chatWidth, setChatWidth] = useState(() =>
-		readStoredNumber(CHAT_WIDTH_STORAGE_KEY, CHAT_DEFAULT, CHAT_MIN, CHAT_MAX),
-	);
-	const [isResizingChat, setIsResizingChat] = useState(false);
-
-	const openChat = useCallback(() => setChatOpen(true), []);
-	const closeChat = useCallback(() => setChatOpen(false), []);
-
 	// Mobile-only toggle: from the sidebar's X button, switch the root view to
 	// the empty state (dog + Chat). The empty state has a small back icon to
 	// return here. Reset whenever the route changes off /.
@@ -136,26 +118,12 @@ export default function NotesLayout() {
 		setIsResizingSidebar(true);
 	}, []);
 
-	const startChatResize = useCallback((e) => {
-		e.preventDefault();
-		setIsResizingChat(true);
-	}, []);
-
 	useEffect(() => {
-		if (!isResizingSidebar && !isResizingChat) return;
+		if (!isResizingSidebar) return;
 		const onMove = (e) => {
-			if (isResizingSidebar) {
-				setSidebarWidth(clampWidth(e.clientX, SIDEBAR_MIN, SIDEBAR_MAX));
-			} else if (isResizingChat) {
-				setChatWidth(
-					clampWidth(window.innerWidth - e.clientX, CHAT_MIN, CHAT_MAX),
-				);
-			}
+			setSidebarWidth(clampWidth(e.clientX, SIDEBAR_MIN, SIDEBAR_MAX));
 		};
-		const onUp = () => {
-			setIsResizingSidebar(false);
-			setIsResizingChat(false);
-		};
+		const onUp = () => setIsResizingSidebar(false);
 		window.addEventListener("mousemove", onMove);
 		window.addEventListener("mouseup", onUp);
 		const prevCursor = document.body.style.cursor;
@@ -168,7 +136,7 @@ export default function NotesLayout() {
 			document.body.style.cursor = prevCursor;
 			document.body.style.userSelect = prevSelect;
 		};
-	}, [isResizingSidebar, isResizingChat]);
+	}, [isResizingSidebar]);
 
 	useEffect(() => {
 		try {
@@ -177,22 +145,6 @@ export default function NotesLayout() {
 			/* localStorage unavailable */
 		}
 	}, [sidebarWidth]);
-
-	useEffect(() => {
-		try {
-			localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, String(chatWidth));
-		} catch {
-			/* localStorage unavailable */
-		}
-	}, [chatWidth]);
-
-	useEffect(() => {
-		try {
-			localStorage.setItem(CHAT_OPEN_STORAGE_KEY, chatOpen ? "1" : "0");
-		} catch {
-			/* localStorage unavailable */
-		}
-	}, [chatOpen]);
 
 	const handleSelectNote = (noteId) => {
 		if (noteId) {
@@ -217,157 +169,99 @@ export default function NotesLayout() {
 	);
 
 	// On mobile only one column is visible at a time: chat (when open) >
-	// empty state (toggled) > sidebar (root) > content (editor).
+	// empty state (toggled) > sidebar (root) > content (editor). The chat itself
+	// is rendered by WorkspaceShell as a full-screen overlay on mobile.
 	const mobileChatOpen = isMobile && chatOpen;
 	const mobileEmptyInline =
 		isMobile && isRoot && mobileShowEmpty && !mobileChatOpen;
 	const showSidebar =
 		(!isMobile || isRoot) && !mobileEmptyInline && !mobileChatOpen;
 	const showContent = (!isMobile || !isRoot) && !mobileChatOpen;
-	const showChat = chatOpen && (!isMobile || mobileChatOpen);
 
 	return (
-		<div className="notes-pixel-layout">
-			{showSidebar && (
-				<div
-					className={`notes-pixel-sidebar ${isMobile ? "mobile" : ""}`}
-					style={isMobile ? undefined : { width: sidebarWidth }}
-				>
-					<NotesListSidebar
-						selectedNoteId={activeNoteId}
-						onSelectNote={handleSelectNote}
-						onClose={isMobile ? () => setMobileShowEmpty(true) : undefined}
-					/>
-				</div>
-			)}
+		<WorkspaceShell
+			onOpenNote={(noteId) => {
+				handleSelectNote(noteId);
+				// On mobile only one column shows at a time, so reveal the editor
+				// by closing the chat after navigating to the note.
+				if (isMobile) closeChat();
+			}}
+		>
+			<div className="notes-pixel-layout">
+				{showSidebar && (
+					<div
+						className={`notes-pixel-sidebar ${isMobile ? "mobile" : ""}`}
+						style={isMobile ? undefined : { width: sidebarWidth }}
+					>
+						<NotesListSidebar
+							selectedNoteId={activeNoteId}
+							onSelectNote={handleSelectNote}
+							onClose={isMobile ? () => setMobileShowEmpty(true) : undefined}
+						/>
+					</div>
+				)}
 
-			{mobileEmptyInline && (
-				<div className="notes-pixel-sidebar mobile">
-					<PiumaHome
-						onBack={() => setMobileShowEmpty(false)}
-						onOpenChat={openChat}
-					/>
-				</div>
-			)}
+				{mobileEmptyInline && (
+					<div className="notes-pixel-sidebar mobile">
+						<PiumaHome onBack={() => setMobileShowEmpty(false)} />
+					</div>
+				)}
 
-			{showSidebar && !isMobile && (
-				// biome-ignore lint/a11y/useSemanticElements: <hr> is not interactive; this is a draggable resizer
-				<div
-					className={`notes-sidebar-resizer ${isResizingSidebar ? "active" : ""}`}
-					onMouseDown={startSidebarResize}
-					onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
-					onKeyDown={(e) => {
-						const step = e.shiftKey ? 32 : 8;
-						if (e.key === "ArrowLeft")
-							setSidebarWidth((w) =>
-								clampWidth(w - step, SIDEBAR_MIN, SIDEBAR_MAX),
-							);
-						else if (e.key === "ArrowRight")
-							setSidebarWidth((w) =>
-								clampWidth(w + step, SIDEBAR_MIN, SIDEBAR_MAX),
-							);
-						else if (e.key === "Home") setSidebarWidth(SIDEBAR_MIN);
-						else if (e.key === "End") setSidebarWidth(SIDEBAR_MAX);
-						else return;
-						e.preventDefault();
-					}}
-					role="separator"
-					tabIndex={0}
-					aria-orientation="vertical"
-					aria-label="Resize sidebar"
-					aria-valuenow={sidebarWidth}
-					aria-valuemin={SIDEBAR_MIN}
-					aria-valuemax={SIDEBAR_MAX}
-					title="Drag to resize · double-click to reset"
-				/>
-			)}
-
-			{showContent && (
-				<div className="notes-pixel-content" ref={contentRef}>
-					{!isMobile && (tabs.length > 0 || controlsPresent) && (
-						<div className="note-topbar">
-							<NoteTabs
-								tabs={tabs}
-								activeId={activeNoteId}
-								onSelect={handleSelectNote}
-								onClose={handleCloseTab}
-								onPin={pinTab}
-							/>
-							{controlsPresent && (
-								<NoteControls
-									openChat={chatOpen ? null : openChat}
-									onClose={() => navigate("/notes")}
-									compact={contentNarrow}
-								/>
-							)}
-						</div>
-					)}
-					{!isRoot ? (
-						<Outlet context={{ openChat, closeChat, chatOpen }} />
-					) : (
-						<PiumaHome onOpenChat={openChat} />
-					)}
-				</div>
-			)}
-
-			{showChat && !isMobile && (
-				// biome-ignore lint/a11y/useSemanticElements: draggable resizer for the chat column
-				<div
-					className={`notes-sidebar-resizer ${isResizingChat ? "active" : ""}`}
-					onMouseDown={startChatResize}
-					onDoubleClick={() => setChatWidth(CHAT_DEFAULT)}
-					onKeyDown={(e) => {
-						const step = e.shiftKey ? 32 : 8;
-						if (e.key === "ArrowLeft")
-							setChatWidth((w) => clampWidth(w + step, CHAT_MIN, CHAT_MAX));
-						else if (e.key === "ArrowRight")
-							setChatWidth((w) => clampWidth(w - step, CHAT_MIN, CHAT_MAX));
-						else if (e.key === "Home") setChatWidth(CHAT_MAX);
-						else if (e.key === "End") setChatWidth(CHAT_MIN);
-						else return;
-						e.preventDefault();
-					}}
-					role="separator"
-					tabIndex={0}
-					aria-orientation="vertical"
-					aria-label="Resize chat"
-					aria-valuenow={chatWidth}
-					aria-valuemin={CHAT_MIN}
-					aria-valuemax={CHAT_MAX}
-					title="Drag to resize · double-click to reset"
-				/>
-			)}
-
-			{showChat && (
-				<div
-					className={`notes-pixel-chat ${isMobile ? "mobile" : ""}`}
-					style={isMobile ? undefined : { width: chatWidth }}
-				>
-					<ChatPanel
-						onClose={closeChat}
-						onOpenNote={(noteId) => {
-							handleSelectNote(noteId);
-							// On mobile only one column shows at a time, so reveal the
-							// editor by closing the chat after navigating to the note.
-							if (isMobile) closeChat();
+				{showSidebar && !isMobile && (
+					// biome-ignore lint/a11y/useSemanticElements: <hr> is not interactive; this is a draggable resizer
+					<div
+						className={`notes-sidebar-resizer ${isResizingSidebar ? "active" : ""}`}
+						onMouseDown={startSidebarResize}
+						onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
+						onKeyDown={(e) => {
+							const step = e.shiftKey ? 32 : 8;
+							if (e.key === "ArrowLeft")
+								setSidebarWidth((w) =>
+									clampWidth(w - step, SIDEBAR_MIN, SIDEBAR_MAX),
+								);
+							else if (e.key === "ArrowRight")
+								setSidebarWidth((w) =>
+									clampWidth(w + step, SIDEBAR_MIN, SIDEBAR_MAX),
+								);
+							else if (e.key === "Home") setSidebarWidth(SIDEBAR_MIN);
+							else if (e.key === "End") setSidebarWidth(SIDEBAR_MAX);
+							else return;
+							e.preventDefault();
 						}}
+						role="separator"
+						tabIndex={0}
+						aria-orientation="vertical"
+						aria-label="Resize sidebar"
+						aria-valuenow={sidebarWidth}
+						aria-valuemin={SIDEBAR_MIN}
+						aria-valuemax={SIDEBAR_MAX}
+						title="Drag to resize · double-click to reset"
 					/>
-				</div>
-			)}
+				)}
 
-			{/* Floating toggle to open chat from anywhere — mirrors the ChatDock
-			    FAB on Storage/Tasks. Hidden while the chat column is showing. */}
-			{!showChat && (
-				<button
-					type="button"
-					className="notes-chat-fab"
-					onClick={openChat}
-					title="Chat with Piuma"
-					aria-label="Open chat"
-				>
-					🐾
-				</button>
-			)}
-		</div>
+				{showContent && (
+					<div className="notes-pixel-content" ref={contentRef}>
+						{!isMobile && (tabs.length > 0 || controlsPresent) && (
+							<div className="note-topbar">
+								<NoteTabs
+									tabs={tabs}
+									activeId={activeNoteId}
+									onSelect={handleSelectNote}
+									onClose={handleCloseTab}
+									onPin={pinTab}
+								/>
+								{controlsPresent && (
+									<NoteControls
+										onClose={() => navigate("/notes")}
+										compact={contentNarrow}
+									/>
+								)}
+							</div>
+						)}
+						{!isRoot ? <Outlet /> : <PiumaHome />}
+					</div>
+				)}
+			</div>
+		</WorkspaceShell>
 	);
 }

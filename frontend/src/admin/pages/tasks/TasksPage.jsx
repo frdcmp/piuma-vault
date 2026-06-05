@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import ChatDock from "../../../chat/ChatDock";
+import WorkspaceShell from "../../../chat/WorkspaceShell";
 import {
 	useDeleteRecurringTask,
 	useRecurringTasks,
@@ -79,7 +79,7 @@ export default function TasksPage() {
 	const togglingId = toggleTask.isPending ? toggleTask.variables : null;
 
 	return (
-		<div className="workspace-row">
+		<WorkspaceShell>
 			<div className="tasks-page">
 				<header className="tasks-header">
 					<div className="tasks-title">
@@ -363,7 +363,6 @@ export default function TasksPage() {
 					/>
 				) : null}
 			</div>
-			<ChatDock onOpenNote={(noteId) => navigate(`/notes/${noteId}`)} />
-		</div>
+		</WorkspaceShell>
 	);
 }
