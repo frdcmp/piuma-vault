@@ -1,38 +1,35 @@
 //! DeepSeek streaming chat adapter (OpenAI-compatible `/chat/completions`).
-//! Streams the upstream SSE, emits our normalised `data: {type,…}` events to the
-//! client via `tx`, and returns the accumulated turn for persistence.
-//!
-//! Thinking: DeepSeek returns reasoning on `delta.reasoning_content` — surfaced
-//! as `type:"thinking"` events. Tools are not wired yet (DeepSeek-only first cut).
+//! One `call` = one model round: streams text/thinking to the client, and also
+//! accumulates any `tool_calls` so the agent loop (chat.rs) can run them and
+//! call again. Thinking arrives on `delta.reasoning_content`.
 
 use bytes::Bytes;
 use futures::channel::mpsc::UnboundedSender;
 use futures::StreamExt;
-use serde_json::json;
+use serde_json::{json, Value};
 
 pub const DEFAULT_BASE_URL: &str = "https://api.deepseek.com";
 
 pub type SseSender = UnboundedSender<Result<Bytes, actix_web::Error>>;
 
-pub struct TurnInput {
-    pub api_key: String,
-    pub base_url: Option<String>,
-    pub model: String,
-    pub system: String,
-    /// (role, text) — role is "user" | "assistant".
-    pub messages: Vec<(String, String)>,
+#[derive(Debug, Clone)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
 }
 
 #[derive(Default)]
-pub struct TurnOutput {
+pub struct CallResult {
     pub text: String,
     pub thinking: String,
-    pub stop_reason: String,
-    pub tokens_input: i32,
-    pub tokens_output: i32,
+    pub tool_calls: Vec<ToolCall>,
+    pub finish: String,
+    pub tokens_in: i32,
+    pub tokens_out: i32,
 }
 
-fn sse(tx: &SseSender, payload: serde_json::Value) {
+fn sse(tx: &SseSender, payload: Value) {
     let _ = tx.unbounded_send(Ok(Bytes::from(format!("data: {payload}\n\n"))));
 }
 
@@ -46,36 +43,37 @@ fn map_finish(reason: &str) -> &'static str {
     }
 }
 
-pub async fn run(input: TurnInput, tx: &SseSender) -> Result<TurnOutput, String> {
-    let base = input
-        .base_url
-        .as_deref()
+/// One streaming model round. `messages`/`tools` are raw OpenAI-shaped JSON.
+pub async fn call(
+    api_key: &str,
+    base_url: Option<&str>,
+    model: &str,
+    messages: &[Value],
+    tools: &[Value],
+    tx: &SseSender,
+) -> Result<CallResult, String> {
+    let base = base_url
         .filter(|s| !s.trim().is_empty())
         .unwrap_or(DEFAULT_BASE_URL)
         .trim_end_matches('/')
         .to_string();
     let url = format!("{base}/chat/completions");
 
-    // Build messages: system first, then history.
-    let mut msgs: Vec<serde_json::Value> = Vec::with_capacity(input.messages.len() + 1);
-    if !input.system.trim().is_empty() {
-        msgs.push(json!({ "role": "system", "content": input.system }));
-    }
-    for (role, text) in &input.messages {
-        msgs.push(json!({ "role": role, "content": text }));
-    }
-
-    let payload = json!({
-        "model": input.model,
-        "messages": msgs,
+    let mut payload = json!({
+        "model": model,
+        "messages": messages,
         "stream": true,
         "stream_options": { "include_usage": true },
     });
+    if !tools.is_empty() {
+        payload["tools"] = json!(tools);
+        payload["tool_choice"] = json!("auto");
+    }
 
     let client = reqwest::Client::new();
     let resp = client
         .post(&url)
-        .bearer_auth(&input.api_key)
+        .bearer_auth(api_key)
         .json(&payload)
         .send()
         .await
@@ -87,7 +85,9 @@ pub async fn run(input: TurnInput, tx: &SseSender) -> Result<TurnOutput, String>
         return Err(format!("deepseek HTTP {status}: {body}"));
     }
 
-    let mut out = TurnOutput::default();
+    let mut out = CallResult::default();
+    // tool_calls stream incrementally, keyed by `index`.
+    let mut tc_acc: Vec<ToolCall> = Vec::new();
     let mut stream = resp.bytes_stream();
     let mut buf = String::new();
 
@@ -95,7 +95,6 @@ pub async fn run(input: TurnInput, tx: &SseSender) -> Result<TurnOutput, String>
         let chunk = chunk.map_err(|e| format!("deepseek stream error: {e}"))?;
         buf.push_str(&String::from_utf8_lossy(&chunk));
 
-        // Process complete lines; keep any partial trailing line in `buf`.
         while let Some(nl) = buf.find('\n') {
             let line = buf[..nl].trim().to_string();
             buf.drain(..=nl);
@@ -106,7 +105,7 @@ pub async fn run(input: TurnInput, tx: &SseSender) -> Result<TurnOutput, String>
             if data.is_empty() || data == "[DONE]" {
                 continue;
             }
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(data) else {
+            let Ok(v) = serde_json::from_str::<Value>(data) else {
                 continue;
             };
 
@@ -124,27 +123,46 @@ pub async fn run(input: TurnInput, tx: &SseSender) -> Result<TurnOutput, String>
                             sse(tx, json!({ "type": "text", "delta": t }));
                         }
                     }
+                    if let Some(calls) = delta.get("tool_calls").and_then(|x| x.as_array()) {
+                        for c in calls {
+                            let idx = c.get("index").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
+                            while tc_acc.len() <= idx {
+                                tc_acc.push(ToolCall { id: String::new(), name: String::new(), arguments: String::new() });
+                            }
+                            let slot = &mut tc_acc[idx];
+                            if let Some(id) = c.get("id").and_then(|x| x.as_str()) {
+                                if !id.is_empty() {
+                                    slot.id = id.to_string();
+                                }
+                            }
+                            if let Some(f) = c.get("function") {
+                                if let Some(n) = f.get("name").and_then(|x| x.as_str()) {
+                                    if !n.is_empty() {
+                                        slot.name = n.to_string();
+                                    }
+                                }
+                                if let Some(a) = f.get("arguments").and_then(|x| x.as_str()) {
+                                    slot.arguments.push_str(a);
+                                }
+                            }
+                        }
+                    }
                 }
                 if let Some(fr) = choice.get("finish_reason").and_then(|x| x.as_str()) {
-                    out.stop_reason = map_finish(fr).to_string();
+                    out.finish = map_finish(fr).to_string();
                 }
             }
 
             if let Some(usage) = v.get("usage").filter(|u| !u.is_null()) {
-                out.tokens_input = usage
-                    .get("prompt_tokens")
-                    .and_then(|x| x.as_i64())
-                    .unwrap_or(0) as i32;
-                out.tokens_output = usage
-                    .get("completion_tokens")
-                    .and_then(|x| x.as_i64())
-                    .unwrap_or(0) as i32;
+                out.tokens_in = usage.get("prompt_tokens").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+                out.tokens_out = usage.get("completion_tokens").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
             }
         }
     }
 
-    if out.stop_reason.is_empty() {
-        out.stop_reason = "end_turn".to_string();
+    out.tool_calls = tc_acc.into_iter().filter(|t| !t.name.is_empty()).collect();
+    if out.finish.is_empty() {
+        out.finish = if out.tool_calls.is_empty() { "end_turn".into() } else { "tool_use".into() };
     }
     Ok(out)
 }
