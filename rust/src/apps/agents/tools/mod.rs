@@ -16,6 +16,8 @@ use crate::db::db::DbPool;
 mod agenda;
 mod calendar;
 mod notes;
+mod self_config;
+mod shares;
 mod storage;
 mod tasks;
 mod web;
@@ -28,6 +30,8 @@ fn all_defs() -> Vec<(&'static str, &'static str, Value)> {
     defs.extend(calendar::defs());
     defs.extend(agenda::defs());
     defs.extend(storage::defs());
+    defs.extend(shares::defs());
+    defs.extend(self_config::defs());
     defs.extend(web::defs());
     defs
 }
@@ -47,7 +51,15 @@ pub fn schemas_for(enabled: &[String]) -> Vec<Value> {
 }
 
 /// Execute a tool, returning a JSON result (serialised into the tool message).
-pub async fn dispatch(pool: &DbPool, user_id: &str, name: &str, args: &Value) -> Result<Value, String> {
+/// `agent` is the active agent kind — used to scope the self-config tools to
+/// that agent's own rows.
+pub async fn dispatch(
+    pool: &DbPool,
+    user_id: &str,
+    agent: &str,
+    name: &str,
+    args: &Value,
+) -> Result<Value, String> {
     match name {
         // ── Notes ──
         "search_notes" => notes::search_notes(pool, user_id, args).await,
@@ -59,6 +71,7 @@ pub async fn dispatch(pool: &DbPool, user_id: &str, name: &str, args: &Value) ->
         "create_note" => notes::create_note(pool, user_id, args).await,
         "update_note" => notes::update_note(pool, user_id, args).await,
         "append_to_note" => notes::append_to_note(pool, user_id, args).await,
+        "delete_note" => notes::delete_note(pool, user_id, args).await,
         // ── Tasks ──
         "list_tasks" => tasks::list_tasks(pool, user_id, args).await,
         "get_task" => tasks::get_task(pool, user_id, args).await,
@@ -69,16 +82,35 @@ pub async fn dispatch(pool: &DbPool, user_id: &str, name: &str, args: &Value) ->
         "create_recurring" => tasks::create_recurring(pool, user_id, args).await,
         "update_recurring" => tasks::update_recurring(pool, user_id, args).await,
         "complete_occurrence" => tasks::complete_occurrence(pool, user_id, args).await,
+        "delete_task" => tasks::delete_task(pool, user_id, args).await,
+        "delete_recurring" => tasks::delete_recurring(pool, user_id, args).await,
         // ── Calendar ──
         "list_events" => calendar::list_events(pool, user_id, args).await,
         "get_event" => calendar::get_event(pool, user_id, args).await,
         "create_event" => calendar::create_event(pool, user_id, args).await,
         "update_event" => calendar::update_event(pool, user_id, args).await,
+        "delete_event" => calendar::delete_event(pool, user_id, args).await,
         // ── Agenda ──
         "get_agenda" => agenda::get_agenda(pool, user_id, args).await,
         // ── Storage ──
         "list_storage" => storage::list_storage(pool, user_id, args).await,
         "signed_url" => storage::signed_url(pool, args).await,
+        "delete_object" => storage::delete_object(pool, args).await,
+        "delete_folder" => storage::delete_folder(pool, args).await,
+        "bulk_move" => storage::bulk_move(pool, args).await,
+        "presign_upload" => storage::presign_upload(pool, args).await,
+        "zip_bundle" => storage::zip_bundle(pool, args).await,
+        // ── Shares ──
+        "list_shares" => shares::list_shares(pool, user_id, args).await,
+        "create_share" => shares::create_share(pool, user_id, args).await,
+        "update_share" => shares::update_share(pool, user_id, args).await,
+        "delete_share" => shares::delete_share(pool, user_id, args).await,
+        // ── Self-config (scoped to the active agent) ──
+        "read_self" => self_config::read_self(pool, agent).await,
+        "update_instructions" => self_config::update_instructions(pool, agent, args).await,
+        "update_user_context" => self_config::update_user_context(pool, agent, args).await,
+        "update_memory" => self_config::update_memory(pool, agent, args).await,
+        "update_persona" => self_config::update_persona(pool, agent, args).await,
         // ── Web ──
         "web_search" => web::web_search(pool, args).await,
         "web_fetch" => web::web_fetch(args).await,
