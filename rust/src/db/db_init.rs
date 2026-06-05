@@ -451,6 +451,133 @@ const TABLES: &[TableDefinition] = &[
         "#,
         indices: &[],
     },
+    // ── Agents system (apps/agents) — multi-provider LLM chat ──────────────
+    // Editable per-agent prose (the agent *kind* itself lives in registry code).
+    TableDefinition {
+        name: "db_agent_profiles",
+        sql: r#"
+            CREATE TABLE db_agent_profiles (
+                agent TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL DEFAULT '',
+                instructions TEXT NOT NULL DEFAULT '',
+                user_context TEXT NOT NULL DEFAULT '',
+                memory TEXT NOT NULL DEFAULT '',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[],
+    },
+    // One persona per agent for now (UNIQUE(agent, name) allows multi later).
+    TableDefinition {
+        name: "db_agent_personas",
+        sql: r#"
+            CREATE TABLE db_agent_personas (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                agent TEXT NOT NULL REFERENCES db_agent_profiles(agent) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                display_name TEXT NOT NULL DEFAULT '',
+                emoji TEXT,
+                system_prompt TEXT NOT NULL DEFAULT '',
+                allowed_tools TEXT[],
+                config JSONB NOT NULL DEFAULT '{}',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (agent, name)
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_agent_personas_agent ON db_agent_personas USING btree (agent)",
+        ],
+    },
+    // Provider configs; api_key stored plaintext, masked at the HTTP layer.
+    TableDefinition {
+        name: "db_llm_providers",
+        sql: r#"
+            CREATE TABLE db_llm_providers (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                kind TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                api_key TEXT NOT NULL DEFAULT '',
+                base_url TEXT,
+                config JSONB NOT NULL DEFAULT '{}',
+                enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (display_name)
+            )
+        "#,
+        indices: &[],
+    },
+    // Models under each provider; exactly one global default (partial unique).
+    TableDefinition {
+        name: "db_llm_models",
+        sql: r#"
+            CREATE TABLE db_llm_models (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                provider_id UUID NOT NULL REFERENCES db_llm_providers(id) ON DELETE CASCADE,
+                model_id TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                supports_thinking BOOLEAN NOT NULL DEFAULT FALSE,
+                supports_tools BOOLEAN NOT NULL DEFAULT TRUE,
+                supports_vision BOOLEAN NOT NULL DEFAULT FALSE,
+                context_window INTEGER,
+                config JSONB NOT NULL DEFAULT '{}',
+                is_default BOOLEAN NOT NULL DEFAULT FALSE,
+                enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (provider_id, model_id)
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_llm_models_provider ON db_llm_models USING btree (provider_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_models_one_default ON db_llm_models (is_default) WHERE is_default",
+        ],
+    },
+    // Chat threads, tagged by agent.
+    TableDefinition {
+        name: "db_chat_conversations",
+        sql: r#"
+            CREATE TABLE db_chat_conversations (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                agent TEXT NOT NULL,
+                title TEXT,
+                model_id UUID REFERENCES db_llm_models(id) ON DELETE SET NULL,
+                identity TEXT NOT NULL,
+                metadata JSONB NOT NULL DEFAULT '{}',
+                archived_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_chat_conv_recent ON db_chat_conversations USING btree (agent, updated_at DESC)",
+        ],
+    },
+    // Turns inside a conversation; content is normalised JSONB blocks.
+    TableDefinition {
+        name: "db_chat_messages",
+        sql: r#"
+            CREATE TABLE db_chat_messages (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                conversation_id UUID NOT NULL REFERENCES db_chat_conversations(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                content JSONB NOT NULL DEFAULT '[]',
+                model_used TEXT,
+                provider_kind TEXT,
+                tokens_input INTEGER,
+                tokens_output INTEGER,
+                tokens_cached INTEGER,
+                stop_reason TEXT,
+                metadata JSONB NOT NULL DEFAULT '{}',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_chat_msg_conv ON db_chat_messages USING btree (conversation_id, created_at)",
+        ],
+    },
 ];
 
 pub async fn init_db(pool: &DbPool) -> Result<InitResult, sqlx::Error> {
