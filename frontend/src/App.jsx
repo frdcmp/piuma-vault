@@ -89,30 +89,37 @@ function AppContent() {
 				<Route path="/admin/notes" element={<Navigate to="/" replace />} />
 				<Route path="/admin/notes/:id" element={<Navigate to="/" replace />} />
 
-				{/* Admin Storage explorer (standalone pixel layout, no PageLayout) */}
+				{/* Storage explorer — top-level, auth-only (standalone pixel layout) */}
 				<Route
-					path="/admin/storage"
+					path="/storage"
 					element={
-						<ProtectedRoute requiredPermission="admin_access">
+						<ProtectedRoute requiredPermission={null}>
 							<StorageExplorer />
 						</ProtectedRoute>
 					}
 				/>
+				<Route
+					path="/admin/storage"
+					element={<Navigate to="/storage" replace />}
+				/>
 
-				{/* Calendar & Tasks (standalone pixel layout, like Storage) */}
+				{/* Tasks — top-level, auth-only (standalone pixel layout) */}
+				<Route
+					path="/tasks"
+					element={
+						<ProtectedRoute requiredPermission={null}>
+							<TasksPage />
+						</ProtectedRoute>
+					}
+				/>
+				<Route path="/admin/tasks" element={<Navigate to="/tasks" replace />} />
+
+				{/* Calendar (standalone pixel layout, like Storage) */}
 				<Route
 					path="/admin/calendar"
 					element={
 						<ProtectedRoute requiredPermission="admin_access">
 							<CalendarPage />
-						</ProtectedRoute>
-					}
-				/>
-				<Route
-					path="/admin/tasks"
-					element={
-						<ProtectedRoute requiredPermission="admin_access">
-							<TasksPage />
 						</ProtectedRoute>
 					}
 				/>

@@ -125,7 +125,7 @@ export default function PiumaHome({ onBack, onOpenChat }) {
 				<button
 					type="button"
 					className="piuma-menu-item"
-					onClick={() => navigate("/admin/storage")}
+					onClick={() => navigate("/storage")}
 				>
 					<span className="piuma-menu-glyph storage" aria-hidden="true">
 						▦
@@ -135,7 +135,7 @@ export default function PiumaHome({ onBack, onOpenChat }) {
 				<button
 					type="button"
 					className="piuma-menu-item"
-					onClick={() => navigate("/admin/tasks")}
+					onClick={() => navigate("/tasks")}
 				>
 					<span className="piuma-menu-glyph" aria-hidden="true">
 						☑

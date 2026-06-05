@@ -39,7 +39,7 @@ const COMMANDS = [
 		group: "Navigation",
 		icon: <FolderOpenOutlined />,
 		label: "Storage",
-		to: "/admin/storage",
+		to: "/storage",
 		keywords: "files explorer",
 	},
 	{

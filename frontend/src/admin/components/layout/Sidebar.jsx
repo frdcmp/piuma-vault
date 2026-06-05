@@ -27,7 +27,7 @@ const NAVIGATION = [
 	{ key: "/admin/notes", icon: <BookOutlined />, label: "Vault" },
 	{ key: "/admin/agents", icon: <RobotOutlined />, label: "Agents" },
 	{ key: "/admin/about", icon: <AppstoreOutlined />, label: "About" },
-	{ key: "/admin/storage", icon: <FolderOpenOutlined />, label: "Storage" },
+	{ key: "/storage", icon: <FolderOpenOutlined />, label: "Storage" },
 ];
 
 const RESOURCES = [

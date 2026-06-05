@@ -114,7 +114,7 @@ export default function UserMenu({ size = 42 }) {
 							</Link>
 							<Link
 								className="user-menu-item"
-								to="/admin/storage"
+								to="/storage"
 								onClick={() => setOpen(false)}
 							>
 								&gt; storage
