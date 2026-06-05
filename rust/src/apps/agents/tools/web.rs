@@ -1,0 +1,242 @@
+//! Web tools — provider-agnostic, run server-side. `web_search` uses the Brave
+//! Search API (key in app_settings: `brave_search_api_key`). `web_fetch` GETs a
+//! URL and returns cleaned text, behind an SSRF guard (no private/loopback/
+//! link-local/metadata addresses; redirects are not followed).
+
+use std::net::IpAddr;
+use std::time::Duration;
+
+use serde_json::{json, Value};
+
+use super::*;
+use crate::apps::settings::store;
+use crate::db::db::DbPool;
+
+const MAX_BODY: usize = 60_000; // cap bytes read from a fetched page
+const MAX_TEXT: usize = 12_000; // cap chars returned to the model
+
+pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
+    vec![
+        (
+            "web_search",
+            "Search the web (Brave). Use for anything not in the vault or needing current info. Always say when an answer came from the web vs the vault.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string" },
+                    "limit": { "type": "integer", "description": "max results (default 5, max 10)" }
+                },
+                "required": ["query"]
+            }),
+        ),
+        (
+            "web_fetch",
+            "Fetch a web page by URL and return its cleaned text content.",
+            json!({
+                "type": "object",
+                "properties": { "url": { "type": "string", "description": "http(s) URL" } },
+                "required": ["url"]
+            }),
+        ),
+    ]
+}
+
+pub async fn web_search(pool: &DbPool, args: &Value) -> Result<Value, String> {
+    let query = req_str(args, "query")?;
+    let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(5).clamp(1, 10);
+    let key = store::get(pool, "brave_search_api_key")
+        .await
+        .ok_or("web search is not configured — set `brave_search_api_key` in admin → Services")?;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get("https://api.search.brave.com/res/v1/web/search")
+        .query(&[("q", query.as_str()), ("count", &limit.to_string())])
+        .header("X-Subscription-Token", key)
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("search request failed: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("search failed: HTTP {}", resp.status()));
+    }
+    let body: Value = resp.json().await.map_err(|e| format!("bad search response: {e}"))?;
+    let results: Vec<Value> = body
+        .get("web")
+        .and_then(|w| w.get("results"))
+        .and_then(|r| r.as_array())
+        .map(|arr| {
+            arr.iter()
+                .take(limit as usize)
+                .map(|r| {
+                    json!({
+                        "title": r.get("title").and_then(|v| v.as_str()).unwrap_or(""),
+                        "url": r.get("url").and_then(|v| v.as_str()).unwrap_or(""),
+                        "description": r.get("description").and_then(|v| v.as_str()).unwrap_or(""),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(json!({ "count": results.len(), "results": results }))
+}
+
+pub async fn web_fetch(args: &Value) -> Result<Value, String> {
+    let raw = req_str(args, "url")?;
+    let url = reqwest::Url::parse(&raw).map_err(|_| "invalid URL".to_string())?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("only http(s) URLs are allowed".into());
+    }
+    let host = url.host_str().ok_or("URL has no host")?.to_string();
+    let port = url.port_or_known_default().unwrap_or(80);
+
+    // SSRF guard: resolve the host and reject any non-public address.
+    let addrs = tokio::net::lookup_host((host.as_str(), port))
+        .await
+        .map_err(|e| format!("could not resolve host: {e}"))?;
+    let mut any = false;
+    for addr in addrs {
+        any = true;
+        if is_blocked_ip(addr.ip()) {
+            return Err("refusing to fetch a private/loopback/link-local address".into());
+        }
+    }
+    if !any {
+        return Err("host did not resolve".into());
+    }
+
+    // No redirect following — a 3xx to an internal host would bypass the guard.
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get(url.clone())
+        .header("User-Agent", "PiumaVault/1.0 (+agent web_fetch)")
+        .send()
+        .await
+        .map_err(|e| format!("fetch failed: {e}"))?;
+    let status = resp.status();
+    if status.is_redirection() {
+        let location = resp
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        return Ok(json!({ "url": raw, "status": status.as_u16(), "redirected_to": location, "note": "redirects are not followed; re-fetch the target URL if it's safe" }));
+    }
+    if !status.is_success() {
+        return Err(format!("fetch failed: HTTP {status}"));
+    }
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_lowercase();
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    let slice = &bytes[..bytes.len().min(MAX_BODY)];
+    let raw_text = String::from_utf8_lossy(slice).to_string();
+
+    let text = if content_type.contains("text/html") || raw_text.trim_start().starts_with('<') {
+        html_to_text(&raw_text)
+    } else if content_type.starts_with("text/")
+        || content_type.contains("json")
+        || content_type.contains("xml")
+        || content_type.is_empty()
+    {
+        raw_text
+    } else {
+        return Err(format!("unsupported content-type: {content_type}"));
+    };
+    let truncated = text.len() > MAX_TEXT;
+    let mut text = text;
+    if truncated {
+        text.truncate(MAX_TEXT);
+    }
+    Ok(json!({ "url": raw, "status": status.as_u16(), "truncated": truncated, "content": text }))
+}
+
+fn is_blocked_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_unspecified()
+                || v4.is_documentation()
+                || v4.octets()[0] == 0
+                // CGNAT 100.64.0.0/10
+                || (v4.octets()[0] == 100 && (v4.octets()[1] & 0xc0) == 64)
+        }
+        IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4() {
+                return is_blocked_ip(IpAddr::V4(v4));
+            }
+            let seg = v6.segments();
+            v6.is_loopback()
+                || v6.is_unspecified()
+                // unique-local fc00::/7
+                || (seg[0] & 0xfe00) == 0xfc00
+                // link-local fe80::/10
+                || (seg[0] & 0xffc0) == 0xfe80
+        }
+    }
+}
+
+// Crude HTML → text: drop script/style, strip tags, decode a few entities,
+// collapse whitespace. Good enough to feed a page's gist to the model.
+fn html_to_text(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let bytes = html.as_bytes();
+    let lower = html.to_lowercase();
+    let mut i = 0;
+    let mut in_tag = false;
+    let mut skip_until: Option<&str> = None;
+
+    while i < bytes.len() {
+        if let Some(close) = skip_until {
+            if lower[i..].starts_with(close) {
+                i += close.len();
+                skip_until = None;
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+        if lower[i..].starts_with("<script") {
+            skip_until = Some("</script>");
+            i += 7;
+            continue;
+        }
+        if lower[i..].starts_with("<style") {
+            skip_until = Some("</style>");
+            i += 6;
+            continue;
+        }
+        let c = bytes[i] as char;
+        if c == '<' {
+            in_tag = true;
+        } else if c == '>' {
+            in_tag = false;
+            out.push(' ');
+        } else if !in_tag {
+            out.push(c);
+        }
+        i += 1;
+    }
+
+    let decoded = out
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'");
+    decoded.split_whitespace().collect::<Vec<_>>().join(" ")
+}
