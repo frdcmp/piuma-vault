@@ -18,6 +18,12 @@ pub const S3_ACCESS_KEY_ID: &str = "s3_access_key_id";
 pub const S3_SECRET_ACCESS_KEY: &str = "s3_secret_access_key";
 pub const S3_CDN_URL: &str = "s3_cdn_url";
 pub const S3_CDN_TOKEN_KEY: &str = "s3_cdn_token_key";
+// Web search — pick a provider, set its key. See `apps::web_search`.
+pub const WEBSEARCH_PROVIDER: &str = "websearch_provider";
+pub const WEBSEARCH_BRAVE_API_KEY: &str = "websearch_brave_api_key";
+pub const WEBSEARCH_TAVILY_API_KEY: &str = "websearch_tavily_api_key";
+pub const WEBSEARCH_SERPAPI_API_KEY: &str = "websearch_serpapi_api_key";
+pub const WEBSEARCH_EXA_API_KEY: &str = "websearch_exa_api_key";
 
 /// Resolved S3 connection config (all required fields present).
 #[derive(Debug, Clone)]
