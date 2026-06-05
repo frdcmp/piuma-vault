@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import ChatDock from "../../../chat/ChatDock";
 import { useStorageWorkspace } from "../../../store/storageWorkspaceStore";
 import "../notes/NotesSidebar.css";
 import "./Storage.css";
@@ -171,6 +172,8 @@ export default function StorageExplorer() {
 			/>
 
 			<StorageGrid prefix={prefix} onNavigate={handleNavigate} />
+
+			<ChatDock onOpenNote={(noteId) => navigate(`/notes/${noteId}`)} />
 		</div>
 	);
 }
