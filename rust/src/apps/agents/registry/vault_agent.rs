@@ -3,11 +3,12 @@
 //! Deletes / shares / self-config (Tier 3) are intentionally omitted here and
 //! enabled per-persona via `db_agent_personas.allowed_tools`.
 
-use super::AgentDef;
+use super::{AgentDef, AgentType};
 
 pub static DEF: AgentDef = AgentDef {
     kind: "vault_agent",
     display_name: "Vault Agent",
+    agent_type: AgentType::Native,
     persona: "piuma",
     tools: &[
         // Tier 1 — read

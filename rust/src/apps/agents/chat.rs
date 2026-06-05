@@ -12,10 +12,11 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::apps::auth::models::AuthenticatedUser;
+use crate::apps::settings;
 use crate::db::db::DbPool;
 
 use super::models::{ApiError, ChatTurnReq, ConversationRow, ModelRow, ProviderRow};
-use super::providers::deepseek;
+use super::providers::{deepseek, openclaw as oc_gateway};
 use super::{identities, registry, tools};
 
 const MAX_ROUNDS: usize = 8;
@@ -59,6 +60,15 @@ pub async fn chat(
             return HttpResponse::InternalServerError().json(ApiError::new("database error"));
         }
     };
+
+    // Gateway agents (e.g. OpenClaw) proxy to their external service instead of
+    // running the native provider loop.
+    let is_gateway = registry::get(&conv.agent)
+        .map(|d| d.agent_type == registry::AgentType::Gateway)
+        .unwrap_or(false);
+    if is_gateway {
+        return gateway_turn(db.clone(), conv, msg).await;
+    }
 
     let model_row: Option<ModelRow> = match conv.model_id {
         Some(mid) => sqlx::query_as("SELECT * FROM db_llm_models WHERE id = $1")
@@ -254,6 +264,97 @@ pub async fn chat(
                 "tokens_input": tin,
                 "tokens_output": tout,
             }))));
+        }
+    });
+
+    HttpResponse::Ok()
+        .content_type("text/event-stream")
+        .insert_header(("Cache-Control", "no-cache"))
+        .insert_header(("X-Accel-Buffering", "no"))
+        .streaming(rx)
+}
+
+/// Proxy a turn for a `gateway` agent (OpenClaw). Persists user + assistant to
+/// db_chat_* (so the agents conversation list/history is uniform) and uses the
+/// conversation id as the OpenClaw session key.
+async fn gateway_turn(pool: DbPool, conv: ConversationRow, msg: String) -> HttpResponse {
+    let (base, token) = match settings::store::openclaw_config(&pool).await {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::BadRequest().json(ApiError::new(e)),
+    };
+
+    let user_content = json!([{ "type": "text", "text": msg }]);
+    if let Err(e) =
+        sqlx::query("INSERT INTO db_chat_messages (conversation_id, role, content) VALUES ($1, 'user', $2)")
+            .bind(conv.id)
+            .bind(&user_content)
+            .execute(&pool)
+            .await
+    {
+        log::error!("gateway chat: persist user msg: {e}");
+        return HttpResponse::InternalServerError().json(ApiError::new("database error"));
+    }
+    if conv.title.as_deref().unwrap_or("").is_empty() {
+        let title: String = msg.chars().take(60).collect();
+        let _ = sqlx::query("UPDATE db_chat_conversations SET title = $2 WHERE id = $1")
+            .bind(conv.id)
+            .bind(&title)
+            .execute(&pool)
+            .await;
+    }
+
+    // History → OpenAI messages (no system; the gateway owns its own prompt).
+    let rows: Vec<(String, Value)> = sqlx::query_as(
+        "SELECT role, content FROM db_chat_messages WHERE conversation_id = $1 ORDER BY created_at",
+    )
+    .bind(conv.id)
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default();
+    let mut messages: Vec<Value> = Vec::new();
+    for (role, content) in rows {
+        if role != "user" && role != "assistant" {
+            continue;
+        }
+        let text = blocks_to_text(&content);
+        if text.trim().is_empty() {
+            continue;
+        }
+        messages.push(json!({ "role": role, "content": text }));
+    }
+
+    let (tx, rx) = mpsc::unbounded::<Result<Bytes, actix_web::Error>>();
+    let pool2 = pool.clone();
+    let conv_id = conv.id;
+    let session = conv.id.to_string();
+
+    actix_web::rt::spawn(async move {
+        match oc_gateway::stream(&base, &token, &session, &messages, &tx).await {
+            Ok(out) => {
+                let content = json!([{ "type": "text", "text": out.text }]);
+                let msg_id: Option<Uuid> = sqlx::query_scalar(
+                    "INSERT INTO db_chat_messages (conversation_id, role, content, provider_kind, stop_reason) \
+                     VALUES ($1, 'assistant', $2, 'openclaw', $3) RETURNING id",
+                )
+                .bind(conv_id)
+                .bind(&content)
+                .bind(&out.stop)
+                .fetch_optional(&pool2)
+                .await
+                .ok()
+                .flatten();
+                let _ = sqlx::query("UPDATE db_chat_conversations SET updated_at = NOW() WHERE id = $1")
+                    .bind(conv_id)
+                    .execute(&pool2)
+                    .await;
+                let _ = tx.unbounded_send(Ok(frame(json!({
+                    "type": "done", "stop_reason": out.stop, "message_id": msg_id,
+                }))));
+            }
+            Err(e) => {
+                log::error!("gateway chat: {e}");
+                let _ = tx.unbounded_send(Ok(frame(json!({ "type": "error", "error": e }))));
+            }
         }
     });
 
