@@ -89,9 +89,24 @@ const toolArgsSummary = (args) => {
 		.join(", ");
 };
 
-function ToolList({ tools }) {
+// Group tools by name for the collapsed summary line, busiest first —
+// e.g. "9× search notes · 4× read note · 1× browse folder".
+const toolSummary = (tools) => {
+	const counts = new Map();
+	for (const t of tools) counts.set(t.name, (counts.get(t.name) || 0) + 1);
+	const parts = [...counts.entries()]
+		.sort((a, b) => b[1] - a[1])
+		.map(([name, n]) => `${n}× ${name.replace(/_/g, " ")}`);
+	const shown = parts.slice(0, 4).join(" · ");
+	return parts.length > 4 ? `${shown} · +${parts.length - 4} more` : shown;
+};
+
+function ToolList({ tools, isStreaming }) {
+	const [expanded, setExpanded] = useState(false);
 	if (!tools?.length) return null;
-	return (
+	const anyErr = tools.some((t) => t.status === "error");
+
+	const list = (
 		<div className="chat-tools">
 			{tools.map((t) => {
 				const summary = toolArgsSummary(t.args);
@@ -105,6 +120,35 @@ function ToolList({ tools }) {
 					</div>
 				);
 			})}
+		</div>
+	);
+
+	// Live: show the full activity as it streams. Once the turn settles it
+	// collapses to a one-line summary you can click to re-expand.
+	if (isStreaming) return list;
+	return (
+		<div className="chat-tools-wrap">
+			<button
+				type="button"
+				className={`chat-tools-summary ${anyErr ? "chat-tools-summary--error" : ""}`}
+				onClick={() => setExpanded((v) => !v)}
+				aria-expanded={expanded}
+			>
+				<span className="chat-tools-caret" aria-hidden="true">
+					{expanded ? "▾" : "▸"}
+				</span>
+				<span className="chat-tools-summary-icon" aria-hidden="true">
+					🔧
+				</span>
+				<span className="chat-tools-summary-text">
+					{tools.length} tool{tools.length === 1 ? "" : "s"} ·{" "}
+					{toolSummary(tools)}
+				</span>
+				<span className="chat-tool-icon" aria-hidden="true">
+					{anyErr ? "✗" : "✓"}
+				</span>
+			</button>
+			{expanded ? list : null}
 		</div>
 	);
 }
@@ -185,7 +229,7 @@ function AssistantBubble({ content, tools, isStreaming, label }) {
 		<div className="chat-assistant-row">
 			<span className="chat-role">{label}</span>
 			<div className="chat-assistant-body">
-				<ToolList tools={tools} />
+				<ToolList tools={tools} isStreaming={isStreaming} />
 				{empty && isStreaming ? (
 					<div className="chat-thinking">
 						<PiumaRunning pixelSize={2} />

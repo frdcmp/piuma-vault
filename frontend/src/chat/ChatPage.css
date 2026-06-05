@@ -221,6 +221,48 @@
 	border: 1px solid var(--border);
 	background: var(--bg-soft);
 }
+/* Collapsed summary toggle (settled turns); expands to the full list above. */
+.chat-tools-wrap {
+	margin-bottom: 10px;
+}
+.chat-tools-wrap .chat-tools {
+	margin-top: 4px;
+	margin-bottom: 0;
+}
+.chat-tools-summary {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 100%;
+	padding: 3px 8px;
+	font-family: inherit;
+	font-size: 9pt;
+	color: inherit;
+	border: 1px solid var(--border);
+	background: var(--bg-soft);
+	cursor: pointer;
+}
+.chat-tools-summary:hover {
+	border-color: var(--accent-2);
+}
+.chat-tools-caret {
+	flex: none;
+	font-size: 8pt;
+	color: var(--muted);
+}
+.chat-tools-summary-icon {
+	flex: none;
+	font-size: 8pt;
+}
+.chat-tools-summary-text {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--muted);
+}
+.chat-tools-summary--error {
+	border-color: rgba(255, 107, 107, 0.4);
+}
 .chat-tool-icon {
 	flex: none;
 	font-size: 8pt;
