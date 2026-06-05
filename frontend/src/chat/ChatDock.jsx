@@ -10,7 +10,7 @@ import "./ChatDock.css";
 // conversation itself is persisted by ChatPanel, so it continues across pages.
 
 const CHAT_MIN = 220;
-const CHAT_MAX = 560;
+const CHAT_MAX = 860;
 const CHAT_DEFAULT = 360;
 const CHAT_WIDTH_KEY = "pv:chat-width";
 const CHAT_OPEN_KEY = "pv:chat-open";

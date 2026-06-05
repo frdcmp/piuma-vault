@@ -17,7 +17,7 @@ const SIDEBAR_DEFAULT = 320;
 const SIDEBAR_STORAGE_KEY = "pv:notes-sidebar-width";
 
 const CHAT_MIN = 220;
-const CHAT_MAX = 560;
+const CHAT_MAX = 860;
 const CHAT_DEFAULT = 360;
 const CHAT_WIDTH_STORAGE_KEY = "pv:notes-chat-width";
 const CHAT_OPEN_STORAGE_KEY = "pv:notes-chat-open";
