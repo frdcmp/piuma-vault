@@ -28,6 +28,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                 .route(web::post().to(handlers::create_model)),
         )
         // Models
+        .service(web::resource("/agents/models").route(web::get().to(handlers::list_all_models)))
         .service(
             web::resource("/agents/models/{id}")
                 .route(web::patch().to(handlers::update_model))

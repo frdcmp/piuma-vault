@@ -153,6 +153,8 @@ pub struct AgentProfileRow {
     pub instructions: String,
     pub user_context: String,
     pub memory: String,
+    /// Per-agent slash-command macros: [{ name, description, prompt }].
+    pub commands: Json,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -163,6 +165,7 @@ pub struct UpdateProfileReq {
     pub instructions: Option<String>,
     pub user_context: Option<String>,
     pub memory: Option<String>,
+    pub commands: Option<Json>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize)]
@@ -253,6 +256,8 @@ pub struct AgentInfo {
     pub display_name: String,
     pub persona: String,
     pub tool_count: usize,
+    /// Per-agent slash-command macros (from db_agent_profiles.commands).
+    pub commands: Json,
 }
 
 #[derive(Debug, Deserialize)]

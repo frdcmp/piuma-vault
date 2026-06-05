@@ -462,6 +462,7 @@ const TABLES: &[TableDefinition] = &[
                 instructions TEXT NOT NULL DEFAULT '',
                 user_context TEXT NOT NULL DEFAULT '',
                 memory TEXT NOT NULL DEFAULT '',
+                commands JSONB NOT NULL DEFAULT '[]',
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
