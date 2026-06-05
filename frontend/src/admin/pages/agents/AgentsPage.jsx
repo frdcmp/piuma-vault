@@ -485,10 +485,11 @@ function Bubble({ sender, text, thinking }) {
 	);
 }
 
-function ChatTab({ agent }) {
-	const { data: conversations = [] } = useConversations(agent);
+function ChatTab({ agents }) {
+	const { data: conversations = [] } = useConversations();
 	const createConversation = useCreateConversation();
 	const deleteConversation = useDeleteConversation();
+	const [newAgent, setNewAgent] = useState(agents[0]?.kind || "vault_agent");
 	const [activeId, setActiveId] = useState(null);
 	const { data: convData, refetch } = useConversation(activeId);
 	const [input, setInput] = useState("");
@@ -508,7 +509,7 @@ function ChatTab({ agent }) {
 
 	const newConversation = async () => {
 		try {
-			const conv = await createConversation.mutateAsync({ agent });
+			const conv = await createConversation.mutateAsync({ agent: newAgent });
 			setActiveId(conv.id);
 		} catch (e) {
 			setError(errMsg(e, "Failed to start conversation"));
@@ -522,7 +523,7 @@ function ChatTab({ agent }) {
 		let convId = activeId;
 		if (!convId) {
 			try {
-				const conv = await createConversation.mutateAsync({ agent });
+				const conv = await createConversation.mutateAsync({ agent: newAgent });
 				convId = conv.id;
 				setActiveId(conv.id);
 			} catch (e) {
@@ -553,6 +554,21 @@ function ChatTab({ agent }) {
 	return (
 		<div className="ag-chat">
 			<div className="ag-conv-list">
+				{agents.length > 1 && (
+					<select
+						className="ag-select"
+						value={newAgent}
+						onChange={(e) => setNewAgent(e.target.value)}
+						title="Agent for new chats"
+						style={{ marginBottom: 8 }}
+					>
+						{agents.map((a) => (
+							<option key={a.kind} value={a.kind}>
+								{a.display_name}
+							</option>
+						))}
+					</select>
+				)}
 				<button
 					type="button"
 					className="ag-btn ag-btn--block"
@@ -686,7 +702,7 @@ export default function AgentsPage() {
 					</button>
 				))}
 			</div>
-			{tab === "chat" && <ChatTab agent={agent} />}
+			{tab === "chat" && <ChatTab agents={agents} />}
 			{tab === "providers" && <ProvidersTab />}
 			{tab === "config" && <ConfigTab agent={agent} />}
 		</div>
