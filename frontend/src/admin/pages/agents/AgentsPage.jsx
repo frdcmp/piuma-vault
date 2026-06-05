@@ -1,28 +1,3 @@
-import {
-	DeleteOutlined,
-	PlusOutlined,
-	SendOutlined,
-	StarFilled,
-	StarOutlined,
-} from "@ant-design/icons";
-import {
-	Button,
-	Card,
-	Collapse,
-	Empty,
-	Form,
-	Input,
-	List,
-	Modal,
-	message,
-	Popconfirm,
-	Select,
-	Space,
-	Spin,
-	Tabs,
-	Tag,
-	Typography,
-} from "antd";
 import { useEffect, useRef, useState } from "react";
 import { streamChat } from "../../../api/agentChatApi";
 import {
@@ -43,309 +18,437 @@ import {
 	useUpdateModel,
 	useUpdatePersona,
 } from "../../../queries";
+import "./agents.css";
 
-const { Title, Text, Paragraph } = Typography;
 const PROVIDER_KINDS = ["deepseek", "anthropic", "openai", "gemini", "minimax"];
+
+const errMsg = (e, fallback) =>
+	e?.response?.data?.error || e?.message || fallback;
 
 // ── Providers + models ───────────────────────────────────────────────────────
 
 function ModelsList({ providerId }) {
-	const { data: models = [], isLoading } = useModels(providerId);
+	const { data: models = [] } = useModels(providerId);
 	const createModel = useCreateModel();
 	const updateModel = useUpdateModel();
 	const deleteModel = useDeleteModel();
-	const [form] = Form.useForm();
+	const [modelId, setModelId] = useState("");
+	const [displayName, setDisplayName] = useState("");
+	const [thinking, setThinking] = useState(true);
+	const [error, setError] = useState("");
 
-	const onAdd = async (v) => {
+	const add = async () => {
+		if (!modelId.trim() || !displayName.trim()) return;
+		setError("");
 		try {
-			await createModel.mutateAsync({ providerId, ...v });
-			form.resetFields();
-			message.success("Model added");
+			await createModel.mutateAsync({
+				providerId,
+				model_id: modelId.trim(),
+				display_name: displayName.trim(),
+				supports_thinking: thinking,
+			});
+			setModelId("");
+			setDisplayName("");
 		} catch (e) {
-			message.error(e?.response?.data?.error || "Failed to add model");
+			setError(errMsg(e, "Failed to add model"));
 		}
 	};
 
-	if (isLoading) return <Spin size="small" />;
 	return (
-		<div style={{ marginTop: 8 }}>
+		<div>
 			{models.map((m) => (
-				<div
-					key={m.id}
-					style={{
-						display: "flex",
-						alignItems: "center",
-						gap: 8,
-						padding: "4px 0",
-					}}
-				>
-					<Button
-						type="text"
-						size="small"
-						icon={
-							m.is_default ? (
-								<StarFilled style={{ color: "#f7c948" }} />
-							) : (
-								<StarOutlined />
-							)
-						}
+				<div key={m.id} className="ag-row" style={{ padding: "4px 0" }}>
+					<button
+						type="button"
+						className="ag-btn--icon"
 						title={m.is_default ? "Default model" : "Set as default"}
 						onClick={() => updateModel.mutate({ id: m.id, is_default: true })}
-					/>
-					<Text strong>{m.display_name}</Text>
-					<Text type="secondary" style={{ fontSize: 12 }}>
-						{m.model_id}
-					</Text>
-					{m.supports_thinking && <Tag color="purple">thinking</Tag>}
-					<Popconfirm
-						title="Delete model?"
-						onConfirm={() => deleteModel.mutate(m.id)}
+						style={{ color: m.is_default ? "#f7c948" : undefined }}
 					>
-						<Button type="text" size="small" danger icon={<DeleteOutlined />} />
-					</Popconfirm>
+						{m.is_default ? "★" : "☆"}
+					</button>
+					<strong>{m.display_name}</strong>
+					<span className="ag-muted">{m.model_id}</span>
+					{m.supports_thinking && (
+						<span className="ag-tag ag-tag--purple">thinking</span>
+					)}
+					<button
+						type="button"
+						className="ag-btn--icon ag-btn--danger"
+						title="Delete model"
+						onClick={() => {
+							if (window.confirm("Delete this model?"))
+								deleteModel.mutate(m.id);
+						}}
+					>
+						✕
+					</button>
 				</div>
 			))}
-			<Form
-				form={form}
-				layout="inline"
-				onFinish={onAdd}
-				style={{ marginTop: 8, rowGap: 8 }}
-			>
-				<Form.Item name="model_id" rules={[{ required: true }]}>
-					<Input placeholder="wire id (e.g. deepseek-chat)" size="small" />
-				</Form.Item>
-				<Form.Item name="display_name" rules={[{ required: true }]}>
-					<Input placeholder="display name" size="small" />
-				</Form.Item>
-				<Form.Item>
-					<Button size="small" htmlType="submit" icon={<PlusOutlined />}>
-						Add model
-					</Button>
-				</Form.Item>
-			</Form>
+			<div className="ag-row" style={{ marginTop: 8 }}>
+				<input
+					className="ag-input"
+					style={{ maxWidth: 200 }}
+					placeholder="wire id (deepseek-chat)"
+					value={modelId}
+					onChange={(e) => setModelId(e.target.value)}
+				/>
+				<input
+					className="ag-input"
+					style={{ maxWidth: 200 }}
+					placeholder="display name"
+					value={displayName}
+					onChange={(e) => setDisplayName(e.target.value)}
+				/>
+				<label className="ag-muted ag-row" style={{ gap: 4 }}>
+					<input
+						type="checkbox"
+						checked={thinking}
+						onChange={(e) => setThinking(e.target.checked)}
+					/>
+					thinking
+				</label>
+				<button type="button" className="ag-btn ag-btn--sm" onClick={add}>
+					+ Add model
+				</button>
+			</div>
+			{error && <div className="ag-error">{error}</div>}
 		</div>
 	);
 }
 
 function ProvidersTab() {
-	const { data: providers = [], isLoading } = useProviders();
+	const { data: providers = [] } = useProviders();
 	const createProvider = useCreateProvider();
 	const deleteProvider = useDeleteProvider();
-	const [open, setOpen] = useState(false);
-	const [form] = Form.useForm();
+	const [showForm, setShowForm] = useState(false);
+	const [kind, setKind] = useState("deepseek");
+	const [displayName, setDisplayName] = useState("");
+	const [apiKey, setApiKey] = useState("");
+	const [baseUrl, setBaseUrl] = useState("");
+	const [error, setError] = useState("");
 
-	const onCreate = async (v) => {
+	const create = async () => {
+		if (!displayName.trim() || !apiKey.trim()) {
+			setError("Display name and API key are required");
+			return;
+		}
+		setError("");
 		try {
-			await createProvider.mutateAsync(v);
-			setOpen(false);
-			form.resetFields();
-			message.success("Provider added");
+			await createProvider.mutateAsync({
+				kind,
+				display_name: displayName.trim(),
+				api_key: apiKey.trim(),
+				base_url: baseUrl.trim() || undefined,
+			});
+			setShowForm(false);
+			setDisplayName("");
+			setApiKey("");
+			setBaseUrl("");
 		} catch (e) {
-			message.error(e?.response?.data?.error || "Failed to add provider");
+			setError(errMsg(e, "Failed to add provider"));
 		}
 	};
 
-	if (isLoading) return <Spin />;
 	return (
 		<div>
-			<Space style={{ marginBottom: 16 }}>
-				<Button
-					type="primary"
-					icon={<PlusOutlined />}
-					onClick={() => setOpen(true)}
-				>
-					Add provider
-				</Button>
-			</Space>
-			{providers.length === 0 && (
-				<Empty description="No providers yet — add DeepSeek to start." />
-			)}
-			{providers.map((p) => (
-				<Card
-					key={p.id}
-					size="small"
-					style={{ marginBottom: 12 }}
-					title={
-						<Space>
-							<Text strong>{p.display_name}</Text>
-							<Tag>{p.kind}</Tag>
-							{p.has_key ? (
-								<Text type="secondary" style={{ fontSize: 12 }}>
-									key {p.api_key_masked}
-								</Text>
-							) : (
-								<Tag color="red">no key</Tag>
-							)}
-						</Space>
-					}
-					extra={
-						<Popconfirm
-							title="Delete provider and its models?"
-							onConfirm={() => deleteProvider.mutate(p.id)}
-						>
-							<Button type="text" danger icon={<DeleteOutlined />} />
-						</Popconfirm>
-					}
-				>
-					<ModelsList providerId={p.id} />
-				</Card>
-			))}
-
-			<Modal
-				title="Add provider"
-				open={open}
-				onCancel={() => setOpen(false)}
-				onOk={() => form.submit()}
+			<button
+				type="button"
+				className="ag-btn ag-btn--primary"
+				onClick={() => setShowForm((s) => !s)}
 			>
-				<Form
-					form={form}
-					layout="vertical"
-					onFinish={onCreate}
-					initialValues={{ kind: "deepseek" }}
-				>
-					<Form.Item name="kind" label="Kind" rules={[{ required: true }]}>
-						<Select
-							options={PROVIDER_KINDS.map((k) => ({ value: k, label: k }))}
-						/>
-					</Form.Item>
-					<Form.Item
-						name="display_name"
-						label="Display name"
-						rules={[{ required: true }]}
-					>
-						<Input placeholder="DeepSeek" />
-					</Form.Item>
-					<Form.Item
-						name="api_key"
-						label="API key"
-						rules={[{ required: true }]}
-					>
-						<Input.Password placeholder="sk-…" />
-					</Form.Item>
-					<Form.Item name="base_url" label="Base URL (optional)">
-						<Input placeholder="https://api.deepseek.com" />
-					</Form.Item>
-				</Form>
-			</Modal>
+				{showForm ? "Cancel" : "+ Add provider"}
+			</button>
+
+			{showForm && (
+				<div className="ag-card" style={{ marginTop: 12 }}>
+					<div className="ag-card-body">
+						<div className="ag-field">
+							<span className="ag-label">Kind</span>
+							<select
+								className="ag-select"
+								value={kind}
+								onChange={(e) => setKind(e.target.value)}
+							>
+								{PROVIDER_KINDS.map((k) => (
+									<option key={k} value={k}>
+										{k}
+									</option>
+								))}
+							</select>
+						</div>
+						<div className="ag-field">
+							<span className="ag-label">Display name</span>
+							<input
+								className="ag-input"
+								value={displayName}
+								onChange={(e) => setDisplayName(e.target.value)}
+								placeholder="DeepSeek"
+							/>
+						</div>
+						<div className="ag-field">
+							<span className="ag-label">API key</span>
+							<input
+								className="ag-input"
+								type="password"
+								value={apiKey}
+								onChange={(e) => setApiKey(e.target.value)}
+								placeholder="sk-…"
+							/>
+						</div>
+						<div className="ag-field">
+							<span className="ag-label">Base URL (optional)</span>
+							<input
+								className="ag-input"
+								value={baseUrl}
+								onChange={(e) => setBaseUrl(e.target.value)}
+								placeholder="https://api.deepseek.com"
+							/>
+						</div>
+						{error && <div className="ag-error">{error}</div>}
+						<button
+							type="button"
+							className="ag-btn ag-btn--primary"
+							onClick={create}
+							disabled={createProvider.isPending}
+						>
+							Save provider
+						</button>
+					</div>
+				</div>
+			)}
+
+			{providers.length === 0 && !showForm && (
+				<div className="ag-empty">
+					No providers yet — add DeepSeek to start.
+				</div>
+			)}
+
+			<div style={{ marginTop: 12 }}>
+				{providers.map((p) => (
+					<div key={p.id} className="ag-card">
+						<div className="ag-card-head">
+							<div className="ag-row">
+								<strong>{p.display_name}</strong>
+								<span className="ag-tag">{p.kind}</span>
+								{p.has_key ? (
+									<span className="ag-muted">key {p.api_key_masked}</span>
+								) : (
+									<span className="ag-tag ag-tag--red">no key</span>
+								)}
+							</div>
+							<button
+								type="button"
+								className="ag-btn--icon ag-btn--danger"
+								title="Delete provider"
+								onClick={() => {
+									if (window.confirm("Delete provider and its models?"))
+										deleteProvider.mutate(p.id);
+								}}
+							>
+								✕
+							</button>
+						</div>
+						<div className="ag-card-body">
+							<ModelsList providerId={p.id} />
+						</div>
+					</div>
+				))}
+			</div>
 		</div>
 	);
 }
 
-// ── Agent config (profile + persona) ────────────────────────────────────────
+// ── Agent config ─────────────────────────────────────────────────────────────
 
 function ConfigTab({ agent }) {
-	const { data: profile, isLoading: lp } = useAgentProfile(agent);
-	const { data: personas = [], isLoading: lpe } = useAgentPersonas(agent);
+	const { data: profile } = useAgentProfile(agent);
+	const { data: personas = [] } = useAgentPersonas(agent);
 	const updateProfile = useUpdateAgentProfile();
 	const updatePersona = useUpdatePersona();
-	const [pForm] = Form.useForm();
-	const [perForm] = Form.useForm();
 	const persona = personas[0];
 
+	const [pf, setPf] = useState({
+		display_name: "",
+		instructions: "",
+		user_context: "",
+		memory: "",
+	});
+	const [pe, setPe] = useState({
+		display_name: "",
+		emoji: "",
+		system_prompt: "",
+		allowed_tools: "",
+	});
+	const [status, setStatus] = useState("");
+
 	useEffect(() => {
-		if (profile) pForm.setFieldsValue(profile);
-	}, [profile, pForm]);
+		if (profile)
+			setPf({
+				display_name: profile.display_name || "",
+				instructions: profile.instructions || "",
+				user_context: profile.user_context || "",
+				memory: profile.memory || "",
+			});
+	}, [profile]);
 	useEffect(() => {
 		if (persona)
-			perForm.setFieldsValue({
-				...persona,
+			setPe({
+				display_name: persona.display_name || "",
+				emoji: persona.emoji || "",
+				system_prompt: persona.system_prompt || "",
 				allowed_tools: (persona.allowed_tools || []).join(", "),
 			});
-	}, [persona, perForm]);
+	}, [persona]);
 
-	const saveProfile = async (v) => {
+	const saveProfile = async () => {
 		try {
-			await updateProfile.mutateAsync({ agent, ...v });
-			message.success("Profile saved");
+			await updateProfile.mutateAsync({ agent, ...pf });
+			setStatus("Profile saved ✓");
 		} catch {
-			message.error("Failed to save profile");
+			setStatus("Failed to save profile");
 		}
 	};
-	const savePersona = async (v) => {
-		const tools = (v.allowed_tools || "")
+	const savePersona = async () => {
+		const tools = pe.allowed_tools
 			.split(/[,\n]/)
 			.map((s) => s.trim())
 			.filter(Boolean);
 		try {
 			await updatePersona.mutateAsync({
 				id: persona.id,
-				...v,
+				display_name: pe.display_name,
+				emoji: pe.emoji,
+				system_prompt: pe.system_prompt,
 				allowed_tools: tools.length ? tools : null,
 			});
-			message.success("Persona saved");
+			setStatus("Persona saved ✓");
 		} catch {
-			message.error("Failed to save persona");
+			setStatus("Failed to save persona");
 		}
 	};
 
-	if (lp || lpe) return <Spin />;
 	return (
-		<div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-			<Card
-				title="Agent profile"
-				size="small"
-				style={{ flex: 1, minWidth: 360 }}
-			>
-				<Form form={pForm} layout="vertical" onFinish={saveProfile}>
-					<Form.Item name="display_name" label="Display name">
-						<Input />
-					</Form.Item>
-					<Form.Item name="instructions" label="Instructions (always loaded)">
-						<Input.TextArea autoSize={{ minRows: 6, maxRows: 20 }} />
-					</Form.Item>
-					<Form.Item name="user_context" label="User context">
-						<Input.TextArea autoSize={{ minRows: 3, maxRows: 12 }} />
-					</Form.Item>
-					<Form.Item name="memory" label="Memory">
-						<Input.TextArea autoSize={{ minRows: 3, maxRows: 12 }} />
-					</Form.Item>
-					<Button
-						type="primary"
-						htmlType="submit"
-						loading={updateProfile.isPending}
-					>
-						Save profile
-					</Button>
-				</Form>
-			</Card>
-
-			{persona && (
-				<Card
-					title={`Persona — ${persona.display_name || persona.name}`}
-					size="small"
-					style={{ flex: 1, minWidth: 360 }}
-				>
-					<Form form={perForm} layout="vertical" onFinish={savePersona}>
-						<Space>
-							<Form.Item name="emoji" label="Emoji">
-								<Input style={{ width: 80 }} />
-							</Form.Item>
-							<Form.Item name="display_name" label="Display name">
-								<Input />
-							</Form.Item>
-						</Space>
-						<Form.Item
-							name="system_prompt"
-							label="System prompt (voice / who-I-am)"
-						>
-							<Input.TextArea autoSize={{ minRows: 8, maxRows: 24 }} />
-						</Form.Item>
-						<Form.Item
-							name="allowed_tools"
-							label="Allowed tools (comma-separated; empty = inherit all)"
-						>
-							<Input.TextArea autoSize={{ minRows: 2, maxRows: 6 }} />
-						</Form.Item>
-						<Button
-							type="primary"
-							htmlType="submit"
-							loading={updatePersona.isPending}
-						>
-							Save persona
-						</Button>
-					</Form>
-				</Card>
+		<div>
+			{status && (
+				<div className="ag-muted" style={{ marginBottom: 8 }}>
+					{status}
+				</div>
 			)}
+			<div className="ag-cols">
+				<div className="ag-col ag-card">
+					<div className="ag-card-head">
+						<strong>Agent profile</strong>
+					</div>
+					<div className="ag-card-body">
+						<div className="ag-field">
+							<span className="ag-label">Display name</span>
+							<input
+								className="ag-input"
+								value={pf.display_name}
+								onChange={(e) => setPf({ ...pf, display_name: e.target.value })}
+							/>
+						</div>
+						<div className="ag-field">
+							<span className="ag-label">Instructions (always loaded)</span>
+							<textarea
+								className="ag-textarea"
+								rows={8}
+								value={pf.instructions}
+								onChange={(e) => setPf({ ...pf, instructions: e.target.value })}
+							/>
+						</div>
+						<div className="ag-field">
+							<span className="ag-label">User context</span>
+							<textarea
+								className="ag-textarea"
+								rows={4}
+								value={pf.user_context}
+								onChange={(e) => setPf({ ...pf, user_context: e.target.value })}
+							/>
+						</div>
+						<div className="ag-field">
+							<span className="ag-label">Memory</span>
+							<textarea
+								className="ag-textarea"
+								rows={4}
+								value={pf.memory}
+								onChange={(e) => setPf({ ...pf, memory: e.target.value })}
+							/>
+						</div>
+						<button
+							type="button"
+							className="ag-btn ag-btn--primary"
+							onClick={saveProfile}
+						>
+							Save profile
+						</button>
+					</div>
+				</div>
+
+				{persona && (
+					<div className="ag-col ag-card">
+						<div className="ag-card-head">
+							<strong>Persona — {persona.display_name || persona.name}</strong>
+						</div>
+						<div className="ag-card-body">
+							<div className="ag-row">
+								<div className="ag-field" style={{ width: 90 }}>
+									<span className="ag-label">Emoji</span>
+									<input
+										className="ag-input"
+										value={pe.emoji}
+										onChange={(e) => setPe({ ...pe, emoji: e.target.value })}
+									/>
+								</div>
+								<div className="ag-field" style={{ flex: 1 }}>
+									<span className="ag-label">Display name</span>
+									<input
+										className="ag-input"
+										value={pe.display_name}
+										onChange={(e) =>
+											setPe({ ...pe, display_name: e.target.value })
+										}
+									/>
+								</div>
+							</div>
+							<div className="ag-field">
+								<span className="ag-label">
+									System prompt (voice / who-I-am)
+								</span>
+								<textarea
+									className="ag-textarea"
+									rows={10}
+									value={pe.system_prompt}
+									onChange={(e) =>
+										setPe({ ...pe, system_prompt: e.target.value })
+									}
+								/>
+							</div>
+							<div className="ag-field">
+								<span className="ag-label">
+									Allowed tools (comma-separated; empty = inherit all)
+								</span>
+								<textarea
+									className="ag-textarea"
+									rows={2}
+									value={pe.allowed_tools}
+									onChange={(e) =>
+										setPe({ ...pe, allowed_tools: e.target.value })
+									}
+								/>
+							</div>
+							<button
+								type="button"
+								className="ag-btn ag-btn--primary"
+								onClick={savePersona}
+							>
+								Save persona
+							</button>
+						</div>
+					</div>
+				)}
+			</div>
 		</div>
 	);
 }
@@ -365,45 +468,19 @@ function renderBlocks(content) {
 	return { thinking, text };
 }
 
-function MessageBubble({ sender, text, thinking }) {
+function Bubble({ sender, text, thinking }) {
 	const isUser = sender === "user";
 	return (
 		<div
-			style={{
-				display: "flex",
-				justifyContent: isUser ? "flex-end" : "flex-start",
-				margin: "8px 0",
-			}}
+			className={`ag-bubble ${isUser ? "ag-bubble--user" : "ag-bubble--assistant"}`}
 		>
-			<div
-				style={{
-					maxWidth: "80%",
-					background: isUser ? "#5cd0a9" : "#1b1e25",
-					color: isUser ? "#0e0f12" : "#d6dbe5",
-					border: isUser ? "none" : "1px solid #2a2f3a",
-					borderRadius: 10,
-					padding: "8px 12px",
-				}}
-			>
-				{thinking ? (
-					<Collapse
-						ghost
-						size="small"
-						items={[
-							{
-								key: "t",
-								label: "💭 thinking",
-								children: (
-									<div style={{ whiteSpace: "pre-wrap", opacity: 0.8 }}>
-										{thinking}
-									</div>
-								),
-							},
-						]}
-					/>
-				) : null}
-				<div style={{ whiteSpace: "pre-wrap" }}>{text}</div>
-			</div>
+			{thinking ? (
+				<details className="ag-thinking">
+					<summary>💭 thinking</summary>
+					<div className="ag-thinking-body">{thinking}</div>
+				</details>
+			) : null}
+			<div>{text}</div>
 		</div>
 	);
 }
@@ -419,7 +496,7 @@ function ChatTab({ agent }) {
 	const [liveText, setLiveText] = useState("");
 	const [liveThinking, setLiveThinking] = useState("");
 	const [optimisticUser, setOptimisticUser] = useState(null);
-	const abortRef = useRef(null);
+	const [error, setError] = useState("");
 	const scrollRef = useRef(null);
 
 	const messages = convData?.messages || [];
@@ -433,22 +510,23 @@ function ChatTab({ agent }) {
 		try {
 			const conv = await createConversation.mutateAsync({ agent });
 			setActiveId(conv.id);
-		} catch {
-			message.error("Failed to start conversation");
+		} catch (e) {
+			setError(errMsg(e, "Failed to start conversation"));
 		}
 	};
 
 	const send = async () => {
 		const text = input.trim();
 		if (!text || streaming) return;
+		setError("");
 		let convId = activeId;
 		if (!convId) {
 			try {
 				const conv = await createConversation.mutateAsync({ agent });
 				convId = conv.id;
 				setActiveId(conv.id);
-			} catch {
-				message.error("Failed to start conversation");
+			} catch (e) {
+				setError(errMsg(e, "Failed to start conversation"));
 				return;
 			}
 		}
@@ -457,15 +535,12 @@ function ChatTab({ agent }) {
 		setLiveText("");
 		setLiveThinking("");
 		setStreaming(true);
-		const controller = new AbortController();
-		abortRef.current = controller;
 		await streamChat({
 			conversationId: convId,
 			message: text,
-			signal: controller.signal,
 			onText: (d) => setLiveText((t) => t + d),
 			onThinking: (d) => setLiveThinking((t) => t + d),
-			onError: (e) => message.error(e.message || "Chat error"),
+			onError: (e) => setError(e.message || "Chat error"),
 			onDone: () => {},
 		});
 		setStreaming(false);
@@ -476,76 +551,62 @@ function ChatTab({ agent }) {
 	};
 
 	return (
-		<div style={{ display: "flex", gap: 16, height: "70vh" }}>
-			<Card
-				size="small"
-				style={{ width: 240, overflowY: "auto" }}
-				bodyStyle={{ padding: 8 }}
-			>
-				<Button
-					block
-					icon={<PlusOutlined />}
+		<div className="ag-chat">
+			<div className="ag-conv-list">
+				<button
+					type="button"
+					className="ag-btn ag-btn--block"
 					onClick={newConversation}
 					style={{ marginBottom: 8 }}
 				>
-					New chat
-				</Button>
-				<List
-					size="small"
-					dataSource={conversations}
-					locale={{ emptyText: "No conversations" }}
-					renderItem={(c) => (
-						<List.Item
-							style={{
-								cursor: "pointer",
-								background: c.id === activeId ? "#15171c" : "transparent",
-								borderRadius: 6,
-								padding: "6px 8px",
-							}}
+					+ New chat
+				</button>
+				{conversations.length === 0 && (
+					<div
+						className="ag-muted"
+						style={{ textAlign: "center", padding: 12 }}
+					>
+						No conversations
+					</div>
+				)}
+				{conversations.map((c) => (
+					<div
+						key={c.id}
+						className={`ag-conv-item ${c.id === activeId ? "ag-conv-item--active" : ""}`}
+					>
+						<button
+							type="button"
+							className="ag-conv-title-btn ag-conv-title"
 							onClick={() => setActiveId(c.id)}
-							actions={[
-								<Popconfirm
-									key="d"
-									title="Delete?"
-									onConfirm={(e) => {
-										e?.stopPropagation();
-										deleteConversation.mutate(c.id);
-										if (c.id === activeId) setActiveId(null);
-									}}
-								>
-									<DeleteOutlined onClick={(e) => e.stopPropagation()} />
-								</Popconfirm>,
-							]}
 						>
-							<Text ellipsis style={{ fontSize: 13 }}>
-								{c.title || "Untitled"}
-							</Text>
-						</List.Item>
-					)}
-				/>
-			</Card>
+							{c.title || "Untitled"}
+						</button>
+						<button
+							type="button"
+							className="ag-btn--icon ag-btn--danger"
+							title="Delete"
+							onClick={() => {
+								if (window.confirm("Delete conversation?")) {
+									deleteConversation.mutate(c.id);
+									if (c.id === activeId) setActiveId(null);
+								}
+							}}
+						>
+							✕
+						</button>
+					</div>
+				))}
+			</div>
 
-			<Card
-				size="small"
-				style={{ flex: 1, display: "flex", flexDirection: "column" }}
-				bodyStyle={{
-					display: "flex",
-					flexDirection: "column",
-					flex: 1,
-					minHeight: 0,
-				}}
-			>
-				<div
-					ref={scrollRef}
-					style={{ flex: 1, overflowY: "auto", paddingRight: 8 }}
-				>
-					{messages.length === 0 && !optimisticUser && (
-						<Empty description="Say hi to Piuma 🐾" style={{ marginTop: 80 }} />
+			<div className="ag-chat-main">
+				<div className="ag-msgs" ref={scrollRef}>
+					{messages.length === 0 && !optimisticUser && !streaming && (
+						<div className="ag-empty">Say hi to Piuma 🐾</div>
 					)}
 					{messages.map((m) => {
 						const { thinking, text } = renderBlocks(m.content);
 						return (
-							<MessageBubble
+							<Bubble
 								key={m.id}
 								sender={m.role}
 								text={text}
@@ -553,40 +614,44 @@ function ChatTab({ agent }) {
 							/>
 						);
 					})}
-					{optimisticUser && (
-						<MessageBubble sender="user" text={optimisticUser} />
-					)}
+					{optimisticUser && <Bubble sender="user" text={optimisticUser} />}
 					{streaming && (
-						<MessageBubble
+						<Bubble
 							sender="assistant"
 							text={liveText || "…"}
 							thinking={liveThinking}
 						/>
 					)}
 				</div>
-				<Space.Compact style={{ marginTop: 8 }}>
-					<Input.TextArea
+				{error && (
+					<div className="ag-error" style={{ padding: "0 10px" }}>
+						{error}
+					</div>
+				)}
+				<div className="ag-composer">
+					<textarea
+						className="ag-textarea"
+						rows={1}
 						value={input}
 						onChange={(e) => setInput(e.target.value)}
 						placeholder="Message Piuma…"
-						autoSize={{ minRows: 1, maxRows: 5 }}
-						onPressEnter={(e) => {
-							if (!e.shiftKey) {
+						onKeyDown={(e) => {
+							if (e.key === "Enter" && !e.shiftKey) {
 								e.preventDefault();
 								send();
 							}
 						}}
 					/>
-					<Button
-						type="primary"
-						icon={<SendOutlined />}
-						loading={streaming}
+					<button
+						type="button"
+						className="ag-btn ag-btn--primary"
 						onClick={send}
+						disabled={streaming}
 					>
-						Send
-					</Button>
-				</Space.Compact>
-			</Card>
+						{streaming ? "…" : "Send"}
+					</button>
+				</div>
+			</div>
 		</div>
 	);
 }
@@ -596,30 +661,34 @@ function ChatTab({ agent }) {
 export default function AgentsPage() {
 	const { data: agents = [] } = useAgentList();
 	const agent = agents[0]?.kind || "vault_agent";
+	const [tab, setTab] = useState("chat");
 
 	return (
-		<div style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
-			<Title level={3}>Agents</Title>
-			<Paragraph type="secondary">
+		<div className="ag-page">
+			<h1 className="ag-title">Agents</h1>
+			<p className="ag-sub">
 				Multi-provider LLM chat. Add a provider + model, tune the agent's
 				config, and chat.
-			</Paragraph>
-			<Tabs
-				defaultActiveKey="chat"
-				items={[
-					{ key: "chat", label: "Chat", children: <ChatTab agent={agent} /> },
-					{
-						key: "providers",
-						label: "Providers & models",
-						children: <ProvidersTab />,
-					},
-					{
-						key: "config",
-						label: "Agent config",
-						children: <ConfigTab agent={agent} />,
-					},
-				]}
-			/>
+			</p>
+			<div className="ag-tabs">
+				{[
+					["chat", "Chat"],
+					["providers", "Providers & models"],
+					["config", "Agent config"],
+				].map(([key, label]) => (
+					<button
+						type="button"
+						key={key}
+						className={`ag-tab ${tab === key ? "ag-tab--active" : ""}`}
+						onClick={() => setTab(key)}
+					>
+						{label}
+					</button>
+				))}
+			</div>
+			{tab === "chat" && <ChatTab agent={agent} />}
+			{tab === "providers" && <ProvidersTab />}
+			{tab === "config" && <ConfigTab agent={agent} />}
 		</div>
 	);
 }
