@@ -1,0 +1,91 @@
+/* Shared right-side chat dock (Storage + Tasks). Uses palette fallbacks so it
+   works whether or not the parent defines the pixel tokens. */
+
+/* Wrapper that turns a column-layout page into a [page | chat] row. */
+.workspace-row {
+	display: flex;
+	height: 100vh;
+	width: 100%;
+	overflow: hidden;
+}
+
+.chat-dock-col {
+	width: 360px;
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	background: var(--panel, #1b1e25);
+	border-left: 1px solid var(--border, #2a2f3a);
+}
+
+.chat-dock-col.mobile {
+	position: fixed;
+	inset: 0;
+	width: 100%;
+	z-index: 1000;
+	border-left: none;
+}
+
+/* Column resizer — mirrors .notes-sidebar-resizer from the Notes layout. */
+.chat-dock-resizer {
+	flex: 0 0 6px;
+	cursor: col-resize;
+	position: relative;
+	background: transparent;
+	user-select: none;
+	touch-action: none;
+}
+
+.chat-dock-resizer::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 2px;
+	width: 2px;
+	background: var(--border-strong, #3a4150);
+	transition: background 80ms steps(2, end);
+}
+
+.chat-dock-resizer:hover::before,
+.chat-dock-resizer:focus-visible::before,
+.chat-dock-resizer.active::before {
+	background: var(--accent, #f7c948);
+	box-shadow: 0 0 0 1px var(--accent, #f7c948);
+}
+
+.chat-dock-resizer:focus-visible {
+	outline: none;
+}
+
+.chat-dock-resizer.active {
+	background: rgba(247, 201, 72, 0.05);
+}
+
+/* Floating toggle shown when the dock is closed. */
+.chat-dock-fab {
+	position: fixed;
+	right: 18px;
+	bottom: 18px;
+	z-index: 900;
+	width: 46px;
+	height: 46px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 22px;
+	line-height: 1;
+	cursor: pointer;
+	background: var(--panel, #1b1e25);
+	color: var(--accent, #f7c948);
+	border: 1px solid var(--border-strong, #3a4150);
+	box-shadow: 2px 2px 0 0 rgba(0, 0, 0, 0.4);
+	image-rendering: pixelated;
+}
+
+.chat-dock-fab:hover,
+.chat-dock-fab:focus-visible {
+	border-color: var(--accent, #f7c948);
+	outline: none;
+}
