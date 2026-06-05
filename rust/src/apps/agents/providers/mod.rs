@@ -3,3 +3,4 @@
 //! come when a second provider is added — see the plan.
 
 pub mod deepseek;
+pub mod openclaw;
