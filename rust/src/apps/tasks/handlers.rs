@@ -18,11 +18,12 @@ use super::models::{
 // array, so the API shape (Task.tags: Vec<String>) is unchanged. FromRow maps by
 // column name, so the aliased subquery slots in regardless of position.
 const TASK_FIELDS: &str = "id, user_id, title, notes, done, completed_at, due_at, priority, \
+     bucket_id, \
      (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_task_tags tt \
       JOIN db_tags tg ON tg.id = tt.tag_id WHERE tt.task_id = db_tasks.id) AS tags, \
      sort_order, recurrence_id, occurrence_date, alerts, created_at, updated_at";
 
-const RECURRING_FIELDS: &str = "id, user_id, title, notes, priority, \
+const RECURRING_FIELDS: &str = "id, user_id, title, notes, priority, bucket_id, \
      (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_recurring_task_tags rtt \
       JOIN db_tags tg ON tg.id = rtt.tag_id WHERE rtt.recurring_id = db_recurring_tasks.id) AS tags, \
      rrule, dtstart, until, active, alerts, created_at, updated_at";
@@ -139,10 +140,7 @@ pub async fn list_tasks(
         idx += 1;
     }
     if query.bucket.is_some() {
-        clauses.push(format!(
-            "EXISTS (SELECT 1 FROM db_task_tags tt JOIN db_tags tg ON tg.id = tt.tag_id \
-             WHERE tt.task_id = db_tasks.id AND tg.bucket_id = ${idx})"
-        ));
+        clauses.push(format!("bucket_id = ${idx}"));
     }
 
     let sql = format!(
@@ -196,14 +194,15 @@ pub async fn create_task(
     }
 
     let id: Uuid = match sqlx::query_scalar(
-        "INSERT INTO db_tasks (user_id, title, notes, due_at, priority, alerts) \
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+        "INSERT INTO db_tasks (user_id, title, notes, due_at, priority, bucket_id, alerts) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
     )
     .bind(&user.user_id)
     .bind(&body.title)
     .bind(&body.notes)
     .bind(body.due_at)
     .bind(body.priority)
+    .bind(body.bucket_id)
     .bind(&body.alerts)
     .fetch_one(pool.get_ref())
     .await
@@ -309,6 +308,7 @@ pub async fn update_task(
             completed_at = CASE WHEN $10 IS NULL THEN completed_at \
                                 WHEN $10 THEN NOW() ELSE NULL END, \
             alerts = COALESCE($11, alerts), \
+            bucket_id = CASE WHEN $12 THEN $13 ELSE bucket_id END, \
             updated_at = NOW() \
          WHERE id = $1 AND user_id = $2 RETURNING id";
 
@@ -317,6 +317,10 @@ pub async fn update_task(
         None => (false, None),
     };
     let (set_due, due) = match &body.due_at {
+        Some(v) => (true, *v),
+        None => (false, None),
+    };
+    let (set_bucket, bucket) = match &body.bucket_id {
         Some(v) => (true, *v),
         None => (false, None),
     };
@@ -333,6 +337,8 @@ pub async fn update_task(
         .bind(body.sort_order)
         .bind(body.done)
         .bind(&body.alerts)
+        .bind(set_bucket)
+        .bind(bucket)
         .fetch_optional(pool.get_ref())
         .await
     {
@@ -484,13 +490,14 @@ pub async fn create_recurring(
     }
 
     let id: Uuid = match sqlx::query_scalar(
-        "INSERT INTO db_recurring_tasks (user_id, title, notes, priority, rrule, dtstart, until, alerts) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+        "INSERT INTO db_recurring_tasks (user_id, title, notes, priority, bucket_id, rrule, dtstart, until, alerts) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
     )
     .bind(&user.user_id)
     .bind(&body.title)
     .bind(&body.notes)
     .bind(body.priority)
+    .bind(body.bucket_id)
     .bind(&body.rrule)
     .bind(body.dtstart)
     .bind(body.until)
@@ -565,6 +572,7 @@ pub async fn update_recurring(
             until = CASE WHEN $9 THEN $10 ELSE until END, \
             active = COALESCE($11, active), \
             alerts = COALESCE($12, alerts), \
+            bucket_id = CASE WHEN $13 THEN $14 ELSE bucket_id END, \
             updated_at = NOW() \
          WHERE id = $1 AND user_id = $2 RETURNING id";
 
@@ -573,6 +581,10 @@ pub async fn update_recurring(
         None => (false, None),
     };
     let (set_until, until) = match &body.until {
+        Some(v) => (true, *v),
+        None => (false, None),
+    };
+    let (set_bucket, bucket) = match &body.bucket_id {
         Some(v) => (true, *v),
         None => (false, None),
     };
@@ -590,6 +602,8 @@ pub async fn update_recurring(
         .bind(until)
         .bind(body.active)
         .bind(&body.alerts)
+        .bind(set_bucket)
+        .bind(bucket)
         .fetch_optional(pool.get_ref())
         .await
     {
@@ -722,8 +736,8 @@ pub async fn complete_occurrence(
     // Complete: idempotent upsert keyed by the unique (recurrence_id, occurrence_date).
     let task_id: Uuid = match sqlx::query_scalar(
         "INSERT INTO db_tasks \
-            (user_id, title, notes, done, completed_at, priority, recurrence_id, occurrence_date) \
-         VALUES ($1, $2, $3, TRUE, NOW(), $4, $5, $6) \
+            (user_id, title, notes, done, completed_at, priority, bucket_id, recurrence_id, occurrence_date) \
+         VALUES ($1, $2, $3, TRUE, NOW(), $4, $5, $6, $7) \
          ON CONFLICT (recurrence_id, occurrence_date) \
          DO UPDATE SET done = TRUE, completed_at = NOW(), updated_at = NOW() \
          RETURNING id",
@@ -732,6 +746,7 @@ pub async fn complete_occurrence(
     .bind(&template.title)
     .bind(&template.notes)
     .bind(template.priority)
+    .bind(template.bucket_id)
     .bind(recurrence_id)
     .bind(occurrence_date)
     .fetch_one(pool.get_ref())

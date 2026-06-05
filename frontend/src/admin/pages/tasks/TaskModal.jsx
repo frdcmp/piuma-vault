@@ -1,6 +1,11 @@
 import { useState } from "react";
 import TagPicker from "../../../components/TagPicker";
-import { useCreateTask, useDeleteTask, useUpdateTask } from "../../../queries";
+import {
+	useBuckets,
+	useCreateTask,
+	useDeleteTask,
+	useUpdateTask,
+} from "../../../queries";
 import AlertsField from "../../components/AlertsField";
 import {
 	PvButton,
@@ -12,17 +17,27 @@ import {
  * Create / edit / delete a one-off task. Dates stored as UTC ISO.
  * `defaultTags` seeds the tags field on creation (e.g. the tag the list is
  * currently filtered by), so new tasks land in the group you're looking at.
+ * `defaultBucket` likewise seeds the bucket when creating from a bucket view.
  */
-export default function TaskModal({ task, defaultTags = [], onClose }) {
+export default function TaskModal({
+	task,
+	defaultTags = [],
+	defaultBucket = null,
+	onClose,
+}) {
 	const isEdit = !!task;
 	const createTask = useCreateTask();
 	const updateTask = useUpdateTask();
 	const deleteTask = useDeleteTask();
+	const { data: buckets = [] } = useBuckets();
 
 	const [title, setTitle] = useState(task?.title ?? "");
 	const [notes, setNotes] = useState(task?.notes ?? "");
 	const [dueAt, setDueAt] = useState(task?.due_at ?? null);
 	const [priority, setPriority] = useState(task?.priority ?? 0);
+	const [bucketId, setBucketId] = useState(
+		task?.bucket_id ?? defaultBucket ?? "",
+	);
 	const [tags, setTags] = useState(task?.tags ?? defaultTags);
 	const [alerts, setAlerts] = useState(task?.alerts ?? []);
 	const [error, setError] = useState("");
@@ -44,6 +59,7 @@ export default function TaskModal({ task, defaultTags = [], onClose }) {
 			notes: notes.trim() || null,
 			due_at: dueAt || null,
 			priority: Number(priority),
+			bucket_id: bucketId || null,
 			tags,
 			alerts,
 		};
@@ -97,6 +113,20 @@ export default function TaskModal({ task, defaultTags = [], onClose }) {
 						<option value={1}>low</option>
 						<option value={2}>medium</option>
 						<option value={3}>high</option>
+					</select>
+				</label>
+				<label className="tasks-field">
+					<span>Bucket</span>
+					<select
+						value={bucketId}
+						onChange={(e) => setBucketId(e.target.value)}
+					>
+						<option value="">No bucket</option>
+						{buckets.map((b) => (
+							<option key={b.id} value={b.id}>
+								{b.name}
+							</option>
+						))}
 					</select>
 				</label>
 				<div className="tasks-field">

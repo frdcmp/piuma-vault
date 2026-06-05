@@ -1,6 +1,17 @@
 use chrono::{DateTime, NaiveDate, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::FromRow;
+
+// Distinguish "field omitted" (outer None = keep) from "explicit null"
+// (Some(None) = clear) in PATCH bodies. serde only calls this when the key is
+// present, so the field's `default` supplies None for an omitted field.
+fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Ok(Some(Option::deserialize(de)?))
+}
 
 // ── Task DB Model ──
 
@@ -14,6 +25,7 @@ pub struct Task {
     pub completed_at: Option<DateTime<Utc>>,
     pub due_at: Option<DateTime<Utc>>,
     pub priority: i16,
+    pub bucket_id: Option<uuid::Uuid>,
     #[sqlx(default)]
     pub tags: Vec<String>,
     pub sort_order: i32,
@@ -38,6 +50,9 @@ pub struct CreateTaskRequest {
     pub due_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub priority: i16,
+    // The task's bucket (group). None = no bucket.
+    #[serde(default)]
+    pub bucket_id: Option<uuid::Uuid>,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default = "default_alerts")]
@@ -51,6 +66,9 @@ pub struct UpdateTaskRequest {
     pub notes: Option<Option<String>>,
     pub due_at: Option<Option<DateTime<Utc>>>,
     pub priority: Option<i16>,
+    // Three-state: omitted = keep, null = clear (no bucket), value = move to bucket.
+    #[serde(default, deserialize_with = "double_option")]
+    pub bucket_id: Option<Option<uuid::Uuid>>,
     pub tags: Option<Vec<String>>,
     pub sort_order: Option<i32>,
     pub done: Option<bool>,
@@ -63,7 +81,7 @@ pub struct ListTasksQuery {
     pub due_before: Option<DateTime<Utc>>,
     pub due_after: Option<DateTime<Utc>>,
     pub tag: Option<String>,
-    // Filter to tasks carrying any tag that belongs to this bucket.
+    // Filter to tasks belonging to this bucket (db_tasks.bucket_id).
     pub bucket: Option<uuid::Uuid>,
 }
 
@@ -76,6 +94,7 @@ pub struct RecurringTask {
     pub title: String,
     pub notes: Option<String>,
     pub priority: i16,
+    pub bucket_id: Option<uuid::Uuid>,
     #[sqlx(default)]
     pub tags: Vec<String>,
     pub rrule: String,
@@ -98,6 +117,8 @@ pub struct CreateRecurringTaskRequest {
     #[serde(default)]
     pub priority: i16,
     #[serde(default)]
+    pub bucket_id: Option<uuid::Uuid>,
+    #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
     pub until: Option<DateTime<Utc>>,
@@ -110,6 +131,8 @@ pub struct UpdateRecurringTaskRequest {
     pub title: Option<String>,
     pub notes: Option<Option<String>>,
     pub priority: Option<i16>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub bucket_id: Option<Option<uuid::Uuid>>,
     pub tags: Option<Vec<String>>,
     pub rrule: Option<String>,
     pub dtstart: Option<DateTime<Utc>>,

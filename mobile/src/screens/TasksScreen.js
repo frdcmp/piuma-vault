@@ -16,7 +16,11 @@ import DateTimePickerField from "../components/DateTimePickerField";
 import ManageBucketsSheet from "../components/ManageBucketsSheet";
 import TagPicker from "../components/TagPicker";
 import TimeAgo from "../components/TimeAgo";
-import { useTagsLiveUpdates, useTagTree } from "../queries/tagsQuery";
+import {
+	useBuckets,
+	useTagRegistry,
+	useTagsLiveUpdates,
+} from "../queries/tagsQuery";
 import {
 	useCreateRecurringTask,
 	useCreateTask,
@@ -62,52 +66,46 @@ const ALL = { key: "all", names: null, label: "all" };
 export default function TasksScreen({ navigation }) {
 	const insets = useSafeAreaInsets();
 	useTasksLiveUpdates(); // refetch when tasks change on another device
-	useTagsLiveUpdates("tasks"); // keep the bucket/tag tree + counts fresh
+	useTagsLiveUpdates("tasks"); // keep buckets + tags fresh
 	const { data: tasks = [] } = useTasks();
 	const { data: recurring = [] } = useRecurringTasks();
-	const { data: tree } = useTagTree("tasks");
+	const { data: buckets = [] } = useBuckets();
+	const { data: tagRegistry = [] } = useTagRegistry();
 	const toggleTask = useToggleTask();
 	const deleteRecurring = useDeleteRecurringTask();
 
 	const [taskSheet, setTaskSheet] = useState(null); // { task } | {} | null
 	const [recSheet, setRecSheet] = useState(false);
 	const [manageSheet, setManageSheet] = useState(false);
-	const [sel, setSel] = useState(ALL); // { key, names, label }
-	const [expanded, setExpanded] = useState(null); // bucket/inbox key whose tags show
+	const [sel, setSel] = useState(ALL); // { key, names?, bucketId?, label }
 	const [showRecurring, setShowRecurring] = useState(false); // chip-row view toggle
 	const [tagQuery, setTagQuery] = useState("");
 
 	const oneOff = tasks.filter((t) => !t.recurrence_id);
-
-	const buckets = tree?.buckets ?? [];
-	const inbox = tree?.inbox ?? [];
 	const q = tagQuery.trim().toLowerCase();
 
-	// Which group (bucket id / "inbox") owns a tag name — used to keep the second
-	// chip row expanded when a tag is tapped directly off a task.
-	const groupKeyForTag = (name) => {
-		for (const b of buckets) {
-			if (b.tags.some((t) => t.name === name)) return `bucket:${b.id}`;
-		}
-		if (inbox.some((t) => t.name === name)) return "inbox";
-		return null;
-	};
+	// Per-bucket colour lookup + tag colour from the registry (derived fallback).
+	const bucketById = new Map(buckets.map((b) => [b.id, b]));
+	const tagColorOf = (name) =>
+		tagRegistry.find((r) => r.name === name)?.color || tagColor(name);
 
-	// Tags shown in the second row, for the currently expanded group.
-	const expandedTags = (() => {
-		if (!expanded) return [];
-		const src =
-			expanded === "inbox"
-				? inbox
-				: (buckets.find((b) => `bucket:${b.id}` === expanded)?.tags ?? []);
-		return q ? src.filter((t) => t.name.includes(q)) : src;
-	})();
+	// Tag usage counts derived from the loaded tasks (tags are flat now).
+	const tagCounts = new Map();
+	for (const t of oneOff)
+		for (const n of t.tags ?? []) tagCounts.set(n, (tagCounts.get(n) ?? 0) + 1);
+	const tagList = [...tagCounts.keys()]
+		.filter((n) => !q || n.includes(q))
+		.sort();
+	const noBucketCount = oneOff.filter((t) => !t.bucket_id).length;
 
-	// `sel.names` is null for "all", else the set of tag names the selection
-	// matches (a single tag, every tag in a bucket, or the Inbox group).
-	const visible = sel.names
-		? oneOff.filter((t) => t.tags?.some((n) => sel.names.includes(n)))
-		: oneOff;
+	// Apply the chip selection: a bucket (by the task's own bucket_id), the
+	// "no bucket" group, a single tag, or everything.
+	let visible = oneOff;
+	if (sel.key.startsWith("bucket:"))
+		visible = oneOff.filter((t) => t.bucket_id === sel.bucketId);
+	else if (sel.key === "nobucket") visible = oneOff.filter((t) => !t.bucket_id);
+	else if (sel.names)
+		visible = oneOff.filter((t) => t.tags?.some((n) => sel.names.includes(n)));
 	// Highest priority first; within a priority tier, cluster tasks that share
 	// tags (by normalized tag signature). Untagged tasks (→ "￿") trail.
 	const pending = visible
@@ -127,26 +125,18 @@ export default function TasksScreen({ navigation }) {
 	const selectAll = () => {
 		setShowRecurring(false);
 		setSel(ALL);
-		setExpanded(null);
 	};
 	const selectBucket = (b) => {
 		setShowRecurring(false);
-		setSel({
-			key: `bucket:${b.id}`,
-			names: b.tags.map((t) => t.name),
-			label: b.name,
-		});
-		setExpanded((e) => (e === `bucket:${b.id}` ? null : `bucket:${b.id}`));
+		setSel({ key: `bucket:${b.id}`, bucketId: b.id, label: b.name });
 	};
-	const selectInbox = () => {
+	const selectNoBucket = () => {
 		setShowRecurring(false);
-		setSel({ key: "inbox", names: inbox.map((t) => t.name), label: "inbox" });
-		setExpanded((e) => (e === "inbox" ? null : "inbox"));
+		setSel({ key: "nobucket", label: "no bucket" });
 	};
 	const selectTag = (name) => {
 		setShowRecurring(false);
 		setSel({ key: `tag:${name}`, names: [name], label: `#${name}` });
-		setExpanded(groupKeyForTag(name));
 	};
 
 	return (
@@ -164,6 +154,9 @@ export default function TasksScreen({ navigation }) {
 						onPress={() =>
 							setTaskSheet({
 								defaultTags: sel.key.startsWith("tag:") ? sel.names : [],
+								defaultBucket: sel.key.startsWith("bucket:")
+									? sel.bucketId
+									: null,
 							})
 						}
 						hitSlop={10}
@@ -191,7 +184,7 @@ export default function TasksScreen({ navigation }) {
 						</Pressable>
 					) : null}
 				</View>
-				{/* Row 1 — buckets (primary) */}
+				{/* Row 1 — buckets (task groups) */}
 				<ScrollView
 					horizontal
 					showsHorizontalScrollIndicator={false}
@@ -208,18 +201,18 @@ export default function TasksScreen({ navigation }) {
 						<Chip
 							key={b.id}
 							label={b.name}
-							count={b.tags.reduce((a, t) => a + (t.count || 0), 0)}
+							count={oneOff.filter((t) => t.bucket_id === b.id).length}
 							color={b.color || undefined}
-							active={!showRecurring && expanded === `bucket:${b.id}`}
+							active={!showRecurring && sel.key === `bucket:${b.id}`}
 							onPress={() => selectBucket(b)}
 						/>
 					))}
-					{inbox.length ? (
+					{noBucketCount ? (
 						<Chip
-							label="⊕ inbox"
-							count={inbox.reduce((a, t) => a + (t.count || 0), 0)}
-							active={!showRecurring && expanded === "inbox"}
-							onPress={selectInbox}
+							label="no bucket"
+							count={noBucketCount}
+							active={!showRecurring && sel.key === "nobucket"}
+							onPress={selectNoBucket}
 						/>
 					) : null}
 					<Chip
@@ -230,27 +223,24 @@ export default function TasksScreen({ navigation }) {
 					/>
 				</ScrollView>
 
-				{/* Row 2 — tags of the expanded bucket (secondary) */}
-				{!showRecurring && expanded ? (
+				{/* Row 2 — flat tags */}
+				{!showRecurring && tagList.length ? (
 					<ScrollView
 						horizontal
 						showsHorizontalScrollIndicator={false}
 						keyboardShouldPersistTaps="handled"
 						contentContainerStyle={[s.chipRow, s.chipRowSub]}
 					>
-						{expandedTags.map((t) => (
+						{tagList.map((name) => (
 							<Chip
-								key={t.id}
-								label={`#${t.name}`}
-								count={t.count}
-								color={t.color || tagColor(t.name)}
-								active={sel.key === `tag:${t.name}`}
-								onPress={() => selectTag(t.name)}
+								key={name}
+								label={`#${name}`}
+								count={tagCounts.get(name)}
+								color={tagColorOf(name)}
+								active={sel.key === `tag:${name}`}
+								onPress={() => selectTag(name)}
 							/>
 						))}
-						{expandedTags.length === 0 ? (
-							<Text style={s.empty}>no tags here</Text>
-						) : null}
 					</ScrollView>
 				) : null}
 			</View>
@@ -326,6 +316,19 @@ export default function TasksScreen({ navigation }) {
 							>
 								<Text style={s.taskTitle}>{t.title}</Text>
 								<View style={s.metaRow}>
+									{bucketById.get(t.bucket_id) ? (
+										<Text
+											style={[
+												s.meta,
+												s.bucketBadge,
+												bucketById.get(t.bucket_id).color
+													? { color: bucketById.get(t.bucket_id).color }
+													: null,
+											]}
+										>
+											{bucketById.get(t.bucket_id).name}
+										</Text>
+									) : null}
 									{t.priority ? (
 										<Text style={[s.meta, s.prio]}>{PRIORITY[t.priority]}</Text>
 									) : null}
@@ -387,6 +390,7 @@ export default function TasksScreen({ navigation }) {
 				<TaskSheet
 					task={taskSheet.task}
 					defaultTags={taskSheet.defaultTags}
+					defaultBucket={taskSheet.defaultBucket}
 					onClose={() => setTaskSheet(null)}
 				/>
 			) : null}
@@ -417,14 +421,18 @@ function Chip({ label, count, active, color, onPress }) {
 
 // ── Create-task sheet ──────────────────────────────────────────────────────
 
-function TaskSheet({ task, defaultTags = [], onClose }) {
+function TaskSheet({ task, defaultTags = [], defaultBucket = null, onClose }) {
 	const editing = !!task;
 	const createTask = useCreateTask();
 	const updateTask = useUpdateTask();
 	const deleteTask = useDeleteTask();
+	const { data: buckets = [] } = useBuckets();
 	const [title, setTitle] = useState(task?.title ?? "");
 	const [dueAt, setDueAt] = useState(task?.due_at ?? null);
 	const [priority, setPriority] = useState(task?.priority ?? 0);
+	const [bucketId, setBucketId] = useState(
+		task?.bucket_id ?? defaultBucket ?? null,
+	);
 	const [tags, setTags] = useState(task?.tags ?? defaultTags);
 	const [alerts, setAlerts] = useState(task?.alerts ?? []);
 
@@ -436,6 +444,7 @@ function TaskSheet({ task, defaultTags = [], onClose }) {
 			title: title.trim(),
 			due_at: dueAt || null,
 			priority,
+			bucket_id: bucketId || null,
 			tags,
 			alerts,
 		};
@@ -457,17 +466,19 @@ function TaskSheet({ task, defaultTags = [], onClose }) {
 	const [panel, setPanel] = useState("main");
 
 	const tagCount = tags.length;
+	const bucketName = buckets.find((b) => b.id === bucketId)?.name;
 	const detailSummary =
 		[
 			dueAt ? "due set" : null,
 			priority ? PRIORITY[priority] : null,
+			bucketName || null,
 			tagCount ? `${tagCount} tag${tagCount > 1 ? "s" : ""}` : null,
 			alerts.length
 				? `${alerts.length} alert${alerts.length > 1 ? "s" : ""}`
 				: null,
 		]
 			.filter(Boolean)
-			.join(" · ") || "due, priority, tags, alerts";
+			.join(" · ") || "due, priority, bucket, tags, alerts";
 
 	return (
 		<BottomSheet
@@ -558,6 +569,30 @@ function TaskSheet({ task, defaultTags = [], onClose }) {
 							</Pressable>
 						))}
 					</View>
+					<Text style={s.label}>Bucket</Text>
+					<View style={s.prioRow}>
+						<Pressable
+							style={[s.prioBtn, !bucketId && s.prioBtnOn]}
+							onPress={() => setBucketId(null)}
+						>
+							<Text style={[s.prioBtnText, !bucketId && s.prioBtnTextOn]}>
+								none
+							</Text>
+						</Pressable>
+						{buckets.map((b) => (
+							<Pressable
+								key={b.id}
+								style={[s.prioBtn, bucketId === b.id && s.prioBtnOn]}
+								onPress={() => setBucketId(b.id)}
+							>
+								<Text
+									style={[s.prioBtnText, bucketId === b.id && s.prioBtnTextOn]}
+								>
+									{b.name}
+								</Text>
+							</Pressable>
+						))}
+					</View>
 					<Text style={s.label}>Tags</Text>
 					<TagPicker value={tags} onChange={setTags} />
 					<Text style={s.label}>Alerts</Text>
@@ -579,10 +614,12 @@ function TaskSheet({ task, defaultTags = [], onClose }) {
 
 function RecurringSheet({ onClose }) {
 	const create = useCreateRecurringTask();
+	const { data: buckets = [] } = useBuckets();
 	const [title, setTitle] = useState("");
 	const [freq, setFreq] = useState("WEEKLY");
 	const [byday, setByday] = useState(["MO", "WE", "FR"]);
 	const [dtstart, setDtstart] = useState(null);
+	const [bucketId, setBucketId] = useState(null);
 	const [tags, setTags] = useState([]);
 	const [alerts, setAlerts] = useState([]);
 
@@ -599,6 +636,7 @@ function RecurringSheet({ onClose }) {
 				title: title.trim(),
 				rrule: buildRrule(freq, byday),
 				dtstart: dtstart || new Date().toISOString(),
+				bucket_id: bucketId || null,
 				tags,
 				alerts,
 			},
@@ -657,6 +695,30 @@ function RecurringSheet({ onClose }) {
 					clearable={false}
 					placeholder="Pick start"
 				/>
+				<Text style={s.label}>Bucket</Text>
+				<View style={s.prioRow}>
+					<Pressable
+						style={[s.prioBtn, !bucketId && s.prioBtnOn]}
+						onPress={() => setBucketId(null)}
+					>
+						<Text style={[s.prioBtnText, !bucketId && s.prioBtnTextOn]}>
+							none
+						</Text>
+					</Pressable>
+					{buckets.map((b) => (
+						<Pressable
+							key={b.id}
+							style={[s.prioBtn, bucketId === b.id && s.prioBtnOn]}
+							onPress={() => setBucketId(b.id)}
+						>
+							<Text
+								style={[s.prioBtnText, bucketId === b.id && s.prioBtnTextOn]}
+							>
+								{b.name}
+							</Text>
+						</Pressable>
+					))}
+				</View>
 				<Text style={s.label}>Tags</Text>
 				<TagPicker value={tags} onChange={setTags} />
 				<Text style={s.hint}>rule: {buildRrule(freq, byday)}</Text>
@@ -791,6 +853,11 @@ const s = StyleSheet.create({
 	tag: { color: colors.accent2 },
 	rrule: { color: colors.accent4 },
 	prio: { color: colors.accent, textTransform: "uppercase" },
+	bucketBadge: {
+		color: colors.accent2,
+		textTransform: "uppercase",
+		letterSpacing: 0.5,
+	},
 	// Forms
 	form: { paddingHorizontal: 16, paddingTop: 2, gap: 4 },
 	label: {

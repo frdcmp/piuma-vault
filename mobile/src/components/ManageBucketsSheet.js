@@ -15,15 +15,14 @@ import {
 	useDeleteTag,
 	useTagRegistry,
 	useUpdateBucket,
-	useUpdateTag,
 } from "../queries/tagsQuery";
 import { tagColor } from "../utils/tagColor";
 import { colors, mono as MONO } from "../utils/theme";
 import BottomSheet from "./BottomSheet";
 
 /**
- * Manage buckets & tags. Add/rename/delete buckets, move tags between buckets
- * (tap a bucket chip under a tag), delete tags. Shared by Tasks and Calendar.
+ * Manage buckets & tags. Buckets are task groups: add/rename/delete them. Tags
+ * are flat labels: rename (web) / delete here. Shared by Tasks and Calendar.
  */
 export default function ManageBucketsSheet({ onClose }) {
 	const { data: buckets = [] } = useBuckets();
@@ -31,7 +30,6 @@ export default function ManageBucketsSheet({ onClose }) {
 	const createBucket = useCreateBucket();
 	const updateBucket = useUpdateBucket();
 	const deleteBucket = useDeleteBucket();
-	const updateTag = useUpdateTag();
 	const deleteTag = useDeleteTag();
 	const [newBucket, setNewBucket] = useState("");
 
@@ -91,62 +89,23 @@ export default function ManageBucketsSheet({ onClose }) {
 
 				<Text style={st.section}>TAGS</Text>
 				{tags.map((t) => (
-					<View key={t.id} style={st.tagBlock}>
-						<View style={st.row}>
-							<View
-								style={[
-									st.dot,
-									{ backgroundColor: t.color || tagColor(t.name) },
-								]}
-							/>
-							<Text style={st.tagName}>#{t.name}</Text>
-							<Pressable onPress={() => deleteTag.mutate(t.id)} hitSlop={8}>
-								<Ionicons name="trash-outline" size={16} color={colors.muted} />
-							</Pressable>
-						</View>
-						<ScrollView
-							horizontal
-							showsHorizontalScrollIndicator={false}
-							keyboardShouldPersistTaps="handled"
-							contentContainerStyle={st.bucketChips}
-						>
-							<BucketChip
-								label="Inbox"
-								active={!t.bucket_id}
-								onPress={() => updateTag.mutate({ id: t.id, bucket_id: null })}
-							/>
-							{buckets.map((b) => (
-								<BucketChip
-									key={b.id}
-									label={b.name}
-									active={t.bucket_id === b.id}
-									onPress={() =>
-										updateTag.mutate({ id: t.id, bucket_id: b.id })
-									}
-								/>
-							))}
-						</ScrollView>
+					<View key={t.id} style={st.row}>
+						<View
+							style={[st.dot, { backgroundColor: t.color || tagColor(t.name) }]}
+						/>
+						<Text style={st.tagName}>#{t.name}</Text>
+						<Pressable onPress={() => deleteTag.mutate(t.id)} hitSlop={8}>
+							<Ionicons name="trash-outline" size={16} color={colors.muted} />
+						</Pressable>
 					</View>
 				))}
 				{tags.length === 0 ? <Text style={st.empty}>No tags yet.</Text> : null}
 				<Text style={st.hint}>
-					Renaming a tag updates it everywhere (tasks, recurring, events).
-					Deleting a bucket drops its tags to Inbox.
+					Buckets group tasks; tags are flat labels independent of buckets.
+					Deleting a bucket drops its tasks to no bucket.
 				</Text>
 			</ScrollView>
 		</BottomSheet>
-	);
-}
-
-function BucketChip({ label, active, onPress }) {
-	return (
-		<Pressable
-			style={[st.bChip, active && st.bChipOn]}
-			onPress={onPress}
-			hitSlop={4}
-		>
-			<Text style={[st.bChipText, active && st.bChipTextOn]}>{label}</Text>
-		</Pressable>
 	);
 }
 

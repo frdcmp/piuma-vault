@@ -29,14 +29,6 @@ export const fetchTags = async () => {
 	return data;
 };
 
-// scope: "tasks" | "calendar" | undefined — which surface to count usage against.
-export const fetchTagTree = async (scope) => {
-	const { data } = await axiosInstance.get("/admin/tags/tree", {
-		params: scope ? { counts: scope } : {},
-	});
-	return data;
-};
-
 export const createTag = async (payload) => {
 	const { data } = await axiosInstance.post("/admin/tags", payload);
 	return data;

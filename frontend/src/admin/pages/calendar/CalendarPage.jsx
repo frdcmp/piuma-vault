@@ -284,6 +284,7 @@ export default function CalendarPage() {
 						</div>
 						<BucketTagFilter
 							scope="calendar"
+							items={[...events, ...tasks, ...recurring]}
 							selectedKey={sel.key}
 							onSelect={(s) => {
 								setSel(s);

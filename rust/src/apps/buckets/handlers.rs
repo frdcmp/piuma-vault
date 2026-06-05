@@ -1,5 +1,4 @@
 use actix_web::{web, HttpResponse, Responder};
-use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::apps::auth::middleware::check_permission;
@@ -7,13 +6,12 @@ use crate::apps::auth::models::AuthenticatedUser;
 use crate::db::db::DbPool;
 
 use super::models::{
-    Bucket, BucketNode, BucketsApiError, CreateBucketRequest, CreateTagRequest, Tag, TagNode,
-    TreeQuery, TreeResponse, UpdateBucketRequest, UpdateTagRequest,
+    Bucket, BucketsApiError, CreateBucketRequest, CreateTagRequest, Tag, UpdateBucketRequest,
+    UpdateTagRequest,
 };
 
 const BUCKET_FIELDS: &str = "id, user_id, name, color, sort_order, created_at, updated_at";
-const TAG_FIELDS: &str =
-    "id, user_id, bucket_id, name, color, sort_order, created_at, updated_at";
+const TAG_FIELDS: &str = "id, user_id, name, color, sort_order, created_at, updated_at";
 
 fn err(msg: impl Into<String>) -> BucketsApiError {
     BucketsApiError { error: msg.into() }
@@ -227,15 +225,14 @@ pub async fn create_tag(
     if let Some(r) = validate_name(&body.name) {
         return r;
     }
-    // Tag names are stored lowercased to match the bare names in tasks/events arrays.
+    // Tag names are stored lowercased to match the bare names used on tasks/events.
     let name = body.name.trim().to_lowercase();
     let sql = format!(
-        "INSERT INTO db_tags (user_id, bucket_id, name, color, sort_order) \
-         VALUES ($1, $2, $3, $4, $5) RETURNING {TAG_FIELDS}"
+        "INSERT INTO db_tags (user_id, name, color, sort_order) \
+         VALUES ($1, $2, $3, $4) RETURNING {TAG_FIELDS}"
     );
     match sqlx::query_as::<_, Tag>(&sql)
         .bind(&user.user_id)
-        .bind(body.bucket_id)
         .bind(&name)
         .bind(&body.color)
         .bind(body.sort_order)
@@ -251,8 +248,7 @@ pub async fn create_tag(
 }
 
 // ── TAGS: UPDATE ──────────────────────────────────────────────────────────────
-// A rename rewrites the tag name across all three array columns (tasks,
-// recurring templates, calendar events) in one transaction.
+// Rename / recolor / reorder. Tags are flat — there is no bucket to move.
 
 pub async fn update_tag(
     user: AuthenticatedUser,
@@ -269,14 +265,10 @@ pub async fn update_tag(
             return r;
         }
     }
-    // Tag names live only in db_tags now (entities reference tags by id), so a
-    // rename is a single update — nothing to propagate.
+    // Tag names live only in db_tags (entities reference tags by id), so a rename
+    // is a single update — nothing to propagate.
     let new_name = body.name.as_ref().map(|n| n.trim().to_lowercase());
 
-    let (set_bucket, bucket) = match &body.bucket_id {
-        Some(v) => (true, *v),
-        None => (false, None),
-    };
     let (set_color, color) = match &body.color {
         Some(v) => (true, v.clone()),
         None => (false, None),
@@ -285,9 +277,8 @@ pub async fn update_tag(
     let sql = format!(
         "UPDATE db_tags SET \
             name = COALESCE($3, name), \
-            bucket_id = CASE WHEN $4 THEN $5 ELSE bucket_id END, \
-            color = CASE WHEN $6 THEN $7 ELSE color END, \
-            sort_order = COALESCE($8, sort_order), \
+            color = CASE WHEN $4 THEN $5 ELSE color END, \
+            sort_order = COALESCE($6, sort_order), \
             updated_at = NOW() \
          WHERE id = $1 AND user_id = $2 RETURNING {TAG_FIELDS}"
     );
@@ -295,8 +286,6 @@ pub async fn update_tag(
         .bind(id)
         .bind(&user.user_id)
         .bind(new_name.as_deref())
-        .bind(set_bucket)
-        .bind(bucket)
         .bind(set_color)
         .bind(color)
         .bind(body.sort_order)
@@ -337,115 +326,6 @@ pub async fn delete_tag(
         Err(e) => {
             log::error!("tags delete failed: {e}");
             HttpResponse::InternalServerError().json(err("Failed to delete tag"))
-        }
-    }
-}
-
-// ── TREE (filter UI feed) ──────────────────────────────────────────────────────
-
-pub async fn get_tree(
-    user: AuthenticatedUser,
-    pool: web::Data<DbPool>,
-    query: web::Query<TreeQuery>,
-) -> impl Responder {
-    if let Some(r) = require_read(&user) {
-        return r;
-    }
-
-    let buckets = match sqlx::query_as::<_, Bucket>(&format!(
-        "SELECT {BUCKET_FIELDS} FROM db_buckets WHERE user_id = $1 ORDER BY sort_order ASC, lower(name) ASC"
-    ))
-    .bind(&user.user_id)
-    .fetch_all(pool.get_ref())
-    .await
-    {
-        Ok(b) => b,
-        Err(e) => {
-            log::error!("tree buckets failed: {e}");
-            return HttpResponse::InternalServerError().json(err("Failed to build tag tree"));
-        }
-    };
-
-    let tags = match sqlx::query_as::<_, Tag>(&format!(
-        "SELECT {TAG_FIELDS} FROM db_tags WHERE user_id = $1 ORDER BY sort_order ASC, lower(name) ASC"
-    ))
-    .bind(&user.user_id)
-    .fetch_all(pool.get_ref())
-    .await
-    {
-        Ok(t) => t,
-        Err(e) => {
-            log::error!("tree tags failed: {e}");
-            return HttpResponse::InternalServerError().json(err("Failed to build tag tree"));
-        }
-    };
-
-    // Per-tag usage counts, scoped to the requested surface (keyed by tag id).
-    let counts: HashMap<Uuid, i64> = match query.counts.as_deref() {
-        Some("tasks") => count_usage(
-            pool.get_ref(),
-            &user.user_id,
-            "SELECT tt.tag_id, COUNT(*) AS n FROM db_task_tags tt \
-             JOIN db_tasks t ON t.id = tt.task_id \
-             WHERE t.user_id = $1 AND t.recurrence_id IS NULL GROUP BY tt.tag_id",
-        )
-        .await,
-        Some("calendar") => count_usage(
-            pool.get_ref(),
-            &user.user_id,
-            "SELECT et.tag_id, COUNT(*) AS n FROM db_event_tags et \
-             JOIN db_calendar_events e ON e.id = et.event_id \
-             WHERE e.user_id = $1 GROUP BY et.tag_id",
-        )
-        .await,
-        _ => HashMap::new(),
-    };
-
-    let node = |t: &Tag| TagNode {
-        id: t.id,
-        name: t.name.clone(),
-        color: t.color.clone(),
-        sort_order: t.sort_order,
-        count: *counts.get(&t.id).unwrap_or(&0),
-    };
-
-    let bucket_nodes: Vec<BucketNode> = buckets
-        .iter()
-        .map(|b| BucketNode {
-            id: b.id,
-            name: b.name.clone(),
-            color: b.color.clone(),
-            sort_order: b.sort_order,
-            tags: tags
-                .iter()
-                .filter(|t| t.bucket_id == Some(b.id))
-                .map(node)
-                .collect(),
-        })
-        .collect();
-
-    let inbox: Vec<TagNode> = tags
-        .iter()
-        .filter(|t| t.bucket_id.is_none())
-        .map(node)
-        .collect();
-
-    HttpResponse::Ok().json(TreeResponse {
-        buckets: bucket_nodes,
-        inbox,
-    })
-}
-
-async fn count_usage(pool: &DbPool, user_id: &str, sql: &str) -> HashMap<Uuid, i64> {
-    match sqlx::query_as::<_, (Uuid, i64)>(sql)
-        .bind(user_id)
-        .fetch_all(pool)
-        .await
-    {
-        Ok(rows) => rows.into_iter().collect(),
-        Err(e) => {
-            log::error!("tag usage count failed: {e}");
-            HashMap::new()
         }
     }
 }

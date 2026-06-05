@@ -299,6 +299,17 @@
 	color: var(--accent);
 }
 
+/* Bucket badge on a task row (the task's group). */
+.task-bucket {
+	padding: 0 6px;
+	border: 1px solid currentColor;
+	border-radius: 999px;
+	font-size: 0.62rem;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	opacity: 0.85;
+}
+
 .task-rrule {
 	color: var(--accent-4);
 	font-size: 0.64rem;

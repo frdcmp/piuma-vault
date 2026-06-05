@@ -15,9 +15,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                 .route(web::put().to(handlers::update_bucket))
                 .route(web::delete().to(handlers::delete_bucket)),
         )
-        // ── Tags ──
-        // "/tree" before "/{id}" so it isn't parsed as a tag id.
-        .service(web::resource("/admin/tags/tree").route(web::get().to(handlers::get_tree)))
+        // ── Tags (flat registry) ──
         .service(
             web::resource("/admin/tags")
                 .route(web::get().to(handlers::list_tags))

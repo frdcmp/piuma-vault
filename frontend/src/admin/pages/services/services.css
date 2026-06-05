@@ -1,5 +1,56 @@
 /* Services page — small extras on top of the shared vault-pixel classes. */
 
+/* Tab bar — one tab per service; the active panel renders below. */
+.vp-svc-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-bottom: 4px;
+}
+
+.vp-svc-tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font: inherit;
+	font-size: 13px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-muted);
+	background: var(--vp-surface, transparent);
+	border: 2px solid var(--vp-border);
+	padding: 8px 14px;
+	cursor: pointer;
+}
+
+.vp-svc-tab:hover {
+	color: var(--vp-fg);
+	border-color: var(--vp-accent-2);
+}
+
+.vp-svc-tab.is-active {
+	color: var(--vp-bg, #0e0e0e);
+	background: var(--vp-accent);
+	border-color: var(--vp-accent);
+}
+
+.vp-svc-tab-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	flex-shrink: 0;
+}
+.vp-svc-tab-dot.is-on {
+	background: var(--vp-accent-2);
+}
+.vp-svc-tab-dot.is-off {
+	background: var(--vp-border);
+}
+.vp-svc-tab.is-active .vp-svc-tab-dot.is-off {
+	background: rgba(0, 0, 0, 0.35);
+}
+
 .vp-svc-chip {
 	margin-left: 6px;
 	padding: 0 6px;
@@ -28,19 +79,4 @@
 }
 .vp-svc-result.is-err {
 	color: var(--vp-accent-3);
-}
-
-/* Clickable vendor preset in the storage panel title (AWS ⇄ Bunny). */
-.vp-svc-vendor {
-	font: inherit;
-	color: var(--vp-accent-2);
-	background: none;
-	border: none;
-	padding: 0;
-	cursor: pointer;
-	text-decoration: underline dotted;
-	text-underline-offset: 3px;
-}
-.vp-svc-vendor:hover {
-	color: var(--vp-accent);
 }

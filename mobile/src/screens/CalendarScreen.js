@@ -24,7 +24,7 @@ import {
 	useDeleteEvent,
 	useUpdateEvent,
 } from "../queries/calendarQuery";
-import { useTagsLiveUpdates, useTagTree } from "../queries/tagsQuery";
+import { useTagRegistry, useTagsLiveUpdates } from "../queries/tagsQuery";
 import {
 	useCompleteOccurrence,
 	useRecurringTasks,
@@ -189,8 +189,7 @@ export default function CalendarScreen({ navigation }) {
 	const [daySheet, setDaySheet] = useState(null); // dayjs | null
 	const [eventSheet, setEventSheet] = useState(null); // { event } | { date } | null
 	const pendingEvent = useRef(null); // chains daySheet -> eventSheet across the close animation
-	const [sel, setSel] = useState(ALL); // bucket/tag filter selection
-	const [expanded, setExpanded] = useState(null); // expanded bucket/inbox key
+	const [sel, setSel] = useState(ALL); // tag filter selection
 	const [filterOpen, setFilterOpen] = useState(false);
 	const [manageSheet, setManageSheet] = useState(false);
 
@@ -221,34 +220,22 @@ export default function CalendarScreen({ navigation }) {
 	});
 	const { data: tasks = [] } = useTasks();
 	const { data: recurring = [] } = useRecurringTasks();
-	const { data: tree } = useTagTree("calendar");
+	const { data: tagRegistry = [] } = useTagRegistry();
 	useTagsLiveUpdates("calendar");
 	const toggleTask = useToggleTask();
 	const completeOccurrence = useCompleteOccurrence();
 
-	const buckets = tree?.buckets ?? [];
-	const inbox = tree?.inbox ?? [];
-	const expandedTags =
-		expanded === "inbox"
-			? inbox
-			: (buckets.find((b) => `bucket:${b.id}` === expanded)?.tags ?? []);
+	// Calendar filters by flat tags only (events have no bucket). Tag list is the
+	// union of tags across the loaded events/tasks/recurring.
+	const tagSet = new Set();
+	for (const ev of events) for (const n of ev.tags ?? []) tagSet.add(n);
+	for (const t of tasks) for (const n of t.tags ?? []) tagSet.add(n);
+	for (const tpl of recurring) for (const n of tpl.tags ?? []) tagSet.add(n);
+	const tagList = [...tagSet].sort();
+	const tagColorOf = (name) =>
+		tagRegistry.find((r) => r.name === name)?.color || tagColor(name);
 
-	const selectAll = () => {
-		setSel(ALL);
-		setExpanded(null);
-	};
-	const selectBucket = (b) => {
-		setSel({
-			key: `bucket:${b.id}`,
-			names: b.tags.map((t) => t.name),
-			label: b.name,
-		});
-		setExpanded((e) => (e === `bucket:${b.id}` ? null : `bucket:${b.id}`));
-	};
-	const selectInbox = () => {
-		setSel({ key: "inbox", names: inbox.map((t) => t.name), label: "inbox" });
-		setExpanded((e) => (e === "inbox" ? null : "inbox"));
-	};
+	const selectAll = () => setSel(ALL);
 	const selectTag = (name) =>
 		setSel({ key: `tag:${name}`, names: [name], label: `#${name}` });
 
@@ -395,42 +382,17 @@ export default function CalendarScreen({ navigation }) {
 							active={sel.key === "all"}
 							onPress={selectAll}
 						/>
-						{buckets.map((b) => (
+						{tagList.map((name) => (
 							<CalChip
-								key={b.id}
-								label={b.name}
-								color={b.color || undefined}
-								active={expanded === `bucket:${b.id}`}
-								onPress={() => selectBucket(b)}
+								key={name}
+								label={`#${name}`}
+								color={tagColorOf(name)}
+								active={sel.key === `tag:${name}`}
+								onPress={() => selectTag(name)}
 							/>
 						))}
-						{inbox.length ? (
-							<CalChip
-								label="⊕ inbox"
-								active={expanded === "inbox"}
-								onPress={selectInbox}
-							/>
-						) : null}
 						<CalChip label="⚙ manage" onPress={() => setManageSheet(true)} />
 					</ScrollView>
-					{expanded ? (
-						<ScrollView
-							horizontal
-							showsHorizontalScrollIndicator={false}
-							keyboardShouldPersistTaps="handled"
-							contentContainerStyle={[s.filterRow, s.filterRowSub]}
-						>
-							{expandedTags.map((t) => (
-								<CalChip
-									key={t.id}
-									label={`#${t.name}`}
-									color={t.color || tagColor(t.name)}
-									active={sel.key === `tag:${t.name}`}
-									onPress={() => selectTag(t.name)}
-								/>
-							))}
-						</ScrollView>
-					) : null}
 				</View>
 			) : null}
 

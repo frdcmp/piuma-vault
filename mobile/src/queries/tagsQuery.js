@@ -6,7 +6,6 @@ import {
 	deleteTag,
 	fetchBuckets,
 	fetchTags,
-	fetchTagTree,
 	updateBucket,
 	updateTag,
 } from "../api/tagsApi";
@@ -18,7 +17,6 @@ export const tagKeys = {
 	all: ["tags"],
 	buckets: () => ["tags", "buckets"],
 	list: () => ["tags", "list"],
-	tree: (scope) => ["tags", "tree", scope ?? null],
 };
 
 // A bucket/tag change can rewrite task/event tag arrays and shift counts, so
@@ -44,15 +42,6 @@ export const useTagRegistry = (options = {}) =>
 		queryKey: tagKeys.list(),
 		queryFn: fetchTags,
 		staleTime: 60_000,
-		...options,
-	});
-
-export const useTagTree = (scope, options = {}) =>
-	useQuery({
-		queryKey: tagKeys.tree(scope),
-		queryFn: () => fetchTagTree(scope),
-		keepPreviousData: true,
-		staleTime: 15_000,
 		...options,
 	});
 

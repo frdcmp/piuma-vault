@@ -1,6 +1,7 @@
 import dayjs from "dayjs";
 import { useState } from "react";
 import {
+	useBuckets,
 	useCreateRecurringTask,
 	useDeleteRecurringTask,
 	useUpdateRecurringTask,
@@ -42,6 +43,7 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 	const create = useCreateRecurringTask();
 	const update = useUpdateRecurringTask();
 	const remove = useDeleteRecurringTask();
+	const { data: buckets = [] } = useBuckets();
 
 	const parsed = parseRrule(recurring?.rrule);
 	const [title, setTitle] = useState(recurring?.title ?? "");
@@ -60,6 +62,7 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 	);
 	const [until, setUntil] = useState(recurring?.until ?? null);
 	const [active, setActive] = useState(recurring?.active ?? true);
+	const [bucketId, setBucketId] = useState(recurring?.bucket_id ?? "");
 	const [tags, setTags] = useState((recurring?.tags ?? []).join(", "));
 	const [alerts, setAlerts] = useState(recurring?.alerts ?? []);
 	const [error, setError] = useState("");
@@ -87,6 +90,7 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 			// Make `until` inclusive of the chosen day (picker emits local midnight).
 			until: until ? dayjs(until).endOf("day").toISOString() : null,
 			active,
+			bucket_id: bucketId || null,
 			tags: tags
 				.split(",")
 				.map((s) => s.trim().toLowerCase())
@@ -178,6 +182,21 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 						placeholder="No end"
 					/>
 				</div>
+
+				<label className="tasks-field">
+					<span>Bucket</span>
+					<select
+						value={bucketId}
+						onChange={(e) => setBucketId(e.target.value)}
+					>
+						<option value="">No bucket</option>
+						{buckets.map((b) => (
+							<option key={b.id} value={b.id}>
+								{b.name}
+							</option>
+						))}
+					</select>
+				</label>
 
 				<label className="tasks-field">
 					<span>Tags</span>
