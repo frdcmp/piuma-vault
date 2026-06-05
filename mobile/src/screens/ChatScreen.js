@@ -17,11 +17,13 @@ import {
 	SafeAreaView,
 	useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-	fetchOpenclawHistory,
-	rotateSessionKey,
+	createConversation,
+	fetchConversation,
+	fetchDefaultAgent,
 	streamChat,
-} from "../api/chatApi";
+} from "../api/agentChatApi";
 import MarkdownView from "../components/MarkdownView";
 import PiumaAvatar from "../components/PiumaAvatar";
 import StreamingCursor from "../components/StreamingCursor";
@@ -40,6 +42,9 @@ const ASSISTANT_LABEL = "assistant stream";
 const AGENT_LABEL = "assistant";
 const SUBMIT_LABEL = "send";
 
+// Restores the active agents conversation across mounts.
+const CONV_STORAGE_KEY = "agents_active_conv";
+
 // Composer auto-grow bounds: one line on start, expand up to ~5 lines, then
 // the input scrolls internally. Mirrors the frontend composer behaviour.
 const INPUT_MIN_H = 44;
@@ -47,6 +52,17 @@ const INPUT_MAX_H = 124;
 
 const newMessageId = () =>
 	`msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+// Normalised content blocks → plain text (for rendering reloaded turns).
+const blocksToText = (content) => {
+	if (typeof content === "string") return content;
+	if (Array.isArray(content))
+		return content
+			.filter((b) => b.type === "text")
+			.map((b) => b.text)
+			.join("");
+	return "";
+};
 
 // Map a gateway transcript entry ({role, content, context?}) to our UI message
 // shape. The backend recovers the per-turn note chip from the stored <context>
@@ -206,13 +222,16 @@ function AssistantBubble({ content, tools, isStreaming }) {
 	);
 }
 
-export default function ChatScreen({ onClose, notePath }) {
+export default function ChatScreen({ onClose, notePath, noteId }) {
 	const insets = useSafeAreaInsets();
 	const [messages, setMessages] = useState([]);
 	const [input, setInput] = useState("");
 	const [inputHeight, setInputHeight] = useState(INPUT_MIN_H);
 	const [isStreaming, setIsStreaming] = useState(false);
 	const [keyboardVisible, setKeyboardVisible] = useState(false);
+	// Active agents conversation + the agent for new chats (admin default).
+	const [conversationId, setConversationId] = useState(null);
+	const [agentKind, setAgentKind] = useState("vault_agent");
 	// The open note is attached as context by default; tapping the chip toggles
 	// it off for the next send. Mobile keeps it to a single note (no tabs, no
 	// lock state) — the chip just mirrors whatever note opened this chat.
@@ -241,26 +260,38 @@ export default function ChatScreen({ onClose, notePath }) {
 		if (notePath) setContextAttached(true);
 	}, [notePath]);
 
-	// The conversation lives in OpenClaw, keyed by the device session key. Load
-	// it from the gateway on mount and seed local state — nothing is stored on
-	// the device. After this initial seed, streaming owns local state.
+	// On mount: pick up the admin default agent for new chats, and restore the
+	// last conversation (id in AsyncStorage) from the agents API, seeding local
+	// state. After this, streaming owns local state.
 	useEffect(() => {
 		let cancelled = false;
-		const controller = new AbortController();
-		fetchOpenclawHistory({ signal: controller.signal })
-			.then((items) => {
+		(async () => {
+			try {
+				const def = await fetchDefaultAgent();
+				if (!cancelled && def?.agent) setAgentKind(def.agent);
+			} catch {
+				/* fall back to vault_agent */
+			}
+			try {
+				const stored = await AsyncStorage.getItem(CONV_STORAGE_KEY);
+				if (cancelled || !stored) return;
+				const data = await fetchConversation(stored);
 				if (cancelled) return;
-				if (Array.isArray(items) && items.length) {
-					setMessages(items.map(historyToMessage));
-				}
-			})
-			.catch((e) => {
-				if (cancelled) return;
-				console.warn("[chat] failed to load history", e);
-			});
+				setConversationId(stored);
+				setMessages(
+					(data.messages || []).map((m) => ({
+						id: m.id,
+						role: m.role,
+						content: blocksToText(m.content),
+						...(m.role === "assistant" ? { tools: [] } : {}),
+					})),
+				);
+			} catch {
+				await AsyncStorage.removeItem(CONV_STORAGE_KEY);
+			}
+		})();
 		return () => {
 			cancelled = true;
-			controller.abort();
 		};
 	}, []);
 
@@ -271,15 +302,16 @@ export default function ChatScreen({ onClose, notePath }) {
 			abortRef.current = null;
 			setIsStreaming(false);
 			setMessages([]);
+			setConversationId(null);
 			try {
-				await rotateSessionKey();
-			} catch (e) {
-				console.warn("[chat] failed to rotate session key", e);
+				await AsyncStorage.removeItem(CONV_STORAGE_KEY);
+			} catch {
+				/* best-effort */
 			}
 		};
 
 		const message =
-			"This starts a fresh chat. The current conversation stays in OpenClaw but won't be shown here anymore.";
+			"This starts a fresh chat. The current conversation stays saved but won't be shown here anymore.";
 		if (Platform.OS === "web") {
 			// RN Alert on web is a no-op — fall back to window.confirm.
 			if (
@@ -300,7 +332,30 @@ export default function ChatScreen({ onClose, notePath }) {
 		const text = input.trim();
 		if (!text || isStreaming) return;
 
+		// Ensure a conversation exists (create with the default agent on first send).
+		let convId = conversationId;
+		if (!convId) {
+			try {
+				const conv = await createConversation({ agent: agentKind });
+				convId = conv.id;
+				setConversationId(conv.id);
+				await AsyncStorage.setItem(CONV_STORAGE_KEY, conv.id);
+			} catch {
+				setMessages((c) => [
+					...c,
+					{
+						id: newMessageId(),
+						role: "assistant",
+						content: "**Error:** failed to start conversation",
+						tools: [],
+					},
+				]);
+				return;
+			}
+		}
+
 		const context = contextAttached && notePath ? [notePath] : [];
+		const contextNoteIds = contextAttached && noteId ? [noteId] : [];
 		const userMsg = {
 			id: newMessageId(),
 			role: "user",
@@ -313,8 +368,7 @@ export default function ChatScreen({ onClose, notePath }) {
 			content: "",
 			tools: [],
 		};
-		const history = [...messages, userMsg];
-		setMessages([...history, assistantMsg]);
+		setMessages((curr) => [...curr, userMsg, assistantMsg]);
 		setInput("");
 		setInputHeight(INPUT_MIN_H);
 		setIsStreaming(true);
@@ -322,54 +376,42 @@ export default function ChatScreen({ onClose, notePath }) {
 		const controller = new AbortController();
 		abortRef.current = controller;
 
-		// streamChat expects {role, content} pairs — strip ids and fold each
-		// turn's attached note into its content as a <context> block.
-		const wireHistory = history.map(({ role, content, context: ctx }) => ({
-			role,
-			content: withContextBlock(content, ctx),
-		}));
-
-		await streamChat({
-			messages: wireHistory,
-			signal: controller.signal,
-			onToken: (delta) => {
-				setMessages((curr) => {
-					const updated = [...curr];
-					const last = updated[updated.length - 1];
-					updated[updated.length - 1] = {
-						...last,
-						content: last.content + delta,
-					};
-					return updated;
-				});
-			},
-			onTool: (evt) => {
-				setMessages((curr) => {
-					const updated = [...curr];
-					const last = updated[updated.length - 1];
-					updated[updated.length - 1] = {
-						...last,
-						tools: applyToolEvent(last.tools, evt),
-					};
-					return updated;
-				});
-			},
-			onError: (e) => {
-				setMessages((curr) => {
-					const updated = [...curr];
-					const last = updated[updated.length - 1];
-					updated[updated.length - 1] = {
-						...last,
-						content: `**Error:** ${e.message}`,
-					};
-					return updated;
-				});
-			},
-		});
-
-		setIsStreaming(false);
-		abortRef.current = null;
-	}, [input, isStreaming, messages, contextAttached, notePath]);
+		try {
+			await streamChat({
+				conversationId: convId,
+				message: text,
+				contextNoteIds,
+				signal: controller.signal,
+				onText: (delta) => {
+					setMessages((curr) => {
+						const updated = [...curr];
+						const last = updated[updated.length - 1];
+						updated[updated.length - 1] = {
+							...last,
+							content: last.content + delta,
+						};
+						return updated;
+					});
+				},
+				onThinking: () => {},
+				onError: (e) => {
+					setMessages((curr) => {
+						const updated = [...curr];
+						const last = updated[updated.length - 1];
+						updated[updated.length - 1] = {
+							...last,
+							content: `**Error:** ${e.message}`,
+						};
+						return updated;
+					});
+				},
+				onDone: () => setIsStreaming(false),
+			});
+		} finally {
+			setIsStreaming(false);
+			abortRef.current = null;
+		}
+	}, [input, isStreaming, conversationId, agentKind, contextAttached, notePath, noteId]);
 
 	const canSend = input.trim().length > 0 && !isStreaming;
 

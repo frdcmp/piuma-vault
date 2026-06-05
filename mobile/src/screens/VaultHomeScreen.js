@@ -328,7 +328,11 @@ export default function VaultHomeScreen({ navigation }) {
 					{ width: CHAT_DRAWER_W, transform: [{ translateX: rightX }] },
 				]}
 			>
-				<ChatScreen notePath={notePath} onClose={closeDrawers} />
+				<ChatScreen
+					notePath={notePath}
+					noteId={editorNoteId}
+					onClose={closeDrawers}
+				/>
 			</Animated.View>
 		</View>
 	);
