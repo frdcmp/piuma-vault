@@ -83,15 +83,15 @@ export default function TasksPage() {
 			<div className="tasks-page">
 				<header className="tasks-header">
 					<div className="tasks-title">
+						<PvButton variant="ghost" onClick={() => navigate("/notes")}>
+							‹ home
+						</PvButton>
 						<span className="tasks-glyph" aria-hidden="true">
 							☑
 						</span>
 						<h1>Tasks</h1>
 					</div>
 					<div className="tasks-actions">
-						<PvButton variant="ghost" onClick={() => navigate("/notes")}>
-							‹ home
-						</PvButton>
 						<PvButton
 							variant="ghost"
 							onClick={() => navigate("/admin/calendar")}

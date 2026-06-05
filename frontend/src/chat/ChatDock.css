@@ -4,12 +4,15 @@
    ambient (e.g. AntD) --border would otherwise resolve to a light value, showing
    a white delimiter instead of the dark one. */
 
-/* Wrapper that turns a column-layout page into a [page | chat] row. */
+/* Wrapper that turns a column-layout page into a [page | chat] row. The dark
+   background matches .notes-pixel-layout's --bg so the 6px resizer's transparent
+   track shows the dark layout color instead of the ambient (white) page. */
 .workspace-row {
 	display: flex;
 	height: 100vh;
 	width: 100%;
 	overflow: hidden;
+	background: #0e0f12;
 }
 
 .chat-dock-col {

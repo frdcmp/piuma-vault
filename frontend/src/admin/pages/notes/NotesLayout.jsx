@@ -354,6 +354,20 @@ export default function NotesLayout() {
 					/>
 				</div>
 			)}
+
+			{/* Floating toggle to open chat from anywhere — mirrors the ChatDock
+			    FAB on Storage/Tasks. Hidden while the chat column is showing. */}
+			{!showChat && (
+				<button
+					type="button"
+					className="notes-chat-fab"
+					onClick={openChat}
+					title="Chat with Piuma"
+					aria-label="Open chat"
+				>
+					🐾
+				</button>
+			)}
 		</div>
 	);
 }
