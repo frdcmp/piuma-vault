@@ -55,9 +55,7 @@ export default function StorageExplorer() {
 		(p) => {
 			const clean = p ? p.replace(/\/+$/, "") : "";
 			navigate(
-				clean
-					? `/admin/storage?path=${encodeURIComponent(clean)}`
-					: "/admin/storage",
+				clean ? `/storage?path=${encodeURIComponent(clean)}` : "/storage",
 			);
 		},
 		[navigate],
