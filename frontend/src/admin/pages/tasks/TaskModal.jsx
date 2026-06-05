@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import BucketSelect from "../../../components/BucketSelect";
 import TagPicker from "../../../components/TagPicker";
 import {
 	useBuckets,
@@ -42,6 +43,15 @@ export default function TaskModal({
 	const [alerts, setAlerts] = useState(task?.alerts ?? []);
 	const [error, setError] = useState("");
 
+	// Grow the notes textarea to fit its content instead of clipping/scrolling.
+	const notesRef = useRef(null);
+	useEffect(() => {
+		const el = notesRef.current;
+		if (!el) return;
+		el.style.height = "auto";
+		el.style.height = `${el.scrollHeight}px`;
+	}, [notes]);
+
 	const busy = createTask.isPending || updateTask.isPending;
 
 	const handleConfirm = () => {
@@ -78,6 +88,7 @@ export default function TaskModal({
 			confirmText={busy ? "Saving…" : "Save"}
 			onConfirm={handleConfirm}
 			onCancel={onClose}
+			className="task-modal"
 		>
 			<div className="tasks-form">
 				<label className="tasks-field">
@@ -115,20 +126,14 @@ export default function TaskModal({
 						<option value={3}>high</option>
 					</select>
 				</label>
-				<label className="tasks-field">
+				<div className="tasks-field">
 					<span>Bucket</span>
-					<select
+					<BucketSelect
 						value={bucketId}
-						onChange={(e) => setBucketId(e.target.value)}
-					>
-						<option value="">No bucket</option>
-						{buckets.map((b) => (
-							<option key={b.id} value={b.id}>
-								{b.name}
-							</option>
-						))}
-					</select>
-				</label>
+						onChange={setBucketId}
+						buckets={buckets}
+					/>
+				</div>
 				<div className="tasks-field">
 					<span>Tags</span>
 					<TagPicker value={tags} onChange={setTags} />
@@ -136,6 +141,8 @@ export default function TaskModal({
 				<label className="tasks-field">
 					<span>Notes</span>
 					<textarea
+						ref={notesRef}
+						className="tasks-textarea-auto"
 						rows={3}
 						value={notes}
 						onChange={(e) => setNotes(e.target.value)}

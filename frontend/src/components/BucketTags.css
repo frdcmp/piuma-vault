@@ -281,3 +281,123 @@
 	outline: none;
 	border-color: var(--accent);
 }
+
+/* Tag picker autocomplete dropdown — colour-coded registry suggestions. */
+.tagpicker {
+	position: relative;
+}
+
+.tagpicker-menu,
+.bucket-select-menu {
+	position: absolute;
+	z-index: 20;
+	left: 0;
+	right: 0;
+	margin: 4px 0 0;
+	padding: 4px;
+	list-style: none;
+	max-height: 220px;
+	overflow-y: auto;
+	background: var(--panel, #1b1e25);
+	border: 1px solid var(--border-strong, #3a4150);
+	border-radius: 4px;
+	box-shadow: 3px 3px 0 0 rgba(0, 0, 0, 0.5);
+}
+
+.tagpicker-opt,
+.bucket-select-opt {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	background: none;
+	color: var(--text);
+	font: inherit;
+	font-size: 0.8rem;
+	text-align: left;
+	cursor: pointer;
+}
+
+.tagpicker-opt:hover,
+.bucket-select-opt:hover {
+	background: var(--bg-soft, #15171c);
+}
+
+.bucket-select-opt.is-active {
+	border-color: var(--accent-2, #5cd0a9);
+	color: var(--accent-2, #5cd0a9);
+}
+
+.tagpicker-create {
+	color: var(--accent, #f7c948);
+}
+
+.tagpicker-dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	flex: none;
+}
+
+/* ── Bucket select (custom, colour-aware) ── */
+
+.bucket-select {
+	position: relative;
+}
+
+.bucket-select-trigger {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 6px 8px;
+	background: var(--bg, #0e0f12);
+	border: 1px solid var(--border, #2a2f3a);
+	border-radius: 4px;
+	color: var(--text, #d6dbe5);
+	font: inherit;
+	font-size: 0.8rem;
+	cursor: pointer;
+}
+
+.bucket-select.is-open .bucket-select-trigger,
+.bucket-select-trigger:focus {
+	outline: none;
+	border-color: var(--accent, #f7c948);
+}
+
+.bucket-select-value {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bucket-select-placeholder {
+	color: var(--muted, #8a93a3);
+}
+
+.bucket-select-arrow {
+	color: var(--muted, #8a93a3);
+	font-size: 0.7rem;
+	flex: none;
+}
+
+.bucket-dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	flex: none;
+}
+
+.bucket-dot--none {
+	background: none;
+	border: 1px solid var(--muted, #8a93a3);
+}

@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
 import { useState } from "react";
+import BucketSelect from "../../../components/BucketSelect";
 import {
 	useBuckets,
 	useCreateRecurringTask,
@@ -112,6 +113,7 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 			confirmText={busy ? "Saving…" : "Save"}
 			onConfirm={handleConfirm}
 			onCancel={onClose}
+			className="task-modal"
 		>
 			<div className="tasks-form">
 				<label className="tasks-field">
@@ -183,20 +185,14 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 					/>
 				</div>
 
-				<label className="tasks-field">
+				<div className="tasks-field">
 					<span>Bucket</span>
-					<select
+					<BucketSelect
 						value={bucketId}
-						onChange={(e) => setBucketId(e.target.value)}
-					>
-						<option value="">No bucket</option>
-						{buckets.map((b) => (
-							<option key={b.id} value={b.id}>
-								{b.name}
-							</option>
-						))}
-					</select>
-				</label>
+						onChange={setBucketId}
+						buckets={buckets}
+					/>
+				</div>
 
 				<label className="tasks-field">
 					<span>Tags</span>
