@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-	useLocation,
-	useNavigate,
-	useOutletContext,
-	useParams,
-} from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useUploadAttachment } from "../../../queries";
 import {
 	useCreateNote,
@@ -12,6 +7,7 @@ import {
 	useNote,
 	useUpdateNote,
 } from "../../../queries/notesQuery";
+import useChatDockStore from "../../../store/chatDockStore";
 import useNoteControlsStore from "../../../store/noteControlsStore";
 import useNotesWorkspaceStore from "../../../store/notesWorkspaceStore";
 import useUiStore from "../../../store/uiStore";
@@ -47,7 +43,7 @@ export default function NoteEditor() {
 	const { id: paramId } = useParams();
 	const navigate = useNavigate();
 	const location = useLocation();
-	const outletCtx = useOutletContext();
+	const openChat = useChatDockStore((s) => s.openChat);
 	const isNew = paramId === "new";
 
 	const noteId = isNew || !UUID_RE.test(paramId) ? undefined : paramId;
@@ -658,17 +654,15 @@ export default function NoteEditor() {
 						<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 							{saveIcon()}
 							{noteId && <SharePopover noteId={noteId} isMobile={isMobile} />}
-							{outletCtx?.openChat ? (
-								<button
-									type="button"
-									className="pixel-btn icon-only editor-chat-btn"
-									onClick={outletCtx.openChat}
-									title="Open chat about this note"
-									aria-label="Open chat"
-								>
-									💬
-								</button>
-							) : null}
+							<button
+								type="button"
+								className="pixel-btn icon-only editor-chat-btn"
+								onClick={openChat}
+								title="Open chat about this note"
+								aria-label="Open chat"
+							>
+								💬
+							</button>
 							<button
 								type="button"
 								className="pixel-btn icon-only editor-close-btn"

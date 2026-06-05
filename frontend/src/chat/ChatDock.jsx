@@ -1,81 +1,30 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
+import useChatDockStore, { CHAT_MAX, CHAT_MIN } from "../store/chatDockStore";
 import useUiStore from "../store/uiStore";
 import ChatPanel from "./ChatPanel";
 import "./ChatDock.css";
 
-// A self-contained right-side chat column shared by the Storage and Tasks
-// workspaces (the Notes layout has its own richer three-column variant). Render
-// it as the LAST child of a flex-row container; when open it appends a resizer +
-// the chat column, when closed it shows a floating toggle button. The chat
-// conversation itself is persisted by ChatPanel, so it continues across pages.
-
-const CHAT_MIN = 220;
-const CHAT_MAX = 860;
-const CHAT_DEFAULT = 360;
-const CHAT_WIDTH_KEY = "pv:chat-width";
-const CHAT_OPEN_KEY = "pv:chat-open";
-
-const clampWidth = (n, min, max) => Math.min(max, Math.max(min, Math.round(n)));
-
-const readStoredWidth = () => {
-	try {
-		const raw = localStorage.getItem(CHAT_WIDTH_KEY);
-		const n = raw == null ? CHAT_DEFAULT : Number.parseInt(raw, 10);
-		return clampWidth(
-			Number.isFinite(n) ? n : CHAT_DEFAULT,
-			CHAT_MIN,
-			CHAT_MAX,
-		);
-	} catch {
-		return CHAT_DEFAULT;
-	}
-};
-
-const readStoredBool = (key) => {
-	try {
-		return localStorage.getItem(key) === "1";
-	} catch {
-		return false;
-	}
-};
+// The shared right-side chat column, rendered as the last child of a
+// .workspace-shell flex row (see WorkspaceShell.jsx). When open it appends a
+// resizer + the chat column; when closed it shows a floating toggle button.
+// Open/width state lives in chatDockStore so it's unified across pages and any
+// component can open the chat; the conversation itself is persisted by ChatPanel.
 
 export default function ChatDock({ onOpenNote }) {
-	const { isMobile, handleResize } = useUiStore();
-	const [open, setOpen] = useState(() => readStoredBool(CHAT_OPEN_KEY));
-	const [width, setWidth] = useState(readStoredWidth);
-	const [isResizing, setIsResizing] = useState(false);
-
-	const openChat = useCallback(() => setOpen(true), []);
-	const closeChat = useCallback(() => setOpen(false), []);
-
-	// Keep isMobile in sync on these standalone pages (no global layout does it).
-	useEffect(() => {
-		handleResize();
-		window.addEventListener("resize", handleResize);
-		return () => window.removeEventListener("resize", handleResize);
-	}, [handleResize]);
-
-	useEffect(() => {
-		try {
-			localStorage.setItem(CHAT_OPEN_KEY, open ? "1" : "0");
-		} catch {
-			/* localStorage unavailable */
-		}
-	}, [open]);
-
-	useEffect(() => {
-		try {
-			localStorage.setItem(CHAT_WIDTH_KEY, String(width));
-		} catch {
-			/* localStorage unavailable */
-		}
-	}, [width]);
+	const { isMobile } = useUiStore();
+	const open = useChatDockStore((s) => s.open);
+	const width = useChatDockStore((s) => s.width);
+	const isResizing = useChatDockStore((s) => s.isResizing);
+	const openChat = useChatDockStore((s) => s.openChat);
+	const closeChat = useChatDockStore((s) => s.closeChat);
+	const setWidth = useChatDockStore((s) => s.setWidth);
+	const resetWidth = useChatDockStore((s) => s.resetWidth);
+	const setResizing = useChatDockStore((s) => s.setResizing);
 
 	useEffect(() => {
 		if (!isResizing) return;
-		const onMove = (e) =>
-			setWidth(clampWidth(window.innerWidth - e.clientX, CHAT_MIN, CHAT_MAX));
-		const onUp = () => setIsResizing(false);
+		const onMove = (e) => setWidth(window.innerWidth - e.clientX);
+		const onUp = () => setResizing(false);
 		window.addEventListener("mousemove", onMove);
 		window.addEventListener("mouseup", onUp);
 		const prevCursor = document.body.style.cursor;
@@ -88,7 +37,7 @@ export default function ChatDock({ onOpenNote }) {
 			document.body.style.cursor = prevCursor;
 			document.body.style.userSelect = prevSelect;
 		};
-	}, [isResizing]);
+	}, [isResizing, setWidth, setResizing]);
 
 	if (!open) {
 		return (
@@ -112,15 +61,13 @@ export default function ChatDock({ onOpenNote }) {
 					className={`chat-dock-resizer ${isResizing ? "active" : ""}`}
 					onMouseDown={(e) => {
 						e.preventDefault();
-						setIsResizing(true);
+						setResizing(true);
 					}}
-					onDoubleClick={() => setWidth(CHAT_DEFAULT)}
+					onDoubleClick={resetWidth}
 					onKeyDown={(e) => {
 						const step = e.shiftKey ? 32 : 8;
-						if (e.key === "ArrowLeft")
-							setWidth((w) => clampWidth(w + step, CHAT_MIN, CHAT_MAX));
-						else if (e.key === "ArrowRight")
-							setWidth((w) => clampWidth(w - step, CHAT_MIN, CHAT_MAX));
+						if (e.key === "ArrowLeft") setWidth(width + step);
+						else if (e.key === "ArrowRight") setWidth(width - step);
 						else if (e.key === "Home") setWidth(CHAT_MAX);
 						else if (e.key === "End") setWidth(CHAT_MIN);
 						else return;

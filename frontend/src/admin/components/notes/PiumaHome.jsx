@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import UserMenu from "../../../components/UserMenu";
 import { useLogout } from "../../../queries";
+import useChatDockStore from "../../../store/chatDockStore";
 import { PvModal } from "../ui";
 import ComingSoonModal from "./ComingSoonModal";
 import PiumaPixelArt from "./PiumaPixelArt";
@@ -18,9 +19,10 @@ const QUIPS = [
 	"404: note not selected. Piuma shrugs.",
 ];
 
-export default function PiumaHome({ onBack, onOpenChat }) {
+export default function PiumaHome({ onBack }) {
 	const navigate = useNavigate();
 	const logout = useLogout();
+	const onOpenChat = useChatDockStore((s) => s.openChat);
 	const [typed, setTyped] = useState("");
 	// Holds the tapped feature ({ label, quip }) while the placeholder modal is
 	// open, or null.

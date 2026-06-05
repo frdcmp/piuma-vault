@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import ChatDock from "../../../chat/ChatDock";
+import WorkspaceShell from "../../../chat/WorkspaceShell";
 import { useStorageWorkspace } from "../../../store/storageWorkspaceStore";
 import "../notes/NotesSidebar.css";
 import "./Storage.css";
@@ -128,52 +128,52 @@ export default function StorageExplorer() {
 	}, [sidebarWidth]);
 
 	return (
-		<div className="notes-pixel-layout">
-			<div className="notes-pixel-sidebar" style={{ width: sidebarWidth }}>
-				<StorageTree
-					currentPrefix={prefix}
-					onNavigate={handleNavigate}
-					onSelectFile={handleSelectFile}
-					expanded={expanded}
-					toggleExpand={toggleExpand}
-					onBack={() => navigate(-1)}
+		<WorkspaceShell>
+			<div className="notes-pixel-layout">
+				<div className="notes-pixel-sidebar" style={{ width: sidebarWidth }}>
+					<StorageTree
+						currentPrefix={prefix}
+						onNavigate={handleNavigate}
+						onSelectFile={handleSelectFile}
+						expanded={expanded}
+						toggleExpand={toggleExpand}
+						onBack={() => navigate(-1)}
+					/>
+				</div>
+
+				{/* biome-ignore lint/a11y/useSemanticElements: draggable column resizer */}
+				<div
+					className={`notes-sidebar-resizer ${isResizing ? "active" : ""}`}
+					onMouseDown={(e) => {
+						e.preventDefault();
+						setIsResizing(true);
+					}}
+					onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
+					onKeyDown={(e) => {
+						const step = e.shiftKey ? 32 : 8;
+						if (e.key === "ArrowLeft")
+							setSidebarWidth((w) =>
+								clampWidth(w - step, SIDEBAR_MIN, SIDEBAR_MAX),
+							);
+						else if (e.key === "ArrowRight")
+							setSidebarWidth((w) =>
+								clampWidth(w + step, SIDEBAR_MIN, SIDEBAR_MAX),
+							);
+						else return;
+						e.preventDefault();
+					}}
+					role="separator"
+					tabIndex={0}
+					aria-orientation="vertical"
+					aria-label="Resize sidebar"
+					aria-valuenow={sidebarWidth}
+					aria-valuemin={SIDEBAR_MIN}
+					aria-valuemax={SIDEBAR_MAX}
+					title="Drag to resize · double-click to reset"
 				/>
+
+				<StorageGrid prefix={prefix} onNavigate={handleNavigate} />
 			</div>
-
-			{/* biome-ignore lint/a11y/useSemanticElements: draggable column resizer */}
-			<div
-				className={`notes-sidebar-resizer ${isResizing ? "active" : ""}`}
-				onMouseDown={(e) => {
-					e.preventDefault();
-					setIsResizing(true);
-				}}
-				onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
-				onKeyDown={(e) => {
-					const step = e.shiftKey ? 32 : 8;
-					if (e.key === "ArrowLeft")
-						setSidebarWidth((w) =>
-							clampWidth(w - step, SIDEBAR_MIN, SIDEBAR_MAX),
-						);
-					else if (e.key === "ArrowRight")
-						setSidebarWidth((w) =>
-							clampWidth(w + step, SIDEBAR_MIN, SIDEBAR_MAX),
-						);
-					else return;
-					e.preventDefault();
-				}}
-				role="separator"
-				tabIndex={0}
-				aria-orientation="vertical"
-				aria-label="Resize sidebar"
-				aria-valuenow={sidebarWidth}
-				aria-valuemin={SIDEBAR_MIN}
-				aria-valuemax={SIDEBAR_MAX}
-				title="Drag to resize · double-click to reset"
-			/>
-
-			<StorageGrid prefix={prefix} onNavigate={handleNavigate} />
-
-			<ChatDock onOpenNote={(noteId) => navigate(`/notes/${noteId}`)} />
-		</div>
+		</WorkspaceShell>
 	);
 }
