@@ -1,4 +1,5 @@
 pub mod realtime;
+pub mod agents;
 pub mod health;
 pub mod auth;
 pub mod email;

@@ -60,6 +60,9 @@ async fn main() -> io::Result<()> {
         }
     }
 
+    // Seed the first agent (vault_agent / piuma) if not already configured.
+    apps::agents::seed::seed_defaults(&pool).await;
+
     println!("⚡ Starting high-performance HTTP server...");
 
     // Auth rate limiter — shared across all workers / requests so the limits
@@ -92,6 +95,7 @@ async fn main() -> io::Result<()> {
             .configure(apps::health::routes::configure_routes)
             .configure(apps::auth::routes::configure_routes)
             .configure(apps::llm::routes::configure_routes)
+            .configure(apps::agents::routes::configure_routes)
             .configure(apps::api_keys::routes::configure_routes)
             .configure(apps::notes::routes::configure_routes)
             .configure(apps::calendar::routes::configure_routes)
