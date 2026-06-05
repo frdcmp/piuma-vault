@@ -3,6 +3,12 @@ import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
+import {
+	cancelAllAlarms,
+	ensureAlarmChannel,
+	requestAlarmPermissions,
+	scheduleAlarm,
+} from "./alarm";
 import { expandRecurrence } from "./recurrence";
 
 // Foreground display behavior (SDK 53+ fields: shouldShowBanner / shouldShowList
@@ -43,6 +49,8 @@ export async function registerForPushNotifications() {
 	if (status !== "granted") return null;
 
 	await configureAndroidChannel();
+	// Alarm channel + exact-alarm permission for the local full-screen alarms.
+	await requestAlarmPermissions();
 
 	const projectId =
 		Constants?.expoConfig?.extra?.eas?.projectId ??
@@ -131,19 +139,23 @@ function buildReminders({ events = [], tasks = [], recurring = [] }) {
 	return out.sort((x, y) => x.date - y.date).slice(0, MAX_LOCAL);
 }
 
-// Reschedule ALL local notifications from the current source-of-truth data.
-// Idempotent: cancels everything then re-schedules the nearest window.
+// Reschedule ALL local alarms from the current source-of-truth data.
+// Idempotent: cancels everything then re-schedules the nearest window as
+// Notifee full-screen-intent trigger notifications (wake the screen / launch
+// the app over the lock screen even when backgrounded). Each id is stable per
+// (tag, fire-time) so a re-sync overwrites instead of duplicating.
 export async function syncLocalAlerts(data) {
 	try {
+		await ensureAlarmChannel();
 		const reminders = buildReminders(data);
-		await Notifications.cancelAllScheduledNotificationsAsync();
+		await cancelAllAlarms();
 		for (const r of reminders) {
-			await Notifications.scheduleNotificationAsync({
-				content: { title: r.title, body: r.body, data: { tag: r.tag } },
-				trigger: {
-					type: Notifications.SchedulableTriggerInputTypes.DATE,
-					date: r.date,
-				},
+			await scheduleAlarm({
+				id: `${r.tag}:${r.date.getTime()}`,
+				title: r.title,
+				body: r.body,
+				tag: r.tag,
+				date: r.date,
 			});
 		}
 	} catch (_e) {

@@ -1,3 +1,4 @@
+import notifee from "@notifee/react-native";
 import { focusManager } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import * as Notifications from "expo-notifications";
@@ -15,6 +16,7 @@ import SystemBars from "./src/components/SystemBars";
 import AppNavigator from "./src/navigation/AppNavigator";
 import { useAlarmStore } from "./src/stores/alarmStore";
 import { useAuthStore } from "./src/stores/authStore";
+import { alarmFromNotifee, EventType } from "./src/utils/alarm";
 import { registerForPushNotifications } from "./src/utils/notifications";
 import { asyncStoragePersister, queryClient } from "./src/utils/queryClient";
 import { colors } from "./src/utils/theme";
@@ -77,9 +79,14 @@ export default function App() {
 		};
 	}, [token]);
 
-	// Escalate delivered alerts to the loud in-app alarm: when one fires while
-	// the app is foregrounded (received), or when the user taps one that fired
-	// in the background (response).
+	// Escalate delivered alerts to the loud in-app alarm. Two delivery systems
+	// feed the same store (de-duped by tag):
+	//   • expo-notifications — REMOTE push (foreground receive / tap-to-open).
+	//   • Notifee — LOCAL full-screen alarms. Its full-screen intent wakes the
+	//     screen and launches the app over the lock screen; on launch we read
+	//     getInitialNotification(), and while foregrounded onForegroundEvent
+	//     fires DELIVERED. Either way we present the in-app modal, which owns the
+	//     looping sound — so we don't double up with Notifee's loopSound.
 	const present = useAlarmStore((s) => s.present);
 	useEffect(() => {
 		const received = Notifications.addNotificationReceivedListener((n) =>
@@ -88,9 +95,22 @@ export default function App() {
 		const response = Notifications.addNotificationResponseReceivedListener((r) =>
 			present(alarmFromNotification(r.notification)),
 		);
+
+		const unsubNotifee = notifee.onForegroundEvent(({ type, detail }) => {
+			if (type === EventType.DELIVERED || type === EventType.PRESS) {
+				if (detail.notification) present(alarmFromNotifee(detail.notification));
+			}
+		});
+
+		// App was cold-launched by tapping / a full-screen alarm intent.
+		notifee.getInitialNotification().then((initial) => {
+			if (initial?.notification) present(alarmFromNotifee(initial.notification));
+		});
+
 		return () => {
 			received.remove();
 			response.remove();
+			unsubNotifee();
 		};
 	}, [present]);
 

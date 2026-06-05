@@ -10,30 +10,11 @@ import {
 	View,
 } from "react-native";
 import { useAlarmStore } from "../stores/alarmStore";
+import { scheduleSnoozeAlarm, stopRingingNotification } from "../utils/alarm";
 import { colors, mono } from "../utils/theme";
 
 const SNOOZE_OPTIONS = [5, 10, 15];
 const VIBRATION_PATTERN = [0, 600, 400];
-
-// Re-fire the same alert as a local notification after `minutes`; the listeners
-// in App.js will re-present it as an alarm when it fires.
-async function scheduleSnooze(alarm, minutes) {
-	try {
-		await Notifications.scheduleNotificationAsync({
-			content: {
-				title: alarm.title,
-				body: alarm.body || "",
-				data: { tag: alarm.tag, snoozed: true },
-			},
-			trigger: {
-				type: Notifications.SchedulableTriggerInputTypes.DATE,
-				date: new Date(Date.now() + minutes * 60 * 1000),
-			},
-		});
-	} catch (_e) {
-		/* best-effort */
-	}
-}
 
 // Loud, must-dismiss in-app alarm. Rings (looping tone + vibration) and blocks
 // until Dismiss/Snooze. Driven by useAlarmStore; mount once near the app root.
@@ -44,6 +25,10 @@ export default function AlarmModal() {
 
 	useEffect(() => {
 		if (!active) return;
+
+		// The full-screen Notifee alarm is what woke us; silence its looping
+		// sound now so the modal's own audio (below) doesn't double up.
+		stopRingingNotification(active.notificationId);
 
 		let cancelled = false;
 		(async () => {
@@ -79,6 +64,8 @@ export default function AlarmModal() {
 			/* ignore */
 		}
 		Vibration.cancel();
+		// Clear both delivery systems' notifications (Notifee local + expo remote).
+		stopRingingNotification(active.notificationId);
 		Notifications.dismissAllNotificationsAsync().catch(() => {});
 	};
 
@@ -89,7 +76,14 @@ export default function AlarmModal() {
 
 	const onSnooze = (minutes) => {
 		stop();
-		scheduleSnooze(active, minutes);
+		// Re-arm as a full-screen Notifee alarm; it re-presents this modal when
+		// it fires (App.js listeners / getInitialNotification).
+		scheduleSnoozeAlarm({
+			title: active.title,
+			body: active.body,
+			tag: active.tag,
+			minutes,
+		});
 		dismiss();
 	};
 

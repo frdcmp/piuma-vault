@@ -42,7 +42,8 @@
         {
           "color": "#5cd0a9"
         }
-      ]
+      ],
+      "./plugins/withAndroidAlarm"
     ]
   }
 }
