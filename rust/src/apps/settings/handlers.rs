@@ -2,7 +2,7 @@ use actix_web::{web, HttpResponse, Responder};
 
 use super::models::{
     ServiceConfigResponse, TestEmbeddingRequest, TestOpenclawRequest, TestStorageRequest,
-    UpdateServiceConfig,
+    TestWebsearchRequest, UpdateServiceConfig,
 };
 use super::store;
 use crate::apps::auth::middleware::check_permission;
@@ -38,6 +38,13 @@ async fn current_config(pool: &DbPool) -> ServiceConfigResponse {
             .is_some(),
         s3_cdn_url: store::get(pool, store::S3_CDN_URL).await.unwrap_or_default(),
         s3_cdn_token_key_set: store::get(pool, store::S3_CDN_TOKEN_KEY).await.is_some(),
+        websearch_provider: store::get(pool, store::WEBSEARCH_PROVIDER)
+            .await
+            .unwrap_or_else(|| "brave".to_string()),
+        websearch_brave_api_key_set: store::get(pool, store::WEBSEARCH_BRAVE_API_KEY).await.is_some(),
+        websearch_tavily_api_key_set: store::get(pool, store::WEBSEARCH_TAVILY_API_KEY).await.is_some(),
+        websearch_serpapi_api_key_set: store::get(pool, store::WEBSEARCH_SERPAPI_API_KEY).await.is_some(),
+        websearch_exa_api_key_set: store::get(pool, store::WEBSEARCH_EXA_API_KEY).await.is_some(),
     }
 }
 
@@ -76,6 +83,11 @@ pub async fn update_services(
         (store::S3_SECRET_ACCESS_KEY, body.s3_secret_access_key),
         (store::S3_CDN_URL, body.s3_cdn_url),
         (store::S3_CDN_TOKEN_KEY, body.s3_cdn_token_key),
+        (store::WEBSEARCH_PROVIDER, body.websearch_provider),
+        (store::WEBSEARCH_BRAVE_API_KEY, body.websearch_brave_api_key),
+        (store::WEBSEARCH_TAVILY_API_KEY, body.websearch_tavily_api_key),
+        (store::WEBSEARCH_SERPAPI_API_KEY, body.websearch_serpapi_api_key),
+        (store::WEBSEARCH_EXA_API_KEY, body.websearch_exa_api_key),
     ];
 
     for (key, maybe_value) in updates {
@@ -121,6 +133,37 @@ pub async fn test_embedding(
     };
     match embedding::embed_with("connection test", 1536, &url, &api_key).await {
         Ok(v) => test_result(true, format!("OK — received a {}-dim embedding", v.len())),
+        Err(e) => test_result(false, e),
+    }
+}
+
+/// POST /admin/settings/services/test/websearch — run a sample query against the
+/// chosen provider. An optional body lets the dashboard test an unsaved
+/// provider/key; blank fields fall back to the saved config.
+pub async fn test_websearch(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    body: Option<web::Json<TestWebsearchRequest>>,
+) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden();
+    }
+    let req = body.map(|b| b.into_inner()).unwrap_or_default();
+    let pool = pool.get_ref();
+    let provider = req
+        .provider
+        .filter(|p| !p.trim().is_empty())
+        .or(store::get(pool, store::WEBSEARCH_PROVIDER).await)
+        .unwrap_or_else(|| "brave".to_string());
+    let key = match req.api_key.filter(|k| !k.trim().is_empty()) {
+        Some(k) => k,
+        None => match crate::apps::web_search::key_for(pool, &provider).await {
+            Ok(k) => k,
+            Err(e) => return test_result(false, e),
+        },
+    };
+    match crate::apps::web_search::run(&provider, &key, "piuma vault test query", 3).await {
+        Ok(hits) => test_result(true, format!("OK — {provider} returned {} results", hits.len())),
         Err(e) => test_result(false, e),
     }
 }

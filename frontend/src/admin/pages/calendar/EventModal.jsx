@@ -72,6 +72,7 @@ export default function EventModal({ event, initialDate, onClose }) {
 	return (
 		<PvModal
 			open
+			className="cal-event-modal"
 			title={isEdit ? "Edit event" : "New event"}
 			confirmText={busy ? "Saving…" : "Save"}
 			cancelText="Cancel"

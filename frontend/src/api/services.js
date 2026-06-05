@@ -38,3 +38,11 @@ export const testStorage = async (payload) => {
 	);
 	return data;
 };
+
+export const testWebsearch = async (payload) => {
+	const { data } = await axiosInstance.post(
+		"/admin/settings/services/test/websearch",
+		payload,
+	);
+	return data;
+};

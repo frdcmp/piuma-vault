@@ -13,6 +13,7 @@ export default function PvModal({
 	danger = false,
 	showClose = true,
 	dismissOnOverlay = true,
+	className = "",
 }) {
 	const confirmBtnRef = useRef(null);
 	const modalRef = useRef(null);
@@ -51,7 +52,7 @@ export default function PvModal({
 		<div className="pv-modal-overlay" onClick={handleOverlayClick}>
 			<div
 				ref={modalRef}
-				className="pv-modal"
+				className={`pv-modal ${className}`.trim()}
 				role="dialog"
 				aria-modal="true"
 				aria-label={title}

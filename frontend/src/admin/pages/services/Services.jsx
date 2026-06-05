@@ -4,6 +4,7 @@ import {
 	useTestEmbedding,
 	useTestOpenclaw,
 	useTestStorage,
+	useTestWebsearch,
 	useUpdateServices,
 } from "../../../queries";
 import { PageContent } from "../../components/layout/PageLayout";
@@ -28,7 +29,40 @@ const EMPTY = {
 	s3_secret_access_key: "",
 	s3_cdn_url: "",
 	s3_cdn_token_key: "",
+	websearch_provider: "brave",
+	websearch_brave_api_key: "",
+	websearch_tavily_api_key: "",
+	websearch_serpapi_api_key: "",
+	websearch_exa_api_key: "",
 };
+
+// Web-search providers we ship adapters for. Each has its own key setting.
+const WEBSEARCH_PROVIDERS = [
+	{
+		id: "brave",
+		label: "Brave",
+		key: "websearch_brave_api_key",
+		hint: "api.search.brave.com — independent index, generous free tier",
+	},
+	{
+		id: "tavily",
+		label: "Tavily",
+		key: "websearch_tavily_api_key",
+		hint: "api.tavily.com — built for LLMs",
+	},
+	{
+		id: "serpapi",
+		label: "SerpAPI (Google)",
+		key: "websearch_serpapi_api_key",
+		hint: "serpapi.com — Google results",
+	},
+	{
+		id: "exa",
+		label: "Exa",
+		key: "websearch_exa_api_key",
+		hint: "api.exa.ai — neural/semantic search",
+	},
+];
 
 // The storage backend is plain S3 under the hood; only the field labels and
 // placeholders change with the vendor preset. Click the panel title to toggle.
@@ -73,10 +107,12 @@ const Services = () => {
 	const testEmb = useTestEmbedding();
 	const testOc = useTestOpenclaw();
 	const testS3 = useTestStorage();
+	const testWs = useTestWebsearch();
 	const [form, setForm] = useState(EMPTY);
 	const [embResult, setEmbResult] = useState(null);
 	const [ocResult, setOcResult] = useState(null);
 	const [s3Result, setS3Result] = useState(null);
+	const [wsResult, setWsResult] = useState(null);
 	const [vendor, setVendor] = useState("aws");
 	const v = VENDORS[vendor];
 
@@ -110,6 +146,7 @@ const Services = () => {
 				s3_bucket: data.s3_bucket || "",
 				s3_access_key_id: data.s3_access_key_id || "",
 				s3_cdn_url: data.s3_cdn_url || "",
+				websearch_provider: data.websearch_provider || "brave",
 			}));
 		}
 	}, [data]);
@@ -136,6 +173,7 @@ const Services = () => {
 			s3_bucket: form.s3_bucket.trim(),
 			s3_access_key_id: form.s3_access_key_id.trim(),
 			s3_cdn_url: form.s3_cdn_url.trim(),
+			websearch_provider: form.websearch_provider || "brave",
 		};
 		if (form.azure_embedding_api_key.trim())
 			payload.azure_embedding_api_key = form.azure_embedding_api_key.trim();
@@ -145,6 +183,10 @@ const Services = () => {
 			payload.s3_secret_access_key = form.s3_secret_access_key.trim();
 		if (form.s3_cdn_token_key.trim())
 			payload.s3_cdn_token_key = form.s3_cdn_token_key.trim();
+		// Any web-search key the admin typed (for any provider).
+		for (const p of WEBSEARCH_PROVIDERS) {
+			if (form[p.key].trim()) payload[p.key] = form[p.key].trim();
+		}
 
 		try {
 			await update.mutateAsync(payload);
@@ -154,6 +196,10 @@ const Services = () => {
 				openclaw_gateway_token: "",
 				s3_secret_access_key: "",
 				s3_cdn_token_key: "",
+				websearch_brave_api_key: "",
+				websearch_tavily_api_key: "",
+				websearch_serpapi_api_key: "",
+				websearch_exa_api_key: "",
 			}));
 			pvMessage.success("Services saved");
 		} catch (err) {
@@ -249,6 +295,19 @@ const Services = () => {
 			p.s3_secret_access_key = form.s3_secret_access_key.trim();
 		if (form.s3_cdn_token_key.trim())
 			p.s3_cdn_token_key = form.s3_cdn_token_key.trim();
+		return p;
+	};
+
+	// Active web-search provider + its key field/flag.
+	const wsProvider = form.websearch_provider || "brave";
+	const wsMeta =
+		WEBSEARCH_PROVIDERS.find((p) => p.id === wsProvider) ||
+		WEBSEARCH_PROVIDERS[0];
+	const wsKeySet = data?.[`${wsMeta.key}_set`];
+
+	const wsTestPayload = () => {
+		const p = { provider: wsProvider };
+		if (form[wsMeta.key].trim()) p.api_key = form[wsMeta.key].trim();
 		return p;
 	};
 
@@ -386,6 +445,62 @@ const Services = () => {
 							onTest={() => runTest(testOc, setOcResult, ocTestPayload())}
 							onClear={() => requestClear(OC_KEYS, setOcResult, "OpenClaw")}
 							result={ocResult}
+						/>
+					</PvPanel>
+
+					{/* Web search (agent web_search tool) — pick a provider + key. */}
+					<PvPanel title="search · web">
+						<p className="vp-card-desc" style={{ marginBottom: 16 }}>
+							Powers the agent's <code>web_search</code> tool. Pick a provider
+							and set its API key. Swap providers anytime without touching the
+							agent.
+						</p>
+						<div className="vp-field">
+							<span className="vp-label">Provider</span>
+							<select
+								className="vp-input"
+								value={wsProvider}
+								onChange={set("websearch_provider")}
+							>
+								{WEBSEARCH_PROVIDERS.map((p) => (
+									<option key={p.id} value={p.id}>
+										{p.label}
+									</option>
+								))}
+							</select>
+						</div>
+						<div className="vp-field" style={{ marginBottom: 0 }}>
+							<span className="vp-label">
+								{wsMeta.label} API Key{" "}
+								{wsKeySet ? (
+									<span className="vp-tag vp-tag--green vp-svc-chip">set</span>
+								) : (
+									<span className="vp-tag vp-tag--red vp-svc-chip">unset</span>
+								)}
+							</span>
+							<input
+								className="vp-input"
+								type="password"
+								autoComplete="new-password"
+								placeholder={secretPlaceholder(wsKeySet)}
+								value={form[wsMeta.key]}
+								onChange={set(wsMeta.key)}
+							/>
+							<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
+								{wsMeta.hint}
+							</span>
+						</div>
+						<TestRow
+							pending={testWs.isPending}
+							onTest={() => runTest(testWs, setWsResult, wsTestPayload())}
+							onClear={() =>
+								requestClear(
+									[wsMeta.key],
+									setWsResult,
+									`${wsMeta.label} search`,
+								)
+							}
+							result={wsResult}
 						/>
 					</PvPanel>
 

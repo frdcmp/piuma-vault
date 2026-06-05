@@ -1,7 +1,7 @@
-//! Web tools — provider-agnostic, run server-side. `web_search` uses the Brave
-//! Search API (key in app_settings: `brave_search_api_key`). `web_fetch` GETs a
-//! URL and returns cleaned text, behind an SSRF guard (no private/loopback/
-//! link-local/metadata addresses; redirects are not followed).
+//! Web tools — provider-agnostic, run server-side. `web_search` delegates to the
+//! configured provider (see `apps::web_search`). `web_fetch` GETs a URL and
+//! returns cleaned text, behind an SSRF guard (no private/loopback/link-local/
+//! metadata addresses; redirects are not followed).
 
 use std::net::IpAddr;
 use std::time::Duration;
@@ -9,7 +9,6 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::*;
-use crate::apps::settings::store;
 use crate::db::db::DbPool;
 
 const MAX_BODY: usize = 60_000; // cap bytes read from a fetched page
@@ -43,44 +42,9 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
 
 pub async fn web_search(pool: &DbPool, args: &Value) -> Result<Value, String> {
     let query = req_str(args, "query")?;
-    let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(5).clamp(1, 10);
-    let key = store::get(pool, "brave_search_api_key")
-        .await
-        .ok_or("web search is not configured — set `brave_search_api_key` in admin → Services")?;
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(12))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let resp = client
-        .get("https://api.search.brave.com/res/v1/web/search")
-        .query(&[("q", query.as_str()), ("count", &limit.to_string())])
-        .header("X-Subscription-Token", key)
-        .header("Accept", "application/json")
-        .send()
-        .await
-        .map_err(|e| format!("search request failed: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("search failed: HTTP {}", resp.status()));
-    }
-    let body: Value = resp.json().await.map_err(|e| format!("bad search response: {e}"))?;
-    let results: Vec<Value> = body
-        .get("web")
-        .and_then(|w| w.get("results"))
-        .and_then(|r| r.as_array())
-        .map(|arr| {
-            arr.iter()
-                .take(limit as usize)
-                .map(|r| {
-                    json!({
-                        "title": r.get("title").and_then(|v| v.as_str()).unwrap_or(""),
-                        "url": r.get("url").and_then(|v| v.as_str()).unwrap_or(""),
-                        "description": r.get("description").and_then(|v| v.as_str()).unwrap_or(""),
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(5);
+    // Provider + key resolve from settings (admin → Services → Web Search).
+    let results = crate::apps::web_search::search(pool, &query, limit).await?;
     Ok(json!({ "count": results.len(), "results": results }))
 }
 

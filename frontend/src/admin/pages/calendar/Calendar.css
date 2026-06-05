@@ -225,6 +225,17 @@
 	flex: 0 0 auto;
 }
 
+/* Event modal — wider than the default modal so the date/time pickers, color
+   and notes have room to breathe on desktop. Compound selector beats the base
+   .pv-modal max-width regardless of stylesheet order. */
+.pv-modal.cal-event-modal {
+	/* `width` (not just max-width) — the form fields have no intrinsic width, so
+	   the modal would otherwise collapse to its min-width and max-width alone
+	   does nothing. */
+	width: min(94vw, 640px);
+	max-width: 94vw;
+}
+
 /* Event modal form — rendered through a portal (outside .cal-page), so it
    redeclares the palette tokens to stay themed. */
 .cal-form {

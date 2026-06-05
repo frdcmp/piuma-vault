@@ -19,6 +19,12 @@ pub struct ServiceConfigResponse {
     pub s3_secret_access_key_set: bool,
     pub s3_cdn_url: String,
     pub s3_cdn_token_key_set: bool,
+    // Web search: the active provider (plain) + a `*_set` flag per provider key.
+    pub websearch_provider: String,
+    pub websearch_brave_api_key_set: bool,
+    pub websearch_tavily_api_key_set: bool,
+    pub websearch_serpapi_api_key_set: bool,
+    pub websearch_exa_api_key_set: bool,
 }
 
 /// Partial update. Any omitted field is left unchanged; a secret sent as an
@@ -36,6 +42,19 @@ pub struct UpdateServiceConfig {
     pub s3_secret_access_key: Option<String>,
     pub s3_cdn_url: Option<String>,
     pub s3_cdn_token_key: Option<String>,
+    pub websearch_provider: Option<String>,
+    pub websearch_brave_api_key: Option<String>,
+    pub websearch_tavily_api_key: Option<String>,
+    pub websearch_serpapi_api_key: Option<String>,
+    pub websearch_exa_api_key: Option<String>,
+}
+
+/// Optional web-search overrides for a "try now" check. Blank fields fall back
+/// to saved config.
+#[derive(Debug, Default, Deserialize)]
+pub struct TestWebsearchRequest {
+    pub provider: Option<String>,
+    pub api_key: Option<String>,
 }
 
 /// Optional embedding field overrides for a "try now" check, so unsaved form

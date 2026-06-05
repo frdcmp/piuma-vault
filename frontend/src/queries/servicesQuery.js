@@ -4,6 +4,7 @@ import {
 	testEmbedding,
 	testOpenclaw,
 	testStorage,
+	testWebsearch,
 	updateServices,
 } from "../api/services";
 
@@ -32,3 +33,6 @@ export const useTestEmbedding = () =>
 export const useTestOpenclaw = () => useMutation({ mutationFn: testOpenclaw });
 
 export const useTestStorage = () => useMutation({ mutationFn: testStorage });
+
+export const useTestWebsearch = () =>
+	useMutation({ mutationFn: testWebsearch });
