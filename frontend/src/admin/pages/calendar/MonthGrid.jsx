@@ -1,52 +1,70 @@
 import dayjs from "dayjs";
+import { forwardRef } from "react";
 import { formatTime } from "../../../utils/dateTime";
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const EMPTY = { events: [], deadlines: [], occurrences: [] };
+
+// 6-week grid snapped to local Monday week boundaries. dayjs is configured with
+// a Monday week start, so startOf("week") lands on Monday (matches the header).
+const buildWeeks = (month) => {
+	const start = month.startOf("month").startOf("week");
+	const end = month.endOf("month").endOf("week");
+	const weeks = [];
+	let day = start;
+	while (day.isBefore(end) || day.isSame(end, "day")) {
+		const week = [];
+		for (let i = 0; i < 7; i++) {
+			week.push(day);
+			day = day.add(1, "day");
+		}
+		weeks.push(week);
+	}
+	return weeks;
+};
 
 /**
- * Presentational month grid. All bucketing/timezone work happens in the parent;
- * this renders day cells with event / deadline / recurring-occurrence pills.
+ * One month rendered as a clean block (Airbnb-style): a month label, then weeks
+ * of day cells. Days outside this month render as blank padding so each month is
+ * self-contained in the continuous scroll. All bucketing/timezone work happens
+ * in the parent; this only renders event / deadline / recurring pills.
  */
-export default function MonthGrid({
-	weeks,
-	month,
-	byDay,
-	keyOf,
-	onEventClick,
-	onDayClick,
-	onToggleDeadline,
-	onToggleOccurrence,
-}) {
+const MonthBlock = forwardRef(function MonthBlock(
+	{
+		month,
+		byDay,
+		keyOf,
+		onEventClick,
+		onDayClick,
+		onToggleDeadline,
+		onToggleOccurrence,
+	},
+	ref,
+) {
 	const today = dayjs().format("YYYY-MM-DD");
+	const weeks = buildWeeks(month);
 
 	return (
-		<div className="cal-grid">
-			<div className="cal-weekdays">
-				{WEEKDAYS.map((w) => (
-					<div key={w} className="cal-weekday">
-						{w}
-					</div>
-				))}
-			</div>
+		<section
+			className="cal-month"
+			data-label={month.format("MMMM YYYY")}
+			ref={ref}
+		>
+			<h2 className="cal-month-label">{month.format("MMMM YYYY")}</h2>
 
 			{weeks.map((week) => (
 				<div key={keyOf(week[0])} className="cal-week">
 					{week.map((day) => {
 						const k = keyOf(day);
-						const cell = byDay.get(k) || {
-							events: [],
-							deadlines: [],
-							occurrences: [],
-						};
-						const isOtherMonth = day.month() !== month;
+						if (day.month() !== month.month()) {
+							return <div key={k} className="cal-cell is-empty" />;
+						}
+						const cell = byDay.get(k) || EMPTY;
 						const isToday = k === today;
 						return (
 							<button
 								type="button"
 								key={k}
-								className={`cal-cell${isOtherMonth ? " is-other" : ""}${
-									isToday ? " is-today" : ""
-								}`}
+								className={`cal-cell${isToday ? " is-today" : ""}`}
 								onClick={() => onDayClick(day)}
 							>
 								<span className="cal-daynum">{day.date()}</span>
@@ -112,6 +130,8 @@ export default function MonthGrid({
 					})}
 				</div>
 			))}
-		</div>
+		</section>
 	);
-}
+});
+
+export default MonthBlock;

@@ -67,6 +67,15 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                 "required": ["id"]
             }),
         ),
+        (
+            "delete_event",
+            "Permanently delete a calendar event. Confirm with the user first — not recoverable.",
+            json!({
+                "type": "object",
+                "properties": { "id": { "type": "string", "description": "event UUID" } },
+                "required": ["id"]
+            }),
+        ),
     ]
 }
 
@@ -205,4 +214,20 @@ pub async fn update_event(pool: &DbPool, user_id: &str, args: &Value) -> Result<
         }
         None => Err("event not found".into()),
     }
+}
+
+pub async fn delete_event(pool: &DbPool, user_id: &str, args: &Value) -> Result<Value, String> {
+    let id = uuid_arg(args, "id")?;
+    let affected = sqlx::query("DELETE FROM db_calendar_events WHERE id = $1 AND user_id = $2")
+        .bind(id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .rows_affected();
+    if affected == 0 {
+        return Err("event not found".into());
+    }
+    reschedule(pool, id).await;
+    Ok(json!({ "id": id, "deleted": true }))
 }

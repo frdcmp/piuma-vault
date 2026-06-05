@@ -15,11 +15,15 @@
 	--accent-3: #ff6b6b;
 	--accent-4: #6cb6ff;
 
-	min-height: 100vh;
+	height: 100vh;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
 	background: var(--bg);
 	color: var(--text);
 	padding: 16px clamp(12px, 4vw, 40px);
 	font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+	overflow: hidden;
 }
 
 .cal-header {
@@ -28,7 +32,8 @@
 	justify-content: space-between;
 	gap: 16px;
 	flex-wrap: wrap;
-	margin-bottom: 16px;
+	margin-bottom: 12px;
+	flex: 0 0 auto;
 }
 
 .cal-title {
@@ -56,18 +61,16 @@
 	flex-wrap: wrap;
 }
 
-/* Grid */
-.cal-grid {
-	border: 1px solid var(--border);
-	border-radius: 6px;
-	overflow: hidden;
-	background: var(--panel);
-}
-
-.cal-weekdays,
-.cal-week {
+/* Weekday header (sticky above the scroll area) */
+.cal-weekdays {
 	display: grid;
 	grid-template-columns: repeat(7, 1fr);
+	flex: 0 0 auto;
+	border: 1px solid var(--border);
+	border-bottom: none;
+	border-top-left-radius: 6px;
+	border-top-right-radius: 6px;
+	background: var(--bg-soft);
 }
 
 .cal-weekday {
@@ -76,13 +79,53 @@
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
 	color: var(--muted);
+	text-align: left;
+}
+
+/* Continuous, infinitely-scrolling stack of month blocks */
+.cal-scroll {
+	position: relative;
+	flex: 1 1 auto;
+	overflow-y: auto;
+	overflow-x: hidden;
+	scrollbar-gutter: stable;
+	border: 1px solid var(--border);
+	border-bottom-left-radius: 6px;
+	border-bottom-right-radius: 6px;
+	background: var(--panel);
+}
+
+.cal-month {
+	display: flex;
+	flex-direction: column;
+}
+
+.cal-month-label {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	margin: 0;
+	padding: 6px 10px;
+	font-size: 0.82rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	color: var(--accent);
 	background: var(--bg-soft);
 	border-bottom: 1px solid var(--border);
-	text-align: left;
+}
+
+.cal-week {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
 }
 
 .cal-cell {
 	min-height: 96px;
+	/* Grid items default to min-width:auto, so a long no-wrap pill would force
+	   its column wider than 1fr (blowing out the equal 7-column layout). Pin
+	   min-width:0 + clip so pills truncate inside the cell instead. */
+	min-width: 0;
+	overflow: hidden;
 	display: flex;
 	flex-direction: column;
 	align-items: stretch;
@@ -101,9 +144,14 @@
 	background: var(--bg-soft);
 }
 
-.cal-cell.is-other {
+/* Days outside the rendered month — blank, non-interactive padding. */
+.cal-cell.is-empty {
 	background: rgba(0, 0, 0, 0.18);
-	color: var(--muted);
+	cursor: default;
+}
+
+.cal-cell.is-empty:hover {
+	background: rgba(0, 0, 0, 0.18);
 }
 
 .cal-cell.is-today .cal-daynum {
@@ -136,6 +184,7 @@
 	cursor: pointer;
 	overflow: hidden;
 	white-space: nowrap;
+	min-width: 0;
 }
 
 .cal-pill:hover {
@@ -157,9 +206,12 @@
 .cal-pill-time {
 	color: var(--muted);
 	font-size: 0.62rem;
+	flex: 0 0 auto;
 }
 
 .cal-pill-label {
+	flex: 1 1 auto;
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
@@ -170,6 +222,7 @@
 
 .cal-check {
 	color: var(--accent-2);
+	flex: 0 0 auto;
 }
 
 /* Event modal form — rendered through a portal (outside .cal-page), so it

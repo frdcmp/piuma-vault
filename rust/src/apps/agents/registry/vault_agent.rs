@@ -1,7 +1,7 @@
-//! The vault agent — the first (and currently only) agent. Its default
-//! subscription is Tier-1 read + Tier-2 create/edit + web (see plan §9).
-//! Deletes / shares / self-config (Tier 3) are intentionally omitted here and
-//! enabled per-persona via `db_agent_personas.allowed_tools`.
+//! The vault agent — the first (and currently only) agent. It subscribes to the
+//! full catalogue: Tier-1 read + Tier-2 create/edit + Tier-3 sensitive
+//! (deletes / storage writes / shares / self-config) + web (see plan §9).
+//! A persona can still narrow this via `db_agent_personas.allowed_tools`.
 
 use super::{AgentDef, AgentType};
 
@@ -38,6 +38,25 @@ pub static DEF: AgentDef = AgentDef {
         "create_recurring",
         "update_recurring",
         "complete_occurrence",
+        // Tier 3 — sensitive (deletes / storage writes / shares / self-config)
+        "delete_note",
+        "delete_task",
+        "delete_recurring",
+        "delete_event",
+        "delete_object",
+        "delete_folder",
+        "bulk_move",
+        "presign_upload",
+        "zip_bundle",
+        "list_shares",
+        "create_share",
+        "update_share",
+        "delete_share",
+        "read_self",
+        "update_instructions",
+        "update_user_context",
+        "update_memory",
+        "update_persona",
         // Web (server-side, provider-agnostic)
         "web_search",
         "web_fetch",

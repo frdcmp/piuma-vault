@@ -211,6 +211,7 @@ pub async fn chat(
     let (tx, rx) = mpsc::unbounded::<Result<Bytes, actix_web::Error>>();
     let pool2 = db.clone();
     let user_id = user.user_id.clone();
+    let agent_kind = conv.agent.clone();
     let model_label = model_row.model_id.clone();
     let provider_kind = provider.kind.clone();
     let api_key = provider.api_key.clone();
@@ -261,7 +262,7 @@ pub async fn chat(
                             json!({ "type": "tool", "id": tc.id, "name": tc.name, "args": args.clone() }),
                         )));
                         display.push(json!({ "type": "tool_use", "name": tc.name, "input": args.clone() }));
-                        let result = match tools::dispatch(&pool2, &user_id, &tc.name, &args).await {
+                        let result = match tools::dispatch(&pool2, &user_id, &agent_kind, &tc.name, &args).await {
                             Ok(v) => v,
                             Err(e) => json!({ "error": e }),
                         };

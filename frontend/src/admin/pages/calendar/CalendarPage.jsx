@@ -1,5 +1,12 @@
 import dayjs from "dayjs";
-import { useMemo, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	useCalendarEvents,
@@ -14,13 +21,25 @@ import { expandRecurrence } from "../../../utils/recurrence";
 import { PvButton } from "../../components/ui";
 import "./Calendar.css";
 import EventModal from "./EventModal";
-import MonthGrid from "./MonthGrid";
+import MonthBlock from "./MonthGrid";
 
 const KEY = (d) => d.format("YYYY-MM-DD");
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+// How many months sit on each side of the current month at first paint, and how
+// many to prepend/append each time the user scrolls near an edge.
+const PAST_MONTHS = 12;
+const FUTURE_MONTHS = 12;
+const CHUNK = 12;
+// Distance (px) from a scroll edge at which we grow the window.
+const EDGE = 800;
 
 /**
- * Month calendar (pixel/terminal aesthetic). Shows three layers per day, all
- * bucketed in the user's LOCAL timezone:
+ * Continuous month calendar (pixel/terminal aesthetic), mirroring the mobile
+ * agenda: an infinite vertical scroll of month blocks. The visible window grows
+ * in both directions as you scroll, and the events query range follows it so
+ * data is lazy-loaded per window. Three layers per day, all bucketed in the
+ * user's LOCAL timezone:
  *   - events (db_calendar_events) on their start day
  *   - one-off tasks with a due_at (deadline pills)
  *   - recurring-task occurrences (expanded client-side from rrule templates)
@@ -31,19 +50,39 @@ export default function CalendarPage() {
 	// to reflect changes made in another tab/device.
 	useCalendarLiveUpdates();
 	useTasksLiveUpdates();
-	const [cursor, setCursor] = useState(() => dayjs().startOf("month"));
+
+	const scrollRef = useRef(null);
+	const todayBlockRef = useRef(null);
+	const didInit = useRef(false); // one-time scroll-to-today on first layout
+	const pendingPrepend = useRef(null); // { prevHeight, prevTop } for scroll compensation
+	const busy = useRef(false); // guards against firing many grows per scroll burst
+
+	// Fixed anchor (current month); the window extends `past` months back and
+	// `future` months forward. The current month always sits at index `past`.
+	const [base] = useState(() => dayjs().startOf("month"));
+	const [past, setPast] = useState(PAST_MONTHS);
+	const [future, setFuture] = useState(FUTURE_MONTHS);
+	const [visibleLabel, setVisibleLabel] = useState(() =>
+		dayjs().format("MMMM YYYY"),
+	);
 	const [modal, setModal] = useState(null); // { event } | { date } | null
 
-	// 6-week grid covering the visible month, snapped to local week boundaries.
-	const gridStart = useMemo(
-		() => cursor.startOf("month").startOf("week"),
-		[cursor],
+	const months = useMemo(() => {
+		const arr = [];
+		for (let i = -past; i <= future; i++) arr.push(base.add(i, "month"));
+		return arr;
+	}, [base, past, future]);
+
+	// Window bounds (memoised so byDay's deps stay stable across renders).
+	const rangeStart = useMemo(() => months[0].startOf("month"), [months]);
+	const rangeEnd = useMemo(
+		() => months[months.length - 1].endOf("month"),
+		[months],
 	);
-	const gridEnd = useMemo(() => cursor.endOf("month").endOf("week"), [cursor]);
 
 	const { data: events = [] } = useCalendarEvents({
-		from: gridStart.toISOString(),
-		to: gridEnd.add(1, "day").toISOString(),
+		from: rangeStart.toISOString(),
+		to: rangeEnd.add(1, "day").toISOString(),
 	});
 	const { data: tasks = [] } = useTasks();
 	const { data: recurring = [] } = useRecurringTasks();
@@ -61,7 +100,7 @@ export default function CalendarPage() {
 		return m;
 	}, [tasks]);
 
-	// Bucket everything into local day cells.
+	// Bucket everything into local day cells across the whole visible window.
 	const byDay = useMemo(() => {
 		const map = new Map();
 		const bucket = (key) => {
@@ -82,8 +121,8 @@ export default function CalendarPage() {
 			const occs = expandRecurrence({
 				rrule: tpl.rrule,
 				dtstart: tpl.dtstart,
-				rangeStart: gridStart,
-				rangeEnd: gridEnd,
+				rangeStart,
+				rangeEnd,
 				until: tpl.until,
 			});
 			for (const occ of occs) {
@@ -96,22 +135,77 @@ export default function CalendarPage() {
 			}
 		}
 		return map;
-	}, [events, tasks, recurring, materialized, gridStart, gridEnd]);
+	}, [events, tasks, recurring, materialized, rangeStart, rangeEnd]);
 
-	// Build weeks (array of 7-day arrays).
-	const weeks = useMemo(() => {
-		const out = [];
-		let day = gridStart;
-		while (day.isBefore(gridEnd) || day.isSame(gridEnd, "day")) {
-			const week = [];
-			for (let i = 0; i < 7; i++) {
-				week.push(day);
-				day = day.add(1, "day");
-			}
-			out.push(week);
+	// Grow the window when scrolling near either edge. A single `busy` latch
+	// prevents adding many chunks in one scroll burst; it clears once the new
+	// months have rendered (the layout effect below, keyed on `months`).
+	const onScroll = useCallback(() => {
+		const el = scrollRef.current;
+		if (!el || busy.current) return;
+		const distToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+		if (distToBottom < EDGE) {
+			busy.current = true;
+			setFuture((f) => f + CHUNK);
+		} else if (el.scrollTop < EDGE) {
+			busy.current = true;
+			// Record the pre-prepend geometry so we can keep the viewport anchored
+			// after the new months are inserted above.
+			pendingPrepend.current = {
+				prevHeight: el.scrollHeight,
+				prevTop: el.scrollTop,
+			};
+			setPast((p) => p + CHUNK);
 		}
-		return out;
-	}, [gridStart, gridEnd]);
+	}, []);
+
+	// Runs after every window change: on first paint, jump to the current month;
+	// after a prepend, compensate scrollTop so the viewport doesn't jump; always
+	// release the `busy` latch.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: re-run whenever the month window grows
+	useLayoutEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		if (!didInit.current) {
+			const block = todayBlockRef.current;
+			if (block) {
+				el.scrollTop = block.offsetTop;
+				didInit.current = true;
+			}
+		} else if (pendingPrepend.current) {
+			const { prevHeight, prevTop } = pendingPrepend.current;
+			el.scrollTop = prevTop + (el.scrollHeight - prevHeight);
+			pendingPrepend.current = null;
+		}
+		busy.current = false;
+	}, [months]);
+
+	// Track the month occupying the top of the viewport for the header label.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: re-observe the freshly-rendered month blocks
+	useEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const io = new IntersectionObserver(
+			(entries) => {
+				const top = entries
+					.filter((e) => e.isIntersecting)
+					.sort(
+						(a, b) => a.boundingClientRect.top - b.boundingClientRect.top,
+					)[0];
+				if (top) setVisibleLabel(top.target.dataset.label);
+			},
+			// Active zone = the top sliver of the scroll container.
+			{ root: el, rootMargin: "0px 0px -85% 0px", threshold: 0 },
+		);
+		for (const block of el.querySelectorAll(".cal-month")) io.observe(block);
+		return () => io.disconnect();
+	}, [months]);
+
+	const scrollToToday = useCallback(() => {
+		const el = scrollRef.current;
+		const block = todayBlockRef.current;
+		if (el && block) el.scrollTo({ top: block.offsetTop, behavior: "smooth" });
+	}, []);
 
 	const onToggleOccurrence = (occ) => {
 		completeOccurrence.mutate({
@@ -131,20 +225,10 @@ export default function CalendarPage() {
 					<span className="cal-glyph" aria-hidden="true">
 						▤
 					</span>
-					<h1>{cursor.format("MMMM YYYY")}</h1>
+					<h1>{visibleLabel}</h1>
 				</div>
 				<div className="cal-nav">
-					<PvButton
-						onClick={() => setCursor((c) => c.subtract(1, "month"))}
-					>
-						‹
-					</PvButton>
-					<PvButton onClick={() => setCursor(dayjs().startOf("month"))}>
-						today
-					</PvButton>
-					<PvButton onClick={() => setCursor((c) => c.add(1, "month"))}>
-						›
-					</PvButton>
+					<PvButton onClick={scrollToToday}>today</PvButton>
 					<PvButton
 						variant="accent"
 						onClick={() => setModal({ date: dayjs() })}
@@ -154,16 +238,29 @@ export default function CalendarPage() {
 				</div>
 			</header>
 
-			<MonthGrid
-				weeks={weeks}
-				month={cursor.month()}
-				byDay={byDay}
-				keyOf={KEY}
-				onEventClick={(ev) => setModal({ event: ev })}
-				onDayClick={(d) => setModal({ date: d })}
-				onToggleDeadline={(t) => toggleTask.mutate(t.id)}
-				onToggleOccurrence={onToggleOccurrence}
-			/>
+			<div className="cal-weekdays">
+				{WEEKDAYS.map((w) => (
+					<div key={w} className="cal-weekday">
+						{w}
+					</div>
+				))}
+			</div>
+
+			<div className="cal-scroll" ref={scrollRef} onScroll={onScroll}>
+				{months.map((m) => (
+					<MonthBlock
+						key={m.format("YYYY-MM")}
+						ref={m.isSame(base, "month") ? todayBlockRef : undefined}
+						month={m}
+						byDay={byDay}
+						keyOf={KEY}
+						onEventClick={(ev) => setModal({ event: ev })}
+						onDayClick={(d) => setModal({ date: d })}
+						onToggleDeadline={(t) => toggleTask.mutate(t.id)}
+						onToggleOccurrence={onToggleOccurrence}
+					/>
+				))}
+			</div>
 
 			{modal ? (
 				<EventModal

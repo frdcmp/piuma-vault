@@ -121,6 +121,24 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                 "required": ["recurrence_id", "occurrence_date"]
             }),
         ),
+        (
+            "delete_task",
+            "Permanently delete a task. Confirm with the user first — this is not recoverable.",
+            json!({
+                "type": "object",
+                "properties": { "id": { "type": "string", "description": "task UUID" } },
+                "required": ["id"]
+            }),
+        ),
+        (
+            "delete_recurring",
+            "Permanently delete a recurring task template and its occurrences. Confirm first — not recoverable.",
+            json!({
+                "type": "object",
+                "properties": { "id": { "type": "string", "description": "recurring template UUID" } },
+                "required": ["id"]
+            }),
+        ),
     ]
 }
 
@@ -395,4 +413,36 @@ pub async fn complete_occurrence(pool: &DbPool, user_id: &str, args: &Value) -> 
     .await
     .map_err(|e| e.to_string())?;
     Ok(json!({ "recurrence_id": recurrence_id, "occurrence_date": date_str, "done": true }))
+}
+
+pub async fn delete_task(pool: &DbPool, user_id: &str, args: &Value) -> Result<Value, String> {
+    let id = uuid_arg(args, "id")?;
+    let affected = sqlx::query("DELETE FROM db_tasks WHERE id = $1 AND user_id = $2")
+        .bind(id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .rows_affected();
+    if affected == 0 {
+        return Err("task not found".into());
+    }
+    reschedule(pool, "task", id).await;
+    Ok(json!({ "id": id, "deleted": true }))
+}
+
+pub async fn delete_recurring(pool: &DbPool, user_id: &str, args: &Value) -> Result<Value, String> {
+    let id = uuid_arg(args, "id")?;
+    let affected = sqlx::query("DELETE FROM db_recurring_tasks WHERE id = $1 AND user_id = $2")
+        .bind(id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .rows_affected();
+    if affected == 0 {
+        return Err("recurring task not found".into());
+    }
+    reschedule(pool, "recurring", id).await;
+    Ok(json!({ "id": id, "deleted": true }))
 }

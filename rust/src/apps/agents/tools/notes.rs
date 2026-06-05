@@ -100,6 +100,15 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                 "required": ["id", "text"]
             }),
         ),
+        (
+            "delete_note",
+            "Move a note to the trash (soft delete — recoverable). Confirm with the user before deleting.",
+            json!({
+                "type": "object",
+                "properties": { "id": { "type": "string", "description": "note UUID" } },
+                "required": ["id"]
+            }),
+        ),
     ]
 }
 
@@ -319,6 +328,29 @@ pub async fn append_to_note(pool: &DbPool, user_id: &str, args: &Value) -> Resul
         Some((id, title, new_content)) => {
             enqueue_embedding(pool, id, &new_content).await;
             Ok(json!({ "id": id, "title": title, "appended": true }))
+        }
+        None => Err("note not found".into()),
+    }
+}
+
+pub async fn delete_note(pool: &DbPool, user_id: &str, args: &Value) -> Result<Value, String> {
+    let id = uuid_arg(args, "id")?;
+    let row: Option<(Uuid, String)> = sqlx::query_as(
+        "UPDATE notes SET deleted_at = NOW() \
+         WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL RETURNING id, title",
+    )
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    match row {
+        Some((id, title)) => {
+            let _ = sqlx::query("DELETE FROM embedding_jobs WHERE note_id = $1")
+                .bind(id)
+                .execute(pool)
+                .await;
+            Ok(json!({ "id": id, "title": title, "trashed": true }))
         }
         None => Err("note not found".into()),
     }
