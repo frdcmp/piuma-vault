@@ -16,7 +16,7 @@ use super::recurrence::expand_dates;
 const TASK_FIELDS: &str = "id, user_id, title, notes, done, completed_at, due_at, priority, \
      (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_task_tags tt \
       JOIN db_tags tg ON tg.id = tt.tag_id WHERE tt.task_id = db_tasks.id) AS tags, \
-     sort_order, recurrence_id, occurrence_date, alerts, created_at, updated_at";
+     rank, recurrence_id, occurrence_date, alerts, created_at, updated_at";
 
 const RECURRING_FIELDS: &str = "id, user_id, title, notes, priority, \
      (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_recurring_task_tags rtt \

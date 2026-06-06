@@ -258,7 +258,7 @@ pub async fn list_tasks(pool: &DbPool, user_id: &str, args: &Value) -> Result<Va
     if bucket.is_some() {
         sql.push_str(&format!(" AND lower(b.name) = lower(${idx})"));
     }
-    sql.push_str(" ORDER BY t.done, t.due_at NULLS LAST, t.sort_order LIMIT 200");
+    sql.push_str(" ORDER BY t.done, t.due_at NULLS LAST, t.rank NULLS LAST LIMIT 200");
 
     let mut q = sqlx::query_as::<_, (Uuid, String, bool, Option<DateTime<Utc>>, i16, Option<String>, Vec<String>)>(&sql)
         .bind(user_id);

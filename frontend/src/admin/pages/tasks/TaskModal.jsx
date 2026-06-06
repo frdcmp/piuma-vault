@@ -24,6 +24,7 @@ export default function TaskModal({
 	task,
 	defaultTags = [],
 	defaultBucket = null,
+	newRank = null,
 	onClose,
 }) {
 	const isEdit = !!task;
@@ -41,10 +42,12 @@ export default function TaskModal({
 	);
 	const [tags, setTags] = useState(task?.tags ?? defaultTags);
 	const [alerts, setAlerts] = useState(task?.alerts ?? []);
+	const [done, setDone] = useState(task?.done ?? false);
 	const [error, setError] = useState("");
 
 	// Grow the notes textarea to fit its content instead of clipping/scrolling.
 	const notesRef = useRef(null);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `notes` is the resize trigger, not read inside
 	useEffect(() => {
 		const el = notesRef.current;
 		if (!el) return;
@@ -72,13 +75,14 @@ export default function TaskModal({
 			bucket_id: bucketId || null,
 			tags,
 			alerts,
+			done,
 		};
 		const onDone = {
 			onSuccess: onClose,
 			onError: () => setError("Save failed"),
 		};
 		if (isEdit) updateTask.mutate({ id: task.id, ...payload }, onDone);
-		else createTask.mutate(payload, onDone);
+		else createTask.mutate({ ...payload, rank: newRank }, onDone);
 	};
 
 	return (
@@ -101,6 +105,19 @@ export default function TaskModal({
 						autoFocus
 					/>
 				</label>
+				{isEdit ? (
+					<button
+						type="button"
+						className={`task-done-toggle${done ? " is-done" : ""}`}
+						aria-pressed={done}
+						onClick={() => setDone((d) => !d)}
+					>
+						<span className="task-done-box" aria-hidden="true">
+							{done ? "☑" : "☐"}
+						</span>
+						{done ? "Completed" : "Mark complete"}
+					</button>
+				) : null}
 				<div className="tasks-field">
 					<span>Due</span>
 					<PvDateTimePicker

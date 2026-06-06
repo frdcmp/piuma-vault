@@ -21,7 +21,7 @@ const TASK_FIELDS: &str = "id, user_id, title, notes, done, completed_at, due_at
      bucket_id, \
      (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_task_tags tt \
       JOIN db_tags tg ON tg.id = tt.tag_id WHERE tt.task_id = db_tasks.id) AS tags, \
-     sort_order, recurrence_id, occurrence_date, alerts, created_at, updated_at";
+     rank, recurrence_id, occurrence_date, alerts, created_at, updated_at";
 
 const RECURRING_FIELDS: &str = "id, user_id, title, notes, priority, bucket_id, \
      (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_recurring_task_tags rtt \
@@ -143,9 +143,12 @@ pub async fn list_tasks(
         clauses.push(format!("bucket_id = ${idx}"));
     }
 
+    // Manual order is authoritative: pending before done, then by the
+    // fractional-index `rank` (NULLS LAST so legacy/unranked rows trail), with
+    // created_at as a stable final tiebreaker for equal/absent ranks.
     let sql = format!(
         "SELECT {TASK_FIELDS} FROM db_tasks WHERE {} \
-         ORDER BY done ASC, sort_order ASC, COALESCE(due_at, 'infinity'::timestamptz) ASC, created_at ASC",
+         ORDER BY done ASC, rank ASC NULLS LAST, created_at ASC",
         clauses.join(" AND ")
     );
 
@@ -194,8 +197,8 @@ pub async fn create_task(
     }
 
     let id: Uuid = match sqlx::query_scalar(
-        "INSERT INTO db_tasks (user_id, title, notes, due_at, priority, bucket_id, alerts) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+        "INSERT INTO db_tasks (user_id, title, notes, due_at, priority, bucket_id, alerts, rank) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
     )
     .bind(&user.user_id)
     .bind(&body.title)
@@ -204,6 +207,7 @@ pub async fn create_task(
     .bind(body.priority)
     .bind(body.bucket_id)
     .bind(&body.alerts)
+    .bind(&body.rank)
     .fetch_one(pool.get_ref())
     .await
     {
@@ -303,7 +307,7 @@ pub async fn update_task(
             notes = CASE WHEN $4 THEN $5 ELSE notes END, \
             due_at = CASE WHEN $6 THEN $7 ELSE due_at END, \
             priority = COALESCE($8, priority), \
-            sort_order = COALESCE($9, sort_order), \
+            rank = COALESCE($9, rank), \
             done = COALESCE($10, done), \
             completed_at = CASE WHEN $10 IS NULL THEN completed_at \
                                 WHEN $10 THEN NOW() ELSE NULL END, \
@@ -334,7 +338,7 @@ pub async fn update_task(
         .bind(set_due)
         .bind(due)
         .bind(body.priority)
-        .bind(body.sort_order)
+        .bind(&body.rank)
         .bind(body.done)
         .bind(&body.alerts)
         .bind(set_bucket)

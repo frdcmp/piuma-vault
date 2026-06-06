@@ -41,17 +41,21 @@ export default function AlertsField({ value = [], onChange }) {
 	const [customN, setCustomN] = useState(15);
 	const [customUnit, setCustomUnit] = useState("minutes");
 
-	const offsets = new Set(value.map((a) => a.offset_minutes));
+	// `alerts` is a free-form JSON column on the backend (defaults to an array,
+	// but legacy rows may hold an object/null), so coerce to an array before use.
+	const list = Array.isArray(value) ? value : [];
 
-	const sorted = [...value].sort((a, b) => a.offset_minutes - b.offset_minutes);
+	const offsets = new Set(list.map((a) => a.offset_minutes));
+
+	const sorted = [...list].sort((a, b) => a.offset_minutes - b.offset_minutes);
 
 	const addOffset = (mins) => {
 		if (offsets.has(mins)) return;
-		onChange([...value, { offset_minutes: mins }]);
+		onChange([...list, { offset_minutes: mins }]);
 	};
 
 	const removeOffset = (mins) => {
-		onChange(value.filter((a) => a.offset_minutes !== mins));
+		onChange(list.filter((a) => a.offset_minutes !== mins));
 	};
 
 	const toggleOffset = (mins) => {

@@ -16,13 +16,17 @@ import {
 	useCalendarLiveUpdates,
 	useCompleteOccurrence,
 	useRecurringTasks,
+	useTagRegistry,
 	useTagsLiveUpdates,
 	useTasks,
 	useTasksLiveUpdates,
 	useToggleTask,
 } from "../../../queries";
 import { expandRecurrence } from "../../../utils/recurrence";
-import { PvButton } from "../../components/ui";
+import { tagColor } from "../../../utils/tagColor";
+import { PvButton, PvPopover, PvTag } from "../../components/ui";
+import RecurringTaskModal from "../tasks/RecurringTaskModal";
+import TaskModal from "../tasks/TaskModal";
 import "./Calendar.css";
 import EventModal from "./EventModal";
 import MonthBlock from "./MonthGrid";
@@ -76,6 +80,13 @@ export default function CalendarPage() {
 	const [sel, setSel] = useState(ALL); // bucket/tag filter selection
 	const [filterOpen, setFilterOpen] = useState(false);
 	const [manageOpen, setManageOpen] = useState(false);
+	const [taskModal, setTaskModal] = useState(null); // { task } | null
+	const [recModal, setRecModal] = useState(null); // { recurring } | null
+	const tagsBtnRef = useRef(null); // anchors the tags filter popover
+
+	const { data: tagRegistry = [] } = useTagRegistry();
+	const tagColorOf = (name) =>
+		tagRegistry.find((r) => r.name === name)?.color || tagColor(name);
 
 	const months = useMemo(() => {
 		const arr = [];
@@ -246,14 +257,25 @@ export default function CalendarPage() {
 						<h1>{visibleLabel}</h1>
 					</div>
 					<div className="cal-nav">
-						<PvButton
-							variant={sel.key === "all" ? "ghost" : "accent"}
-							onClick={() =>
-								sel.key === "all" ? setFilterOpen((o) => !o) : setSel(ALL)
-							}
-						>
-							{sel.key === "all" ? "tags ▾" : `${sel.label} ✕`}
-						</PvButton>
+						<span ref={tagsBtnRef} className="cal-tags-anchor">
+							{sel.key === "all" ? (
+								<PvButton
+									variant="ghost"
+									onClick={() => setFilterOpen((o) => !o)}
+								>
+									tags ▾
+								</PvButton>
+							) : (
+								<PvTag
+									color={sel.names?.[0] ? tagColorOf(sel.names[0]) : undefined}
+									onClick={() => setFilterOpen((o) => !o)}
+									onRemove={() => setSel(ALL)}
+									removeLabel="Clear filter"
+								>
+									{sel.label}
+								</PvTag>
+							)}
+						</span>
 						<PvButton onClick={scrollToToday}>today</PvButton>
 						<PvButton
 							variant="accent"
@@ -264,35 +286,43 @@ export default function CalendarPage() {
 					</div>
 				</header>
 
-				{filterOpen ? (
-					<div className="cal-filter-panel">
-						<div className="cal-filter-head">
-							<button
-								type="button"
-								className="tasks-manage-btn"
-								onClick={() => setManageOpen(true)}
-							>
-								⚙ manage
-							</button>
-							<button
-								type="button"
-								className="tasks-manage-btn"
-								onClick={() => setFilterOpen(false)}
-							>
-								close ✕
-							</button>
-						</div>
-						<BucketTagFilter
-							scope="calendar"
-							items={[...events, ...tasks, ...recurring]}
-							selectedKey={sel.key}
-							onSelect={(s) => {
-								setSel(s);
+				<PvPopover
+					open={filterOpen}
+					anchorRef={tagsBtnRef}
+					align="end"
+					width={300}
+					className="cal-filter-popover"
+					onClose={() => setFilterOpen(false)}
+				>
+					<div className="cal-filter-head">
+						<button
+							type="button"
+							className="tasks-manage-btn"
+							onClick={() => {
 								setFilterOpen(false);
+								setManageOpen(true);
 							}}
-						/>
+						>
+							⚙ manage
+						</button>
+						<button
+							type="button"
+							className="tasks-manage-btn"
+							onClick={() => setFilterOpen(false)}
+						>
+							close ✕
+						</button>
 					</div>
-				) : null}
+					<BucketTagFilter
+						scope="calendar"
+						items={[...events, ...tasks, ...recurring]}
+						selectedKey={sel.key}
+						onSelect={(s) => {
+							setSel(s);
+							setFilterOpen(false);
+						}}
+					/>
+				</PvPopover>
 
 				<div className="cal-weekdays">
 					{WEEKDAYS.map((w) => (
@@ -312,6 +342,10 @@ export default function CalendarPage() {
 							keyOf={KEY}
 							onEventClick={(ev) => setModal({ event: ev })}
 							onDayClick={(d) => setModal({ date: d })}
+							onDeadlineClick={(t) => setTaskModal({ task: t })}
+							onOccurrenceClick={(occ) =>
+								setRecModal({ recurring: occ.template })
+							}
 							onToggleDeadline={(t) => toggleTask.mutate(t.id)}
 							onToggleOccurrence={onToggleOccurrence}
 						/>
@@ -323,6 +357,15 @@ export default function CalendarPage() {
 						event={modal.event}
 						initialDate={modal.date}
 						onClose={() => setModal(null)}
+					/>
+				) : null}
+				{taskModal ? (
+					<TaskModal task={taskModal.task} onClose={() => setTaskModal(null)} />
+				) : null}
+				{recModal ? (
+					<RecurringTaskModal
+						recurring={recModal.recurring}
+						onClose={() => setRecModal(null)}
 					/>
 				) : null}
 				{manageOpen ? (

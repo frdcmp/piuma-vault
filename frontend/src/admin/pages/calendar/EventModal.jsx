@@ -147,7 +147,7 @@ export default function EventModal({ event, initialDate, onClose }) {
 					<TagPicker value={tags} onChange={setTags} />
 				</div>
 
-				<label className="cal-field">
+				<label className="cal-field cal-field--notes">
 					<span>Notes</span>
 					<textarea
 						rows={3}
