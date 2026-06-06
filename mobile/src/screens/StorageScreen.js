@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
+	BackHandler,
 	FlatList,
 	Linking,
 	Modal,
@@ -150,6 +151,29 @@ export default function StorageScreen({ navigation }) {
 			},
 		}),
 	).current;
+
+	// Android hardware/system back: exit select mode first, then step up one
+	// folder level; only at the root do we let the system pop the screen. Mirrors
+	// the header arrow and edge swipe. Refs keep the once-registered listener fresh.
+	const prefixRef = useRef(prefix);
+	prefixRef.current = prefix;
+	const selectModeRef = useRef(selectMode);
+	selectModeRef.current = selectMode;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: register once; exitSelect only calls stable setters
+	useEffect(() => {
+		const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+			if (selectModeRef.current) {
+				exitSelect();
+				return true;
+			}
+			if (prefixRef.current !== "") {
+				handleBackRef.current?.();
+				return true;
+			}
+			return false;
+		});
+		return () => sub.remove();
+	}, []);
 
 	const crumbs = useMemo(() => {
 		const trimmed = prefix.replace(/\/$/, "");

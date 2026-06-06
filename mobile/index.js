@@ -1,3 +1,7 @@
+// Must be the very first import: react-native-gesture-handler requires loading
+// at the top of the entry file so its native side initialises before anything
+// renders (needed by the draggable task list).
+import "react-native-gesture-handler";
 import "./src/utils/dayjsConfig";
 import notifee, { EventType } from "@notifee/react-native";
 import { registerRootComponent } from "expo";

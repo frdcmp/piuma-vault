@@ -83,6 +83,7 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 8px;
+	margin-bottom: 8px;
 }
 
 .tasks-manage-btn {
@@ -162,6 +163,7 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	padding-bottom: 2px;
 }
 
 .tag-nav-divider {
@@ -207,6 +209,12 @@
 	color: var(--muted);
 }
 
+/* In the sidebar head the title sits in a centred flex row next to the manage
+   button — drop its bottom margin so the two align (the head owns the spacing). */
+.tasks-sidebar-head .tasks-panel-title {
+	margin: 0;
+}
+
 .tasks-list {
 	list-style: none;
 	margin: 0;
@@ -222,8 +230,28 @@
 	gap: 8px;
 	padding: 6px 8px;
 	border: 1px solid var(--border);
+	/* Thicker left edge: it carries the task's priority colour (see .prio-*). */
+	border-left-width: 3px;
 	border-radius: 4px;
 	background: var(--bg-soft);
+}
+
+/* Priority is shown by tinting the card (left bar + faint wash), not a label.
+   color-mix gives the wash; if unsupported the declaration is dropped and the
+   row keeps its plain --bg-soft background. */
+.task-row.prio-1 {
+	border-left-color: var(--accent-2);
+	background: color-mix(in srgb, var(--accent-2) 7%, var(--bg-soft));
+}
+
+.task-row.prio-2 {
+	border-left-color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 7%, var(--bg-soft));
+}
+
+.task-row.prio-3 {
+	border-left-color: var(--accent-3);
+	background: color-mix(in srgb, var(--accent-3) 9%, var(--bg-soft));
 }
 
 .task-row.is-done,
@@ -239,6 +267,36 @@
 	cursor: pointer;
 	padding: 0;
 	line-height: 1;
+}
+
+/* Drag handle — first child of a pending row; grabs to reorder. Dim until the
+   row is hovered so it stays unobtrusive. */
+.task-drag {
+	background: none;
+	border: none;
+	color: var(--muted);
+	font-size: 0.9rem;
+	line-height: 1;
+	padding: 0 2px;
+	cursor: grab;
+	opacity: 0.35;
+	touch-action: none;
+	transition: opacity 0.12s ease;
+}
+
+.task-row:hover .task-drag {
+	opacity: 0.75;
+}
+
+.task-drag:active {
+	cursor: grabbing;
+}
+
+/* Lifted row while dragging — sits above siblings with a subtle outline. */
+.task-row.is-dragging {
+	z-index: 2;
+	border-color: var(--accent-2);
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
 /* Spinner shown in the checkbox while a toggle is in flight. Inherits the
@@ -280,6 +338,9 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	/* `overflow: hidden` clips this font's descenders (g, p, y) / the strike-
+	   through; a little bottom padding extends the clip box below the text. */
+	padding-bottom: 2px;
 }
 
 .task-row.is-done .task-title {
@@ -299,14 +360,16 @@
 	color: var(--accent);
 }
 
-/* Bucket badge on a task row (the task's group). */
+/* Bucket badge — sits to the left of the title (before .task-main). */
 .task-bucket {
-	padding: 0 6px;
+	flex: none;
+	padding: 1px 7px;
 	border: 1px solid currentColor;
 	border-radius: 999px;
 	font-size: 0.62rem;
 	text-transform: uppercase;
 	letter-spacing: 0.03em;
+	white-space: nowrap;
 	opacity: 0.85;
 }
 
@@ -315,24 +378,15 @@
 	font-size: 0.64rem;
 }
 
-.task-col {
-	flex: 1;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-}
-
-/* In a column the title button shouldn't grow vertically; the column's
-   default align-items: stretch already makes it full width. */
-.task-col .task-main {
-	flex: initial;
-}
-
+/* Tags — pushed to the right edge of the row (after the flex:1 title). */
 .task-tags {
+	flex: 0 1 auto;
 	display: flex;
 	flex-wrap: wrap;
+	justify-content: flex-end;
+	align-items: center;
 	gap: 6px;
+	max-width: 45%;
 }
 
 /* Clickable tag → sets the sidebar filter. Reset the button chrome so it reads
@@ -349,23 +403,6 @@
 
 .task-tag:hover {
 	text-decoration: underline;
-}
-
-.task-prio {
-	padding: 0 4px;
-	border-radius: 3px;
-	font-size: 0.62rem;
-	text-transform: uppercase;
-}
-
-.prio-1 {
-	color: var(--accent-2);
-}
-.prio-2 {
-	color: var(--accent);
-}
-.prio-3 {
-	color: var(--accent-3);
 }
 
 .task-del {
@@ -431,6 +468,36 @@
 	gap: 4px;
 	font-size: 0.8rem;
 	color: var(--muted);
+}
+
+/* Completion toggle — reflects (and edits) the task's done state in the editor. */
+.task-done-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	align-self: flex-start;
+	padding: 5px 12px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: var(--bg-soft);
+	color: var(--muted);
+	font: inherit;
+	font-size: 0.8rem;
+	cursor: pointer;
+}
+
+.task-done-toggle:hover {
+	border-color: var(--accent-2);
+}
+
+.task-done-toggle.is-done {
+	border-color: var(--accent-2);
+	color: var(--accent-2);
+}
+
+.task-done-toggle .task-done-box {
+	font-size: 0.95rem;
+	line-height: 1;
 }
 
 .tasks-field--inline {

@@ -1,4 +1,24 @@
-import { useState } from "react";
+import {
+	closestCenter,
+	DndContext,
+	KeyboardSensor,
+	PointerSensor,
+	useSensor,
+	useSensors,
+} from "@dnd-kit/core";
+import {
+	restrictToParentElement,
+	restrictToVerticalAxis,
+} from "@dnd-kit/modifiers";
+import {
+	arrayMove,
+	SortableContext,
+	sortableKeyboardCoordinates,
+	useSortable,
+	verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import WorkspaceShell from "../../../chat/WorkspaceShell";
 import BucketTagFilter from "../../../components/BucketTagFilter";
@@ -13,8 +33,10 @@ import {
 	useTasks,
 	useTasksLiveUpdates,
 	useToggleTask,
+	useUpdateTask,
 } from "../../../queries";
 import { formatDate } from "../../../utils/dateTime";
+import { rankBefore, rankBetween } from "../../../utils/rank";
 import { tagColor } from "../../../utils/tagColor";
 import { PvButton } from "../../components/ui";
 import RecurringTaskModal from "./RecurringTaskModal";
@@ -32,6 +54,96 @@ const PRIORITY_COLOR = [
 
 const ALL = { key: "all", names: null, label: "All" };
 
+// One pending task row, draggable via its handle (the rest of the row stays
+// clickable: ☐ toggles, the body opens the modal, #tags filter).
+function SortableTaskRow({
+	t,
+	bucket,
+	toggling,
+	onToggle,
+	onOpen,
+	onSelectTag,
+	tagColorOf,
+}) {
+	const {
+		attributes,
+		listeners,
+		setNodeRef,
+		setActivatorNodeRef,
+		transform,
+		transition,
+		isDragging,
+	} = useSortable({ id: t.id });
+	const style = {
+		transform: CSS.Transform.toString(transform),
+		transition,
+	};
+	return (
+		<li
+			ref={setNodeRef}
+			style={style}
+			className={`task-row${t.priority ? ` prio-${t.priority}` : ""}${
+				isDragging ? " is-dragging" : ""
+			}`}
+			title={t.priority ? `${PRIORITY[t.priority]} priority` : undefined}
+		>
+			<button
+				type="button"
+				ref={setActivatorNodeRef}
+				className="task-drag"
+				aria-label="Drag to reorder"
+				{...attributes}
+				{...listeners}
+			>
+				⠿
+			</button>
+			<button
+				type="button"
+				className="task-check"
+				style={{ color: PRIORITY_COLOR[t.priority] }}
+				onClick={() => onToggle(t.id)}
+				disabled={toggling}
+				aria-label="Complete task"
+			>
+				{toggling ? <span className="task-spin" aria-hidden="true" /> : "☐"}
+			</button>
+			{bucket ? (
+				<span
+					className="task-bucket"
+					style={{ color: bucket.color || undefined }}
+				>
+					{bucket.name}
+				</span>
+			) : null}
+			<button type="button" className="task-main" onClick={() => onOpen(t)}>
+				<span className="task-title">{t.title}</span>
+				{t.due_at ? (
+					<span className="task-meta">
+						<span className="task-due">
+							due <TimeAgo value={t.due_at} />
+						</span>
+					</span>
+				) : null}
+			</button>
+			{t.tags?.length ? (
+				<span className="task-tags">
+					{t.tags.map((tag) => (
+						<button
+							type="button"
+							key={tag}
+							className="task-tag"
+							style={{ color: tagColorOf(tag) }}
+							onClick={() => onSelectTag(tag)}
+						>
+							#{tag}
+						</button>
+					))}
+				</span>
+			) : null}
+		</li>
+	);
+}
+
 export default function TasksPage() {
 	const navigate = useNavigate();
 	useTasksLiveUpdates(); // refetch when tasks change in another tab/device
@@ -41,12 +153,27 @@ export default function TasksPage() {
 	const { data: buckets = [] } = useBuckets();
 	const { data: tagRegistry = [] } = useTagRegistry();
 	const toggleTask = useToggleTask();
+	const updateTask = useUpdateTask();
 	const deleteRecurring = useDeleteRecurringTask();
+
+	// Drag handle activates after a small move so a plain click still toggles /
+	// opens the row; keyboard reordering for accessibility.
+	const sensors = useSensors(
+		useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+		useSensor(KeyboardSensor, {
+			coordinateGetter: sortableKeyboardCoordinates,
+		}),
+	);
 
 	const [taskModal, setTaskModal] = useState(null); // { task } | {} | null
 	const [recModal, setRecModal] = useState(null);
 	const [manageOpen, setManageOpen] = useState(false);
-	const [sel, setSel] = useState(ALL); // { key, names, label }
+	// Bucket + tags filter independently and combine (AND). `bucketSel` is the
+	// bucket constraint (all / nobucket / a specific bucket); `tags` is the set
+	// of selected tag names — a task must match the bucket AND carry one of the
+	// active tags. "all" acts as the master reset for both.
+	const [bucketSel, setBucketSel] = useState(ALL); // { key, bucketId, label }
+	const [tags, setTags] = useState([]); // active tag names
 	const [showRecurring, setShowRecurring] = useState(false); // sidebar view toggle
 
 	// Per-tag colour from the registry (falls back to the derived hue).
@@ -59,46 +186,91 @@ export default function TasksPage() {
 	// One-off tasks only (materialized recurring occurrences are history, hidden here).
 	const oneOff = tasks.filter((t) => !t.recurrence_id);
 
-	// Apply the sidebar selection: a bucket (by the task's own bucket_id), the
-	// "no bucket" group, a single tag, or everything.
+	// Apply the bucket constraint, then narrow by the active tags (a task matches
+	// if it carries any of them). The two combine, so a bucket stays in effect
+	// while you add tag filters on top.
 	let visible = oneOff;
-	if (sel.key.startsWith("bucket:"))
-		visible = oneOff.filter((t) => t.bucket_id === sel.bucketId);
-	else if (sel.key === "nobucket") visible = oneOff.filter((t) => !t.bucket_id);
-	else if (sel.names)
-		visible = oneOff.filter((t) => t.tags?.some((n) => sel.names.includes(n)));
+	if (bucketSel.key.startsWith("bucket:"))
+		visible = visible.filter((t) => t.bucket_id === bucketSel.bucketId);
+	else if (bucketSel.key === "nobucket")
+		visible = visible.filter((t) => !t.bucket_id);
+	if (tags.length)
+		visible = visible.filter((t) => t.tags?.some((n) => tags.includes(n)));
 
-	// Highest priority first; within a priority tier, cluster tasks that share
-	// tags (by normalized tag signature). Untagged tasks (→ "￿") trail.
-	const pending = visible
-		.filter((t) => !t.done)
-		.sort((a, b) => {
-			const byPriority = (b.priority ?? 0) - (a.priority ?? 0);
-			if (byPriority !== 0) return byPriority;
-			const ka = (a.tags ?? []).slice().sort().join(",") || "￿";
-			const kb = (b.tags ?? []).slice().sort().join(",") || "￿";
-			return ka.localeCompare(kb);
-		});
+	// The API returns tasks already in manual order (by `rank`); filtering keeps
+	// that order. `serverPending` is the source of truth; `order` mirrors it but
+	// holds the user's in-progress arrangement so a drag doesn't snap back while
+	// the rank PUT round-trips.
+	const serverPending = visible.filter((t) => !t.done);
 	const done = visible.filter((t) => t.done);
+
+	const byId = new Map(serverPending.map((t) => [t.id, t]));
+	const [order, setOrder] = useState([]);
+	// Re-sync to the server order only when the *set* of pending tasks changes
+	// (add / remove / complete / filter switch) — not on reorder, so an
+	// optimistic drag isn't clobbered by the refetch it triggers.
+	const setSig = [...serverPending.map((t) => t.id)].sort().join(",");
+	// biome-ignore lint/correctness/useExhaustiveDependencies: re-sync keyed on the id-set, not order
+	useEffect(() => {
+		setOrder(serverPending.map((t) => t.id));
+	}, [setSig]);
+
+	const pending = order.map((id) => byId.get(id)).filter(Boolean);
+	const pendingIds = pending.map((t) => t.id);
+
+	const onDragEnd = ({ active, over }) => {
+		if (!over || active.id === over.id) return;
+		const from = pendingIds.indexOf(active.id);
+		const to = pendingIds.indexOf(over.id);
+		if (from < 0 || to < 0) return;
+		const next = arrayMove(pendingIds, from, to);
+		setOrder(next); // optimistic
+		// Mint a key strictly between the new neighbours.
+		const before = byId.get(next[to - 1])?.rank ?? null;
+		const after = byId.get(next[to + 1])?.rank ?? null;
+		updateTask.mutate({ id: active.id, rank: rankBetween(before, after) });
+	};
 
 	// The id of the task whose toggle is in flight, so we can spin just its box.
 	const togglingId = toggleTask.isPending ? toggleTask.variables : null;
 
+	// Only one tag filters at a time (kept as an array so it composes with the
+	// bucket constraint). Clicking a tag on a task row selects it, keeping the
+	// bucket; clicking the active tag again (in the sidebar) clears it.
 	const selectTag = (tag) => {
 		setShowRecurring(false);
-		setSel({ key: `tag:${tag}`, names: [tag], label: `#${tag}` });
+		setTags([tag]);
 	};
 
-	const defaultTags = sel.key.startsWith("tag:") ? sel.names : [];
-	const defaultBucket = sel.key.startsWith("bucket:") ? sel.bucketId : null;
+	const toggleTag = (tag) => {
+		setShowRecurring(false);
+		setTags((prev) => (prev.includes(tag) ? [] : [tag]));
+	};
+
+	const defaultTags = tags;
+	const defaultBucket = bucketSel.key.startsWith("bucket:")
+		? bucketSel.bucketId
+		: null;
 
 	// Tag section reflects the selected bucket: only tags used by tasks in that
-	// bucket (or "no bucket"). Otherwise ("all"/tag selection) → all tags.
-	const tagScope = sel.key.startsWith("bucket:")
-		? oneOff.filter((t) => t.bucket_id === sel.bucketId)
-		: sel.key === "nobucket"
-			? oneOff.filter((t) => !t.bucket_id)
-			: oneOff;
+	// bucket (or "no bucket"). Otherwise ("all") → all tags. Done tasks are
+	// excluded so the list (and its counts) only shows tags with actual to-dos —
+	// a tag whose tasks are all completed drops out.
+	const tagScope = (
+		bucketSel.key.startsWith("bucket:")
+			? oneOff.filter((t) => t.bucket_id === bucketSel.bucketId)
+			: bucketSel.key === "nobucket"
+				? oneOff.filter((t) => !t.bucket_id)
+				: oneOff
+	).filter((t) => !t.done);
+
+	// Heading reflects the combined filter, e.g. "keeperproxy + #admin".
+	const filterLabel = [
+		bucketSel.key !== "all" ? bucketSel.label : null,
+		...tags.map((t) => `#${t}`),
+	]
+		.filter(Boolean)
+		.join(" + ");
 
 	return (
 		<WorkspaceShell>
@@ -122,7 +294,14 @@ export default function TasksPage() {
 						</PvButton>
 						<PvButton
 							variant="accent"
-							onClick={() => setTaskModal({ defaultTags, defaultBucket })}
+							onClick={() =>
+								setTaskModal({
+									defaultTags,
+									defaultBucket,
+									// New tasks land at the top of the list.
+									newRank: rankBefore(pending[0]?.rank),
+								})
+							}
 						>
 							+ task
 						</PvButton>
@@ -147,10 +326,25 @@ export default function TasksPage() {
 							items={oneOff}
 							tagItems={tagScope}
 							buckets={buckets}
-							selectedKey={showRecurring ? null : sel.key}
+							selectedKey={showRecurring ? null : bucketSel.key}
+							activeTags={showRecurring ? [] : tags}
 							onSelect={(s) => {
 								setShowRecurring(false);
-								setSel(s);
+								if (s.key === "all") {
+									// Master reset — clear both the bucket and tag filters.
+									setBucketSel(ALL);
+									setTags([]);
+								} else if (
+									s.key === "nobucket" ||
+									s.key.startsWith("bucket:")
+								) {
+									// Switching bucket resets tags — the tag list is scoped to the
+									// bucket, so stale tags may not exist in the new one.
+									setBucketSel(s);
+									setTags([]);
+								} else if (s.names) {
+									toggleTag(s.names[0]); // keep the bucket
+								}
 							}}
 							totalCount={oneOff.length}
 						/>
@@ -177,86 +371,43 @@ export default function TasksPage() {
 								{/* ── To-do ── */}
 								<section className="tasks-panel">
 									<h2 className="tasks-panel-title">
-										{sel.key !== "all" ? `${sel.label} · ` : "To do · "}
+										{filterLabel ? `${filterLabel} · ` : "To do · "}
 										{pending.length}
 									</h2>
-									<ul className="tasks-list">
-										{pending.map((t) => (
-											<li key={t.id} className="task-row">
-												<button
-													type="button"
-													className="task-check"
-													style={{ color: PRIORITY_COLOR[t.priority] }}
-													onClick={() => toggleTask.mutate(t.id)}
-													disabled={togglingId === t.id}
-													aria-label="Complete task"
-												>
-													{togglingId === t.id ? (
-														<span className="task-spin" aria-hidden="true" />
-													) : (
-														"☐"
-													)}
-												</button>
-												<div className="task-col">
-													<button
-														type="button"
-														className="task-main"
-														onClick={() => setTaskModal({ task: t })}
-													>
-														<span className="task-title">{t.title}</span>
-														{t.priority || t.due_at || t.bucket_id ? (
-															<span className="task-meta">
-																{bucketById.get(t.bucket_id) ? (
-																	<span
-																		className="task-bucket"
-																		style={{
-																			color:
-																				bucketById.get(t.bucket_id).color ||
-																				undefined,
-																		}}
-																	>
-																		{bucketById.get(t.bucket_id).name}
-																	</span>
-																) : null}
-																{t.priority ? (
-																	<span
-																		className={`task-prio prio-${t.priority}`}
-																	>
-																		{PRIORITY[t.priority]}
-																	</span>
-																) : null}
-																{t.due_at ? (
-																	<span className="task-due">
-																		due <TimeAgo value={t.due_at} />
-																	</span>
-																) : null}
-															</span>
-														) : null}
-													</button>
-													{t.tags?.length ? (
-														<span className="task-tags">
-															{t.tags.map((tag) => (
-																<button
-																	type="button"
-																	key={tag}
-																	className="task-tag"
-																	style={{ color: tagColorOf(tag) }}
-																	onClick={() => selectTag(tag)}
-																>
-																	#{tag}
-																</button>
-															))}
-														</span>
-													) : null}
-												</div>
-											</li>
-										))}
-										{pending.length === 0 ? (
-											<li className="tasks-empty">
-												Nothing to do. Piuma approves.
-											</li>
-										) : null}
-									</ul>
+									<DndContext
+										sensors={sensors}
+										collisionDetection={closestCenter}
+										modifiers={[
+											restrictToVerticalAxis,
+											restrictToParentElement,
+										]}
+										onDragEnd={onDragEnd}
+									>
+										<SortableContext
+											items={pendingIds}
+											strategy={verticalListSortingStrategy}
+										>
+											<ul className="tasks-list">
+												{pending.map((t) => (
+													<SortableTaskRow
+														key={t.id}
+														t={t}
+														bucket={bucketById.get(t.bucket_id)}
+														toggling={togglingId === t.id}
+														onToggle={(id) => toggleTask.mutate(id)}
+														onOpen={(task) => setTaskModal({ task })}
+														onSelectTag={selectTag}
+														tagColorOf={tagColorOf}
+													/>
+												))}
+												{pending.length === 0 ? (
+													<li className="tasks-empty">
+														Nothing to do. Piuma approves.
+													</li>
+												) : null}
+											</ul>
+										</SortableContext>
+									</DndContext>
 
 									{done.length ? (
 										<details className="tasks-done">
@@ -356,6 +507,7 @@ export default function TasksPage() {
 						task={taskModal.task}
 						defaultTags={taskModal.defaultTags}
 						defaultBucket={taskModal.defaultBucket}
+						newRank={taskModal.newRank}
 						onClose={() => setTaskModal(null)}
 					/>
 				) : null}

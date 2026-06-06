@@ -55,6 +55,19 @@ const WEEKDAYS = [
 // `.day()` (0 = Sunday). Used for grid offsets so the week starts on Monday.
 const mondayIndex = (d) => (d.day() + 6) % 7;
 
+// Monday that starts the week containing `d` (week begins Monday — see memory).
+const startOfWeekMonday = (d) =>
+	d.subtract(mondayIndex(d), "day").startOf("day");
+
+// Calendar layouts selectable from the filter bar (mobile only — web stays
+// month-only). `month` is the infinite-scroll grid; `week`/`3day` are vertical
+// agendas paged by their own length.
+const VIEWS = [
+	{ id: "month", label: "month", span: 0 },
+	{ id: "week", label: "week", span: 7 },
+	{ id: "3day", label: "3 days", span: 3 },
+];
+
 const EMPTY_DAY = { events: [], deadlines: [], occurrences: [] };
 // How many months of history to keep above "today" so the user can scroll up a
 // little, and how many future months to add each time the bottom is reached.
@@ -192,6 +205,9 @@ export default function CalendarScreen({ navigation }) {
 	const [sel, setSel] = useState(ALL); // tag filter selection
 	const [filterOpen, setFilterOpen] = useState(false);
 	const [manageSheet, setManageSheet] = useState(false);
+	const [view, setView] = useState("month"); // "month" | "week" | "3day"
+	// Anchor day for the agenda views; week derives its Monday from this.
+	const [periodStart, setPeriodStart] = useState(() => dayjs().startOf("day"));
 
 	const months = useMemo(() => {
 		const arr = [];
@@ -325,6 +341,44 @@ export default function CalendarScreen({ navigation }) {
 		listRef.current?.scrollToIndex({ index: PAST_MONTHS, animated: true });
 	}, []);
 
+	// Days rendered by the week / 3-day agenda (empty in month view).
+	const agendaDays = useMemo(() => {
+		const span = VIEWS.find((v) => v.id === view)?.span ?? 0;
+		if (!span) return [];
+		const start =
+			view === "week" ? startOfWeekMonday(periodStart) : periodStart;
+		return Array.from({ length: span }, (_, i) => start.add(i, "day"));
+	}, [view, periodStart]);
+
+	const agendaLabel = agendaDays.length
+		? `${agendaDays[0].format("DD MMM")} – ${agendaDays[agendaDays.length - 1].format("DD MMM")}`
+		: "";
+
+	// Switching layout re-anchors to today so the user always lands on "now".
+	const selectView = useCallback((id) => {
+		setView(id);
+		setPeriodStart(dayjs().startOf("day"));
+		setFilterOpen(false);
+	}, []);
+
+	const stepPeriod = useCallback(
+		(dir) => {
+			const span = VIEWS.find((v) => v.id === view)?.span ?? 0;
+			if (span) setPeriodStart((p) => p.add(dir * span, "day"));
+		},
+		[view],
+	);
+
+	const goToday = useCallback(() => {
+		if (view === "month") scrollToToday();
+		else setPeriodStart(dayjs().startOf("day"));
+	}, [view, scrollToToday]);
+
+	const headerTitle =
+		view === "month"
+			? visibleLabel
+			: (agendaDays[0]?.format("MMMM YYYY") ?? visibleLabel);
+
 	// Tapping an item inside the day sheet opens the event sheet, but RN can only
 	// show one modal at a time — so we stash the target and open it once the day
 	// sheet has finished sliding out (onClosed).
@@ -349,21 +403,16 @@ export default function CalendarScreen({ navigation }) {
 				<Pressable onPress={() => navigation.goBack()} hitSlop={10}>
 					<Ionicons name="chevron-back" size={22} color={colors.text} />
 				</Pressable>
-				<Text style={s.title}>{visibleLabel}</Text>
+				<Text style={s.title}>{headerTitle}</Text>
 				<View style={s.headerRight}>
-					<Pressable
-						onPress={() =>
-							sel.key === "all" ? setFilterOpen((o) => !o) : selectAll()
-						}
-						hitSlop={8}
-					>
+					<Pressable onPress={() => setFilterOpen((o) => !o)} hitSlop={8}>
 						<Ionicons
-							name={sel.key === "all" ? "filter-outline" : "close-circle"}
+							name={sel.key === "all" ? "filter-outline" : "filter"}
 							size={18}
 							color={sel.key === "all" ? colors.muted : colors.accent2}
 						/>
 					</Pressable>
-					<Pressable onPress={scrollToToday} hitSlop={8}>
+					<Pressable onPress={goToday} hitSlop={8}>
 						<Text style={s.today}>today</Text>
 					</Pressable>
 				</View>
@@ -371,11 +420,21 @@ export default function CalendarScreen({ navigation }) {
 
 			{filterOpen ? (
 				<View style={s.filterBar}>
+					<View style={s.viewRow}>
+						{VIEWS.map((v) => (
+							<CalChip
+								key={v.id}
+								label={v.label}
+								active={view === v.id}
+								onPress={() => selectView(v.id)}
+							/>
+						))}
+					</View>
 					<ScrollView
 						horizontal
 						showsHorizontalScrollIndicator={false}
 						keyboardShouldPersistTaps="handled"
-						contentContainerStyle={s.filterRow}
+						contentContainerStyle={[s.filterRow, s.filterRowSub]}
 					>
 						<CalChip
 							label="all"
@@ -396,39 +455,72 @@ export default function CalendarScreen({ navigation }) {
 				</View>
 			) : null}
 
-			<View style={s.weekRow}>
-				{WEEKDAYS.map((w) => (
-					<Text key={w.id} style={s.weekday}>
-						{w.label}
-					</Text>
-				))}
-			</View>
+			{view === "month" ? (
+				<>
+					<View style={s.weekRow}>
+						{WEEKDAYS.map((w) => (
+							<Text key={w.id} style={s.weekday}>
+								{w.label}
+							</Text>
+						))}
+					</View>
 
-			<FlatList
-				ref={listRef}
-				data={months}
-				keyExtractor={(m) => m.format("YYYY-MM")}
-				renderItem={renderMonth}
-				getItemLayout={getItemLayout}
-				initialScrollIndex={PAST_MONTHS}
-				initialNumToRender={4}
-				windowSize={9}
-				onEndReached={() => setFuture((f) => f + FUTURE_CHUNK)}
-				onEndReachedThreshold={1.5}
-				onViewableItemsChanged={onViewable}
-				viewabilityConfig={viewabilityConfig}
-				onScrollToIndexFailed={({ index, averageItemHeight }) => {
-					listRef.current?.scrollToOffset({
-						offset: (layout[index]?.offset ?? index * averageItemHeight) || 0,
-						animated: false,
-					});
-				}}
-				showsVerticalScrollIndicator={false}
-				contentContainerStyle={{
-					paddingHorizontal: H_PAD,
-					paddingBottom: insets.bottom + 24,
-				}}
-			/>
+					<FlatList
+						ref={listRef}
+						data={months}
+						keyExtractor={(m) => m.format("YYYY-MM")}
+						renderItem={renderMonth}
+						getItemLayout={getItemLayout}
+						initialScrollIndex={PAST_MONTHS}
+						initialNumToRender={4}
+						windowSize={9}
+						onEndReached={() => setFuture((f) => f + FUTURE_CHUNK)}
+						onEndReachedThreshold={1.5}
+						onViewableItemsChanged={onViewable}
+						viewabilityConfig={viewabilityConfig}
+						onScrollToIndexFailed={({ index, averageItemHeight }) => {
+							listRef.current?.scrollToOffset({
+								offset:
+									(layout[index]?.offset ?? index * averageItemHeight) || 0,
+								animated: false,
+							});
+						}}
+						showsVerticalScrollIndicator={false}
+						contentContainerStyle={{
+							paddingHorizontal: H_PAD,
+							paddingBottom: insets.bottom + 24,
+						}}
+					/>
+				</>
+			) : (
+				<>
+					<View style={s.agendaNav}>
+						<Pressable onPress={() => stepPeriod(-1)} hitSlop={10}>
+							<Ionicons name="chevron-back" size={20} color={colors.text} />
+						</Pressable>
+						<Text style={s.agendaNavLabel}>{agendaLabel}</Text>
+						<Pressable onPress={() => stepPeriod(1)} hitSlop={10}>
+							<Ionicons name="chevron-forward" size={20} color={colors.text} />
+						</Pressable>
+					</View>
+					<AgendaView
+						days={agendaDays}
+						byDay={byDay}
+						todayKey={todayKey}
+						bottomPad={insets.bottom + 24}
+						onOpenEvent={(ev) => setEventSheet({ event: ev })}
+						onAddEvent={(day) => setEventSheet({ date: day })}
+						onToggleTask={(id) => toggleTask.mutate(id)}
+						onToggleOccurrence={(occ) =>
+							completeOccurrence.mutate({
+								recurrenceId: occ.template.id,
+								date: occ.date,
+								done: !occ.done,
+							})
+						}
+					/>
+				</>
+			)}
 
 			{daySheet ? (
 				<DaySheet
@@ -635,6 +727,103 @@ function EventSheet({ event, initialDate, onClose }) {
 	);
 }
 
+// ── Week / 3-day agenda ──────────────────────────────────────────────────────
+// A vertical list of day sections (header + full-width item rows), reusing the
+// same item styling as the day sheet. Paged by the parent via `days`.
+function AgendaView({
+	days,
+	byDay,
+	todayKey,
+	bottomPad,
+	onOpenEvent,
+	onAddEvent,
+	onToggleTask,
+	onToggleOccurrence,
+}) {
+	return (
+		<ScrollView
+			showsVerticalScrollIndicator={false}
+			contentContainerStyle={{
+				paddingHorizontal: H_PAD,
+				paddingBottom: bottomPad,
+			}}
+		>
+			{days.map((day) => {
+				const data = byDay.get(KEY(day)) || EMPTY_DAY;
+				const isToday = KEY(day) === todayKey;
+				const empty =
+					data.events.length +
+						data.deadlines.length +
+						data.occurrences.length ===
+					0;
+				return (
+					<View key={KEY(day)} style={s.agendaDay}>
+						<Pressable style={s.agendaDayHead} onPress={() => onAddEvent(day)}>
+							<Text style={[s.agendaDayLabel, isToday && s.agendaDayToday]}>
+								{day.format("ddd DD MMM")}
+							</Text>
+							<Text style={s.agendaAdd}>+</Text>
+						</Pressable>
+						{empty ? (
+							<Text style={s.agendaEmpty}>—</Text>
+						) : (
+							<>
+								{data.events.map((ev) => (
+									<Pressable
+										key={ev.id}
+										style={[
+											s.item,
+											{ borderLeftColor: ev.color || colors.accent4 },
+										]}
+										onPress={() => onOpenEvent(ev)}
+									>
+										<Text style={s.itemTitle} numberOfLines={1}>
+											{ev.title}
+										</Text>
+										<Text style={s.itemTime}>
+											{ev.all_day ? "all day" : formatTime(ev.starts_at)}
+										</Text>
+									</Pressable>
+								))}
+								{data.occurrences.map((occ) => (
+									<Pressable
+										key={`${occ.template.id}-${occ.date}`}
+										style={[s.item, s.itemTask]}
+										onPress={() => onToggleOccurrence(occ)}
+									>
+										<Text style={s.check}>{occ.done ? "☑" : "☐"}</Text>
+										<Text
+											style={[s.itemTitle, occ.done && s.strike]}
+											numberOfLines={1}
+										>
+											{occ.template.title}
+										</Text>
+									</Pressable>
+								))}
+								{data.deadlines.map((t) => (
+									<Pressable
+										key={t.id}
+										style={[s.item, s.itemTask]}
+										onPress={() => onToggleTask(t.id)}
+									>
+										<Text style={s.check}>{t.done ? "☑" : "☐"}</Text>
+										<Text
+											style={[s.itemTitle, t.done && s.strike]}
+											numberOfLines={1}
+										>
+											{t.title}
+										</Text>
+									</Pressable>
+								))}
+							</>
+						)}
+					</View>
+				);
+			})}
+		</ScrollView>
+	);
+}
+
 // Filter chip for the calendar bucket/tag bar.
 function CalChip({ label, active, color, onPress }) {
 	return (
@@ -684,6 +873,37 @@ const s = StyleSheet.create({
 		paddingVertical: 8,
 	},
 	filterRowSub: { paddingTop: 0 },
+	viewRow: {
+		flexDirection: "row",
+		gap: 6,
+		paddingHorizontal: 12,
+		paddingTop: 8,
+		paddingBottom: 2,
+	},
+	agendaNav: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		paddingHorizontal: 16,
+		paddingVertical: 10,
+		borderBottomWidth: 1,
+		borderBottomColor: colors.border,
+	},
+	agendaNavLabel: { color: colors.text, fontSize: 14, fontWeight: "600" },
+	agendaDay: { marginTop: 14 },
+	agendaDayHead: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		borderBottomWidth: 1,
+		borderBottomColor: colors.border,
+		paddingBottom: 4,
+		marginBottom: 6,
+	},
+	agendaDayLabel: { color: colors.muted, fontSize: 13, fontWeight: "600" },
+	agendaDayToday: { color: colors.accent },
+	agendaAdd: { color: colors.accent, fontSize: 18, paddingHorizontal: 6 },
+	agendaEmpty: { color: colors.muted, fontSize: 12, fontStyle: "italic" },
 	calChip: {
 		borderWidth: 1,
 		borderColor: colors.border,

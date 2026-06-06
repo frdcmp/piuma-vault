@@ -5,6 +5,7 @@ import * as Notifications from "expo-notifications";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { AppState, Platform, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import {
 	initialWindowMetrics,
@@ -115,20 +116,22 @@ export default function App() {
 	}, [present]);
 
 	return (
-		<PersistQueryClientProvider
-			client={queryClient}
-			persistOptions={{ persister: asyncStoragePersister }}
-		>
-			<SafeAreaProvider initialMetrics={initialWindowMetrics}>
-				<KeyboardProvider statusBarTranslucent>
-					<View style={{ flex: 1, backgroundColor: colors.bg }}>
-						<AppNavigator />
-					</View>
-					<SystemBars />
-					<StatusBar style="light" />
-					<AlarmModal />
-				</KeyboardProvider>
-			</SafeAreaProvider>
-		</PersistQueryClientProvider>
+		<GestureHandlerRootView style={{ flex: 1 }}>
+			<PersistQueryClientProvider
+				client={queryClient}
+				persistOptions={{ persister: asyncStoragePersister }}
+			>
+				<SafeAreaProvider initialMetrics={initialWindowMetrics}>
+					<KeyboardProvider statusBarTranslucent>
+						<View style={{ flex: 1, backgroundColor: colors.bg }}>
+							<AppNavigator />
+						</View>
+						<SystemBars />
+						<StatusBar style="light" />
+						<AlarmModal />
+					</KeyboardProvider>
+				</SafeAreaProvider>
+			</PersistQueryClientProvider>
+		</GestureHandlerRootView>
 	);
 }

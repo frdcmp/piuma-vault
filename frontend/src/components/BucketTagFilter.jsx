@@ -28,6 +28,10 @@ export default function BucketTagFilter({
 	tagItems,
 	buckets = [],
 	selectedKey = "all",
+	// Optional: names of tags to highlight as active. When provided, tags
+	// highlight by membership here (multi-select, combinable with a bucket)
+	// rather than by `selectedKey`; omit it for single-select callers.
+	activeTags = null,
 	onSelect,
 	totalCount,
 }) {
@@ -51,15 +55,40 @@ export default function BucketTagFilter({
 	const showBuckets = scope === "tasks" && buckets.length > 0;
 	const total = typeof totalCount === "number" ? totalCount : items.length;
 
-	const navBtn = ({ key, label, count, onClick, extraClass = "", color }) => (
+	const navBtn = ({
+		key,
+		label,
+		count,
+		onClick,
+		extraClass = "",
+		color,
+		// Buckets render a leading colour swatch (a filled square, or hollow for
+		// "no bucket"); tags instead carry their colour on the `#name` text.
+		swatch = false,
+		// Explicit active state; falls back to the single-select `selectedKey`.
+		active,
+	}) => (
 		<li key={key}>
 			<button
 				type="button"
-				className={`tag-nav-btn${extraClass}${selectedKey === key ? " is-active" : ""}`}
+				className={`tag-nav-btn${extraClass}${(active ?? selectedKey === key) ? " is-active" : ""}`}
 				onClick={onClick}
 			>
-				<span className="tag-nav-name" style={color ? { color } : undefined}>
-					{label}
+				<span className="tag-nav-main">
+					{swatch ? (
+						<span
+							className="btf-swatch"
+							style={
+								color ? { background: color, borderColor: color } : undefined
+							}
+						/>
+					) : null}
+					<span
+						className="tag-nav-name"
+						style={!swatch && color ? { color } : undefined}
+					>
+						{label}
+					</span>
 				</span>
 				<span className="tag-nav-count">{count}</span>
 			</button>
@@ -104,6 +133,7 @@ export default function BucketTagFilter({
 									}),
 								extraClass: " btf-bucket",
 								color: b.color || undefined,
+								swatch: true,
 							}),
 						)}
 						{navBtn({
@@ -117,6 +147,7 @@ export default function BucketTagFilter({
 									label: "No bucket",
 								}),
 							extraClass: " btf-bucket btf-inbox-name",
+							swatch: true,
 						})}
 					</ul>
 				</div>
@@ -137,6 +168,7 @@ export default function BucketTagFilter({
 									label: `#${name}`,
 								}),
 							color: colorOf(name),
+							active: activeTags ? activeTags.includes(name) : undefined,
 						}),
 					)}
 					{tagNames.length === 0 ? (

@@ -35,6 +35,8 @@ const MonthBlock = forwardRef(function MonthBlock(
 		keyOf,
 		onEventClick,
 		onDayClick,
+		onDeadlineClick,
+		onOccurrenceClick,
 		onToggleDeadline,
 		onToggleOccurrence,
 	},
@@ -97,13 +99,24 @@ const MonthBlock = forwardRef(function MonthBlock(
 										className={`cal-pill cal-pill--task${occ.done ? " is-done" : ""}`}
 										onClick={(e) => {
 											e.stopPropagation();
-											onToggleOccurrence(occ);
+											onOccurrenceClick(occ);
 										}}
 										title={`${occ.template.title} (recurring)`}
 									>
-										<span className="cal-check" aria-hidden="true">
+										<button
+											type="button"
+											className="cal-check"
+											aria-pressed={occ.done}
+											aria-label={
+												occ.done ? "Mark incomplete" : "Mark complete"
+											}
+											onClick={(e) => {
+												e.stopPropagation();
+												onToggleOccurrence(occ);
+											}}
+										>
 											{occ.done ? "☑" : "☐"}
-										</span>
+										</button>
 										<span className="cal-pill-label">{occ.template.title}</span>
 									</button>
 								))}
@@ -115,13 +128,22 @@ const MonthBlock = forwardRef(function MonthBlock(
 										className={`cal-pill cal-pill--task${t.done ? " is-done" : ""}`}
 										onClick={(e) => {
 											e.stopPropagation();
-											onToggleDeadline(t);
+											onDeadlineClick(t);
 										}}
 										title={`${t.title} (due)`}
 									>
-										<span className="cal-check" aria-hidden="true">
+										<button
+											type="button"
+											className="cal-check"
+											aria-pressed={t.done}
+											aria-label={t.done ? "Mark incomplete" : "Mark complete"}
+											onClick={(e) => {
+												e.stopPropagation();
+												onToggleDeadline(t);
+											}}
+										>
 											{t.done ? "☑" : "☐"}
-										</span>
+										</button>
 										<span className="cal-pill-label">{t.title}</span>
 									</button>
 								))}

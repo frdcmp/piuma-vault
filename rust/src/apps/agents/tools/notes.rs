@@ -67,7 +67,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                 "properties": {
                     "title": { "type": "string" },
                     "content": { "type": "string", "description": "markdown body" },
-                    "folder": { "type": "string", "description": "folder path (default '/')" },
+                    "folder": { "type": "string", "description": "folder path (default '/'). Verify the path against search_folders/list_folders first; reuse an existing folder and match it verbatim rather than creating a near-duplicate." },
                     "tags": { "type": "array", "items": { "type": "string" } }
                 },
                 "required": ["title", "content"]

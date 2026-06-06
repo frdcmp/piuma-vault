@@ -28,7 +28,9 @@ pub struct Task {
     pub bucket_id: Option<uuid::Uuid>,
     #[sqlx(default)]
     pub tags: Vec<String>,
-    pub sort_order: i32,
+    // Fractional-index sort key (see db_init). Null on legacy/externally-created
+    // rows; those sort last (NULLS LAST) until they're moved.
+    pub rank: Option<String>,
     pub recurrence_id: Option<uuid::Uuid>,
     pub occurrence_date: Option<NaiveDate>,
     #[serde(default = "default_alerts")]
@@ -57,6 +59,10 @@ pub struct CreateTaskRequest {
     pub tags: Vec<String>,
     #[serde(default = "default_alerts")]
     pub alerts: serde_json::Value,
+    // Optional manual sort key. Clients pass a fractional-index key to place the
+    // new task; omitted (null) lands it after ranked tasks (NULLS LAST).
+    #[serde(default)]
+    pub rank: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -70,7 +76,7 @@ pub struct UpdateTaskRequest {
     #[serde(default, deserialize_with = "double_option")]
     pub bucket_id: Option<Option<uuid::Uuid>>,
     pub tags: Option<Vec<String>>,
-    pub sort_order: Option<i32>,
+    pub rank: Option<String>,
     pub done: Option<bool>,
     pub alerts: Option<serde_json::Value>,
 }

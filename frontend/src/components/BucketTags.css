@@ -64,6 +64,9 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	/* Room for descenders (g, p, y) — `overflow: hidden` would otherwise clip
+	   them; a little bottom padding extends the clip box below the text. */
+	padding-bottom: 2px;
 }
 
 .btf .tag-nav-count {
@@ -89,16 +92,36 @@
 	color: var(--muted);
 }
 
-.btf .btf-bucket .btf-bucket-name {
+/* Name + (optional) swatch share the row's left side; count stays right. */
+.btf .tag-nav-main {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+/* Bucket marker — a filled square in the bucket's colour (vs. tags, which are
+   `#name` coloured text). Hollow square = "no bucket". */
+.btf .btf-swatch {
+	width: 12px;
+	height: 12px;
+	border-radius: 3px;
+	flex: none;
+	background: transparent;
+	border: 1px solid var(--muted);
+}
+
+/* Buckets read as headings: bolder, uppercase, neutral text (colour is in the
+   swatch). Tags stay lighter weight with their coloured `#name`. */
+.btf .btf-bucket .tag-nav-name {
 	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	font-size: 0.74rem;
 }
 
-.btf .btf-inbox-name {
+.btf .btf-inbox-name .tag-nav-name {
 	color: var(--muted);
-	font-weight: 600;
 }
 
 .btf .btf-tags {

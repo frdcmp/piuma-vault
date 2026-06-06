@@ -408,7 +408,14 @@ const TABLES: &[TableDefinition] = &[
                 completed_at TIMESTAMPTZ,
                 due_at TIMESTAMPTZ,
                 priority SMALLINT NOT NULL DEFAULT 0,
-                sort_order INTEGER NOT NULL DEFAULT 0,
+                -- Manual sort position: a fractional-index key (LexoRank-style,
+                -- generated client-side via `fractional-indexing`). A new key can
+                -- always be minted strictly between any two neighbours, so
+                -- reordering touches one row. COLLATE "C" is REQUIRED: the keys
+                -- assume byte/ASCII ordering, but the DB's default locale
+                -- collation (e.g. en_US.utf8) sorts 'aa' before 'aA', which would
+                -- silently corrupt the order.
+                rank TEXT COLLATE "C",
                 bucket_id UUID REFERENCES db_buckets(id) ON DELETE SET NULL,
                 recurrence_id UUID REFERENCES db_recurring_tasks(id) ON DELETE CASCADE,
                 occurrence_date DATE,
@@ -423,6 +430,7 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_tasks_user_done ON db_tasks USING btree (user_id, done)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_user_bucket ON db_tasks USING btree (user_id, bucket_id)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_due ON db_tasks USING btree (due_at)",
+            "CREATE INDEX IF NOT EXISTS idx_tasks_user_rank ON db_tasks USING btree (user_id, done, rank)",
         ],
     },
     // Tag↔entity join tables (relational tags). Created after the entity tables

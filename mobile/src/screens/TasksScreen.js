@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
 	ActivityIndicator,
 	Pressable,
@@ -9,6 +9,9 @@ import {
 	TextInput,
 	View,
 } from "react-native";
+import DraggableFlatList, {
+	ScaleDecorator,
+} from "react-native-draggable-flatlist";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AlertsField from "../components/AlertsField";
 import BottomSheet from "../components/BottomSheet";
@@ -33,6 +36,7 @@ import {
 	useUpdateTask,
 } from "../queries/tasksQuery";
 import { formatDate } from "../utils/dateTime";
+import { rankBefore, rankBetween } from "../utils/rank";
 import { tagColor } from "../utils/tagColor";
 import { colors, mono as MONO } from "../utils/theme";
 
@@ -43,6 +47,14 @@ const PRIORITY_COLOR = [
 	colors.accent2,
 	colors.accent,
 	colors.accent3,
+];
+// Faint card-background wash per priority (low-alpha hex on the priority hue),
+// matching the web cards. Index 0 (none) = no tint.
+const PRIORITY_TINT = [
+	"transparent",
+	`${colors.accent2}14`,
+	`${colors.accent}14`,
+	`${colors.accent3}1f`,
 ];
 const DOW = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
 const DOW_LABEL = {
@@ -72,14 +84,21 @@ export default function TasksScreen({ navigation }) {
 	const { data: buckets = [] } = useBuckets();
 	const { data: tagRegistry = [] } = useTagRegistry();
 	const toggleTask = useToggleTask();
+	const updateTask = useUpdateTask();
 	const deleteRecurring = useDeleteRecurringTask();
 
 	const [taskSheet, setTaskSheet] = useState(null); // { task } | {} | null
 	const [recSheet, setRecSheet] = useState(false);
 	const [manageSheet, setManageSheet] = useState(false);
-	const [sel, setSel] = useState(ALL); // { key, names?, bucketId?, label }
+	// Bucket + tag filter independently and combine (AND). `bucketSel` is the
+	// bucket constraint (all / nobucket / a specific bucket); `tags` is the active
+	// tag (single, kept as an array so it composes with the bucket). "all" resets
+	// both; switching bucket clears the tag.
+	const [bucketSel, setBucketSel] = useState(ALL); // { key, bucketId?, label }
+	const [tags, setTags] = useState([]); // active tag names (0 or 1)
 	const [showRecurring, setShowRecurring] = useState(false); // chip-row view toggle
 	const [tagQuery, setTagQuery] = useState("");
+	const [searchOpen, setSearchOpen] = useState(false); // tag-search field revealed?
 
 	const oneOff = tasks.filter((t) => !t.recurrence_id);
 	const q = tagQuery.trim().toLowerCase();
@@ -91,12 +110,15 @@ export default function TasksScreen({ navigation }) {
 
 	// The tag row reflects the current bucket scope: when a bucket (or "no
 	// bucket") is selected, only tags used by tasks in that bucket are shown,
-	// with counts scoped to it. Otherwise ("all"/tag selection) → all tags.
-	const tagScope = sel.key.startsWith("bucket:")
-		? oneOff.filter((t) => t.bucket_id === sel.bucketId)
-		: sel.key === "nobucket"
-			? oneOff.filter((t) => !t.bucket_id)
-			: oneOff;
+	// with counts scoped to it. Otherwise ("all") → all tags. Done tasks are
+	// excluded so only tags with actual to-dos appear (counts reflect to-dos).
+	const tagScope = (
+		bucketSel.key.startsWith("bucket:")
+			? oneOff.filter((t) => t.bucket_id === bucketSel.bucketId)
+			: bucketSel.key === "nobucket"
+				? oneOff.filter((t) => !t.bucket_id)
+				: oneOff
+	).filter((t) => !t.done);
 	const tagCounts = new Map();
 	for (const t of tagScope)
 		for (const n of t.tags ?? []) tagCounts.set(n, (tagCounts.get(n) ?? 0) + 1);
@@ -105,46 +127,85 @@ export default function TasksScreen({ navigation }) {
 		.sort();
 	const noBucketCount = oneOff.filter((t) => !t.bucket_id).length;
 
-	// Apply the chip selection: a bucket (by the task's own bucket_id), the
-	// "no bucket" group, a single tag, or everything.
+	// Apply the bucket constraint, then narrow by the active tag — the two
+	// combine, so the bucket stays in effect while a tag filters on top.
 	let visible = oneOff;
-	if (sel.key.startsWith("bucket:"))
-		visible = oneOff.filter((t) => t.bucket_id === sel.bucketId);
-	else if (sel.key === "nobucket") visible = oneOff.filter((t) => !t.bucket_id);
-	else if (sel.names)
-		visible = oneOff.filter((t) => t.tags?.some((n) => sel.names.includes(n)));
-	// Highest priority first; within a priority tier, cluster tasks that share
-	// tags (by normalized tag signature). Untagged tasks (→ "￿") trail.
-	const pending = visible
-		.filter((t) => !t.done)
-		.sort((a, b) => {
-			const byPriority = (b.priority ?? 0) - (a.priority ?? 0);
-			if (byPriority !== 0) return byPriority;
-			const ka = (a.tags ?? []).slice().sort().join(",") || "￿";
-			const kb = (b.tags ?? []).slice().sort().join(",") || "￿";
-			return ka.localeCompare(kb);
-		});
+	if (bucketSel.key.startsWith("bucket:"))
+		visible = visible.filter((t) => t.bucket_id === bucketSel.bucketId);
+	else if (bucketSel.key === "nobucket")
+		visible = visible.filter((t) => !t.bucket_id);
+	if (tags.length)
+		visible = visible.filter((t) => t.tags?.some((n) => tags.includes(n)));
+	// The API returns tasks already in manual order (by `rank`); filtering keeps
+	// it. `serverPending` is the source of truth; `pending` mirrors it but holds
+	// the user's in-progress drag so a reorder doesn't snap back while the rank
+	// PUT round-trips.
+	const serverPending = visible.filter((t) => !t.done);
 	const done = visible.filter((t) => t.done);
+
+	const byId = new Map(serverPending.map((t) => [t.id, t]));
+	const [pending, setPending] = useState([]);
+	// Re-sync to the server order only when the *set* of pending tasks changes
+	// (add / remove / complete / filter switch) — not on reorder, so an
+	// optimistic drag isn't clobbered by the refetch it triggers.
+	const setSig = [...serverPending.map((t) => t.id)].sort().join(",");
+	// biome-ignore lint/correctness/useExhaustiveDependencies: re-sync keyed on the id-set, not order
+	useEffect(() => {
+		setPending(serverPending);
+	}, [setSig]);
+
+	// Drop handler: optimistically apply the new order, then mint a key strictly
+	// between the new neighbours and persist it.
+	const onDragEnd = ({ data, to }) => {
+		setPending(data);
+		const moved = data[to];
+		if (!moved) return;
+		const before = byId.get(data[to - 1]?.id)?.rank ?? null;
+		const after = byId.get(data[to + 1]?.id)?.rank ?? null;
+		updateTask.mutate({ id: moved.id, rank: rankBetween(before, after) });
+	};
+
+	// Rank that drops a brand-new task at the top of the current list.
+	const newTaskRank = () => rankBefore(pending[0]?.rank);
 
 	// The id of the task whose toggle is in flight, so we can spin just its box.
 	const togglingId = toggleTask.isPending ? toggleTask.variables : null;
 
 	const selectAll = () => {
+		// Master reset — clear both the bucket and the tag.
 		setShowRecurring(false);
-		setSel(ALL);
+		setBucketSel(ALL);
+		setTags([]);
 	};
 	const selectBucket = (b) => {
+		// Switching bucket resets the tag (the tag row is scoped to the bucket).
 		setShowRecurring(false);
-		setSel({ key: `bucket:${b.id}`, bucketId: b.id, label: b.name });
+		setBucketSel({ key: `bucket:${b.id}`, bucketId: b.id, label: b.name });
+		setTags([]);
 	};
 	const selectNoBucket = () => {
 		setShowRecurring(false);
-		setSel({ key: "nobucket", label: "no bucket" });
+		setBucketSel({ key: "nobucket", label: "no bucket" });
+		setTags([]);
 	};
+	// Tapping a tag on a task row selects just that tag, keeping the bucket.
 	const selectTag = (name) => {
 		setShowRecurring(false);
-		setSel({ key: `tag:${name}`, names: [name], label: `#${name}` });
+		setTags([name]);
 	};
+	// Tapping a tag chip toggles it (one at a time), keeping the bucket.
+	const toggleTag = (name) => {
+		setShowRecurring(false);
+		setTags((prev) => (prev.includes(name) ? [] : [name]));
+	};
+
+	// Heading reflects the combined filter, e.g. "piuma-vault + #bug".
+	const filterLabel = [
+		bucketSel.key !== "all" ? bucketSel.label : null,
+		...tags.map((t) => `#${t}`),
+	]
+		.filter(Boolean)
+		.join(" + ");
 
 	return (
 		<View style={[s.root, { paddingTop: insets.top }]}>
@@ -160,10 +221,12 @@ export default function TasksScreen({ navigation }) {
 					<Pressable
 						onPress={() =>
 							setTaskSheet({
-								defaultTags: sel.key.startsWith("tag:") ? sel.names : [],
-								defaultBucket: sel.key.startsWith("bucket:")
-									? sel.bucketId
+								defaultTags: tags,
+								defaultBucket: bucketSel.key.startsWith("bucket:")
+									? bucketSel.bucketId
 									: null,
+								// New tasks land at the top of the list.
+								newRank: newTaskRank(),
 							})
 						}
 						hitSlop={10}
@@ -174,23 +237,31 @@ export default function TasksScreen({ navigation }) {
 			</View>
 
 			<View style={s.chipBar}>
-				<View style={s.tagSearchRow}>
-					<Ionicons name="search" size={14} color={colors.muted} />
-					<TextInput
-						style={s.tagSearch}
-						value={tagQuery}
-						onChangeText={setTagQuery}
-						placeholder="Filter tags"
-						placeholderTextColor={colors.muted}
-						autoCapitalize="none"
-						autoCorrect={false}
-					/>
-					{tagQuery ? (
-						<Pressable onPress={() => setTagQuery("")} hitSlop={8}>
-							<Ionicons name="close" size={14} color={colors.muted} />
+				{/* Tag-search field — hidden until the search chip is tapped. */}
+				{searchOpen ? (
+					<View style={s.tagSearchRow}>
+						<Ionicons name="search" size={14} color={colors.muted} />
+						<TextInput
+							style={s.tagSearch}
+							value={tagQuery}
+							onChangeText={setTagQuery}
+							placeholder="Filter tags"
+							placeholderTextColor={colors.muted}
+							autoCapitalize="none"
+							autoCorrect={false}
+							autoFocus
+						/>
+						<Pressable
+							onPress={() => {
+								setTagQuery("");
+								setSearchOpen(false);
+							}}
+							hitSlop={8}
+						>
+							<Ionicons name="close" size={16} color={colors.muted} />
 						</Pressable>
-					) : null}
-				</View>
+					</View>
+				) : null}
 				{/* Row 1 — buckets (task groups) */}
 				<ScrollView
 					horizontal
@@ -198,10 +269,22 @@ export default function TasksScreen({ navigation }) {
 					keyboardShouldPersistTaps="handled"
 					contentContainerStyle={s.chipRow}
 				>
+					{/* Reveals the tag-search field. */}
+					<Pressable
+						style={[s.searchChip, searchOpen && s.chipOn]}
+						onPress={() => setSearchOpen((o) => !o)}
+						hitSlop={6}
+					>
+						<Ionicons
+							name="search"
+							size={14}
+							color={searchOpen ? colors.accent2 : colors.muted}
+						/>
+					</Pressable>
 					<Chip
 						label="all"
 						count={oneOff.length}
-						active={!showRecurring && sel.key === "all"}
+						active={!showRecurring && bucketSel.key === "all"}
 						onPress={selectAll}
 					/>
 					{buckets.map((b) => (
@@ -210,7 +293,8 @@ export default function TasksScreen({ navigation }) {
 							label={b.name}
 							count={oneOff.filter((t) => t.bucket_id === b.id).length}
 							color={b.color || undefined}
-							active={!showRecurring && sel.key === `bucket:${b.id}`}
+							swatch
+							active={!showRecurring && bucketSel.key === `bucket:${b.id}`}
 							onPress={() => selectBucket(b)}
 						/>
 					))}
@@ -218,7 +302,8 @@ export default function TasksScreen({ navigation }) {
 						<Chip
 							label="no bucket"
 							count={noBucketCount}
-							active={!showRecurring && sel.key === "nobucket"}
+							swatch
+							active={!showRecurring && bucketSel.key === "nobucket"}
 							onPress={selectNoBucket}
 						/>
 					) : null}
@@ -244,8 +329,8 @@ export default function TasksScreen({ navigation }) {
 								label={`#${name}`}
 								count={tagCounts.get(name)}
 								color={tagColorOf(name)}
-								active={sel.key === `tag:${name}`}
-								onPress={() => selectTag(name)}
+								active={tags.includes(name)}
+								onPress={() => toggleTag(name)}
 							/>
 						))}
 					</ScrollView>
@@ -288,83 +373,76 @@ export default function TasksScreen({ navigation }) {
 					))}
 				</ScrollView>
 			) : (
-				<ScrollView contentContainerStyle={s.scroll}>
-					<Text style={s.section}>
-						{sel.key !== "all" ? `${sel.label} · ` : "TO DO · "}
-						{pending.length}
-					</Text>
-					{pending.length === 0 ? (
-						<Text style={s.empty}>Nothing to do. Piuma approves.</Text>
-					) : null}
-					{pending.map((t) => (
-						<View key={t.id} style={s.taskRow}>
-							<Pressable
-								onPress={() => toggleTask.mutate(t.id)}
-								hitSlop={8}
-								disabled={togglingId === t.id}
-							>
-								{togglingId === t.id ? (
-									<ActivityIndicator
-										size="small"
-										color={PRIORITY_COLOR[t.priority]}
-										style={s.checkSpin}
-									/>
-								) : (
-									<Text
-										style={[s.check, { color: PRIORITY_COLOR[t.priority] }]}
-									>
-										☐
-									</Text>
-								)}
-							</Pressable>
-							<Pressable
-								style={s.taskMain}
-								onPress={() => setTaskSheet({ task: t })}
-							>
-								<Text style={s.taskTitle}>{t.title}</Text>
-								<View style={s.metaRow}>
-									{bucketById.get(t.bucket_id) ? (
-										<Text
-											style={[
-												s.meta,
-												s.bucketBadge,
-												bucketById.get(t.bucket_id).color
-													? { color: bucketById.get(t.bucket_id).color }
-													: null,
-											]}
-										>
-											{bucketById.get(t.bucket_id).name}
-										</Text>
-									) : null}
-									{t.priority ? (
-										<Text style={[s.meta, s.prio]}>{PRIORITY[t.priority]}</Text>
-									) : null}
-									{t.due_at ? (
-										<Text style={[s.meta, s.due]}>
-											due <TimeAgo value={t.due_at} />
-										</Text>
-									) : null}
-									{(t.tags || []).map((tag) => (
-										<Pressable
-											key={tag}
-											hitSlop={4}
-											onPress={() => selectTag(tag)}
-										>
-											<Text style={[s.meta, { color: tagColor(tag) }]}>
-												#{tag}
-											</Text>
-										</Pressable>
-									))}
-								</View>
-							</Pressable>
-						</View>
-					))}
-
-					{done.length > 0 ? (
+				/* Long-press a row to drag it; tap still opens the task. The list is
+				   its own scroller (a FlatList), so the section header and the DONE
+				   block ride along as header/footer rather than nesting in a
+				   ScrollView. */
+				<DraggableFlatList
+					data={pending}
+					onDragEnd={onDragEnd}
+					keyExtractor={(t) => t.id}
+					contentContainerStyle={s.scroll}
+					activationDistance={12}
+					ListHeaderComponent={
 						<>
-							<Text style={s.section}>DONE · {done.length}</Text>
-							{done.map((t) => (
-								<View key={t.id} style={[s.taskRow, s.dim]}>
+							<Text style={s.section}>
+								{filterLabel ? `${filterLabel} · ` : "TO DO · "}
+								{pending.length}
+							</Text>
+							{pending.length === 0 ? (
+								<Text style={s.empty}>Nothing to do. Piuma approves.</Text>
+							) : null}
+						</>
+					}
+					ListFooterComponent={
+						done.length > 0 ? (
+							<>
+								<Text style={s.section}>DONE · {done.length}</Text>
+								{done.map((t) => (
+									<View key={t.id} style={[s.taskRow, s.dim]}>
+										<Pressable
+											onPress={() => toggleTask.mutate(t.id)}
+											hitSlop={8}
+											disabled={togglingId === t.id}
+										>
+											{togglingId === t.id ? (
+												<ActivityIndicator
+													size="small"
+													color={colors.accent2}
+													style={s.checkSpin}
+												/>
+											) : (
+												<Text style={s.check}>☑</Text>
+											)}
+										</Pressable>
+										<Pressable
+											style={s.taskMain}
+											onPress={() => setTaskSheet({ task: t })}
+										>
+											<Text style={[s.taskTitle, s.strike]}>{t.title}</Text>
+										</Pressable>
+									</View>
+								))}
+							</>
+						) : null
+					}
+					renderItem={({ item: t, drag, isActive }) => {
+						const bucket = bucketById.get(t.bucket_id);
+						const tagsOf = t.tags || [];
+						return (
+							<ScaleDecorator>
+								<View
+									style={[
+										s.taskRow,
+										t.priority
+											? {
+													borderLeftColor: PRIORITY_COLOR[t.priority],
+													backgroundColor: PRIORITY_TINT[t.priority],
+												}
+											: null,
+										isActive && s.taskRowActive,
+									]}
+								>
 									<Pressable
 										onPress={() => toggleTask.mutate(t.id)}
 										hitSlop={8}
@@ -373,24 +451,99 @@ export default function TasksScreen({ navigation }) {
 										{togglingId === t.id ? (
 											<ActivityIndicator
 												size="small"
-												color={colors.accent2}
+												color={PRIORITY_COLOR[t.priority]}
 												style={s.checkSpin}
 											/>
 										) : (
-											<Text style={s.check}>☑</Text>
+											<Text
+												style={[s.check, { color: PRIORITY_COLOR[t.priority] }]}
+											>
+												☐
+											</Text>
 										)}
 									</Pressable>
 									<Pressable
 										style={s.taskMain}
 										onPress={() => setTaskSheet({ task: t })}
+										onLongPress={drag}
+										delayLongPress={200}
 									>
-										<Text style={[s.taskTitle, s.strike]}>{t.title}</Text>
+										{/* Title fills the row (priority shows via the card's left
+										   bar). */}
+										<Text style={s.taskTitle} numberOfLines={2}>
+											{t.title}
+										</Text>
+										{/* Meta line: bucket + due on the left, tags on the right. */}
+										{bucket || t.due_at || tagsOf.length ? (
+											<View style={s.metaRow}>
+												<View style={s.metaLeft}>
+													{bucket ? (
+														<View style={s.bucketTag}>
+															<View
+																style={[
+																	s.bucketSwatch,
+																	bucket.color
+																		? {
+																				backgroundColor: bucket.color,
+																				borderColor: bucket.color,
+																			}
+																		: null,
+																]}
+															/>
+															<Text
+																style={[s.meta, s.bucketName]}
+																numberOfLines={1}
+															>
+																{bucket.name}
+															</Text>
+														</View>
+													) : null}
+													{bucket && t.due_at ? (
+														<Text style={[s.meta, s.metaSep]}>·</Text>
+													) : null}
+													{t.due_at ? (
+														<Text style={[s.meta, s.due]}>
+															due <TimeAgo value={t.due_at} />
+														</Text>
+													) : null}
+												</View>
+												{tagsOf.length ? (
+													<View style={s.tagsRight}>
+														{tagsOf.map((tag) => (
+															<Pressable
+																key={tag}
+																hitSlop={4}
+																onPress={() => selectTag(tag)}
+															>
+																<Text
+																	style={[s.meta, { color: tagColorOf(tag) }]}
+																>
+																	#{tag}
+																</Text>
+															</Pressable>
+														))}
+													</View>
+												) : null}
+											</View>
+										) : null}
+									</Pressable>
+									{/* Grab handle — long-press to start dragging. */}
+									<Pressable
+										onLongPress={drag}
+										delayLongPress={200}
+										hitSlop={8}
+									>
+										<Ionicons
+											name="reorder-three"
+											size={20}
+											color={colors.muted}
+										/>
 									</Pressable>
 								</View>
-							))}
-						</>
-					) : null}
-				</ScrollView>
+							</ScaleDecorator>
+						);
+					}}
+				/>
 			)}
 
 			{taskSheet ? (
@@ -398,6 +551,7 @@ export default function TasksScreen({ navigation }) {
 					task={taskSheet.task}
 					defaultTags={taskSheet.defaultTags}
 					defaultBucket={taskSheet.defaultBucket}
+					newRank={taskSheet.newRank}
 					onClose={() => setTaskSheet(null)}
 				/>
 			) : null}
@@ -411,14 +565,31 @@ export default function TasksScreen({ navigation }) {
 
 // ── Filter chip (tag group / recurring) ─────────────────────────────────────
 
-function Chip({ label, count, active, color, onPress }) {
+function Chip({ label, count, active, color, swatch, onPress }) {
 	return (
 		<Pressable
 			style={[s.chip, active && s.chipOn]}
 			onPress={onPress}
 			hitSlop={6}
 		>
-			<Text style={[s.chipText, active && s.chipTextOn, color && { color }]}>
+			{/* Buckets get a filled colour square (hollow = "no bucket"); tags carry
+			   their colour on the label text instead. */}
+			{swatch ? (
+				<View
+					style={[
+						s.chipSwatch,
+						color ? { backgroundColor: color, borderColor: color } : null,
+					]}
+				/>
+			) : null}
+			<Text
+				style={[
+					s.chipText,
+					swatch && s.chipTextBucket,
+					active && s.chipTextOn,
+					!swatch && color ? { color } : null,
+				]}
+			>
 				{label}
 			</Text>
 			<Text style={[s.chipCount, active && s.chipTextOn]}>{count}</Text>
@@ -428,7 +599,13 @@ function Chip({ label, count, active, color, onPress }) {
 
 // ── Create-task sheet ──────────────────────────────────────────────────────
 
-function TaskSheet({ task, defaultTags = [], defaultBucket = null, onClose }) {
+function TaskSheet({
+	task,
+	defaultTags = [],
+	defaultBucket = null,
+	newRank = null,
+	onClose,
+}) {
 	const editing = !!task;
 	const createTask = useCreateTask();
 	const updateTask = useUpdateTask();
@@ -458,7 +635,7 @@ function TaskSheet({ task, defaultTags = [], defaultBucket = null, onClose }) {
 		if (editing) {
 			updateTask.mutate({ id: task.id, ...payload }, { onSuccess: onClose });
 		} else {
-			createTask.mutate(payload, { onSuccess: onClose });
+			createTask.mutate({ ...payload, rank: newRank }, { onSuccess: onClose });
 		}
 	};
 
@@ -801,7 +978,32 @@ const s = StyleSheet.create({
 		paddingVertical: 6,
 	},
 	chipOn: { borderColor: colors.accent2, backgroundColor: colors.bg },
+	// Icon-only chip that reveals the tag-search field.
+	searchChip: {
+		justifyContent: "center",
+		alignItems: "center",
+		borderWidth: 1,
+		borderColor: colors.border,
+		backgroundColor: colors.bgSoft,
+		paddingHorizontal: 9,
+		paddingVertical: 6,
+	},
 	chipText: { color: colors.text, fontFamily: MONO, fontSize: 12 },
+	// Bucket label reads as a heading (colour lives in the swatch).
+	chipTextBucket: {
+		fontWeight: "700",
+		textTransform: "uppercase",
+		letterSpacing: 0.4,
+	},
+	// Filled square = bucket colour; hollow (border only) = "no bucket".
+	chipSwatch: {
+		width: 10,
+		height: 10,
+		borderRadius: 2,
+		borderWidth: 1,
+		borderColor: colors.muted,
+		backgroundColor: "transparent",
+	},
 	chipTextOn: { color: colors.accent2 },
 	chipCount: { color: colors.muted, fontFamily: MONO, fontSize: 11 },
 	scroll: { padding: 16, paddingBottom: 48 },
@@ -842,10 +1044,22 @@ const s = StyleSheet.create({
 		backgroundColor: colors.bgSoft,
 		borderWidth: 1,
 		borderColor: colors.border,
+		// Thicker left edge carries the task's priority colour (see PRIORITY_*).
+		borderLeftWidth: 3,
 		// Square edges = pixel.
 		paddingHorizontal: 10,
 		paddingVertical: 9,
 		marginBottom: 6,
+	},
+	// Row lifted while being dragged.
+	taskRowActive: {
+		borderColor: colors.accent2,
+		backgroundColor: colors.bg,
+		shadowColor: "#000",
+		shadowOpacity: 0.4,
+		shadowRadius: 8,
+		shadowOffset: { width: 0, height: 4 },
+		elevation: 6,
 	},
 	dim: { opacity: 0.55 },
 	check: { color: colors.accent2, fontFamily: MONO, fontSize: 18 },
@@ -854,16 +1068,54 @@ const s = StyleSheet.create({
 	taskMain: { flex: 1 },
 	taskTitle: { color: colors.text, fontFamily: MONO, fontSize: 14 },
 	strike: { textDecorationLine: "line-through", flex: 1 },
-	metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 3 },
+	// Meta line: bucket+due cluster on the left, tags right-aligned.
+	metaRow: {
+		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: 8,
+		marginTop: 4,
+	},
+	metaLeft: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		flexShrink: 1,
+		minWidth: 0,
+	},
+	tagsRight: {
+		flex: 1,
+		flexDirection: "row",
+		flexWrap: "wrap",
+		justifyContent: "flex-end",
+		gap: 8,
+	},
 	meta: { fontFamily: MONO, fontSize: 11, letterSpacing: 0.3 },
 	due: { color: colors.accent },
 	tag: { color: colors.accent2 },
 	rrule: { color: colors.accent4 },
-	prio: { color: colors.accent, textTransform: "uppercase" },
-	bucketBadge: {
-		color: colors.accent2,
+	metaSep: { color: colors.muted },
+	// Bucket on the meta line: a colour swatch + uppercase name (colour lives in
+	// the swatch), matching the filter chips / web sidebar.
+	bucketTag: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 5,
+		flexShrink: 1,
+		minWidth: 0,
+	},
+	bucketSwatch: {
+		width: 8,
+		height: 8,
+		borderRadius: 2,
+		borderWidth: 1,
+		borderColor: colors.muted,
+		backgroundColor: "transparent",
+	},
+	bucketName: {
+		color: colors.muted,
 		textTransform: "uppercase",
 		letterSpacing: 0.5,
+		flexShrink: 1,
 	},
 	// Forms
 	form: { paddingHorizontal: 16, paddingTop: 2, gap: 4 },
