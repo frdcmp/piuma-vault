@@ -22,6 +22,10 @@ import "./BucketTags.css";
 export default function BucketTagFilter({
 	scope,
 	items = [],
+	// Source for the Tags section — defaults to `items`. The page passes a
+	// bucket-scoped subset here so selecting a bucket narrows the tag list to
+	// only tags used inside it (bucket counts still come from `items`).
+	tagItems,
 	buckets = [],
 	selectedKey = "all",
 	onSelect,
@@ -35,9 +39,10 @@ export default function BucketTagFilter({
 	const colorOf = (name) =>
 		registry.find((r) => r.name === name)?.color || tagColor(name);
 
-	// Tag usage counts, derived from the loaded items.
+	// Tag usage counts, derived from the (optionally bucket-scoped) tag source.
+	const tagSource = tagItems ?? items;
 	const tagCounts = new Map();
-	for (const it of items) {
+	for (const it of tagSource) {
 		for (const n of it.tags ?? [])
 			tagCounts.set(n, (tagCounts.get(n) ?? 0) + 1);
 	}

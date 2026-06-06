@@ -89,9 +89,16 @@ export default function TasksScreen({ navigation }) {
 	const tagColorOf = (name) =>
 		tagRegistry.find((r) => r.name === name)?.color || tagColor(name);
 
-	// Tag usage counts derived from the loaded tasks (tags are flat now).
+	// The tag row reflects the current bucket scope: when a bucket (or "no
+	// bucket") is selected, only tags used by tasks in that bucket are shown,
+	// with counts scoped to it. Otherwise ("all"/tag selection) → all tags.
+	const tagScope = sel.key.startsWith("bucket:")
+		? oneOff.filter((t) => t.bucket_id === sel.bucketId)
+		: sel.key === "nobucket"
+			? oneOff.filter((t) => !t.bucket_id)
+			: oneOff;
 	const tagCounts = new Map();
-	for (const t of oneOff)
+	for (const t of tagScope)
 		for (const n of t.tags ?? []) tagCounts.set(n, (tagCounts.get(n) ?? 0) + 1);
 	const tagList = [...tagCounts.keys()]
 		.filter((n) => !q || n.includes(q))
