@@ -153,6 +153,18 @@ const blocksToTools = (content) => {
 
 const TOOL_GLYPH = { running: "⛏", done: "✓", error: "✕" };
 
+// Group tools by name for the collapsed summary line, busiest first —
+// e.g. "9× search notes · 4× read note · 1× browse folder".
+const toolSummary = (tools) => {
+	const counts = new Map();
+	for (const t of tools) counts.set(t.name, (counts.get(t.name) || 0) + 1);
+	const parts = [...counts.entries()]
+		.sort((a, b) => b[1] - a[1])
+		.map(([name, n]) => `${n}× ${name.replace(/_/g, " ")}`);
+	const shown = parts.slice(0, 4).join(" · ");
+	return parts.length > 4 ? `${shown} · +${parts.length - 4} more` : shown;
+};
+
 // MarkdownView's body styles are sans-serif by default (to match the note
 // editor look). The chat is a terminal — force monospace everywhere.
 const chatMarkdownTextStyle = { fontFamily: MONO };
@@ -182,9 +194,12 @@ function UserBubble({ content, context }) {
 }
 
 // Persistent list of tools the agent ran/is running for one assistant turn.
-function ToolActivity({ tools }) {
+function ToolActivity({ tools, isStreaming }) {
+	const [expanded, setExpanded] = useState(false);
 	if (!tools?.length) return null;
-	return (
+	const anyErr = tools.some((t) => t.status === "error");
+
+	const list = (
 		<View style={styles.tools}>
 			{tools.map((t) => (
 				<View key={t.id} style={[styles.tool, styles[`tool_${t.status}`]]}>
@@ -201,6 +216,34 @@ function ToolActivity({ tools }) {
 			))}
 		</View>
 	);
+
+	// Live: show the full activity as it streams. Once settled it collapses to a
+	// one-line summary you can tap to re-expand (matches the web chat).
+	if (isStreaming) return list;
+	return (
+		<View style={styles.toolsWrap}>
+			<Pressable
+				onPress={() => setExpanded((v) => !v)}
+				style={[styles.toolsSummary, anyErr && styles.toolsSummaryErr]}
+				hitSlop={6}
+			>
+				<Text style={styles.toolsSummaryCaret}>{expanded ? "▾" : "▸"}</Text>
+				<Text style={styles.toolsSummaryText} numberOfLines={1}>
+					🔧 {tools.length} tool{tools.length === 1 ? "" : "s"} ·{" "}
+					{toolSummary(tools)}
+				</Text>
+				<Text
+					style={[
+						styles.toolIcon,
+						anyErr ? styles.toolIcon_error : styles.toolIcon_done,
+					]}
+				>
+					{anyErr ? "✕" : "✓"}
+				</Text>
+			</Pressable>
+			{expanded ? list : null}
+		</View>
+	);
 }
 
 function AssistantBubble({ content, tools, isStreaming }) {
@@ -214,7 +257,7 @@ function AssistantBubble({ content, tools, isStreaming }) {
 		return (
 			<View style={styles.assistantBody}>
 				<Text style={styles.assistantRoleLabel}>{ASSISTANT_LABEL}</Text>
-				<ToolActivity tools={tools} />
+				<ToolActivity tools={tools} isStreaming={isStreaming} />
 				<ThinkingLoader label={`${AGENT_LABEL} is sniffing the trail`} />
 			</View>
 		);
@@ -223,7 +266,7 @@ function AssistantBubble({ content, tools, isStreaming }) {
 	return (
 		<View style={styles.assistantBody}>
 			<Text style={styles.assistantRoleLabel}>{ASSISTANT_LABEL}</Text>
-			<ToolActivity tools={tools} />
+			<ToolActivity tools={tools} isStreaming={isStreaming} />
 			<View>
 				<MarkdownView source={visible} textStyle={chatMarkdownTextStyle} />
 				{showCursor ? <StreamingCursor /> : null}
@@ -1128,6 +1171,29 @@ const styles = StyleSheet.create({
 
 	// ── TOOL ACTIVITY (which plugins the agent ran this turn) ─
 	tools: { gap: 4, marginBottom: 10 },
+	// Collapsed one-line summary shown after the turn settles.
+	toolsWrap: { marginBottom: 10 },
+	toolsSummary: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		alignSelf: "flex-start",
+		maxWidth: "100%",
+		paddingHorizontal: 8,
+		paddingVertical: 4,
+		borderWidth: 1,
+		borderColor: colors.border,
+		backgroundColor: colors.bgSoft,
+	},
+	toolsSummaryErr: { borderColor: "rgba(255, 107, 107, 0.4)" },
+	toolsSummaryCaret: { color: colors.muted, fontFamily: MONO, fontSize: 11 },
+	toolsSummaryText: {
+		flexShrink: 1,
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 11,
+		fontWeight: "700",
+	},
 	tool: {
 		flexDirection: "row",
 		alignItems: "center",
