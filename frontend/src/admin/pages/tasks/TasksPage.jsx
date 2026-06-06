@@ -92,6 +92,14 @@ export default function TasksPage() {
 	const defaultTags = sel.key.startsWith("tag:") ? sel.names : [];
 	const defaultBucket = sel.key.startsWith("bucket:") ? sel.bucketId : null;
 
+	// Tag section reflects the selected bucket: only tags used by tasks in that
+	// bucket (or "no bucket"). Otherwise ("all"/tag selection) → all tags.
+	const tagScope = sel.key.startsWith("bucket:")
+		? oneOff.filter((t) => t.bucket_id === sel.bucketId)
+		: sel.key === "nobucket"
+			? oneOff.filter((t) => !t.bucket_id)
+			: oneOff;
+
 	return (
 		<WorkspaceShell>
 			<div className="tasks-page">
@@ -137,6 +145,7 @@ export default function TasksPage() {
 						<BucketTagFilter
 							scope="tasks"
 							items={oneOff}
+							tagItems={tagScope}
 							buckets={buckets}
 							selectedKey={showRecurring ? null : sel.key}
 							onSelect={(s) => {
