@@ -12,7 +12,11 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::apps::auth::models::AuthenticatedUser;
+use crate::apps::calendar::events::CalendarEventBus;
+use crate::apps::notes::events::{NoteAction, NotesEventBus};
+use crate::apps::realtime::ResourceAction;
 use crate::apps::settings;
+use crate::apps::tasks::events::TasksEventBus;
 use crate::db::db::DbPool;
 
 use super::models::{ApiError, ChatTurnReq, ConversationRow, ModelRow, ProviderRow};
@@ -36,6 +40,39 @@ pub(super) fn blocks_to_text(content: &Value) -> String {
 
 fn frame(payload: Value) -> Bytes {
     Bytes::from(format!("data: {payload}\n\n"))
+}
+
+/// After a mutating tool succeeds, publish to the matching live-update bus so
+/// connected clients (web + mobile) refresh immediately — exactly as the HTTP
+/// handlers do. Read-only tools (and ones with no id) are ignored.
+fn publish_tool_event(
+    name: &str,
+    result: &Value,
+    notes_bus: &NotesEventBus,
+    tasks_bus: &TasksEventBus,
+    calendar_bus: &CalendarEventBus,
+) {
+    use ResourceAction::{Created, Deleted, Updated};
+    let id = result
+        .get("id")
+        .or_else(|| result.get("recurrence_id"))
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok());
+    let Some(id) = id else { return };
+    match name {
+        "create_note" => notes_bus.publish(NoteAction::Created, id),
+        "update_note" | "append_to_note" => notes_bus.publish(NoteAction::Updated, id),
+        "delete_note" => notes_bus.publish(NoteAction::Deleted, id),
+        "create_task" | "create_recurring" => tasks_bus.publish(Created, id),
+        "update_task" | "toggle_task" | "update_recurring" | "complete_occurrence" => {
+            tasks_bus.publish(Updated, id)
+        }
+        "delete_task" | "delete_recurring" => tasks_bus.publish(Deleted, id),
+        "create_event" => calendar_bus.publish(Created, id),
+        "update_event" => calendar_bus.publish(Updated, id),
+        "delete_event" => calendar_bus.publish(Deleted, id),
+        _ => {}
+    }
 }
 
 /// Build the "current time" system block. Prefers the client's local time
@@ -104,6 +141,9 @@ pub async fn chat(
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
     body: web::Json<ChatTurnReq>,
+    notes_bus: web::Data<NotesEventBus>,
+    tasks_bus: web::Data<TasksEventBus>,
+    calendar_bus: web::Data<CalendarEventBus>,
 ) -> impl Responder {
     let conv_id = path.into_inner();
     let req = body.into_inner();
@@ -249,6 +289,11 @@ pub async fn chat(
     let pool2 = db.clone();
     let user_id = user.user_id.clone();
     let agent_kind = conv.agent.clone();
+    // Live-update buses (cloned into the spawned task) so agent mutations push
+    // to connected clients just like the HTTP handlers do.
+    let notes_bus = notes_bus.get_ref().clone();
+    let tasks_bus = tasks_bus.get_ref().clone();
+    let calendar_bus = calendar_bus.get_ref().clone();
     let model_label = model_row.model_id.clone();
     let provider_kind = provider.kind.clone();
     let api_key = provider.api_key.clone();
@@ -306,6 +351,9 @@ pub async fn chat(
                             Err(e) => json!({ "error": e }),
                         };
                         let ok = result.get("error").is_none();
+                        if ok {
+                            publish_tool_event(&tc.name, &result, &notes_bus, &tasks_bus, &calendar_bus);
+                        }
                         let _ = tx.unbounded_send(Ok(frame(
                             json!({ "type": "tool", "id": tc.id, "done": true, "ok": ok }),
                         )));
