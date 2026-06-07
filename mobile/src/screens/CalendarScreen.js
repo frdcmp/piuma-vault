@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+	ActivityIndicator,
 	Dimensions,
 	FlatList,
 	Pressable,
@@ -420,15 +421,26 @@ export default function CalendarScreen({ navigation }) {
 
 			{filterOpen ? (
 				<View style={s.filterBar}>
-					<View style={s.viewRow}>
-						{VIEWS.map((v) => (
-							<CalChip
-								key={v.id}
-								label={v.label}
-								active={view === v.id}
-								onPress={() => selectView(v.id)}
-							/>
-						))}
+					{/* View picker — a segmented control, distinct from the tag chips */}
+					<View style={s.viewSeg}>
+						{VIEWS.map((v, i) => {
+							const on = view === v.id;
+							return (
+								<Pressable
+									key={v.id}
+									style={[
+										s.viewSegItem,
+										i === 0 && s.viewSegItemFirst,
+										on && s.viewSegItemOn,
+									]}
+									onPress={() => selectView(v.id)}
+								>
+									<Text style={[s.viewSegText, on && s.viewSegTextOn]}>
+										{v.label}
+									</Text>
+								</Pressable>
+							);
+						})}
 					</View>
 					<ScrollView
 						horizontal
@@ -649,8 +661,12 @@ function EventSheet({ event, initialDate, onClose }) {
 	const [tags, setTags] = useState(event?.tags ?? []);
 	const [alerts, setAlerts] = useState(event?.alerts ?? []);
 
+	const saving = createEvent.isPending || updateEvent.isPending;
+	const deleting = deleteEvent.isPending;
+	const busy = saving || deleting;
+
 	const save = () => {
-		if (!title.trim()) return;
+		if (!title.trim() || busy) return;
 		const payload = {
 			title: title.trim(),
 			starts_at: startsAt,
@@ -711,15 +727,30 @@ function EventSheet({ event, initialDate, onClose }) {
 				<TagPicker value={tags} onChange={setTags} />
 				<Text style={s.label}>Alerts</Text>
 				<AlertsField value={alerts} onChange={setAlerts} />
-				<Pressable style={s.saveBtn} onPress={save}>
-					<Text style={s.saveBtnText}>Save</Text>
+				<Pressable
+					style={[s.saveBtn, busy && s.btnDisabled]}
+					onPress={save}
+					disabled={busy}
+				>
+					{saving ? (
+						<ActivityIndicator color="#000" size="small" />
+					) : (
+						<Text style={s.saveBtnText}>Save</Text>
+					)}
 				</Pressable>
 				{isEdit ? (
 					<Pressable
 						style={s.deleteBtn}
-						onPress={() => deleteEvent.mutate(event.id, { onSuccess: onClose })}
+						onPress={() =>
+							deleteEvent.mutate(event.id, { onSuccess: onClose })
+						}
+						disabled={busy}
 					>
-						<Text style={s.deleteText}>Delete event</Text>
+						{deleting ? (
+							<ActivityIndicator color={colors.accent3} size="small" />
+						) : (
+							<Text style={s.deleteText}>Delete event</Text>
+						)}
 					</Pressable>
 				) : null}
 			</View>
@@ -873,13 +904,28 @@ const s = StyleSheet.create({
 		paddingVertical: 8,
 	},
 	filterRowSub: { paddingTop: 0 },
-	viewRow: {
+	// Segmented control for month / week / 3 days — one connected pill so it
+	// reads as a mode switch, not another filter chip.
+	viewSeg: {
 		flexDirection: "row",
-		gap: 6,
-		paddingHorizontal: 12,
-		paddingTop: 8,
-		paddingBottom: 2,
+		alignSelf: "flex-start",
+		marginHorizontal: 12,
+		marginTop: 8,
+		marginBottom: 2,
+		borderWidth: 1,
+		borderColor: colors.borderStrong,
+		backgroundColor: colors.bgSoft,
 	},
+	viewSegItem: {
+		paddingHorizontal: 16,
+		paddingVertical: 7,
+		borderLeftWidth: 1,
+		borderLeftColor: colors.border,
+	},
+	viewSegItemFirst: { borderLeftWidth: 0 },
+	viewSegItemOn: { backgroundColor: colors.accent2 },
+	viewSegText: { color: colors.muted, fontSize: 12, fontWeight: "700" },
+	viewSegTextOn: { color: colors.bg, fontWeight: "800" },
 	agendaNav: {
 		flexDirection: "row",
 		alignItems: "center",
@@ -996,8 +1042,11 @@ const s = StyleSheet.create({
 		borderRadius: 6,
 		paddingVertical: 11,
 		alignItems: "center",
+		justifyContent: "center",
+		minHeight: 42,
 		marginTop: 14,
 	},
+	btnDisabled: { opacity: 0.6 },
 	saveBtnText: { color: "#000", fontWeight: "700", fontSize: 15 },
 	deleteBtn: { alignItems: "center", paddingVertical: 10 },
 	deleteText: { color: colors.accent3, fontSize: 14 },
