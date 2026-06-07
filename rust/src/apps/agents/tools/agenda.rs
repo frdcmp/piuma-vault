@@ -15,7 +15,7 @@ use crate::db::db::DbPool;
 pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
     vec![(
         "get_agenda",
-        "The go-to 'what's on my plate' tool: tasks due, calendar events, and recurring tasks expanded across a date range (ISO-8601). Defaults to the next 7 days.",
+        "The go-to tool for the user's calendar/schedule — answer ANY 'what's on my calendar / what's next / what do I have' question from here, NOT the web. Returns tasks due, calendar events, and recurring tasks expanded across a date range (ISO-8601). Defaults to the next 7 days; widen the range for 'next' questions if nothing is near.",
         json!({
             "type": "object",
             "properties": {
