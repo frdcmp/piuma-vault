@@ -12,7 +12,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         (
             "list_events",
-            "List calendar events overlapping a date range (ISO-8601). Defaults to the next 30 days. Recurring events are not expanded here — use get_agenda for that.",
+            "List the user's calendar events overlapping a date range (ISO-8601) — use this for 'what's on my calendar / next event' questions instead of the web. Defaults to the next 30 days. Recurring events are not expanded here — use get_agenda for that.",
             json!({
                 "type": "object",
                 "properties": {
