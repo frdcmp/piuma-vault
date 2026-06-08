@@ -1,7 +1,7 @@
 import axiosInstance from "./axiosInstance";
 
-// Service connection config (Azure embeddings, OpenClaw) stored in the DB.
-// Secrets are write-only: GET returns `*_set` booleans, never the value.
+// Service connection config (Azure embeddings, S3 storage, web search) stored in
+// the DB. Secrets are write-only: GET returns `*_set` booleans, never the value.
 
 export const getServices = async () => {
 	const { data } = await axiosInstance.get("/admin/settings/services");
@@ -18,14 +18,6 @@ export const updateServices = async (payload) => {
 export const testEmbedding = async (payload) => {
 	const { data } = await axiosInstance.post(
 		"/admin/settings/services/test/embedding",
-		payload,
-	);
-	return data;
-};
-
-export const testOpenclaw = async (payload) => {
-	const { data } = await axiosInstance.post(
-		"/admin/settings/services/test/openclaw",
 		payload,
 	);
 	return data;

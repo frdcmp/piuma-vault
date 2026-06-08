@@ -69,8 +69,9 @@ reference. Variables are grouped by concern:
 | Object storage | `BUNNY_*` |
 | JWT / OTP | `JWT_PRIVATE_KEY_PEM(_PATH)`, `JWT_PUBLIC_KEY_PEM(_PATH)`, OTP settings |
 
-> Azure OpenAI and OpenClaw are **not** env vars — they are configured at runtime
-> in the database via the admin **Services** dashboard. See **Admin Panel**.
+> Azure OpenAI and the LLM chat providers are **not** env vars — they are
+> configured at runtime in the database via the admin **Services** and **Agents**
+> dashboards. See **Admin Panel**.
 
 `COMPOSE_NAME` namespaces the container names and the nginx → rust proxy target.
 

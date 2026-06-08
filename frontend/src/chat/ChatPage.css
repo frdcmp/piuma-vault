@@ -1,4 +1,4 @@
-/* OpenClaw chat — terminal/pixel look that matches the resume theme */
+/* Agent chat — terminal/pixel look that matches the resume theme */
 .chat-root {
 	--bg: #0e0f12;
 	--bg-soft: #15171c;
@@ -674,36 +674,6 @@ button.chat-context-tag-main {
 	background: rgba(255, 107, 107, 0.08);
 }
 
-/* "OpenClaw not configured" banner — shown when the gateway URL is unset. */
-.chat-config-alert {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 12px;
-	margin: 10px 12px 0;
-	padding: 10px 12px;
-	background: var(--vp-bg-soft, #15171c);
-	border: 2px solid var(--vp-accent-3, #ff6b6b);
-	box-shadow: 2px 2px 0 0 #000;
-}
-.chat-config-alert-text {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	min-width: 0;
-}
-.chat-config-alert-text strong {
-	font-size: 12px;
-	font-weight: 800;
-	letter-spacing: 0.5px;
-	text-transform: uppercase;
-	color: var(--vp-accent-3, #ff6b6b);
-}
-.chat-config-alert-text span {
-	font-size: 12px;
-	color: var(--vp-muted, #8a93a3);
-}
-
 /* Slash-command menu — keyboard + mouse navigable. */
 .slash-menu {
 	background: var(--vp-panel, #1b1e25);
@@ -895,4 +865,29 @@ button.chat-context-tag-main {
 .picker-empty {
 	color: var(--vp-faint, #5b6373);
 	font-size: 12px;
+}
+
+/* Mid-turn user injection, rendered inline within the assistant reply at the
+   point it was typed (not hoisted above the whole turn). */
+.chat-inject {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	margin: 8px 0;
+	padding: 6px 10px;
+	border-left: 2px solid var(--vp-accent-4, #6ab0ff);
+	background: var(--vp-bg-soft, #15171c);
+}
+.chat-inject-label {
+	flex: none;
+	font-size: 10px;
+	font-weight: 800;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-accent-4, #6ab0ff);
+}
+.chat-inject-text {
+	color: var(--vp-text, #d6dbe5);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }

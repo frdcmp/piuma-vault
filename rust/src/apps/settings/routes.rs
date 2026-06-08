@@ -13,10 +13,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .route(web::post().to(handlers::test_embedding)),
     )
     .service(
-        web::resource("/admin/settings/services/test/openclaw")
-            .route(web::post().to(handlers::test_openclaw)),
-    )
-    .service(
         web::resource("/admin/settings/services/test/storage")
             .route(web::post().to(handlers::test_storage)),
     )

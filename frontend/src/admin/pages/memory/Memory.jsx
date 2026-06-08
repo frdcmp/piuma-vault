@@ -1,6 +1,7 @@
 import {
 	CheckCircleOutlined,
 	CloseCircleOutlined,
+	CommentOutlined,
 	DeleteOutlined,
 	ExperimentOutlined,
 	ReadOutlined,
@@ -27,6 +28,7 @@ import {
 	useMemoryEntries,
 	useMemoryOverview,
 	useRejectMemoryEntry,
+	useSearchConversations,
 	useTurnLogs,
 } from "../../../queries";
 import { formatDateTime, timeAgo } from "../../../utils/dateTime";
@@ -63,6 +65,34 @@ const StatusTag = ({ status }) => (
 const SourceTag = ({ source }) => (
 	<MemTag tone={SOURCE_TONE[source]}>{SOURCE_LABEL[source] || source}</MemTag>
 );
+
+// L3 search snippets arrive with matched terms wrapped in « » — highlight them.
+// Split keeps capture groups (odd indices = matched), keyed by char offset so
+// there's no array-index key.
+const Snippet = ({ text }) => {
+	if (!text) return <span className="mem-muted">—</span>;
+	const parts = text.split(/«([^»]*)»/g);
+	let offset = 0;
+	const segs = [];
+	for (let i = 0; i < parts.length; i++) {
+		const part = parts[i];
+		if (part) segs.push({ key: offset, part, hl: i % 2 === 1 });
+		offset += part.length;
+	}
+	return (
+		<span className="mem-snippet">
+			{segs.map((s) =>
+				s.hl ? (
+					<mark key={s.key} className="mem-hl">
+						{s.part}
+					</mark>
+				) : (
+					<span key={s.key}>{s.part}</span>
+				),
+			)}
+		</span>
+	);
+};
 
 // Pixel capacity bar (replaces antd Progress).
 const Bar = ({ pct }) => {
@@ -169,7 +199,8 @@ const Legend = () => (
 				<p className="mem-legend-note">
 					<b>L1</b> always-in-context scratchpad (always in the prompt) ·{" "}
 					<b>L2</b> confirmed semantic facts (retrieved by relevance) ·{" "}
-					<b>L4</b> derived/pending facts awaiting confirmation.
+					<b>L3</b> full-text search over chat history (on-demand) · <b>L4</b>{" "}
+					derived/pending facts awaiting confirmation.
 				</p>
 			</div>
 		</div>
@@ -201,6 +232,7 @@ const Memory = () => {
 	const [source, setSource] = useState();
 	const [category, setCategory] = useState();
 	const [search, setSearch] = useState("");
+	const [convQuery, setConvQuery] = useState("");
 
 	const overview = useMemoryOverview(AGENT);
 	const entryFilters = useMemo(() => {
@@ -216,6 +248,10 @@ const Memory = () => {
 		{ agent: AGENT },
 		{ enabled: tab === "inspector" },
 	);
+	const conversations = useSearchConversations(
+		{ agent: AGENT, q: convQuery },
+		{ enabled: tab === "conversations" && convQuery.trim().length > 0 },
+	);
 
 	const confirmMut = useConfirmMemoryEntry();
 	const rejectMut = useRejectMemoryEntry();
@@ -223,6 +259,7 @@ const Memory = () => {
 
 	const stats = overview.data?.stats;
 	const l1 = overview.data?.l1;
+	const l3 = overview.data?.l3;
 	const byStatus = stats?.by_status || {};
 	const bySource = stats?.by_source || {};
 
@@ -230,6 +267,7 @@ const Memory = () => {
 		overview.refetch();
 		entries.refetch();
 		if (tab === "inspector") turnLogs.refetch();
+		if (tab === "conversations" && convQuery.trim()) conversations.refetch();
 	};
 
 	const act = (mut, id, verb) =>
@@ -380,6 +418,42 @@ const Memory = () => {
 		},
 	];
 
+	const convColumns = [
+		{
+			title: "When",
+			dataIndex: "created_at",
+			key: "created_at",
+			width: 110,
+			render: (d) => (
+				<Tooltip
+					title={`${formatDateTime(d)?.date} ${formatDateTime(d)?.time}`}
+				>
+					<span className="mem-muted">{timeAgo(d)}</span>
+				</Tooltip>
+			),
+		},
+		{
+			title: "Conversation",
+			dataIndex: "title",
+			key: "title",
+			width: 220,
+			render: (t) => t || <span className="mem-muted">untitled</span>,
+		},
+		{
+			title: "Hits",
+			dataIndex: "matches",
+			key: "matches",
+			width: 64,
+			render: (m) => <MemTag tone="blue">{m}</MemTag>,
+		},
+		{
+			title: "Match",
+			dataIndex: "snippet",
+			key: "snippet",
+			render: (s) => <Snippet text={s} />,
+		},
+	];
+
 	return (
 		<PageContent>
 			<div className="mem-root">
@@ -388,7 +462,8 @@ const Memory = () => {
 						<h2 className="mem-title">Memory</h2>
 						<p className="mem-subtitle">
 							Scout and curate the agent's layered memory — L1
-							always-in-context, L2 semantic store, L4 dialectic-derived.
+							always-in-context, L2 semantic store, L3 conversation search, L4
+							dialectic-derived.
 						</p>
 					</div>
 					<div className="mem-header-actions">
@@ -424,6 +499,16 @@ const Memory = () => {
 						onClick={() => focusLayer({ status: "confirmed" })}
 					/>
 					<LayerCard
+						layer="L3"
+						icon={<CommentOutlined />}
+						title="Conversation search"
+						subtitle={`${l3?.conversations ?? 0} conversations indexed`}
+						count={l3?.messages ?? 0}
+						accent="var(--vp-accent)"
+						active={tab === "conversations"}
+						onClick={() => setTab("conversations")}
+					/>
+					<LayerCard
 						layer="L4"
 						icon={<ExperimentOutlined />}
 						title="Derived (pending)"
@@ -447,8 +532,6 @@ const Memory = () => {
 					/>
 				</div>
 
-				<Legend />
-
 				<Tabs
 					activeKey={tab}
 					onChange={setTab}
@@ -458,6 +541,7 @@ const Memory = () => {
 							label: "Entries (L2 / L4)",
 							children: (
 								<>
+									<Legend />
 									<TabIntro>
 										<b>
 											Long-term semantic memory (L2) + dialectic-derived facts
@@ -525,6 +609,51 @@ const Memory = () => {
 										pagination={{ pageSize: 20, hideOnSinglePage: true }}
 										locale={{
 											emptyText: <Empty description="No memory entries" />,
+										}}
+									/>
+								</>
+							),
+						},
+						{
+							key: "conversations",
+							label: "Conversation search (L3)",
+							children: (
+								<>
+									<TabIntro>
+										<b>Full-text search over chat history (L3).</b> The agent's{" "}
+										<code>search_conversations</code> tool searches the verbatim
+										transcript of past conversations — complementing L2, which
+										only stores distilled facts. On-demand only; never
+										auto-injected. This runs the same search the agent does.
+									</TabIntro>
+									<div className="mem-filters">
+										<Input.Search
+											allowClear
+											enterButton
+											placeholder="Search past conversations…"
+											style={{ maxWidth: 360 }}
+											onSearch={setConvQuery}
+											onChange={(e) => !e.target.value && setConvQuery("")}
+										/>
+									</div>
+									<Table
+										className="vp-table"
+										rowKey="conversation_id"
+										size="small"
+										loading={conversations.isFetching}
+										dataSource={conversations.data || []}
+										columns={convColumns}
+										pagination={{ pageSize: 15, hideOnSinglePage: true }}
+										locale={{
+											emptyText: (
+												<Empty
+													description={
+														convQuery.trim()
+															? "No conversations matched"
+															: "Type a query to search your chat history"
+													}
+												/>
+											),
 										}}
 									/>
 								</>

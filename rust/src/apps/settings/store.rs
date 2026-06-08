@@ -1,15 +1,13 @@
 //! Read/write for the single-tenant `app_settings` key-value table, plus
 //! typed resolvers for the services whose config lives in the DB (Azure
-//! embeddings, OpenClaw). Config is sourced exclusively from the DB — set it in
-//! the Services dashboard.
+//! embeddings, S3 storage, web search). Config is sourced exclusively from the
+//! DB — set it in the Services dashboard.
 
 use crate::db::db::DbPool;
 
 // Setting keys (single source of truth, shared by handlers + resolvers).
 pub const AZURE_EMBEDDING_URL: &str = "azure_embedding_url";
 pub const AZURE_EMBEDDING_API_KEY: &str = "azure_embedding_api_key";
-pub const OPENCLAW_URL: &str = "openclaw_url";
-pub const OPENCLAW_GATEWAY_TOKEN: &str = "openclaw_gateway_token";
 // Generic S3 / AWS object storage (works with AWS S3, Bunny, R2, MinIO, …).
 pub const S3_ENDPOINT: &str = "s3_endpoint";
 pub const S3_REGION: &str = "s3_region";
@@ -90,28 +88,6 @@ pub async fn embedding_config_with(
         .await
         .ok_or_else(|| "Embedding API key not configured (set it in Services settings)".to_string())?;
     Ok((url, api_key))
-}
-
-/// Resolve OpenClaw config as `(url, gateway_token)`. Errors if the URL is unset;
-/// the token may be empty.
-pub async fn openclaw_config(pool: &DbPool) -> Result<(String, String), String> {
-    openclaw_config_with(pool, None, None).await
-}
-
-/// Like `openclaw_config`, but lets a caller override the URL/token (used by the
-/// Services "try now" check). A blank/`None` override falls back to the saved value.
-pub async fn openclaw_config_with(
-    pool: &DbPool,
-    url_ov: Option<String>,
-    token_ov: Option<String>,
-) -> Result<(String, String), String> {
-    let url = resolve(pool, url_ov, OPENCLAW_URL)
-        .await
-        .ok_or_else(|| "OpenClaw URL not configured (set it in Services settings)".to_string())?;
-    let token = resolve(pool, token_ov, OPENCLAW_GATEWAY_TOKEN)
-        .await
-        .unwrap_or_default();
-    Ok((url, token))
 }
 
 /// Resolve the S3 connection config from saved settings. Errors if any required

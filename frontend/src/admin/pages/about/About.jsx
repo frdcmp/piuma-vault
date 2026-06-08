@@ -61,7 +61,7 @@ const APPS = [
 		desc: "Public note links with password / expiry / edit mode",
 	},
 	{ name: "storage", desc: "Bunny CDN attachments + signed URLs" },
-	{ name: "llm", desc: "OpenClaw chat gateway + embedding provider" },
+	{ name: "agents", desc: "Multi-provider LLM chat, tools, layered memory" },
 	{ name: "api_keys", desc: "Scoped x-api-key auth for programmatic access" },
 	{ name: "email", desc: "SMTP for verification & password reset" },
 	{ name: "health", desc: "Liveness / readiness checks" },

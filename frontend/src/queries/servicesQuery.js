@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	getServices,
 	testEmbedding,
-	testOpenclaw,
 	testStorage,
 	testWebsearch,
 	updateServices,
@@ -29,8 +28,6 @@ export const useUpdateServices = () => {
 
 export const useTestEmbedding = () =>
 	useMutation({ mutationFn: testEmbedding });
-
-export const useTestOpenclaw = () => useMutation({ mutationFn: testOpenclaw });
 
 export const useTestStorage = () => useMutation({ mutationFn: testStorage });
 

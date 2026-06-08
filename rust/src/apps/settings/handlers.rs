@@ -1,8 +1,8 @@
 use actix_web::{web, HttpResponse, Responder};
 
 use super::models::{
-    ServiceConfigResponse, TestEmbeddingRequest, TestOpenclawRequest, TestStorageRequest,
-    TestWebsearchRequest, UpdateServiceConfig,
+    ServiceConfigResponse, TestEmbeddingRequest, TestStorageRequest, TestWebsearchRequest,
+    UpdateServiceConfig,
 };
 use super::store;
 use crate::apps::auth::middleware::check_permission;
@@ -21,10 +21,6 @@ async fn current_config(pool: &DbPool) -> ServiceConfigResponse {
             .await
             .unwrap_or_default(),
         azure_embedding_api_key_set: store::get(pool, store::AZURE_EMBEDDING_API_KEY)
-            .await
-            .is_some(),
-        openclaw_url: store::get(pool, store::OPENCLAW_URL).await.unwrap_or_default(),
-        openclaw_gateway_token_set: store::get(pool, store::OPENCLAW_GATEWAY_TOKEN)
             .await
             .is_some(),
         s3_endpoint: store::get(pool, store::S3_ENDPOINT).await.unwrap_or_default(),
@@ -74,8 +70,6 @@ pub async fn update_services(
     let updates = [
         (store::AZURE_EMBEDDING_URL, body.azure_embedding_url),
         (store::AZURE_EMBEDDING_API_KEY, body.azure_embedding_api_key),
-        (store::OPENCLAW_URL, body.openclaw_url),
-        (store::OPENCLAW_GATEWAY_TOKEN, body.openclaw_gateway_token),
         (store::S3_ENDPOINT, body.s3_endpoint),
         (store::S3_REGION, body.s3_region),
         (store::S3_BUCKET, body.s3_bucket),
@@ -165,42 +159,6 @@ pub async fn test_websearch(
     match crate::apps::web_search::run(&provider, &key, "piuma vault test query", 3).await {
         Ok(hits) => test_result(true, format!("OK — {provider} returned {} results", hits.len())),
         Err(e) => test_result(false, e),
-    }
-}
-
-/// POST /admin/settings/services/test/openclaw — check the gateway is reachable
-/// and accepts the token (GET /v1/models, no inference). An optional body lets
-/// the dashboard test unsaved form values; blank fields fall back to saved config.
-pub async fn test_openclaw(
-    user: AuthenticatedUser,
-    pool: web::Data<DbPool>,
-    body: Option<web::Json<TestOpenclawRequest>>,
-) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
-    }
-    let req = body.map(|b| b.into_inner()).unwrap_or_default();
-    let (base, token) = match store::openclaw_config_with(
-        pool.get_ref(),
-        req.openclaw_url,
-        req.openclaw_gateway_token,
-    )
-    .await
-    {
-        Ok(cfg) => cfg,
-        Err(e) => return test_result(false, e),
-    };
-    let url = format!("{}/v1/models", base.trim_end_matches('/'));
-    let req = reqwest::Client::new()
-        .get(&url)
-        .bearer_auth(&token)
-        .timeout(std::time::Duration::from_secs(8));
-    match req.send().await {
-        Ok(r) if r.status().is_success() => {
-            test_result(true, format!("OK — gateway reachable ({})", r.status()))
-        }
-        Ok(r) => test_result(false, format!("Gateway returned HTTP {}", r.status())),
-        Err(e) => test_result(false, format!("Connection failed: {e}")),
     }
 }
 

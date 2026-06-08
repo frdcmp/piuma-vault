@@ -11,6 +11,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(web::resource("/agents/memory/overview").route(web::get().to(memory_admin::overview)))
         .service(web::resource("/agents/memory/entries").route(web::get().to(memory_admin::list_entries)))
         .service(web::resource("/agents/memory/turn-logs").route(web::get().to(memory_admin::turn_logs)))
+        .service(web::resource("/agents/memory/conversations").route(web::get().to(memory_admin::search_conversations)))
         .service(
             web::resource("/agents/memory/entries/{id}/confirm")
                 .route(web::post().to(memory_admin::confirm_entry)),

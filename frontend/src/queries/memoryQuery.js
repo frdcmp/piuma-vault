@@ -6,6 +6,7 @@ import {
 	listMemoryEntries,
 	listTurnLogs,
 	rejectMemoryEntry,
+	searchConversations,
 } from "../api/memory";
 
 export const memoryKeys = {
@@ -13,6 +14,7 @@ export const memoryKeys = {
 	overview: (agent) => [...memoryKeys.all, "overview", agent],
 	entries: (filters) => [...memoryKeys.all, "entries", filters],
 	turnLogs: (filters) => [...memoryKeys.all, "turnLogs", filters],
+	conversations: (filters) => [...memoryKeys.all, "conversations", filters],
 };
 
 export const useMemoryOverview = (agent = "vault_agent", options = {}) =>
@@ -35,6 +37,14 @@ export const useTurnLogs = (filters = {}, options = {}) =>
 	useQuery({
 		queryKey: memoryKeys.turnLogs(filters),
 		queryFn: () => listTurnLogs(filters),
+		staleTime: 30 * 1000,
+		...options,
+	});
+
+export const useSearchConversations = (filters = {}, options = {}) =>
+	useQuery({
+		queryKey: memoryKeys.conversations(filters),
+		queryFn: () => searchConversations(filters),
 		staleTime: 30 * 1000,
 		...options,
 	});

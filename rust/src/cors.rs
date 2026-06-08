@@ -65,7 +65,7 @@ impl CorsConfig {
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"])
             // Origin allowlist (above) + JWT auth are the security boundary here;
             // request headers are not. Allow any header so custom client headers
-            // (e.g. x-openclaw-session-key, last-event-id) don't trip preflight 400s.
+            // (e.g. last-event-id) don't trip preflight 400s.
             .allow_any_header()
             .max_age(3600)
     }

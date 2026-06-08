@@ -5,9 +5,9 @@ turn control, and a large catalog of tools that act directly on your vault.
 
 ## Agents and personas
 
-An **agent** (e.g. a general vault agent, or the gateway agent) has an editable
-profile — its instructions, user context, memory, and slash commands. Each agent
-can have multiple **personas** that tune behavior and narrow the available tools.
+An **agent** (the Vault Agent) has an editable profile — its instructions, user
+context, memory, and slash commands. An agent can have multiple **personas** that
+tune behavior and narrow the available tools.
 
 The agent is steered to consult the **vault** (notes, tasks, calendar) rather than
 the web for personal questions — e.g. calendar queries resolve against your data,
@@ -16,7 +16,7 @@ not a web search.
 ## Providers and models
 
 Providers and models are configured at runtime through the admin **Agents** page —
-DeepSeek, Anthropic, OpenAI, Gemini, Minimax, and a chat gateway are supported.
+DeepSeek, Anthropic, OpenAI, Gemini, and Minimax are supported.
 
 > Many default models are reasoning models. One-shot calls need a generous
 > `max_tokens`, or the reasoning budget consumes the whole allowance and content
@@ -50,6 +50,7 @@ By domain:
   persona (scoped to the active agent)
 - **Memory (L2)** — search, save, update, delete, list, confirm, reject
 - **Always-in-context (L1)** — context add / replace / remove / list
+- **Conversation search (L3)** — `search_conversations` (full-text over chat history)
 
 ## Memory
 
@@ -66,9 +67,3 @@ The live state is browsable in the admin **Memory** dashboard (`/admin/memory`).
 Web search is provider-agnostic, normalizing results to a common shape. Brave,
 Tavily, SerpAPI (Google), and Exa are supported; the active provider is chosen in
 **Services**.
-
-## Chat gateway
-
-An external chat gateway with its own model and tools is integrated alongside the
-direct providers. History is loaded from the gateway over HTTP. Like the other
-services, it is configured at runtime rather than via env vars.

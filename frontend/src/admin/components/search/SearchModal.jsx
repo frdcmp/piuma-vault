@@ -66,7 +66,7 @@ const COMMANDS = [
 		icon: <ApiOutlined />,
 		label: "Services",
 		to: "/admin/services",
-		keywords: "azure openclaw config",
+		keywords: "azure embeddings storage search config",
 	},
 	{
 		group: "Resources",

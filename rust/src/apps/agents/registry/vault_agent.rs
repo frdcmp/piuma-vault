@@ -3,12 +3,11 @@
 //! (deletes / storage writes / shares / self-config) + web (see plan §9).
 //! A persona can still narrow this via `db_agent_personas.allowed_tools`.
 
-use super::{AgentDef, AgentType};
+use super::AgentDef;
 
 pub static DEF: AgentDef = AgentDef {
     kind: "vault_agent",
     display_name: "Vault Agent",
-    agent_type: AgentType::Native,
     persona: "piuma",
     tools: &[
         // Tier 1 — read
@@ -74,6 +73,8 @@ pub static DEF: AgentDef = AgentDef {
         "memory_list",
         "memory_confirm",
         "memory_reject",
+        // L3 conversation retrieval (full-text search over chat history)
+        "search_conversations",
         // Web (server-side, provider-agnostic)
         "web_search",
         "web_fetch",

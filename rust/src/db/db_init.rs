@@ -658,6 +658,9 @@ const TABLES: &[TableDefinition] = &[
         ],
     },
     // Turns inside a conversation; content is normalised JSONB blocks.
+    // `content_text` is the flattened plain text of the text blocks (written by
+    // the chat loop); `content_tsv` is its derived FTS vector — together they
+    // back L3 conversation retrieval (full-text search over chat history).
     TableDefinition {
         name: "db_chat_messages",
         sql: r#"
@@ -666,6 +669,8 @@ const TABLES: &[TableDefinition] = &[
                 conversation_id UUID NOT NULL REFERENCES db_chat_conversations(id) ON DELETE CASCADE,
                 role TEXT NOT NULL,
                 content JSONB NOT NULL DEFAULT '[]',
+                content_text TEXT,
+                content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', coalesce(content_text, ''))) STORED,
                 model_used TEXT,
                 provider_kind TEXT,
                 tokens_input INTEGER,
@@ -678,6 +683,7 @@ const TABLES: &[TableDefinition] = &[
         "#,
         indices: &[
             "CREATE INDEX IF NOT EXISTS idx_chat_msg_conv ON db_chat_messages USING btree (conversation_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_chat_msg_content_tsv ON db_chat_messages USING gin (content_tsv) WHERE role IN ('user', 'assistant')",
         ],
     },
     // L2 semantic memory — vector-searchable facts/preferences, scoped per agent.

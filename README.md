@@ -55,9 +55,9 @@ cp .env.example .env
 # fill in DB, SMTP, Bunny Storage, JWT/OTP values
 ```
 
-> **Note:** Azure OpenAI (embeddings) and the OpenClaw chat gateway are **not** configured via env
-> vars — they live in the database (`app_settings`) and are edited at runtime in the admin
-> **Services** dashboard.
+> **Note:** Azure OpenAI (embeddings) and the LLM chat providers/models are **not** configured via
+> env vars — they live in the database and are edited at runtime in the admin **Services** and
+> **Agents** dashboards.
 
 JWT signing keys are auto-generated into `rust/src/keys/` on first build (or run
 `python generate_keys.py`). For production, supply your own via `JWT_PRIVATE_KEY_PEM` /

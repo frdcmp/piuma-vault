@@ -365,6 +365,14 @@
 	border-color: var(--vp-accent) !important;
 	box-shadow: none !important;
 }
+/* Input.Search wraps the field in an affix wrapper — the wrapper owns the
+   border, so the inner <input> must be borderless/transparent, else it's a
+   box-in-a-box (the "double nested squares"). */
+.mem-root .ant-input-affix-wrapper > .ant-input,
+.mem-root .ant-input-affix-wrapper input.ant-input {
+	border: 0 !important;
+	background: transparent !important;
+}
 .mem-root .ant-select-selection-placeholder,
 .mem-root .ant-input::placeholder {
 	color: var(--vp-faint) !important;
@@ -377,11 +385,23 @@
 	color: var(--vp-muted) !important;
 	background: transparent !important;
 }
+/* Search button: sit flush against the input (shared edge), not a detached
+   second square. */
+.mem-root .ant-input-search > .ant-input-group > .ant-input-group-addon {
+	background: transparent !important;
+}
 .mem-root .ant-input-search-button {
 	background: var(--vp-panel) !important;
 	border: 2px solid var(--vp-border) !important;
+	border-left: 0 !important;
 	border-radius: 0 !important;
+	box-shadow: none !important;
 	color: var(--vp-muted) !important;
+}
+.mem-root .ant-input-search-button:hover {
+	color: var(--vp-accent) !important;
+	border-color: var(--vp-accent) !important;
+	border-left: 0 !important;
 }
 
 /* Portaled select dropdown (rendered at <body>, outside .mem-root). */
@@ -494,4 +514,17 @@
 	display: flex;
 	align-items: center;
 	gap: 8px;
+}
+
+/* L3 conversation-search snippets — highlight the matched terms. */
+.mem-snippet {
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+.mem-hl {
+	background: var(--vp-accent);
+	color: var(--vp-bg);
+	padding: 0 2px;
+	border-radius: 2px;
 }

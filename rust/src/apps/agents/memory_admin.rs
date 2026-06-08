@@ -141,10 +141,25 @@ pub async fn overview(
         .map(|(c, n)| json!({ "category": c.unwrap_or_else(|| "uncategorized".into()), "count": n }))
         .collect();
 
+    // L3 conversation retrieval: how much chat history is searchable.
+    let l3: Option<(i64, i64)> = sqlx::query_as(
+        "SELECT \
+           (SELECT COUNT(*) FROM db_chat_messages m \
+              JOIN db_chat_conversations c ON c.id = m.conversation_id \
+              WHERE c.agent = $1 AND m.role IN ('user', 'assistant')), \
+           (SELECT COUNT(*) FROM db_chat_conversations WHERE agent = $1)",
+    )
+    .bind(&agent)
+    .fetch_optional(pool.get_ref())
+    .await
+    .unwrap_or(None);
+    let (l3_messages, l3_conversations) = l3.unwrap_or((0, 0));
+
     let mem_chars = memory.chars().count() as i64;
     let uc_chars = user_context.chars().count() as i64;
     HttpResponse::Ok().json(json!({
         "agent": agent,
+        "l3": { "messages": l3_messages, "conversations": l3_conversations },
         "l1": {
             "memory": memory,
             "memory_chars": mem_chars,
@@ -203,6 +218,35 @@ pub async fn turn_logs(
     {
         Ok(rows) => HttpResponse::Ok().json(rows),
         Err(e) => db_err(e),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ConvSearchQuery {
+    agent: Option<String>,
+    q: Option<String>,
+    limit: Option<i64>,
+}
+
+/// GET /agents/memory/conversations?q= — L3 full-text search over chat history.
+/// Same query the agent's `search_conversations` tool runs, for the dashboard.
+pub async fn search_conversations(
+    _user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    q: web::Query<ConvSearchQuery>,
+) -> impl Responder {
+    let agent = q.agent.clone().unwrap_or_else(|| "vault_agent".to_string());
+    let query = q.q.clone().unwrap_or_default();
+    if query.trim().is_empty() {
+        return HttpResponse::Ok().json(json!([]));
+    }
+    let limit = q.limit.unwrap_or(25).clamp(1, 100);
+    match super::tools::conversations::search(pool.get_ref(), &agent, query.trim(), limit).await {
+        Ok(hits) => HttpResponse::Ok().json(hits),
+        Err(e) => {
+            log::error!("memory admin conversation search: {e}");
+            HttpResponse::InternalServerError().json(ApiError::new("search failed"))
+        }
     }
 }
 
