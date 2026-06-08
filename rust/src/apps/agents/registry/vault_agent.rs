@@ -61,6 +61,19 @@ pub static DEF: AgentDef = AgentDef {
         "update_user_context",
         "update_memory",
         "update_persona",
+        // L1 always-in-context scratchpad (capped, compactable)
+        "context_add",
+        "context_replace",
+        "context_remove",
+        "context_list",
+        // L2 semantic memory (long-term, vector-searchable)
+        "memory_search",
+        "memory_save",
+        "memory_update",
+        "memory_delete",
+        "memory_list",
+        "memory_confirm",
+        "memory_reject",
         // Web (server-side, provider-agnostic)
         "web_search",
         "web_fetch",

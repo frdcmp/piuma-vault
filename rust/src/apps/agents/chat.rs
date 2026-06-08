@@ -300,6 +300,17 @@ pub async fn chat(
     if !resolved.system_prompt.trim().is_empty() {
         blocks.push(resolved.system_prompt.clone());
     }
+    // L2: retrieve relevant long-term memories for this message and inject them as
+    // a system block (best-effort; empty when nothing clears the distance floor).
+    let retrieved = tools::memory::retrieve_for_turn(db, &conv.agent, &msg, 5).await;
+    let mem_block = tools::memory::format_block(&retrieved);
+    if !mem_block.trim().is_empty() {
+        blocks.push(mem_block);
+    }
+    // Phase 0 observability: snapshot what was retrieved + L1 usage for the turn log.
+    let retrieved_json = serde_json::to_value(&retrieved).unwrap_or_else(|_| json!([]));
+    let l1_chars = resolved.profile.memory.chars().count() as i32;
+    let l1_pct = (l1_chars * 100 / 2200).min(100);
     let system = blocks.join("\n\n");
     if !system.trim().is_empty() {
         messages.push(json!({ "role": "system", "content": system }));
@@ -516,6 +527,29 @@ pub async fn chat(
                 .bind(conv_id)
                 .execute(&pool2)
                 .await;
+            // Phase 0: log what the agent "knew" this turn (L2 retrieval + L1 usage).
+            let _ = sqlx::query(
+                "INSERT INTO db_agent_turn_logs \
+                   (conversation_id, message_id, agent, retrieved, l1_memory_chars, l1_memory_pct) \
+                 VALUES ($1, $2, $3, $4, $5, $6)",
+            )
+            .bind(conv_id)
+            .bind(msg_id)
+            .bind(&agent_kind)
+            .bind(&retrieved_json)
+            .bind(l1_chars)
+            .bind(l1_pct)
+            .execute(&pool2)
+            .await;
+            // L4: fire-and-forget dialectic pass (runs only on the cadence
+            // boundary). Spawned so it never delays the client after `done`.
+            if !stopped {
+                let dpool = pool2.clone();
+                let dagent = agent_kind.clone();
+                actix_web::rt::spawn(async move {
+                    super::dialectic::maybe_run(&dpool, conv_id, dagent).await;
+                });
+            }
             let _ = tx.unbounded_send(Ok(frame(json!({
                 "type": "done",
                 "stop_reason": stop,

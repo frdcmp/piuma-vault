@@ -1,0 +1,166 @@
+.mem-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+	margin-bottom: 20px;
+}
+
+/* ── Layer map ─────────────────────────────────────────────── */
+.mem-layers {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 12px;
+	margin-bottom: 20px;
+}
+
+.mem-layer {
+	position: relative;
+	text-align: left;
+	border: 1px solid var(--border-color, #e5e7eb);
+	border-left: 4px solid var(--mem-accent, #1677ff);
+	border-radius: 10px;
+	padding: 14px 16px;
+	background: var(--card-bg, #fff);
+	cursor: pointer;
+	transition:
+		transform 0.12s ease,
+		box-shadow 0.12s ease,
+		border-color 0.12s;
+	overflow: hidden;
+}
+.mem-layer::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: var(--mem-accent);
+	opacity: 0;
+	transition: opacity 0.12s ease;
+	pointer-events: none;
+}
+.mem-layer:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+.mem-layer--active {
+	border-color: var(--mem-accent);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--mem-accent) 30%, transparent);
+}
+.mem-layer--active::after {
+	opacity: 0.06;
+}
+
+.mem-layer-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	color: var(--mem-accent);
+}
+.mem-layer-icon {
+	font-size: 18px;
+}
+.mem-layer-tag {
+	font-weight: 700;
+	font-size: 12px;
+	letter-spacing: 0.06em;
+	opacity: 0.8;
+}
+.mem-layer-count {
+	font-size: 30px;
+	font-weight: 700;
+	line-height: 1.1;
+	margin-top: 6px;
+}
+.mem-layer-title {
+	font-weight: 600;
+	margin-top: 2px;
+}
+.mem-layer-sub {
+	font-size: 12px;
+	color: var(--text-muted, #8c8c8c);
+}
+
+/* ── Filters + table ───────────────────────────────────────── */
+.mem-filters {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 14px;
+}
+
+.mem-cell-content {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.mem-noembed {
+	margin: 0;
+	font-size: 11px;
+}
+.mem-actions {
+	display: flex;
+	gap: 6px;
+	justify-content: flex-end;
+}
+.mem-muted {
+	color: var(--text-muted, #8c8c8c);
+}
+
+/* ── L1 gauges ─────────────────────────────────────────────── */
+.mem-l1 {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+	gap: 18px;
+}
+.mem-gauge {
+	border: 1px solid var(--border-color, #e5e7eb);
+	border-radius: 10px;
+	padding: 14px 16px;
+	background: var(--card-bg, #fff);
+}
+.mem-gauge-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	margin-bottom: 6px;
+}
+.mem-gauge-label {
+	font-weight: 600;
+}
+.mem-gauge-num {
+	font-size: 12px;
+	color: var(--text-muted, #8c8c8c);
+}
+.mem-gauge-body {
+	margin: 10px 0 0;
+	padding: 10px;
+	background: var(--code-bg, #f6f8fa);
+	border-radius: 8px;
+	font-size: 12.5px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+	max-height: 320px;
+	overflow: auto;
+}
+
+/* ── Turn inspector ────────────────────────────────────────── */
+.mem-retrieved {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 4px 2px;
+}
+.mem-retrieved-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 13px;
+}
+.mem-retrieved-sim {
+	font-variant-numeric: tabular-nums;
+	font-weight: 600;
+	color: #389e0d;
+	min-width: 42px;
+}
