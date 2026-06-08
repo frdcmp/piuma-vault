@@ -38,6 +38,7 @@
 
 .vp-docs-page {
 	padding-top: 28px;
+	max-width: 1500px;
 }
 
 /* ---- Mobile top bar (hidden on desktop) ----------------------------------- */
