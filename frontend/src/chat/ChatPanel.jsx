@@ -17,7 +17,9 @@ import {
 	fetchAllModels,
 	fetchConversation,
 	fetchConversations,
+	injectMessage,
 	retitleConversation,
+	stopConversation,
 	streamChat,
 	updateConversation,
 } from "../api/agentChatApi";
@@ -294,6 +296,10 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const [conversationId, setConversationId] = useState(
 		() => localStorage.getItem(STORAGE_KEY) || null,
 	);
+	// The model bound to the active conversation (db_chat_conversations.model_id),
+	// or null when it hasn't been overridden — then the backend uses the default,
+	// so the model flagged is_default is the one actually in use.
+	const [modelId, setModelId] = useState(null);
 	// Only restore when a stored conversation exists; a fresh panel (and any
 	// conversation created later this session) starts already-hydrated so the
 	// restore effect never clobbers live streaming state.
@@ -303,6 +309,26 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
 	const inputRef = useRef(null);
+	// Stick-to-bottom: only auto-follow new content while parked near the bottom.
+	// Scrolling up releases the lock (so streaming stops yanking you down) and
+	// reveals a jump-to-latest button.
+	const atBottomRef = useRef(true);
+	const [showJump, setShowJump] = useState(false);
+
+	const handleScroll = useCallback(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const atBottom = el.scrollHeight - (el.scrollTop + el.clientHeight) < 80;
+		atBottomRef.current = atBottom;
+		setShowJump((p) => (p === !atBottom ? p : !atBottom));
+	}, []);
+
+	const scrollToBottom = useCallback(() => {
+		atBottomRef.current = true;
+		setShowJump(false);
+		const el = scrollRef.current;
+		if (el) el.scrollTop = el.scrollHeight;
+	}, []);
 	const slashActiveRef = useRef(null);
 	const overlayActiveRef = useRef(null);
 
@@ -313,6 +339,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		fetchConversation(conversationId)
 			.then((d) => {
 				if (cancelled) return;
+				setModelId(d.conversation?.model_id || null);
 				setMessages(
 					(d.messages || []).map((m) => ({
 						id: m.id,
@@ -379,7 +406,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: scroll on new messages
 	useEffect(() => {
-		if (!scrollRef.current) return;
+		// Follow new content only when parked at the bottom; respect scroll-up.
+		if (!atBottomRef.current || !scrollRef.current) return;
 		scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
 	}, [messages]);
 
@@ -389,13 +417,88 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		setIsStreaming(false);
 		setMessages([]);
 		setConversationId(null);
+		setModelId(null);
 		localStorage.removeItem(STORAGE_KEY);
 		setConfirmClearOpen(false);
 	}, []);
 
+	// STOP: kill the running turn immediately — abort the local stream (instant
+	// UI) and tell the backend to cancel so it stops generating mid-stream.
+	const stopStreaming = useCallback(() => {
+		abortRef.current?.abort();
+		abortRef.current = null;
+		setIsStreaming(false);
+		if (conversationId) stopConversation(conversationId).catch(() => {});
+	}, [conversationId]);
+
+	// Recover from a dropped stream: the turn keeps running + is persisted
+	// server-side, so poll the conversation until the assistant message lands,
+	// then rebuild from server truth (what a manual reload does, automatically).
+	const recoverTurn = useCallback(async (convId) => {
+		for (let i = 0; i < 24; i++) {
+			await new Promise((r) => setTimeout(r, 2500)); // ~60s total
+			try {
+				const d = await fetchConversation(convId);
+				const msgs = d.messages || [];
+				const last = msgs[msgs.length - 1];
+				if (last && last.role === "assistant") {
+					setMessages(
+						msgs.map((m) => ({
+							id: m.id,
+							role: m.role,
+							content: blocksToText(m.content),
+							tools: blocksToTools(m.content),
+						})),
+					);
+					return;
+				}
+			} catch {
+				/* keep trying */
+			}
+		}
+		setMessages((curr) => {
+			const updated = [...curr];
+			const last = updated[updated.length - 1];
+			if (last?.role === "assistant") {
+				updated[updated.length - 1] = {
+					...last,
+					content:
+						"_The reply is taking a while. Reopen this chat to see it once it finishes._",
+				};
+			}
+			return updated;
+		});
+	}, []);
+
 	const sendMessage = useCallback(async () => {
 		const text = input.trim();
-		if (!text || isStreaming) return;
+		if (!text) return;
+
+		// While a turn is streaming, a send INJECTS into it instead of starting a
+		// new turn; the running turn picks it up at the next round boundary.
+		if (isStreaming) {
+			if (!conversationId) return;
+			const injected = { id: newMessageId(), role: "user", content: text };
+			// Slot the bubble above the trailing (streaming) assistant message so
+			// live order matches reloaded order (…, injected user, assistant).
+			setMessages((curr) => {
+				const next = [...curr];
+				const at =
+					next.length && next[next.length - 1].role === "assistant"
+						? next.length - 1
+						: next.length;
+				next.splice(at, 0, injected);
+				return next;
+			});
+			setInput("");
+			scrollToBottom();
+			try {
+				await injectMessage(conversationId, text);
+			} catch {
+				/* 409 = the turn just ended; best-effort */
+			}
+			return;
+		}
 
 		let convId = conversationId;
 		if (!convId) {
@@ -403,6 +506,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				const conv = await createConversation({ agent: effectiveAgent });
 				convId = conv.id;
 				setConversationId(conv.id);
+				setModelId(conv.model_id || null);
 				localStorage.setItem(STORAGE_KEY, conv.id);
 			} catch {
 				setMessages((c) => [
@@ -432,6 +536,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		setMessages((curr) => [...curr, userMsg, assistantMsg]);
 		setInput("");
 		setIsStreaming(true);
+		scrollToBottom(); // sending re-arms the stick-to-bottom lock
 
 		const controller = new AbortController();
 		abortRef.current = controller;
@@ -477,7 +582,26 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 						updated[updated.length - 1] = last;
 						return updated;
 					}),
-				onError: (e) =>
+				onError: (e) => {
+					// A transport drop (stream reset / connection abort) doesn't mean
+					// the turn failed — it keeps running and is persisted server-side.
+					// Show a soft "reconnecting" note and refetch until it lands,
+					// instead of a hard error.
+					if (e?.isTransport && convId) {
+						setMessages((curr) => {
+							const updated = [...curr];
+							const last = updated[updated.length - 1];
+							updated[updated.length - 1] = {
+								...last,
+								content: last.content
+									? `${last.content}\n\n_(reconnecting…)_`
+									: "_Reconnecting…_",
+							};
+							return updated;
+						});
+						recoverTurn(convId);
+						return;
+					}
 					setMessages((curr) => {
 						const updated = [...curr];
 						const last = updated[updated.length - 1];
@@ -486,7 +610,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 							content: `**Error:** ${e.message}`,
 						};
 						return updated;
-					}),
+					});
+				},
 				onDone: () => setIsStreaming(false),
 			});
 		} finally {
@@ -501,6 +626,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		effectiveAgent,
 		sentContextPaths,
 		sentContextIds,
+		recoverTurn,
+		scrollToBottom,
 	]);
 
 	// Slash commands: client commands + the active agent's macros, filtered by
@@ -560,6 +687,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		setIsStreaming(false);
 		setMessages([]);
 		setConversationId(null);
+		setModelId(null);
 		localStorage.removeItem(STORAGE_KEY);
 		setInput("");
 		setTitleMenu(false);
@@ -590,6 +718,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		localStorage.setItem(STORAGE_KEY, id);
 		try {
 			const d = await fetchConversation(id);
+			setModelId(d.conversation?.model_id || null);
 			setMessages(
 				(d.messages || []).map((m) => ({
 					id: m.id,
@@ -688,6 +817,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const pickModel = useCallback(
 		async (m) => {
 			setOverlay(null);
+			setModelId(m.id);
 			if (conversationId) {
 				try {
 					await updateConversation({ id: conversationId, model_id: m.id });
@@ -789,7 +919,11 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		}
 	};
 
-	const canSend = input.trim().length > 0 && !isStreaming;
+	// Composer button is state-driven: STOP while streaming with an empty box,
+	// otherwise SEND (which injects when streaming, sends a new turn when idle).
+	const hasText = input.trim().length > 0;
+	const showStop = isStreaming && !hasText;
+	const canSend = hasText;
 
 	return (
 		<div className="chat-root chat-panel">
@@ -849,39 +983,52 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				) : null}
 			</div>
 
-			<div ref={scrollRef} className="chat-messages">
-				<div className="chat-messages-inner">
-					{messages.length === 0 ? (
-						<div className="chat-empty">
-							<div className="chat-empty-title">{agentLabel} is ready.</div>
-							<div className="chat-empty-sub">
-								Ask anything — markdown, code, plans. Streams back token by
-								token.
+			<div className="chat-messages-viewport">
+				<div ref={scrollRef} className="chat-messages" onScroll={handleScroll}>
+					<div className="chat-messages-inner">
+						{messages.length === 0 ? (
+							<div className="chat-empty">
+								<div className="chat-empty-title">{agentLabel} is ready.</div>
+								<div className="chat-empty-sub">
+									Ask anything — markdown, code, plans. Streams back token by
+									token.
+								</div>
 							</div>
-						</div>
-					) : (
-						messages.map((m, i) => {
-							const isLast = i === messages.length - 1;
-							const streamingThis =
-								isStreaming && isLast && m.role === "assistant";
-							return m.role === "user" ? (
-								<UserBubble
-									key={m.id}
-									content={m.content}
-									context={m.context}
-								/>
-							) : (
-								<AssistantBubble
-									key={m.id}
-									content={m.content}
-									tools={m.tools}
-									isStreaming={streamingThis}
-									label={agentLabel}
-								/>
-							);
-						})
-					)}
+						) : (
+							messages.map((m, i) => {
+								const isLast = i === messages.length - 1;
+								const streamingThis =
+									isStreaming && isLast && m.role === "assistant";
+								return m.role === "user" ? (
+									<UserBubble
+										key={m.id}
+										content={m.content}
+										context={m.context}
+									/>
+								) : (
+									<AssistantBubble
+										key={m.id}
+										content={m.content}
+										tools={m.tools}
+										isStreaming={streamingThis}
+										label={agentLabel}
+									/>
+								);
+							})
+						)}
+					</div>
 				</div>
+				{showJump ? (
+					<button
+						type="button"
+						className="chat-jump"
+						onClick={scrollToBottom}
+						title="Jump to latest"
+						aria-label="Jump to latest message"
+					>
+						↓
+					</button>
+				) : null}
 			</div>
 
 			<div className="chat-composer">
@@ -975,22 +1122,31 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 								{pickList.length === 0 ? (
 									<div className="picker-empty">None</div>
 								) : overlay === "models" ? (
-									pickList.map((m, i) => (
-										<button
-											key={m.id}
-											type="button"
-											ref={i === overlayActive ? overlayActiveRef : null}
-											className={`picker-item${i === overlayActive ? " is-active" : ""}`}
-											onClick={() => pickModel(m)}
-											onMouseEnter={() => setOverlayActive(i)}
-										>
-											{m.display_name}{" "}
-											<span className="picker-item-meta">
-												{m.provider}
-												{m.is_default ? " · default" : ""}
-											</span>
-										</button>
-									))
+									pickList.map((m, i) => {
+										// The model actually in use: the conversation's override,
+										// or — when it has none — the default (what the backend
+										// falls back to). That one gets the ◆ marker.
+										const inUse = modelId ? m.id === modelId : m.is_default;
+										return (
+											<button
+												key={m.id}
+												type="button"
+												ref={i === overlayActive ? overlayActiveRef : null}
+												className={`picker-item${i === overlayActive ? " is-active" : ""}${inUse ? " is-current" : ""}`}
+												onClick={() => pickModel(m)}
+												onMouseEnter={() => setOverlayActive(i)}
+											>
+												<span className="picker-item-mark" aria-hidden="true">
+													{inUse ? "◆" : ""}
+												</span>
+												{m.display_name}{" "}
+												<span className="picker-item-meta">
+													{m.provider}
+													{m.is_default ? " · default" : ""}
+												</span>
+											</button>
+										);
+									})
 								) : (
 									pickList.map((c, i) => (
 										<div
@@ -1038,14 +1194,25 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 							}
 							rows={1}
 						/>
-						<button
-							type="button"
-							className="chat-send"
-							onClick={sendMessage}
-							disabled={!canSend}
-						>
-							{isStreaming ? "…" : "send ↑"}
-						</button>
+						{showStop ? (
+							<button
+								type="button"
+								className="chat-send chat-stop"
+								onClick={stopStreaming}
+								title="Stop the agent"
+							>
+								stop ◼
+							</button>
+						) : (
+							<button
+								type="button"
+								className="chat-send"
+								onClick={sendMessage}
+								disabled={!canSend}
+							>
+								send ↑
+							</button>
+						)}
 					</div>
 				</div>
 			</div>

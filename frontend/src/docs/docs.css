@@ -1,0 +1,269 @@
+/* Public docs site (/docs). Layout + markdown styling on top of the shared
+   vault-pixel design system. The sidebar reuses vp-sidebar / vp-nav-* (from
+   layout.css) and the article reuses vp-page + PvPanel (vp-panel), so the
+   docs match the Homepage/About pages. The highlight.js theme colors code. */
+@import "highlight.js/styles/github-dark.css";
+
+.vp-docs {
+	min-height: 100vh;
+	background: var(--vp-bg);
+	color: var(--vp-text);
+}
+
+/* The sidebar is the admin vp-sidebar — fixed, flush to the left edge. */
+.vp-docs-sidebar {
+	z-index: 40;
+}
+
+.vp-docs-brandlink {
+	text-decoration: none;
+}
+
+.vp-docs-badge {
+	font-family: var(--vp-font);
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: var(--vp-bg);
+	background: var(--vp-accent);
+	padding: 2px 6px;
+}
+
+/* Content sits to the right of the fixed 240px sidebar. */
+.vp-docs-main {
+	margin-left: 240px;
+	min-width: 0;
+}
+
+.vp-docs-page {
+	padding-top: 28px;
+}
+
+/* ---- Mobile top bar (hidden on desktop) ----------------------------------- */
+.vp-docs-topbar {
+	display: none;
+	position: sticky;
+	top: 0;
+	z-index: 45;
+	align-items: center;
+	gap: 12px;
+	height: 52px;
+	padding: 0 14px;
+	background: var(--vp-bg-soft);
+	border-bottom: 2px solid var(--vp-border);
+}
+
+.vp-docs-topbar-brand {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	text-decoration: none;
+}
+
+.vp-docs-topbar-logo {
+	width: 28px;
+	height: 28px;
+	object-fit: contain;
+}
+
+.vp-docs-scrim {
+	display: none;
+	border: none;
+	padding: 0;
+	cursor: pointer;
+}
+
+/* ---- Markdown article body ------------------------------------------------ */
+.vp-docs-body {
+	line-height: 1.65;
+	font-size: 15px;
+	color: var(--vp-text);
+	overflow-wrap: anywhere;
+}
+
+.vp-docs-body > :first-child {
+	margin-top: 0;
+}
+
+.vp-docs-body h1,
+.vp-docs-body h2,
+.vp-docs-body h3,
+.vp-docs-body h4 {
+	font-family: var(--vp-font);
+	scroll-margin-top: 70px;
+}
+
+.vp-docs-body h2 {
+	font-size: 19px;
+	font-weight: 800;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-accent);
+	margin: 32px 0 12px;
+	padding-bottom: 6px;
+	border-bottom: 2px solid var(--vp-border);
+}
+
+.vp-docs-body h3 {
+	font-size: 16px;
+	margin: 24px 0 10px;
+	color: var(--vp-text);
+}
+
+.vp-docs-body h4 {
+	font-size: 14px;
+	margin: 18px 0 8px;
+	color: var(--vp-muted);
+	text-transform: uppercase;
+	letter-spacing: 1px;
+}
+
+.vp-docs-anchor {
+	color: inherit;
+	text-decoration: none;
+}
+
+.vp-docs-anchor:hover {
+	text-decoration: underline;
+}
+
+.vp-docs-body p {
+	margin: 0 0 14px;
+}
+
+.vp-docs-body ul,
+.vp-docs-body ol {
+	margin: 0 0 14px;
+	padding-left: 1.4em;
+}
+
+.vp-docs-body li {
+	margin: 4px 0;
+}
+
+.vp-docs-body a {
+	color: var(--vp-accent-4);
+}
+
+.vp-docs-body pre {
+	position: relative;
+	background: var(--vp-bg);
+	border: 2px solid var(--vp-border);
+	border-left: 3px solid var(--vp-accent);
+	padding: 28px 14px 14px;
+	margin: 0.75em 0;
+	overflow-x: auto;
+	white-space: pre;
+}
+
+/* macOS-style traffic-light dots, decorative only */
+.vp-docs-body pre::before {
+	content: "";
+	position: absolute;
+	top: 10px;
+	left: 12px;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--vp-accent-3);
+	box-shadow:
+		14px 0 0 var(--vp-accent),
+		28px 0 0 var(--vp-accent-2);
+	opacity: 0.8;
+	pointer-events: none;
+}
+
+.vp-docs-body pre code {
+	display: block;
+	background: transparent;
+	color: inherit;
+	padding: 0;
+	font-family: "JetBrains Mono", "Fira Code", Menlo, Monaco, monospace;
+	font-size: 13px;
+	line-height: 1.55;
+}
+
+/* Don't let the highlight.js theme paint a second background box. */
+.vp-docs-body pre code.hljs {
+	background: transparent;
+	padding: 0;
+}
+
+.vp-docs-body :not(pre) > code {
+	background: var(--vp-bg);
+	color: var(--vp-accent-3);
+	padding: 0.15em 0.4em;
+	border: 1px solid var(--vp-border-soft);
+	font-size: 0.9em;
+	font-family: "Fira Code", Menlo, Monaco, monospace;
+}
+
+.vp-docs-body blockquote {
+	border-left: 3px solid var(--vp-accent);
+	padding: 8px 0 8px 14px;
+	margin: 0.75em 0;
+	color: var(--vp-muted);
+	background: var(--vp-bg);
+}
+
+.vp-docs-body blockquote p {
+	margin: 0;
+}
+
+.vp-docs-body table {
+	border-collapse: collapse;
+	width: 100%;
+	margin: 16px 0;
+	font-size: 14px;
+}
+
+.vp-docs-body th,
+.vp-docs-body td {
+	border: 1px solid var(--vp-border-soft);
+	padding: 6px 12px;
+	text-align: left;
+	vertical-align: top;
+}
+
+.vp-docs-body th {
+	background: var(--vp-bg);
+	font-weight: 700;
+	color: var(--vp-accent);
+}
+
+.vp-docs-body hr {
+	border: none;
+	border-top: 2px solid var(--vp-border);
+	margin: 28px 0;
+}
+
+/* ---- Responsive: sidebar becomes an off-canvas drawer --------------------- */
+@media (max-width: 860px) {
+	.vp-docs-topbar {
+		display: flex;
+	}
+
+	.vp-docs-main {
+		margin-left: 0;
+	}
+
+	.vp-docs-sidebar {
+		top: 52px;
+		height: calc(100% - 52px);
+		transform: translateX(-110%);
+		transition: transform 0.2s ease;
+	}
+
+	.vp-docs-sidebar.is-open {
+		transform: translateX(0);
+	}
+
+	.vp-docs-scrim.is-open {
+		display: block;
+		position: fixed;
+		inset: 52px 0 0;
+		z-index: 35;
+		background: rgba(0, 0, 0, 0.5);
+	}
+}

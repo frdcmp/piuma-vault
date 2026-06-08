@@ -36,6 +36,16 @@ export const retitleConversation = async (id) =>
 export const fetchAllModels = async () =>
 	(await axiosInstance.get("/agents/models")).data;
 
+// STOP — cancel the conversation's running turn mid-stream.
+export const stopConversation = async (id) =>
+	(await axiosInstance.post(`/agents/conversations/${id}/stop`)).data;
+
+// INJECT — queue a message into the running turn (consumed next round). Resolves
+// `{ queued: true }`; a 409 means no turn is active (send via /chat instead).
+export const injectMessage = async (id, message) =>
+	(await axiosInstance.post(`/agents/conversations/${id}/inject`, { message }))
+		.data;
+
 // Device "now" as RFC3339 *with* the local UTC offset (e.g.
 // "2026-06-05T14:52:00+02:00") — gives the agent a real clock + timezone.
 const localNowIso = () => {
@@ -145,6 +155,10 @@ export async function streamChat({
 		}
 	} catch (e) {
 		if (e?.name === "AbortError") return;
+		// Transport-level drop (stream reset / connection abort), NOT a backend
+		// error frame. The turn keeps running server-side and is persisted, so the
+		// caller can recover by refetching. Tagged so it can tell the two apart.
+		e.isTransport = true;
 		onError?.(e);
 	}
 }

@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-	ActivityIndicator,
 	Alert,
 	Keyboard,
 	Platform,
@@ -27,7 +26,9 @@ import {
 	fetchConversation,
 	fetchConversations,
 	fetchDefaultAgent,
+	injectMessage,
 	retitleConversation,
+	stopConversation,
 	streamChat,
 	updateConversation,
 } from "../api/agentChatApi";
@@ -49,6 +50,7 @@ const MONO = Platform.select({
 const ASSISTANT_LABEL = "assistant stream";
 const AGENT_LABEL = "assistant";
 const SUBMIT_LABEL = "send";
+const STOP_LABEL = "stop";
 
 // Restores the active agents conversation across mounts.
 const CONV_STORAGE_KEY = "agents_active_conv";
@@ -284,6 +286,9 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	const [keyboardVisible, setKeyboardVisible] = useState(false);
 	// Active agents conversation + the agent for new chats (admin default).
 	const [conversationId, setConversationId] = useState(null);
+	// The conversation's chosen model (null = use the admin default). Drives the
+	// "in use" marker in the /models picker.
+	const [modelId, setModelId] = useState(null);
 	const [agentKind, setAgentKind] = useState("vault_agent");
 	const [agentLabel, setAgentLabel] = useState("Piuma");
 	const [agentCommands, setAgentCommands] = useState([]);
@@ -298,6 +303,26 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	const [contextAttached, setContextAttached] = useState(true);
 	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
+	// Stick-to-bottom: only auto-follow new content while the user is already
+	// parked near the bottom. Scrolling up releases the lock (so streaming tokens
+	// stop yanking the view down) and reveals a "jump to latest" button.
+	const atBottomRef = useRef(true);
+	const [showJump, setShowJump] = useState(false);
+
+	const handleScroll = useCallback((e) => {
+		const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+		const distanceFromBottom =
+			contentSize.height - (contentOffset.y + layoutMeasurement.height);
+		const atBottom = distanceFromBottom < 80;
+		atBottomRef.current = atBottom;
+		setShowJump((prev) => (prev === !atBottom ? prev : !atBottom));
+	}, []);
+
+	const scrollToBottom = useCallback((animated = true) => {
+		atBottomRef.current = true;
+		setShowJump(false);
+		scrollRef.current?.scrollToEnd({ animated });
+	}, []);
 
 	useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -351,6 +376,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				const data = await fetchConversation(stored);
 				if (cancelled) return;
 				setConversationId(stored);
+				setModelId(data.conversation?.model_id ?? null);
 				setMessages(
 					(data.messages || []).map((m) => ({
 						id: m.id,
@@ -379,6 +405,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		setOverlay(null);
 		setMessages([]);
 		setConversationId(null);
+		setModelId(null);
 		setInput("");
 		try {
 			await AsyncStorage.removeItem(CONV_STORAGE_KEY);
@@ -431,6 +458,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		try {
 			await AsyncStorage.setItem(CONV_STORAGE_KEY, id);
 			const d = await fetchConversation(id);
+			setModelId(d.conversation?.model_id ?? null);
 			setMessages(
 				(d.messages || []).map((m) => ({
 					id: m.id,
@@ -447,6 +475,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	const pickModel = useCallback(
 		async (m) => {
 			setOverlay(null);
+			setModelId(m.id); // optimistic; also carried into a not-yet-created convo
 			if (conversationId) {
 				try {
 					await updateConversation({ id: conversationId, model_id: m.id });
@@ -562,15 +591,96 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		[conversationId, startNewChat, clearMessages],
 	);
 
+	// STOP: kill the running turn immediately — abort the local stream (instant
+	// UI) and tell the backend to cancel so it stops generating mid-stream.
+	const stopStreaming = useCallback(() => {
+		abortRef.current?.abort();
+		abortRef.current = null;
+		setIsStreaming(false);
+		if (conversationId) stopConversation(conversationId).catch(() => {});
+	}, [conversationId]);
+
+	// Recover from a dropped stream: the turn keeps running + is persisted
+	// server-side, so poll the conversation until the assistant message lands,
+	// then rebuild from server truth (what a manual reload does, automatically).
+	const recoverTurn = useCallback(async (convId) => {
+		for (let i = 0; i < 24; i++) {
+			await new Promise((r) => setTimeout(r, 2500)); // ~60s total
+			try {
+				const d = await fetchConversation(convId);
+				const msgs = d.messages || [];
+				const last = msgs[msgs.length - 1];
+				if (last && last.role === "assistant") {
+					setMessages(
+						msgs.map((m) => ({
+							id: m.id,
+							role: m.role,
+							content: blocksToText(m.content),
+							...(m.role === "assistant"
+								? { tools: blocksToTools(m.content) }
+								: {}),
+						})),
+					);
+					return;
+				}
+			} catch {
+				/* keep trying */
+			}
+		}
+		// Gave up — leave a gentle note rather than a hard error.
+		setMessages((curr) => {
+			const updated = [...curr];
+			const last = updated[updated.length - 1];
+			if (last?.role === "assistant") {
+				updated[updated.length - 1] = {
+					...last,
+					content:
+						"_The reply is taking a while. Reopen this chat to see it once it finishes._",
+				};
+			}
+			return updated;
+		});
+	}, []);
+
 	const sendMessage = useCallback(async () => {
 		const text = input.trim();
-		if (!text || isStreaming) return;
+		if (!text) return;
+
+		// While a turn is streaming, a send INJECTS into it instead of starting a
+		// new turn; the running turn picks it up at the next round boundary.
+		if (isStreaming) {
+			if (!conversationId) return;
+			const injected = { id: newMessageId(), role: "user", content: text };
+			// Slot the bubble above the trailing (streaming) assistant message so
+			// live order matches reloaded order (…, injected user, assistant).
+			setMessages((curr) => {
+				const next = [...curr];
+				const at =
+					next.length && next[next.length - 1].role === "assistant"
+						? next.length - 1
+						: next.length;
+				next.splice(at, 0, injected);
+				return next;
+			});
+			setInput("");
+			setInputHeight(INPUT_MIN_H);
+			scrollToBottom(true);
+			try {
+				await injectMessage(conversationId, text);
+			} catch {
+				/* 409 = the turn just ended; best-effort */
+			}
+			return;
+		}
 
 		// Ensure a conversation exists (create with the default agent on first send).
 		let convId = conversationId;
 		if (!convId) {
 			try {
-				const conv = await createConversation({ agent: agentKind });
+				const conv = await createConversation({
+					agent: agentKind,
+					...(modelId ? { model_id: modelId } : {}),
+				});
 				convId = conv.id;
 				setConversationId(conv.id);
 				await AsyncStorage.setItem(CONV_STORAGE_KEY, conv.id);
@@ -606,6 +716,8 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		setInput("");
 		setInputHeight(INPUT_MIN_H);
 		setIsStreaming(true);
+		// Sending re-arms the stick-to-bottom lock so the new turn scrolls into view.
+		scrollToBottom(true);
 
 		const controller = new AbortController();
 		abortRef.current = controller;
@@ -640,6 +752,25 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					});
 				},
 				onError: (e) => {
+					// A transport drop (stream reset / connection abort) doesn't mean
+					// the turn failed — it keeps running and is persisted server-side.
+					// Show a soft "reconnecting" note and refetch until it lands,
+					// instead of a hard error.
+					if (e?.isTransport && convId) {
+						setMessages((curr) => {
+							const updated = [...curr];
+							const last = updated[updated.length - 1];
+							updated[updated.length - 1] = {
+								...last,
+								content: last.content
+									? `${last.content}\n\n_(reconnecting…)_`
+									: "_Reconnecting…_",
+							};
+							return updated;
+						});
+						recoverTurn(convId);
+						return;
+					}
 					setMessages((curr) => {
 						const updated = [...curr];
 						const last = updated[updated.length - 1];
@@ -656,9 +787,13 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			setIsStreaming(false);
 			abortRef.current = null;
 		}
-	}, [input, isStreaming, conversationId, agentKind, contextAttached, notePath, noteId]);
+	}, [input, isStreaming, conversationId, agentKind, contextAttached, notePath, noteId, scrollToBottom, modelId, recoverTurn]);
 
-	const canSend = input.trim().length > 0 && !isStreaming;
+	// Composer button is state-driven: STOP while streaming with an empty box,
+	// otherwise SEND (which injects when streaming, sends a new turn when idle).
+	const hasText = input.trim().length > 0;
+	const showStop = isStreaming && !hasText;
+	const canSend = hasText;
 
 	return (
 		<KeyboardAvoidingView
@@ -714,9 +849,15 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 							ref={scrollRef}
 							style={styles.messages}
 							contentContainerStyle={styles.messagesContent}
-							onContentSizeChange={() =>
-								scrollRef.current?.scrollToEnd({ animated: true })
-							}
+							onScroll={handleScroll}
+							scrollEventThrottle={16}
+							onContentSizeChange={() => {
+								// Follow growth only when parked at the bottom. Non-animated
+								// so rapid streaming tokens track tightly instead of firing
+								// a fresh competing animation per token (the old jank).
+								if (atBottomRef.current)
+									scrollRef.current?.scrollToEnd({ animated: false });
+							}}
 							keyboardShouldPersistTaps="handled"
 						>
 							{messages.length === 0 ? (
@@ -752,6 +893,19 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 								})
 							)}
 						</ScrollView>
+						{showJump ? (
+							<Pressable
+								onPress={() => scrollToBottom(true)}
+								style={({ pressed }) => [
+									styles.jumpBtn,
+									pressed && styles.jumpBtnPressed,
+								]}
+								hitSlop={8}
+								accessibilityLabel="Jump to latest message"
+							>
+								<Ionicons name="arrow-down" size={16} color={colors.muted} />
+							</Pressable>
+						) : null}
 						{notePath ? (
 							<View style={styles.contextBar}>
 								<Pressable
@@ -851,37 +1005,47 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 								multiline
 								scrollEnabled={inputHeight > INPUT_MAX_H}
 								showsVerticalScrollIndicator={false}
-								editable={!isStreaming}
 							/>
-							<Pressable
-								onPress={sendMessage}
-								disabled={!canSend}
-								style={({ pressed }) => [
-									styles.sendBtn,
-									!canSend && styles.sendBtnDisabled,
-									pressed && canSend && styles.sendBtnPressed,
-								]}
-							>
-								{isStreaming ? (
-									<ActivityIndicator color={colors.accent2} />
-								) : (
-									<>
-										<Text
-											style={[
-												styles.sendLabel,
-												!canSend && styles.sendLabelDisabled,
-											]}
-										>
-											{SUBMIT_LABEL}
-										</Text>
-										<Ionicons
-											name="arrow-up"
-											size={14}
-											color={canSend ? colors.accent2 : colors.muted}
-										/>
-									</>
-								)}
-							</Pressable>
+							{showStop ? (
+								<Pressable
+									onPress={stopStreaming}
+									style={({ pressed }) => [
+										styles.sendBtn,
+										styles.stopBtn,
+										pressed && styles.sendBtnPressed,
+									]}
+									accessibilityLabel="Stop the agent"
+								>
+									<Text style={[styles.sendLabel, styles.stopLabel]}>
+										{STOP_LABEL}
+									</Text>
+									<Ionicons name="stop" size={14} color={colors.accent3} />
+								</Pressable>
+							) : (
+								<Pressable
+									onPress={sendMessage}
+									disabled={!canSend}
+									style={({ pressed }) => [
+										styles.sendBtn,
+										!canSend && styles.sendBtnDisabled,
+										pressed && canSend && styles.sendBtnPressed,
+									]}
+								>
+									<Text
+										style={[
+											styles.sendLabel,
+											!canSend && styles.sendLabelDisabled,
+										]}
+									>
+										{SUBMIT_LABEL}
+									</Text>
+									<Ionicons
+										name="arrow-up"
+										size={14}
+										color={canSend ? colors.accent2 : colors.muted}
+									/>
+								</Pressable>
+							)}
 						</View>
 					</View>
 				</View>
@@ -953,24 +1117,45 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 									{pickList.length === 0 ? (
 										<Text style={styles.overlayEmpty}>None</Text>
 									) : overlay === "models" ? (
-										pickList.map((m) => (
-											<Pressable
-												key={m.id}
-												onPress={() => pickModel(m)}
-												style={({ pressed }) => [
-													styles.overlayRow,
-													pressed && styles.slashItemPressed,
-												]}
-											>
-												<Text style={styles.overlayRowText}>
-													{m.display_name}
-												</Text>
-												<Text style={styles.overlayRowMeta} numberOfLines={1}>
-													{m.provider}
-													{m.is_default ? " · default" : ""}
-												</Text>
-											</Pressable>
-										))
+										(() => {
+											// In use = the conversation's chosen model, or the admin
+											// default when none is set.
+											const activeId =
+												modelId ??
+												pickList.find((x) => x.is_default)?.id;
+											return pickList.map((m) => {
+												const inUse = m.id === activeId;
+												return (
+													<Pressable
+														key={m.id}
+														onPress={() => pickModel(m)}
+														style={({ pressed }) => [
+															styles.overlayRow,
+															inUse && styles.overlayRowActive,
+															pressed && styles.slashItemPressed,
+														]}
+													>
+														<View style={styles.overlayRowHead}>
+															<Text style={styles.overlayRowText}>
+																{m.display_name}
+															</Text>
+															{inUse ? (
+																<Text style={styles.overlayRowCheck}>
+																	✓ in use
+																</Text>
+															) : null}
+														</View>
+														<Text
+															style={styles.overlayRowMeta}
+															numberOfLines={1}
+														>
+															{m.provider}
+															{m.is_default ? " · default" : ""}
+														</Text>
+													</Pressable>
+												);
+											});
+										})()
 									) : (
 										pickList.map((c) => (
 											<View key={c.id} style={styles.overlaySessionRow}>
@@ -1244,6 +1429,27 @@ const styles = StyleSheet.create({
 		gap: 8,
 	},
 
+	// ── JUMP TO LATEST (shown when scrolled up) ──────────────
+	jumpBtn: {
+		position: "absolute",
+		bottom: 12,
+		alignSelf: "center",
+		width: 32,
+		height: 32,
+		alignItems: "center",
+		justifyContent: "center",
+		// Subtle: translucent fill + faint border, so it floats over the chat
+		// without competing with the content.
+		backgroundColor: "rgba(20, 23, 28, 0.5)",
+		borderWidth: 1,
+		borderColor: colors.border,
+		opacity: 0.65,
+	},
+	jumpBtnPressed: {
+		transform: [{ translateX: 1 }, { translateY: 1 }],
+		opacity: 1,
+	},
+
 	// ── CONTEXT TAG (attached note) ──────────────────────────
 	contextBar: {
 		// Float at the bottom-right of the messages area. It's anchored to the
@@ -1253,7 +1459,9 @@ const styles = StyleSheet.create({
 		position: "absolute",
 		right: 12,
 		bottom: 8,
-		maxWidth: "75%",
+		// Hard cap so a long note title crops (label ellipsizes) instead of
+		// stretching across and covering the chat. Stays right-anchored.
+		maxWidth: 220,
 		flexDirection: "row",
 		flexWrap: "wrap",
 		justifyContent: "flex-end",
@@ -1307,7 +1515,8 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 3,
-		maxWidth: "100%",
+		// Cap each chip so long titles crop rather than overrunning the row.
+		maxWidth: 200,
 		paddingHorizontal: 5,
 		paddingVertical: 1,
 		borderWidth: 1,
@@ -1361,6 +1570,12 @@ const styles = StyleSheet.create({
 	sendBtnPressed: {
 		transform: [{ translateX: 1 }, { translateY: 1 }],
 	},
+	// STOP variant of the action button — red border/label.
+	stopBtn: {
+		borderColor: colors.accent3,
+		backgroundColor: "rgba(255, 107, 107, 0.08)",
+	},
+	stopLabel: { color: colors.accent3 },
 	sendLabel: {
 		color: colors.accent2,
 		fontFamily: MONO,
@@ -1430,6 +1645,25 @@ const styles = StyleSheet.create({
 		paddingVertical: 10,
 		borderBottomWidth: 1,
 		borderBottomColor: colors.bgSoft,
+	},
+	// Highlight the model the conversation is currently using.
+	overlayRowActive: {
+		borderLeftWidth: 2,
+		borderLeftColor: colors.accent2,
+		backgroundColor: colors.bgSoft,
+	},
+	overlayRowHead: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		gap: 8,
+	},
+	overlayRowCheck: {
+		color: colors.accent2,
+		fontFamily: MONO,
+		fontSize: 11,
+		fontWeight: "800",
+		letterSpacing: 0.4,
 	},
 	// Session row: title (fills) + a delete button on the right.
 	overlaySessionRow: {

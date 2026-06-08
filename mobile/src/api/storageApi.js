@@ -114,3 +114,11 @@ export const signedUrl = async ({ key, expiresInSecs = 3600 }) => {
 	});
 	return data;
 };
+
+// Read the mobile update manifest through our backend (which proxies the storage
+// origin). NOT via the CDN: its edge can 403 the app's HTTP client even with a
+// valid signed URL. Returns { version, buildTime, apkKey, apkFilename, notes }.
+export const fetchAppManifest = async () => {
+	const { data } = await axiosInstance.get("/storage/app-update-manifest");
+	return data;
+};

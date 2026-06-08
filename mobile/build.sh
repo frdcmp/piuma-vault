@@ -8,8 +8,15 @@
 #   -p apk    preview profile      -> .apk (standalone)  -> storage  expo/pv/apk/
 #   -p prod   production profile    -> .aab (Play Store)  -> storage  expo/pv/prod/
 #
+# For -p apk, the patch version in app.json/package.json is auto-bumped before the
+# build (so the new APK outranks the installed one), and an update manifest is
+# written to expo/pv/apk/latest.json ({version,buildTime,apkKey,apkFilename,
+# notes}). The mobile app reads it on open and offers a one-tap download.
+#
 # Examples:
-#   ./build-and-upload.sh -p apk                 # build + upload preview APK
+#   ./build-and-upload.sh -p apk                 # bump + build + upload APK + manifest
+#   ./build-and-upload.sh -p apk --notes "..."   # set the in-app update notes (apk)
+#   ./build-and-upload.sh -p apk --no-bump       # don't auto-increment the version
 #   ./build-and-upload.sh -p prod                # build + upload Play AAB
 #   ./build-and-upload.sh -p dev --skip-build    # reuse existing dev artifact, upload
 #   ./build-and-upload.sh -p apk --local         # upload via localhost:3000 backend
@@ -37,6 +44,8 @@ TARGET=""
 DEST_FOLDER=""
 DO_BUILD=1
 DO_UPLOAD=1
+DO_BUMP=1     # auto-increment the patch version (app.json + package.json) for -p apk
+NOTES=""      # in-app update notes, embedded in the apk manifest
 
 usage() { awk 'NR>1 && /^set -euo pipefail/{exit} NR>1{sub(/^# ?/,"");print}' "$0"; }
 
@@ -45,6 +54,8 @@ while [ $# -gt 0 ]; do
 		-p|--target)  TARGET="${2:-}"; shift ;;
 		--skip-build) DO_BUILD=0 ;;
 		--no-upload)  DO_UPLOAD=0 ;;
+		--no-bump)    DO_BUMP=0 ;;
+		--notes)      NOTES="${2:-}"; shift ;;
 		--local)      BASE="$BASE_DEV" ;;
 		--folder)     DEST_FOLDER="$2"; shift ;;
 		-h|--help)    usage; exit 0 ;;
@@ -194,22 +205,71 @@ verify_artifact() {
 	fi
 }
 
-upload_artifact() {
-	local ts key url putcode
-	ts=$(date '+%Y-%m-%d_%H%M')
-	key="$DEST_FOLDER/pv-$ts.$EXT"
-	echo "requesting presigned PUT url for $key"
+# Presign a PUT for $1=key from local $2=file with $3=content-type, then upload.
+# Forces HTTP/1.1 (large APK uploads were hitting curl exit 92 — an HTTP/2 framing
+# error — on the Bunny edge) and retries transient failures.
+presign_put() {
+	local key="$1" file="$2" ct="$3" url putcode
 	url=$(curl -sf -X POST "$BASE/storage/presign-upload" \
 		-H "x-api-key: $API_KEY" -H "Content-Type: application/json" \
-		-d "{\"key\":\"$key\",\"content_type\":\"$CONTENT_TYPE\",\"expires_in_secs\":900}" \
+		-d "{\"key\":\"$key\",\"content_type\":\"$ct\",\"expires_in_secs\":900}" \
 		| python3 -c 'import sys,json;print(json.load(sys.stdin)["url"])')
-	[ -n "$url" ] || { echo "presign returned no url"; return 1; }
-	echo "uploading bytes to bucket…"
-	putcode=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$url" \
-		-H "Content-Type: $CONTENT_TYPE" --data-binary @"$OUT")
-	[ "$putcode" = "200" ] || { echo "PUT failed: HTTP $putcode"; return 1; }
+	[ -n "$url" ] || { echo "presign returned no url for $key"; return 1; }
+	putcode=$(curl -s --http1.1 --retry 3 --retry-all-errors -o /dev/null \
+		-w '%{http_code}' -X PUT "$url" \
+		-H "Content-Type: $ct" --data-binary @"$file")
+	[ "$putcode" = "200" ] || { echo "PUT failed for $key: HTTP $putcode"; return 1; }
+}
+
+upload_artifact() {
+	local ts key filename manifest_key manifest_file notes_json
+	ts=$(date '+%Y-%m-%d_%H%M')
+	filename="pv-$ts.$EXT"
+	key="$DEST_FOLDER/$filename"
+	echo "uploading $OUT → $key"
+	presign_put "$key" "$OUT" "$CONTENT_TYPE" || return 1
 	echo "$key" > "$LOGDIR/uploaded_key"
 	echo "uploaded $key"
+
+	# For standalone APKs, also publish an update manifest next to the artifact.
+	# The mobile app reads it (GET /storage/app-update-manifest) on open, compares
+	# `version` to its own build, and offers a one-tap download of `apkKey`.
+	if [ "$TARGET" = "apk" ]; then
+		manifest_key="$DEST_FOLDER/latest.json"
+		manifest_file="$LOGDIR/latest.json"
+		# json.dumps yields a quoted, escaped JSON string (handles quotes/newlines).
+		notes_json=$(printf '%s' "$NOTES" | python3 -c 'import sys,json;print(json.dumps(sys.stdin.read()))')
+		cat > "$manifest_file" <<-JSON
+		{
+		  "version": "${APP_VERSION}",
+		  "buildTime": "${ts}",
+		  "apkKey": "${key}",
+		  "apkFilename": "${filename}",
+		  "notes": ${notes_json}
+		}
+		JSON
+		presign_put "$manifest_key" "$manifest_file" "application/json" || return 1
+		echo "$manifest_key" > "$LOGDIR/manifest_key"
+		echo "manifest $manifest_key (version $APP_VERSION)"
+	fi
+}
+
+# Read the app version from app.json (the value EAS embeds as the APK's native
+# versionName, and what the update manifest advertises).
+read_app_version() {
+	grep -m1 '"version"' app.json | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/'
+}
+
+# Auto-bump the patch version in app.json (+ package.json) so every apk build
+# ships a higher version than the installed one — otherwise the in-app update
+# check never fires. Only the version string is rewritten. Skipped with --no-bump.
+bump_version() {
+	local cur new
+	cur="$(read_app_version)"
+	new="$(printf '%s' "$cur" | awk -F. -v OFS=. '{$NF=$NF+1; print}')"
+	sed -i "s/\"version\": \"${cur}\"/\"version\": \"${new}\"/" app.json
+	sed -i "s/\"version\": \"${cur}\"/\"version\": \"${new}\"/" package.json 2>/dev/null || true
+	echo "version bumped: ${cur} → ${new}"
 }
 
 # ----------------------------------------------------------------------------
@@ -217,6 +277,13 @@ upload_artifact() {
 # ----------------------------------------------------------------------------
 EXPO_TOKEN="${EXPO_TOKEN:-$(read_env EXPO_TOKEN)}"
 API_KEY="${FRDCMP_API_KEY:-$(read_env FRDCMP_API_KEY)}"
+
+# Bump before building so the artifact's versionName matches the manifest. Only
+# for apk builds (the distributed target that publishes a manifest).
+if [ "$TARGET" = "apk" ] && [ "$DO_BUMP" -eq 1 ] && [ "$DO_BUILD" -eq 1 ]; then
+	bump_version
+fi
+APP_VERSION="$(read_app_version)"
 
 banner
 progress_bar 0

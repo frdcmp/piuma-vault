@@ -1,6 +1,7 @@
 import { DarkTheme, NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useEffect, useState } from "react";
+import UpdatePrompt from "../components/UpdatePrompt";
 import CalendarScreen from "../screens/CalendarScreen";
 import LoginScreen from "../screens/LoginScreen";
 import SplashScreen from "../screens/SplashScreen";
@@ -44,31 +45,35 @@ export default function AppNavigator() {
 	}
 
 	return (
-		<NavigationContainer theme={VaultTheme}>
-			<Stack.Navigator
-				screenOptions={{
-					headerShown: false,
-					contentStyle: { backgroundColor: colors.bg },
-				}}
-			>
-				{token ? (
-					<>
-						<Stack.Screen name="VaultHome" component={VaultHomeScreen} />
-						{/* Storage handles its own left-edge back-swipe (folder-aware),
-						    so the native pop gesture is disabled to avoid the two
-						    competing. */}
-						<Stack.Screen
-							name="Storage"
-							component={StorageScreen}
-							options={{ gestureEnabled: false }}
-						/>
-						<Stack.Screen name="Calendar" component={CalendarScreen} />
-						<Stack.Screen name="Tasks" component={TasksScreen} />
-					</>
-				) : (
-					<Stack.Screen name="Login" component={LoginScreen} />
-				)}
-			</Stack.Navigator>
-		</NavigationContainer>
+		<>
+			{/* Prompts once on open when a newer APK is published (Android only). */}
+			{token ? <UpdatePrompt /> : null}
+			<NavigationContainer theme={VaultTheme}>
+				<Stack.Navigator
+					screenOptions={{
+						headerShown: false,
+						contentStyle: { backgroundColor: colors.bg },
+					}}
+				>
+					{token ? (
+						<>
+							<Stack.Screen name="VaultHome" component={VaultHomeScreen} />
+							{/* Storage handles its own left-edge back-swipe (folder-aware),
+							    so the native pop gesture is disabled to avoid the two
+							    competing. */}
+							<Stack.Screen
+								name="Storage"
+								component={StorageScreen}
+								options={{ gestureEnabled: false }}
+							/>
+							<Stack.Screen name="Calendar" component={CalendarScreen} />
+							<Stack.Screen name="Tasks" component={TasksScreen} />
+						</>
+					) : (
+						<Stack.Screen name="Login" component={LoginScreen} />
+					)}
+				</Stack.Navigator>
+			</NavigationContainer>
+		</>
 	);
 }

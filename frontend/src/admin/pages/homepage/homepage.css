@@ -48,6 +48,33 @@
 	text-align: center;
 	margin: 48px 0 24px;
 }
+
+/* Features grid — keep rows evenly filled (6 cards) so there are no empty
+   cells: 3 columns on wide, 2 on medium, 1 on mobile. */
+.vp-home-features {
+	display: grid;
+	gap: 16px;
+	grid-template-columns: repeat(3, 1fr);
+	align-items: stretch;
+}
+.vp-home-features .vp-card {
+	display: flex;
+	flex-direction: column;
+}
+/* Tag hugs its content instead of stretching the full card width. */
+.vp-home-features .vp-tag {
+	align-self: flex-start;
+}
+@media (max-width: 920px) {
+	.vp-home-features {
+		grid-template-columns: repeat(2, 1fr);
+	}
+}
+@media (max-width: 560px) {
+	.vp-home-features {
+		grid-template-columns: 1fr;
+	}
+}
 .vp-home-feature-icon {
 	width: 40px;
 	height: 40px;
@@ -62,8 +89,10 @@
 	font-size: 20px;
 }
 
+.vp-home-closing-panel {
+	margin-top: 48px;
+}
 .vp-home-closing {
-	margin-top: 56px;
 	text-align: center;
 	padding: 40px 24px;
 }

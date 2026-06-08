@@ -55,6 +55,16 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             web::resource("/agents/conversations/{id}/chat")
                 .route(web::post().to(chat::chat)),
         )
+        // STOP — cancel the running turn mid-stream.
+        .service(
+            web::resource("/agents/conversations/{id}/stop")
+                .route(web::post().to(chat::stop)),
+        )
+        // INJECT — queue a message into the running turn (no new stream).
+        .service(
+            web::resource("/agents/conversations/{id}/inject")
+                .route(web::post().to(chat::inject)),
+        )
         .service(
             web::resource("/agents/conversations/{id}/messages")
                 .route(web::delete().to(handlers::clear_conversation)),
