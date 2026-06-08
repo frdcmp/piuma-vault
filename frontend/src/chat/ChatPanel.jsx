@@ -68,29 +68,62 @@ const blocksToText = (content) => {
 	return "";
 };
 
-// Derive the per-turn tool activity from persisted content blocks: each
-// `tool_use` becomes a chip; the following `tool_result` sets its status.
-const blocksToTools = (content) => {
+// Walk persisted content blocks IN ORDER into renderable parts, so tools show up
+// inline at the point they ran rather than all grouped together. A part is either
+// a `text` segment or a `tools` run (consecutive tool chips between text). A
+// `tool_result` sets the status of the matching `tool_use` in the current run;
+// `thinking` blocks are skipped (not rendered, don't split a tool run).
+const blocksToParts = (content) => {
+	if (typeof content === "string")
+		return content ? [{ kind: "text", id: "p0", text: content }] : [];
 	if (!Array.isArray(content)) return [];
-	const tools = [];
+	const parts = [];
+	const tail = () => parts[parts.length - 1];
 	for (const b of content) {
-		if (b.type === "tool_use") {
-			tools.push({
-				id: String(tools.length),
+		if (b.type === "text") {
+			if (!b.text) continue;
+			const t = tail();
+			if (t?.kind === "text") t.text += b.text;
+			else parts.push({ kind: "text", id: `p${parts.length}`, text: b.text });
+		} else if (b.type === "tool_use") {
+			let run = tail();
+			if (run?.kind !== "tools") {
+				run = { kind: "tools", id: `p${parts.length}`, tools: [] };
+				parts.push(run);
+			}
+			run.tools.push({
+				id: `${run.id}-${run.tools.length}`,
 				name: b.name,
 				args: b.input,
 				status: "done",
 			});
 		} else if (b.type === "tool_result") {
-			const t = [...tools].reverse().find((x) => x.name === b.name);
+			const run = tail();
+			const t =
+				run?.kind === "tools" &&
+				[...run.tools].reverse().find((x) => x.name === b.name);
 			if (t) {
 				const out = b.output;
 				const isErr = out && typeof out === "object" && "error" in out;
 				t.status = isErr ? "error" : "done";
 			}
+		} else if (b.type === "injected") {
+			// A mid-turn user injection, rendered inline where it landed.
+			if (b.text)
+				parts.push({ kind: "inject", id: `p${parts.length}`, text: b.text });
 		}
 	}
-	return tools;
+	return parts;
+};
+
+// Append text to a parts array, extending the trailing text segment or adding a
+// new one. Returns a new array (immutable update for setMessages).
+const appendTextPart = (parts, text) => {
+	const next = [...(parts || [])];
+	const t = next[next.length - 1];
+	if (t?.kind === "text") next[next.length - 1] = { ...t, text: t.text + text };
+	else next.push({ kind: "text", id: `p${next.length}`, text });
+	return next;
 };
 
 const TOOL_ICON = { running: "⚙", done: "✓", error: "✗" };
@@ -238,13 +271,12 @@ function UserBubble({ content, context }) {
 	);
 }
 
-function AssistantBubble({ content, tools, isStreaming, label }) {
-	const empty = !content;
+function AssistantBubble({ parts, isStreaming, label }) {
+	const empty = !parts?.length;
 	return (
 		<div className="chat-assistant-row">
 			<span className="chat-role">{label}</span>
 			<div className="chat-assistant-body">
-				<ToolList tools={tools} isStreaming={isStreaming} />
 				{empty && isStreaming ? (
 					<div className="chat-thinking">
 						<PiumaRunning pixelSize={2} />
@@ -259,7 +291,29 @@ function AssistantBubble({ content, tools, isStreaming, label }) {
 					</div>
 				) : (
 					<>
-						<ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+						{/* Text, tool runs, and mid-turn injections — in stream order. */}
+						{parts.map((p) => {
+							if (p.kind === "tools")
+								return (
+									<ToolList
+										key={p.id}
+										tools={p.tools}
+										isStreaming={isStreaming}
+									/>
+								);
+							if (p.kind === "inject")
+								return (
+									<div key={p.id} className="chat-inject">
+										<span className="chat-inject-label">you ↩</span>
+										<span className="chat-inject-text">{p.text}</span>
+									</div>
+								);
+							return (
+								<ReactMarkdown key={p.id} remarkPlugins={[remarkGfm]}>
+									{p.text}
+								</ReactMarkdown>
+							);
+						})}
 						{isStreaming ? <span className="chat-cursor" /> : null}
 					</>
 				)}
@@ -345,7 +399,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 						id: m.id,
 						role: m.role,
 						content: blocksToText(m.content),
-						tools: blocksToTools(m.content),
+						parts: blocksToParts(m.content),
 					})),
 				);
 				setHydrated(true);
@@ -447,7 +501,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 							id: m.id,
 							role: m.role,
 							content: blocksToText(m.content),
-							tools: blocksToTools(m.content),
+							parts: blocksToParts(m.content),
 						})),
 					);
 					return;
@@ -478,16 +532,17 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		// new turn; the running turn picks it up at the next round boundary.
 		if (isStreaming) {
 			if (!conversationId) return;
-			const injected = { id: newMessageId(), role: "user", content: text };
-			// Slot the bubble above the trailing (streaming) assistant message so
-			// live order matches reloaded order (…, injected user, assistant).
+			// Drop the injection inline into the streaming assistant turn, at the
+			// point it was typed — not hoisted above the whole reply. The backend
+			// records it as an `injected` block at the same spot, so reloads match.
 			setMessages((curr) => {
 				const next = [...curr];
-				const at =
-					next.length && next[next.length - 1].role === "assistant"
-						? next.length - 1
-						: next.length;
-				next.splice(at, 0, injected);
+				const last = next[next.length - 1];
+				if (last?.role === "assistant") {
+					const parts = [...(last.parts || [])];
+					parts.push({ kind: "inject", id: `p${parts.length}`, text });
+					next[next.length - 1] = { ...last, parts };
+				}
 				return next;
 			});
 			setInput("");
@@ -530,8 +585,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		const assistantMsg = {
 			id: newMessageId(),
 			role: "assistant",
-			content: "",
-			tools: [],
+			parts: [],
 		};
 		setMessages((curr) => [...curr, userMsg, assistantMsg]);
 		setInput("");
@@ -541,44 +595,64 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		const controller = new AbortController();
 		abortRef.current = controller;
 
+		// Append text to the streaming assistant message's ordered parts.
+		const appendText = (delta) =>
+			setMessages((curr) => {
+				const updated = [...curr];
+				const last = updated[updated.length - 1];
+				updated[updated.length - 1] = {
+					...last,
+					parts: appendTextPart(last.parts, delta),
+				};
+				return updated;
+			});
+
 		try {
 			await streamChat({
 				conversationId: convId,
 				message: text,
 				contextNoteIds: sentContextIds,
 				signal: controller.signal,
-				onText: (delta) =>
-					setMessages((curr) => {
-						const updated = [...curr];
-						const last = updated[updated.length - 1];
-						updated[updated.length - 1] = {
-							...last,
-							content: last.content + delta,
-						};
-						return updated;
-					}),
+				onText: appendText,
 				onThinking: () => {},
+				// Tools land in stream order: a new call opens (or extends) the
+				// trailing tool-run part; its completion flips that chip's status.
 				onTool: (t) =>
 					setMessages((curr) => {
 						const updated = [...curr];
 						const last = { ...updated[updated.length - 1] };
-						const tools = [...(last.tools || [])];
+						const parts = [...(last.parts || [])];
 						if (t.done) {
-							const idx = tools.findIndex((x) => x.id === t.id);
-							if (idx >= 0)
-								tools[idx] = {
-									...tools[idx],
-									status: t.ok ? "done" : "error",
-								};
+							for (let i = parts.length - 1; i >= 0; i--) {
+								if (parts[i].kind !== "tools") continue;
+								const idx = parts[i].tools.findIndex((x) => x.id === t.id);
+								if (idx >= 0) {
+									const tools = [...parts[i].tools];
+									tools[idx] = {
+										...tools[idx],
+										status: t.ok ? "done" : "error",
+									};
+									parts[i] = { ...parts[i], tools };
+									break;
+								}
+							}
 						} else {
-							tools.push({
+							let run = parts[parts.length - 1];
+							if (run?.kind !== "tools") {
+								run = { kind: "tools", id: `p${parts.length}`, tools: [] };
+								parts.push(run);
+							} else {
+								run = { ...run, tools: [...run.tools] };
+								parts[parts.length - 1] = run;
+							}
+							run.tools.push({
 								id: t.id,
 								name: t.name,
 								args: t.args,
 								status: "running",
 							});
 						}
-						last.tools = tools;
+						last.parts = parts;
 						updated[updated.length - 1] = last;
 						return updated;
 					}),
@@ -588,29 +662,11 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 					// Show a soft "reconnecting" note and refetch until it lands,
 					// instead of a hard error.
 					if (e?.isTransport && convId) {
-						setMessages((curr) => {
-							const updated = [...curr];
-							const last = updated[updated.length - 1];
-							updated[updated.length - 1] = {
-								...last,
-								content: last.content
-									? `${last.content}\n\n_(reconnecting…)_`
-									: "_Reconnecting…_",
-							};
-							return updated;
-						});
+						appendText("\n\n_(reconnecting…)_");
 						recoverTurn(convId);
 						return;
 					}
-					setMessages((curr) => {
-						const updated = [...curr];
-						const last = updated[updated.length - 1];
-						updated[updated.length - 1] = {
-							...last,
-							content: `**Error:** ${e.message}`,
-						};
-						return updated;
-					});
+					appendText(`\n\n**Error:** ${e.message}`);
 				},
 				onDone: () => setIsStreaming(false),
 			});
@@ -724,7 +780,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 					id: m.id,
 					role: m.role,
 					content: blocksToText(m.content),
-					tools: blocksToTools(m.content),
+					parts: blocksToParts(m.content),
 				})),
 			);
 		} catch {
@@ -1008,8 +1064,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 								) : (
 									<AssistantBubble
 										key={m.id}
-										content={m.content}
-										tools={m.tools}
+										parts={m.parts}
 										isStreaming={streamingThis}
 										label={agentLabel}
 									/>

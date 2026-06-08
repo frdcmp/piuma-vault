@@ -1,7 +1,6 @@
 pub mod realtime;
 pub mod agents;
 pub mod embeddings;
-pub mod openclaw;
 pub mod health;
 pub mod auth;
 pub mod email;

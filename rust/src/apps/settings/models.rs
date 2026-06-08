@@ -7,8 +7,6 @@ use serde::{Deserialize, Serialize};
 pub struct ServiceConfigResponse {
     pub azure_embedding_url: String,
     pub azure_embedding_api_key_set: bool,
-    pub openclaw_url: String,
-    pub openclaw_gateway_token_set: bool,
     // Generic S3 / AWS object storage. Endpoint/region/bucket/access-key-id are
     // identifiers (returned plain); the secret access key and CDN token-auth key
     // are secrets, masked behind `*_set` flags.
@@ -33,8 +31,6 @@ pub struct ServiceConfigResponse {
 pub struct UpdateServiceConfig {
     pub azure_embedding_url: Option<String>,
     pub azure_embedding_api_key: Option<String>,
-    pub openclaw_url: Option<String>,
-    pub openclaw_gateway_token: Option<String>,
     pub s3_endpoint: Option<String>,
     pub s3_region: Option<String>,
     pub s3_bucket: Option<String>,
@@ -63,14 +59,6 @@ pub struct TestWebsearchRequest {
 pub struct TestEmbeddingRequest {
     pub azure_embedding_url: Option<String>,
     pub azure_embedding_api_key: Option<String>,
-}
-
-/// Optional OpenClaw field overrides for a "try now" check. Blank fields fall
-/// back to saved config.
-#[derive(Debug, Default, Deserialize)]
-pub struct TestOpenclawRequest {
-    pub openclaw_url: Option<String>,
-    pub openclaw_gateway_token: Option<String>,
 }
 
 /// Optional S3 field overrides for a "try now" check, so unsaved form values can

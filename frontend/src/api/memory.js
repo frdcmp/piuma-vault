@@ -2,7 +2,8 @@ import axiosInstance from "./axiosInstance";
 
 /**
  * Admin memory dashboard API — read views over the agent memory system
- * (L1 always-in-context, L2 semantic store, L4 derived) plus moderation actions.
+ * (L1 always-in-context, L2 semantic store, L3 conversation retrieval, L4
+ * derived) plus moderation actions.
  * Backend: rust/src/apps/agents/memory_admin.rs.
  */
 
@@ -25,6 +26,14 @@ export const listMemoryEntries = async (filters = {}) => {
 /** Phase 0 inspector: what was retrieved per turn. */
 export const listTurnLogs = async (filters = {}) => {
 	const res = await axiosInstance.get("/agents/memory/turn-logs", {
+		params: filters,
+	});
+	return res.data;
+};
+
+/** L3 conversation retrieval: full-text search over past chat history. */
+export const searchConversations = async (filters = {}) => {
+	const res = await axiosInstance.get("/agents/memory/conversations", {
 		params: filters,
 	});
 	return res.data;

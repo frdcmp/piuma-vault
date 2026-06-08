@@ -4,6 +4,7 @@ import {
 	bulkMove,
 	deleteFolder,
 	deleteObject,
+	getAppUpdateManifest,
 	listObjects,
 	signedUrl,
 	uploadAttachment,
@@ -14,7 +15,19 @@ import {
 export const storageKeys = {
 	all: ["storage"],
 	list: (params) => ["storage", "list", params],
+	appUpdateManifest: ["storage", "app-update-manifest"],
 };
+
+// Mobile app version metadata (from the OTA update manifest). 404 → no build
+// published yet; swallow the error so callers can render "—" without retrying.
+export const useAppUpdateManifest = (options = {}) =>
+	useQuery({
+		queryKey: storageKeys.appUpdateManifest,
+		queryFn: getAppUpdateManifest,
+		staleTime: 5 * 60_000,
+		retry: false,
+		...options,
+	});
 
 export const useStorageList = (params = {}, options = {}) =>
 	useQuery({

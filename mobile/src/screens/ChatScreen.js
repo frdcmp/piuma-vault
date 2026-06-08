@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	Alert,
@@ -16,10 +17,9 @@ import {
 	SafeAreaView,
 	useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-	createConversation,
 	clearConversation,
+	createConversation,
 	deleteConversation,
 	fetchAgents,
 	fetchAllModels,
@@ -104,16 +104,24 @@ const summarizeToolArgs = (args) => {
 		.join(", ");
 };
 
-// Fold a `tool`-stream event into the assistant message's tool list, keyed by
-// the tool-call id: a start frame ({id,name,args}) adds a running entry; a
-// completion frame ({id,done,ok}) flips it to done/error.
-const applyToolEvent = (tools = [], evt) => {
+// Fold a `tool`-stream event into the assistant message's ordered parts, keyed by
+// the tool-call id: a start frame opens (or extends) the trailing tool-run; a
+// completion frame flips that chip to done/error. Tools land inline in stream
+// order rather than all grouped together.
+const applyToolEventToParts = (parts = [], evt) => {
 	const id = evt.id || evt.name;
-	const idx = tools.findIndex((t) => t.id === id);
+	const next = [...parts];
 	if (evt.done) {
-		if (idx < 0) return tools;
-		const next = [...tools];
-		next[idx] = { ...next[idx], status: evt.ok ? "done" : "error" };
+		for (let i = next.length - 1; i >= 0; i--) {
+			if (next[i].kind !== "tools") continue;
+			const idx = next[i].tools.findIndex((t) => t.id === id);
+			if (idx >= 0) {
+				const tools = [...next[i].tools];
+				tools[idx] = { ...tools[idx], status: evt.ok ? "done" : "error" };
+				next[i] = { ...next[i], tools };
+				break;
+			}
+		}
 		return next;
 	}
 	const entry = {
@@ -122,35 +130,74 @@ const applyToolEvent = (tools = [], evt) => {
 		args: summarizeToolArgs(evt.args),
 		status: "running",
 	};
-	if (idx < 0) return [...tools, entry];
-	const next = [...tools];
-	next[idx] = { ...next[idx], ...entry };
+	let run = next[next.length - 1];
+	if (run?.kind !== "tools") {
+		run = { kind: "tools", id: `p${next.length}`, tools: [] };
+		next.push(run);
+	} else {
+		run = { ...run, tools: [...run.tools] };
+		next[next.length - 1] = run;
+	}
+	const existing = run.tools.findIndex((t) => t.id === id);
+	if (existing >= 0) run.tools[existing] = { ...run.tools[existing], ...entry };
+	else run.tools.push(entry);
 	return next;
 };
 
-// Reconstruct a reloaded turn's tool chips from persisted content blocks: each
-// `tool_use` is a chip; the following `tool_result` sets its status.
-const blocksToTools = (content) => {
+// Walk persisted content blocks IN ORDER into renderable parts, so tools + mid-turn
+// injections show up inline where they happened rather than all grouped. A part is
+// a `text` segment, a `tools` run (consecutive chips), or an `inject` (a user
+// message dropped into the turn). `tool_result` sets the matching chip's status;
+// `thinking` blocks are skipped.
+const blocksToParts = (content) => {
+	if (typeof content === "string")
+		return content ? [{ kind: "text", id: "p0", text: content }] : [];
 	if (!Array.isArray(content)) return [];
-	const tools = [];
+	const parts = [];
+	const tail = () => parts[parts.length - 1];
 	for (const b of content) {
-		if (b.type === "tool_use") {
-			tools.push({
-				id: String(tools.length),
+		if (b.type === "text") {
+			if (!b.text) continue;
+			const t = tail();
+			if (t?.kind === "text") t.text += b.text;
+			else parts.push({ kind: "text", id: `p${parts.length}`, text: b.text });
+		} else if (b.type === "tool_use") {
+			let run = tail();
+			if (run?.kind !== "tools") {
+				run = { kind: "tools", id: `p${parts.length}`, tools: [] };
+				parts.push(run);
+			}
+			run.tools.push({
+				id: `${run.id}-${run.tools.length}`,
 				name: b.name,
 				args: summarizeToolArgs(b.input),
 				status: "done",
 			});
 		} else if (b.type === "tool_result") {
-			const t = [...tools].reverse().find((x) => x.name === b.name);
+			const run = tail();
+			const t =
+				run?.kind === "tools" &&
+				[...run.tools].reverse().find((x) => x.name === b.name);
 			if (t) {
 				const out = b.output;
 				const isErr = out && typeof out === "object" && "error" in out;
 				t.status = isErr ? "error" : "done";
 			}
+		} else if (b.type === "injected") {
+			if (b.text)
+				parts.push({ kind: "inject", id: `p${parts.length}`, text: b.text });
 		}
 	}
-	return tools;
+	return parts;
+};
+
+// Append text to a parts array, extending the trailing text segment or adding one.
+const appendTextPart = (parts, text) => {
+	const next = [...(parts || [])];
+	const t = next[next.length - 1];
+	if (t?.kind === "text") next[next.length - 1] = { ...t, text: t.text + text };
+	else next.push({ kind: "text", id: `p${next.length}`, text });
+	return next;
 };
 
 const TOOL_GLYPH = { running: "⛏", done: "✓", error: "✕" };
@@ -248,10 +295,15 @@ function ToolActivity({ tools, isStreaming }) {
 	);
 }
 
-function AssistantBubble({ content, tools, isStreaming }) {
-	const { text: visible, isAnimating } = useProgressiveText(content || "");
-	const showCursor = isStreaming || isAnimating;
-	const isEmpty = !visible;
+// One text segment of an assistant turn, progressively revealed (drips toward the
+// streamed target; instant for reloaded turns since it mounts already-full).
+function AssistantTextPart({ text }) {
+	const { text: visible } = useProgressiveText(text || "");
+	return <MarkdownView source={visible} textStyle={chatMarkdownTextStyle} />;
+}
+
+function AssistantBubble({ parts, isStreaming }) {
+	const isEmpty = !parts?.length;
 
 	// Avatar only appears while the dog is "thinking" — the ThinkingLoader
 	// owns its own avatar tile, so we don't draw a second one alongside it.
@@ -259,7 +311,6 @@ function AssistantBubble({ content, tools, isStreaming }) {
 		return (
 			<View style={styles.assistantBody}>
 				<Text style={styles.assistantRoleLabel}>{ASSISTANT_LABEL}</Text>
-				<ToolActivity tools={tools} isStreaming={isStreaming} />
 				<ThinkingLoader label={`${AGENT_LABEL} is sniffing the trail`} />
 			</View>
 		);
@@ -268,11 +319,26 @@ function AssistantBubble({ content, tools, isStreaming }) {
 	return (
 		<View style={styles.assistantBody}>
 			<Text style={styles.assistantRoleLabel}>{ASSISTANT_LABEL}</Text>
-			<ToolActivity tools={tools} isStreaming={isStreaming} />
-			<View>
-				<MarkdownView source={visible} textStyle={chatMarkdownTextStyle} />
-				{showCursor ? <StreamingCursor /> : null}
-			</View>
+			{/* Text, tool runs, and mid-turn injections — in stream order. */}
+			{(parts || []).map((p) => {
+				if (p.kind === "tools")
+					return (
+						<ToolActivity
+							key={p.id}
+							tools={p.tools}
+							isStreaming={isStreaming}
+						/>
+					);
+				if (p.kind === "inject")
+					return (
+						<View key={p.id} style={styles.inject}>
+							<Text style={styles.injectLabel}>you ↩</Text>
+							<Text style={styles.injectText}>{p.text}</Text>
+						</View>
+					);
+				return <AssistantTextPart key={p.id} text={p.text} />;
+			})}
+			{isStreaming ? <StreamingCursor /> : null}
 		</View>
 	);
 }
@@ -383,7 +449,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 						role: m.role,
 						content: blocksToText(m.content),
 						...(m.role === "assistant"
-							? { tools: blocksToTools(m.content) }
+							? { parts: blocksToParts(m.content) }
 							: {}),
 					})),
 				);
@@ -464,7 +530,9 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					id: m.id,
 					role: m.role,
 					content: blocksToText(m.content),
-					...(m.role === "assistant" ? { tools: blocksToTools(m.content) } : {}),
+					...(m.role === "assistant"
+						? { parts: blocksToParts(m.content) }
+						: {}),
 				})),
 			);
 		} catch {
@@ -547,9 +615,9 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			? (() => {
 					const q = input.slice(1).toLowerCase();
 					const client = CLIENT_COMMANDS.map((c) => ({ ...c, kind: "client" }));
-					const agent = (
-						Array.isArray(agentCommands) ? agentCommands : []
-					).map((c) => ({ ...c, kind: "agent" }));
+					const agent = (Array.isArray(agentCommands) ? agentCommands : []).map(
+						(c) => ({ ...c, kind: "agent" }),
+					);
 					return [...client, ...agent].filter((c) =>
 						(c.name || "").toLowerCase().startsWith(q),
 					);
@@ -617,7 +685,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 							role: m.role,
 							content: blocksToText(m.content),
 							...(m.role === "assistant"
-								? { tools: blocksToTools(m.content) }
+								? { parts: blocksToParts(m.content) }
 								: {}),
 						})),
 					);
@@ -650,16 +718,17 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		// new turn; the running turn picks it up at the next round boundary.
 		if (isStreaming) {
 			if (!conversationId) return;
-			const injected = { id: newMessageId(), role: "user", content: text };
-			// Slot the bubble above the trailing (streaming) assistant message so
-			// live order matches reloaded order (…, injected user, assistant).
+			// Drop the injection inline into the streaming assistant turn, where it
+			// was typed — not hoisted above the whole reply. The backend records it
+			// as an `injected` block at the same spot, so reloads match.
 			setMessages((curr) => {
 				const next = [...curr];
-				const at =
-					next.length && next[next.length - 1].role === "assistant"
-						? next.length - 1
-						: next.length;
-				next.splice(at, 0, injected);
+				const last = next[next.length - 1];
+				if (last?.role === "assistant") {
+					const parts = [...(last.parts || [])];
+					parts.push({ kind: "inject", id: `p${parts.length}`, text });
+					next[next.length - 1] = { ...last, parts };
+				}
 				return next;
 			});
 			setInput("");
@@ -690,8 +759,13 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					{
 						id: newMessageId(),
 						role: "assistant",
-						content: "**Error:** failed to start conversation",
-						tools: [],
+						parts: [
+							{
+								kind: "text",
+								id: "p0",
+								text: "**Error:** failed to start conversation",
+							},
+						],
 					},
 				]);
 				return;
@@ -709,8 +783,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		const assistantMsg = {
 			id: newMessageId(),
 			role: "assistant",
-			content: "",
-			tools: [],
+			parts: [],
 		};
 		setMessages((curr) => [...curr, userMsg, assistantMsg]);
 		setInput("");
@@ -722,23 +795,25 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		const controller = new AbortController();
 		abortRef.current = controller;
 
+		// Append text to the streaming assistant message's ordered parts.
+		const appendText = (delta) =>
+			setMessages((curr) => {
+				const updated = [...curr];
+				const last = updated[updated.length - 1];
+				updated[updated.length - 1] = {
+					...last,
+					parts: appendTextPart(last.parts, delta),
+				};
+				return updated;
+			});
+
 		try {
 			await streamChat({
 				conversationId: convId,
 				message: text,
 				contextNoteIds,
 				signal: controller.signal,
-				onText: (delta) => {
-					setMessages((curr) => {
-						const updated = [...curr];
-						const last = updated[updated.length - 1];
-						updated[updated.length - 1] = {
-							...last,
-							content: last.content + delta,
-						};
-						return updated;
-					});
-				},
+				onText: appendText,
 				onThinking: () => {},
 				onTool: (evt) => {
 					setMessages((curr) => {
@@ -746,7 +821,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 						const last = updated[updated.length - 1];
 						updated[updated.length - 1] = {
 							...last,
-							tools: applyToolEvent(last.tools, evt),
+							parts: applyToolEventToParts(last.parts, evt),
 						};
 						return updated;
 					});
@@ -757,29 +832,11 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					// Show a soft "reconnecting" note and refetch until it lands,
 					// instead of a hard error.
 					if (e?.isTransport && convId) {
-						setMessages((curr) => {
-							const updated = [...curr];
-							const last = updated[updated.length - 1];
-							updated[updated.length - 1] = {
-								...last,
-								content: last.content
-									? `${last.content}\n\n_(reconnecting…)_`
-									: "_Reconnecting…_",
-							};
-							return updated;
-						});
+						appendText("\n\n_(reconnecting…)_");
 						recoverTurn(convId);
 						return;
 					}
-					setMessages((curr) => {
-						const updated = [...curr];
-						const last = updated[updated.length - 1];
-						updated[updated.length - 1] = {
-							...last,
-							content: `**Error:** ${e.message}`,
-						};
-						return updated;
-					});
+					appendText(`\n\n**Error:** ${e.message}`);
 				},
 				onDone: () => setIsStreaming(false),
 			});
@@ -787,7 +844,18 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			setIsStreaming(false);
 			abortRef.current = null;
 		}
-	}, [input, isStreaming, conversationId, agentKind, contextAttached, notePath, noteId, scrollToBottom, modelId, recoverTurn]);
+	}, [
+		input,
+		isStreaming,
+		conversationId,
+		agentKind,
+		contextAttached,
+		notePath,
+		noteId,
+		scrollToBottom,
+		modelId,
+		recoverTurn,
+	]);
 
 	// Composer button is state-driven: STOP while streaming with an empty box,
 	// otherwise SEND (which injects when streaming, sends a new turn when idle).
@@ -885,8 +953,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 									) : (
 										<AssistantBubble
 											key={m.id}
-											content={m.content}
-											tools={m.tools}
+											parts={m.parts}
 											isStreaming={isStreamingThis}
 										/>
 									);
@@ -1064,146 +1131,139 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					}
 				>
 					{overlay === "title" ? (
-								<View style={styles.overlayTitleWrap}>
-									<Pressable
-										onPress={autoRename}
-										style={({ pressed }) => [
-											styles.overlayAuto,
-											pressed && styles.slashItemPressed,
-										]}
-									>
-										<Ionicons
-											name="sparkles-outline"
-											size={16}
-											color={colors.accent2}
-										/>
-										<View style={{ flex: 1 }}>
-											<Text style={styles.overlayAutoText}>
-												Auto-rename with AI
-											</Text>
-											<Text style={styles.overlayAutoDesc}>
-												Generate a title from the conversation
-											</Text>
-										</View>
-									</Pressable>
-									<Text style={styles.overlayOr}>or edit manually</Text>
-									<View style={styles.overlayTitleForm}>
-										<TextInput
-											style={styles.overlayInput}
-											value={titleDraft}
-											onChangeText={setTitleDraft}
-											placeholder="New title…"
-											placeholderTextColor={colors.muted}
-											returnKeyType="done"
-											onSubmitEditing={saveTitle}
-										/>
-										<Pressable
-											onPress={saveTitle}
-											style={({ pressed }) => [
-												styles.overlaySave,
-												pressed && styles.sendBtnPressed,
-											]}
-										>
-											<Text style={styles.sendLabel}>save</Text>
-										</Pressable>
-									</View>
+						<View style={styles.overlayTitleWrap}>
+							<Pressable
+								onPress={autoRename}
+								style={({ pressed }) => [
+									styles.overlayAuto,
+									pressed && styles.slashItemPressed,
+								]}
+							>
+								<Ionicons
+									name="sparkles-outline"
+									size={16}
+									color={colors.accent2}
+								/>
+								<View style={{ flex: 1 }}>
+									<Text style={styles.overlayAutoText}>
+										Auto-rename with AI
+									</Text>
+									<Text style={styles.overlayAutoDesc}>
+										Generate a title from the conversation
+									</Text>
 								</View>
-							) : (
-								<>
-									<ScrollView
-										style={styles.overlayList}
-										keyboardShouldPersistTaps="handled"
-									>
-									{pickList.length === 0 ? (
-										<Text style={styles.overlayEmpty}>None</Text>
-									) : overlay === "models" ? (
-										(() => {
-											// In use = the conversation's chosen model, or the admin
-											// default when none is set.
-											const activeId =
-												modelId ??
-												pickList.find((x) => x.is_default)?.id;
-											return pickList.map((m) => {
-												const inUse = m.id === activeId;
-												return (
-													<Pressable
-														key={m.id}
-														onPress={() => pickModel(m)}
-														style={({ pressed }) => [
-															styles.overlayRow,
-															inUse && styles.overlayRowActive,
-															pressed && styles.slashItemPressed,
-														]}
-													>
-														<View style={styles.overlayRowHead}>
-															<Text style={styles.overlayRowText}>
-																{m.display_name}
-															</Text>
-															{inUse ? (
-																<Text style={styles.overlayRowCheck}>
-																	✓ in use
-																</Text>
-															) : null}
-														</View>
-														<Text
-															style={styles.overlayRowMeta}
-															numberOfLines={1}
-														>
-															{m.provider}
-															{m.is_default ? " · default" : ""}
-														</Text>
-													</Pressable>
-												);
-											});
-										})()
-									) : (
-										pickList.map((c) => (
-											<View key={c.id} style={styles.overlaySessionRow}>
+							</Pressable>
+							<Text style={styles.overlayOr}>or edit manually</Text>
+							<View style={styles.overlayTitleForm}>
+								<TextInput
+									style={styles.overlayInput}
+									value={titleDraft}
+									onChangeText={setTitleDraft}
+									placeholder="New title…"
+									placeholderTextColor={colors.muted}
+									returnKeyType="done"
+									onSubmitEditing={saveTitle}
+								/>
+								<Pressable
+									onPress={saveTitle}
+									style={({ pressed }) => [
+										styles.overlaySave,
+										pressed && styles.sendBtnPressed,
+									]}
+								>
+									<Text style={styles.sendLabel}>save</Text>
+								</Pressable>
+							</View>
+						</View>
+					) : (
+						<>
+							<ScrollView
+								style={styles.overlayList}
+								keyboardShouldPersistTaps="handled"
+							>
+								{pickList.length === 0 ? (
+									<Text style={styles.overlayEmpty}>None</Text>
+								) : overlay === "models" ? (
+									(() => {
+										// In use = the conversation's chosen model, or the admin
+										// default when none is set.
+										const activeId =
+											modelId ?? pickList.find((x) => x.is_default)?.id;
+										return pickList.map((m) => {
+											const inUse = m.id === activeId;
+											return (
 												<Pressable
-													onPress={() => switchConversation(c.id)}
+													key={m.id}
+													onPress={() => pickModel(m)}
 													style={({ pressed }) => [
-														styles.overlaySessionMain,
+														styles.overlayRow,
+														inUse && styles.overlayRowActive,
 														pressed && styles.slashItemPressed,
 													]}
 												>
-													<Text
-														style={styles.overlayRowText}
-														numberOfLines={1}
-													>
-														{c.title || "Untitled"}
+													<View style={styles.overlayRowHead}>
+														<Text style={styles.overlayRowText}>
+															{m.display_name}
+														</Text>
+														{inUse ? (
+															<Text style={styles.overlayRowCheck}>
+																✓ in use
+															</Text>
+														) : null}
+													</View>
+													<Text style={styles.overlayRowMeta} numberOfLines={1}>
+														{m.provider}
+														{m.is_default ? " · default" : ""}
 													</Text>
 												</Pressable>
-												<Pressable
-													onPress={() => removeConversation(c.id)}
-													hitSlop={8}
-													style={({ pressed }) => [
-														styles.overlayDel,
-														pressed && styles.slashItemPressed,
-													]}
-												>
-													<Ionicons
-														name="trash-outline"
-														size={16}
-														color={colors.accent3}
-													/>
-												</Pressable>
-											</View>
-										))
-									)}
-								</ScrollView>
-								{overlay === "sessions" ? (
-									<TextInput
-										style={styles.overlaySearch}
-										value={sessionQuery}
-										onChangeText={setSessionQuery}
-										placeholder="Search title or message text…"
-										placeholderTextColor={colors.muted}
-										autoFocus
-										returnKeyType="search"
-									/>
-								) : null}
-							</>
-						)}
+											);
+										});
+									})()
+								) : (
+									pickList.map((c) => (
+										<View key={c.id} style={styles.overlaySessionRow}>
+											<Pressable
+												onPress={() => switchConversation(c.id)}
+												style={({ pressed }) => [
+													styles.overlaySessionMain,
+													pressed && styles.slashItemPressed,
+												]}
+											>
+												<Text style={styles.overlayRowText} numberOfLines={1}>
+													{c.title || "Untitled"}
+												</Text>
+											</Pressable>
+											<Pressable
+												onPress={() => removeConversation(c.id)}
+												hitSlop={8}
+												style={({ pressed }) => [
+													styles.overlayDel,
+													pressed && styles.slashItemPressed,
+												]}
+											>
+												<Ionicons
+													name="trash-outline"
+													size={16}
+													color={colors.accent3}
+												/>
+											</Pressable>
+										</View>
+									))
+								)}
+							</ScrollView>
+							{overlay === "sessions" ? (
+								<TextInput
+									style={styles.overlaySearch}
+									value={sessionQuery}
+									onChangeText={setSessionQuery}
+									placeholder="Search title or message text…"
+									placeholderTextColor={colors.muted}
+									autoFocus
+									returnKeyType="search"
+								/>
+							) : null}
+						</>
+					)}
 				</BottomSheet>
 			</SafeAreaView>
 		</KeyboardAvoidingView>
@@ -1353,6 +1413,28 @@ const styles = StyleSheet.create({
 		textTransform: "uppercase",
 		marginBottom: 6,
 	},
+
+	// ── INLINE INJECTION (a user message dropped mid-turn) ─
+	inject: {
+		flexDirection: "row",
+		alignItems: "baseline",
+		gap: 8,
+		marginVertical: 8,
+		paddingVertical: 6,
+		paddingHorizontal: 10,
+		borderLeftWidth: 2,
+		borderLeftColor: colors.accent4,
+		backgroundColor: colors.bgSoft,
+	},
+	injectLabel: {
+		fontFamily: MONO,
+		fontSize: 10,
+		fontWeight: "800",
+		letterSpacing: 0.5,
+		textTransform: "uppercase",
+		color: colors.accent4,
+	},
+	injectText: { flex: 1, color: colors.text, fontFamily: MONO, fontSize: 13 },
 
 	// ── TOOL ACTIVITY (which plugins the agent ran this turn) ─
 	tools: { gap: 4, marginBottom: 10 },

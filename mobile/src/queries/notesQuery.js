@@ -122,7 +122,7 @@ export const useBrowseFolder = (path) =>
 // ── Live updates (SSE) ────────────────────────────────────────────────────
 //
 // Subscribes to the backend notes event stream so this device sees changes
-// made elsewhere (web, another phone, OpenClaw/Telegram via API key, an LLM
+// made elsewhere (web, another phone, an integration via API key, an LLM
 // hitting a share link). On any mutation: invalidates the notes list and —
 // when the changed note matches `activeNoteId` — the detail query as well.
 //

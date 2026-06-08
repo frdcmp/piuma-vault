@@ -462,19 +462,15 @@ pub async fn create_conversation(
     let Some(def) = registry::get(&b.agent) else {
         return HttpResponse::BadRequest().json(ApiError::new("unknown agent"));
     };
-    // Native agents pin a model (explicit, else the global default — may be None
-    // and resolved at chat time). Gateway agents (OpenClaw) own their own model.
-    let model_id: Option<Uuid> = if def.agent_type == registry::AgentType::Gateway {
-        None
-    } else {
-        match b.model_id {
-            Some(m) => Some(m),
-            None => sqlx::query_scalar("SELECT id FROM db_llm_models WHERE is_default AND enabled LIMIT 1")
-                .fetch_optional(pool.get_ref())
-                .await
-                .ok()
-                .flatten(),
-        }
+    // Pin a model: explicit, else the global default (may be None, resolved at
+    // chat time).
+    let model_id: Option<Uuid> = match b.model_id {
+        Some(m) => Some(m),
+        None => sqlx::query_scalar("SELECT id FROM db_llm_models WHERE is_default AND enabled LIMIT 1")
+            .fetch_optional(pool.get_ref())
+            .await
+            .ok()
+            .flatten(),
     };
     match sqlx::query_as::<_, ConversationRow>(
         "INSERT INTO db_chat_conversations (agent, title, model_id, identity) \

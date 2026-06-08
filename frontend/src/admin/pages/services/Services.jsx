@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
 	useServices,
 	useTestEmbedding,
-	useTestOpenclaw,
 	useTestStorage,
 	useTestWebsearch,
 	useUpdateServices,
@@ -20,8 +19,6 @@ import "./services.css";
 const EMPTY = {
 	azure_embedding_url: "",
 	azure_embedding_api_key: "",
-	openclaw_url: "",
-	openclaw_gateway_token: "",
 	s3_endpoint: "",
 	s3_region: "",
 	s3_bucket: "",
@@ -40,7 +37,6 @@ const EMPTY = {
 // single "Save changes" persists edits across every tab.
 const TABS = [
 	{ id: "embeddings", label: "Embeddings" },
-	{ id: "chat", label: "Chat" },
 	{ id: "search", label: "Search" },
 	{ id: "storage", label: "Storage" },
 ];
@@ -114,12 +110,10 @@ const Services = () => {
 	const { data, isLoading, error } = useServices();
 	const update = useUpdateServices();
 	const testEmb = useTestEmbedding();
-	const testOc = useTestOpenclaw();
 	const testS3 = useTestStorage();
 	const testWs = useTestWebsearch();
 	const [form, setForm] = useState(EMPTY);
 	const [embResult, setEmbResult] = useState(null);
-	const [ocResult, setOcResult] = useState(null);
 	const [s3Result, setS3Result] = useState(null);
 	const [wsResult, setWsResult] = useState(null);
 	const [vendor, setVendor] = useState("aws");
@@ -148,7 +142,6 @@ const Services = () => {
 			setForm((f) => ({
 				...f,
 				azure_embedding_url: data.azure_embedding_url || "",
-				openclaw_url: data.openclaw_url || "",
 				s3_endpoint: data.s3_endpoint || "",
 				s3_region: data.s3_region || "",
 				s3_bucket: data.s3_bucket || "",
@@ -175,7 +168,6 @@ const Services = () => {
 		// (blank = keep existing, since the field is never prefilled).
 		const payload = {
 			azure_embedding_url: form.azure_embedding_url.trim(),
-			openclaw_url: form.openclaw_url.trim(),
 			s3_endpoint: form.s3_endpoint.trim(),
 			s3_region: form.s3_region.trim(),
 			s3_bucket: form.s3_bucket.trim(),
@@ -185,8 +177,6 @@ const Services = () => {
 		};
 		if (form.azure_embedding_api_key.trim())
 			payload.azure_embedding_api_key = form.azure_embedding_api_key.trim();
-		if (form.openclaw_gateway_token.trim())
-			payload.openclaw_gateway_token = form.openclaw_gateway_token.trim();
 		if (form.s3_secret_access_key.trim())
 			payload.s3_secret_access_key = form.s3_secret_access_key.trim();
 		if (form.s3_cdn_token_key.trim())
@@ -201,7 +191,6 @@ const Services = () => {
 			setForm((f) => ({
 				...f,
 				azure_embedding_api_key: "",
-				openclaw_gateway_token: "",
 				s3_secret_access_key: "",
 				s3_cdn_token_key: "",
 				websearch_brave_api_key: "",
@@ -265,7 +254,6 @@ const Services = () => {
 	};
 
 	const EMB_KEYS = ["azure_embedding_url", "azure_embedding_api_key"];
-	const OC_KEYS = ["openclaw_url", "openclaw_gateway_token"];
 	const S3_KEYS = [
 		"s3_endpoint",
 		"s3_region",
@@ -281,13 +269,6 @@ const Services = () => {
 		const p = { azure_embedding_url: form.azure_embedding_url.trim() };
 		if (form.azure_embedding_api_key.trim())
 			p.azure_embedding_api_key = form.azure_embedding_api_key.trim();
-		return p;
-	};
-
-	const ocTestPayload = () => {
-		const p = { openclaw_url: form.openclaw_url.trim() };
-		if (form.openclaw_gateway_token.trim())
-			p.openclaw_gateway_token = form.openclaw_gateway_token.trim();
 		return p;
 	};
 
@@ -373,7 +354,6 @@ const Services = () => {
 					);
 					const configured = {
 						embeddings: !!data.azure_embedding_api_key_set,
-						chat: !!data.openclaw_gateway_token_set,
 						search: wsAnySet,
 						storage: !!data.s3_secret_access_key_set,
 					};
@@ -449,58 +429,6 @@ const Services = () => {
 											requestClear(EMB_KEYS, setEmbResult, "Azure embedding")
 										}
 										result={embResult}
-									/>
-								</PvPanel>
-							)}
-
-							{/* OpenClaw (chat gateway) */}
-							{activeTab === "chat" && (
-								<PvPanel title="chat · openclaw gateway">
-									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
-										LLM chat is proxied through the OpenClaw gateway.
-									</p>
-									<div className="vp-field">
-										<span className="vp-label">Gateway URL</span>
-										<input
-											className="vp-input"
-											type="text"
-											spellCheck={false}
-											placeholder="http://host:port"
-											value={form.openclaw_url}
-											onChange={set("openclaw_url")}
-										/>
-									</div>
-									<div className="vp-field" style={{ marginBottom: 0 }}>
-										<span className="vp-label">
-											Gateway Token{" "}
-											{data.openclaw_gateway_token_set ? (
-												<span className="vp-tag vp-tag--green vp-svc-chip">
-													set
-												</span>
-											) : (
-												<span className="vp-tag vp-tag--red vp-svc-chip">
-													unset
-												</span>
-											)}
-										</span>
-										<input
-											className="vp-input"
-											type="password"
-											autoComplete="new-password"
-											placeholder={secretPlaceholder(
-												data.openclaw_gateway_token_set,
-											)}
-											value={form.openclaw_gateway_token}
-											onChange={set("openclaw_gateway_token")}
-										/>
-									</div>
-									<TestRow
-										pending={testOc.isPending}
-										onTest={() => runTest(testOc, setOcResult, ocTestPayload())}
-										onClear={() =>
-											requestClear(OC_KEYS, setOcResult, "OpenClaw")
-										}
-										result={ocResult}
 									/>
 								</PvPanel>
 							)}

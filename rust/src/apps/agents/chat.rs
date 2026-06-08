@@ -15,13 +15,12 @@ use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::calendar::events::CalendarEventBus;
 use crate::apps::notes::events::{NoteAction, NotesEventBus};
 use crate::apps::realtime::ResourceAction;
-use crate::apps::settings;
 use crate::apps::tasks::events::TasksEventBus;
 use crate::db::db::DbPool;
 
 use super::control::TurnControl;
 use super::models::{ApiError, ChatTurnReq, ConversationRow, ModelRow, ProviderRow};
-use super::providers::{deepseek, openclaw as oc_gateway};
+use super::providers::deepseek;
 use super::{identities, registry, tools};
 
 const MAX_ROUNDS: usize = 12;
@@ -181,15 +180,6 @@ pub async fn chat(
         }
     };
 
-    // Gateway agents (e.g. OpenClaw) proxy to their external service instead of
-    // running the native provider loop.
-    let is_gateway = registry::get(&conv.agent)
-        .map(|d| d.agent_type == registry::AgentType::Gateway)
-        .unwrap_or(false);
-    if is_gateway {
-        return gateway_turn(db.clone(), user.user_id.clone(), conv, msg, context_ids).await;
-    }
-
     let model_row: Option<ModelRow> = match conv.model_id {
         Some(mid) => sqlx::query_as("SELECT * FROM db_llm_models WHERE id = $1")
             .bind(mid)
@@ -244,9 +234,10 @@ pub async fn chat(
 
     // Persist user message + set a title on the first turn.
     let user_content = json!([{ "type": "text", "text": msg }]);
-    if let Err(e) = sqlx::query("INSERT INTO db_chat_messages (conversation_id, role, content) VALUES ($1, 'user', $2)")
+    if let Err(e) = sqlx::query("INSERT INTO db_chat_messages (conversation_id, role, content, content_text) VALUES ($1, 'user', $2, $3)")
         .bind(conv_id)
         .bind(&user_content)
+        .bind(blocks_to_text(&user_content))
         .execute(db)
         .await
     {
@@ -308,9 +299,14 @@ pub async fn chat(
         blocks.push(mem_block);
     }
     // Phase 0 observability: snapshot what was retrieved + L1 usage for the turn log.
+    // L1 "always-in-context" usage spans BOTH injected fields — the agent's
+    // `memory` scratchpad (cap 2200) and `user_context` (cap 1375) — measured
+    // against their combined cap. (Counting `memory` alone read a false 0% since
+    // the agent rarely writes to its scratchpad.)
     let retrieved_json = serde_json::to_value(&retrieved).unwrap_or_else(|_| json!([]));
-    let l1_chars = resolved.profile.memory.chars().count() as i32;
-    let l1_pct = (l1_chars * 100 / 2200).min(100);
+    let l1_chars = (resolved.profile.memory.chars().count()
+        + resolved.profile.user_context.chars().count()) as i32;
+    let l1_pct = (l1_chars * 100 / (2200 + 1375)).min(100);
     let system = blocks.join("\n\n");
     if !system.trim().is_empty() {
         messages.push(json!({ "role": "system", "content": system }));
@@ -383,6 +379,9 @@ pub async fn chat(
             // the model is called, so it sees them immediately.
             for inj in control.drain(conv_id) {
                 let _ = tx.unbounded_send(Ok(frame(json!({ "type": "injected", "text": inj }))));
+                // Record the injection inline in the turn's content so reloads place
+                // it where it landed (interleaved), not hoisted above the whole reply.
+                display.push(json!({ "type": "injected", "text": inj }));
                 messages.push(json!({ "role": "user", "content": inj }));
             }
 
@@ -509,11 +508,12 @@ pub async fn chat(
             let content = Value::Array(display);
             let msg_id: Option<Uuid> = sqlx::query_scalar(
                 "INSERT INTO db_chat_messages \
-                   (conversation_id, role, content, model_used, provider_kind, tokens_input, tokens_output, stop_reason) \
-                 VALUES ($1, 'assistant', $2, $3, $4, $5, $6, $7) RETURNING id",
+                   (conversation_id, role, content, content_text, model_used, provider_kind, tokens_input, tokens_output, stop_reason) \
+                 VALUES ($1, 'assistant', $2, $3, $4, $5, $6, $7, $8) RETURNING id",
             )
             .bind(conv_id)
             .bind(&content)
+            .bind(blocks_to_text(&content))
             .bind(&model_label)
             .bind(&provider_kind)
             .bind(tin)
@@ -577,113 +577,6 @@ pub async fn chat(
         .streaming(rx)
 }
 
-/// Proxy a turn for a `gateway` agent (OpenClaw). Persists user + assistant to
-/// db_chat_* (so the agents conversation list/history is uniform) and uses the
-/// conversation id as the OpenClaw session key.
-async fn gateway_turn(
-    pool: DbPool,
-    user_id: String,
-    conv: ConversationRow,
-    msg: String,
-    context_ids: Vec<Uuid>,
-) -> HttpResponse {
-    let (base, token) = match settings::store::openclaw_config(&pool).await {
-        Ok(c) => c,
-        Err(e) => return HttpResponse::BadRequest().json(ApiError::new(e)),
-    };
-
-    let user_content = json!([{ "type": "text", "text": msg }]);
-    if let Err(e) =
-        sqlx::query("INSERT INTO db_chat_messages (conversation_id, role, content) VALUES ($1, 'user', $2)")
-            .bind(conv.id)
-            .bind(&user_content)
-            .execute(&pool)
-            .await
-    {
-        log::error!("gateway chat: persist user msg: {e}");
-        return HttpResponse::InternalServerError().json(ApiError::new("database error"));
-    }
-    // First turn: cheap fallback title now; AI title replaces it after the
-    // exchange. Titling always uses the default agent model, even though the
-    // chat itself runs through the gateway.
-    let first_turn = conv.title.as_deref().unwrap_or("").is_empty();
-    if first_turn {
-        let title: String = msg.chars().take(60).collect();
-        let _ = sqlx::query("UPDATE db_chat_conversations SET title = $2 WHERE id = $1")
-            .bind(conv.id)
-            .bind(&title)
-            .execute(&pool)
-            .await;
-    }
-
-    // History → OpenAI messages (no system; the gateway owns its own prompt).
-    let rows: Vec<(String, Value)> = sqlx::query_as(
-        "SELECT role, content FROM db_chat_messages WHERE conversation_id = $1 ORDER BY created_at",
-    )
-    .bind(conv.id)
-    .fetch_all(&pool)
-    .await
-    .unwrap_or_default();
-    let mut messages: Vec<Value> = Vec::new();
-    for (role, content) in rows {
-        if role != "user" && role != "assistant" {
-            continue;
-        }
-        let text = blocks_to_text(&content);
-        if text.trim().is_empty() {
-            continue;
-        }
-        messages.push(json!({ "role": role, "content": text }));
-    }
-    let context = build_context(&pool, &user_id, &context_ids).await;
-    inject_context(&mut messages, &context);
-
-    let (tx, rx) = mpsc::unbounded::<Result<Bytes, actix_web::Error>>();
-    let pool2 = pool.clone();
-    let conv_id = conv.id;
-    let session = conv.id.to_string();
-
-    actix_web::rt::spawn(async move {
-        match oc_gateway::stream(&base, &token, &session, &messages, &tx).await {
-            Ok(out) => {
-                let content = json!([{ "type": "text", "text": out.text }]);
-                let msg_id: Option<Uuid> = sqlx::query_scalar(
-                    "INSERT INTO db_chat_messages (conversation_id, role, content, provider_kind, stop_reason) \
-                     VALUES ($1, 'assistant', $2, 'openclaw', $3) RETURNING id",
-                )
-                .bind(conv_id)
-                .bind(&content)
-                .bind(&out.stop)
-                .fetch_optional(&pool2)
-                .await
-                .ok()
-                .flatten();
-                let _ = sqlx::query("UPDATE db_chat_conversations SET updated_at = NOW() WHERE id = $1")
-                    .bind(conv_id)
-                    .execute(&pool2)
-                    .await;
-                let _ = tx.unbounded_send(Ok(frame(json!({
-                    "type": "done", "stop_reason": out.stop, "message_id": msg_id,
-                }))));
-
-                if first_turn {
-                    super::title::generate(&pool2, conv_id).await;
-                }
-            }
-            Err(e) => {
-                log::error!("gateway chat: {e}");
-                let _ = tx.unbounded_send(Ok(frame(json!({ "type": "error", "error": e }))));
-            }
-        }
-    });
-
-    HttpResponse::Ok()
-        .content_type("text/event-stream")
-        .insert_header(("Cache-Control", "no-cache"))
-        .insert_header(("X-Accel-Buffering", "no"))
-        .streaming(rx)
-}
-
 /// `POST /agents/conversations/{id}/stop` — STOP. Fires the conversation's cancel
 /// token so the running turn halts mid-stream. Idempotent / safe if no turn is
 /// active. Returns 202 with whether a turn was actually cancelled.
@@ -702,12 +595,13 @@ pub struct InjectReq {
 }
 
 /// `POST /agents/conversations/{id}/inject` — INJECT. Queues a user message into
-/// the running turn (consumed at the next round boundary) and persists it. Does
+/// the running turn, consumed at the next round boundary. The running turn
+/// records it inline in its content blocks (an `injected` block) when it drains,
+/// so it renders interleaved at the point it landed — no separate user row. Does
 /// NOT open a stream. If no turn is active the client should POST `/chat` instead,
 /// so this returns 409 `{ queued: false }` in that case.
 pub async fn inject(
     _user: AuthenticatedUser,
-    pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
     body: web::Json<InjectReq>,
     control: web::Data<TurnControl>,
@@ -719,20 +613,6 @@ pub async fn inject(
     }
     if !control.is_active(conv_id) {
         return HttpResponse::Conflict().json(json!({ "queued": false }));
-    }
-    // Persist the injected turn as a user message so reloaded history is coherent
-    // (it sorts before the assistant message, which is saved when the turn ends).
-    let content = json!([{ "type": "text", "text": text }]);
-    if let Err(e) = sqlx::query(
-        "INSERT INTO db_chat_messages (conversation_id, role, content) VALUES ($1, 'user', $2)",
-    )
-    .bind(conv_id)
-    .bind(&content)
-    .execute(pool.get_ref())
-    .await
-    {
-        log::error!("inject: persist user msg: {e}");
-        return HttpResponse::InternalServerError().json(ApiError::new("database error"));
     }
     control.inject(conv_id, text);
     HttpResponse::Accepted().json(json!({ "queued": true }))

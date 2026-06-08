@@ -14,7 +14,7 @@ in fact L2 and L4 share a single table (see below).
 |-------|------------|----------------|--------------------------|
 | **L1** | Always-in-context scratchpad | `db_agent_profiles.memory` / `.user_context` (text columns) | Yes — always in the prompt |
 | **L2** | Semantic long-term memory (vector-searchable facts) | `db_memory_entries` rows | Yes — top-K by relevance |
-| **L3** | Conversation full-text search | *(designed, not built)* | No — on-demand tool |
+| **L3** | Conversation full-text search | `db_chat_messages` (FTS over chat history) | No — on-demand tool |
 | **L4** | Dialectic reasoning (auto-derived insights) | writes rows into `db_memory_entries` | Indirectly — via L2 |
 
 ## L2 vs L4 — the key distinction
@@ -52,6 +52,10 @@ and just filters by status.
 - **`db_memory_embedding_jobs`** — embedding queue. The same `embedding-worker`
   binary that embeds notes also drains this, calling Azure OpenAI
   (`text-embedding-3-large`, 1536-dim) and writing the vector back.
+- **`db_chat_messages`** — **L3**. The chat transcript. Two columns back the
+  full-text search: `content_text` (the flattened plain text of a message's text
+  blocks, written by the chat loop) and `content_tsv` (a `GENERATED` tsvector
+  derived from it). A partial GIN index covers user + assistant turns.
 - **`db_agent_turn_logs`** — observability (the **Turn inspector**): one row per
   completed turn recording which memories were retrieved (+ scores) and how full
   L1 was.
@@ -144,6 +148,27 @@ corroboration rather than a new row.
 > Note: cadence counts assistant turns *per conversation*, so very short chats
 > never trigger the dialectic pass.
 
+## L3 — conversation retrieval
+
+L2 is lossy on purpose: it keeps *distilled* facts and throws away the rest. L3
+fills that gap — it makes the **verbatim chat transcript** keyword-searchable so
+the agent can recover what was actually said.
+
+- **Write side (passive).** Every message already gets saved; L3 also stores a
+  plain-text `content_text` mirror of its text blocks. Postgres derives the
+  `content_tsv` FTS vector automatically. No embeddings, no LLM, no extra latency
+  — just full-text indexing. Assistant prose is indexed too (the thinking and
+  tool-call blocks are stripped out, so only the actual answer is searchable).
+- **Read side (on-demand).** Unlike L1/L2, L3 is **never auto-injected**. The
+  agent calls the `search_conversations` tool when you reference a past
+  discussion ("what did we decide about X?", "remember when…"). Results are
+  full-text-ranked, **aggregated to the conversation level** (best snippet +
+  match count per thread), and returned with a `ts_headline` excerpt around the
+  matched terms.
+
+The admin **Conversation search (L3)** tab runs the exact same query, so you can
+see what the agent would find.
+
 ## L1 — why it's usually empty
 
 L1 (`db_agent_profiles.memory`) is the handful of facts the agent wants in front
@@ -165,6 +190,10 @@ profile/preferences.
 `context_list` — with hard caps (memory 2,200 chars, user_context 1,375) and
 normalized-match dedup.
 
+**L3 (conversation search):**
+`search_conversations(query, limit?)` — full-text search over past chat history,
+returned aggregated by conversation.
+
 ## Embeddings
 
 Saving a fact embeds it inline (so it's dedup-checked and searchable
@@ -175,8 +204,8 @@ HNSW cosine index.
 
 ## Implementation status
 
-Built: L1 (compaction tools), L2 (full), L4 (dialectic + confirmation funnel),
-Phase-0 turn logging, and the `/admin/memory` dashboard. Deferred: L3
-(conversation FTS), NLI-based contradiction detection, pre-embedding the user
-message on write, and per-agent dialectic config (cadence/depth/model are
-currently constants).
+Built: L1 (compaction tools), L2 (full), L3 (conversation FTS + the
+`search_conversations` tool + admin search), L4 (dialectic + confirmation
+funnel), Phase-0 turn logging, and the `/admin/memory` dashboard. Deferred:
+NLI-based contradiction detection, pre-embedding the user message on write, and
+per-agent dialectic config (cadence/depth/model are currently constants).

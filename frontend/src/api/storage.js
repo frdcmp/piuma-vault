@@ -1,6 +1,13 @@
 import { sanitizeKeyName } from "../utils/attachments";
 import axiosInstance from "./axiosInstance";
 
+// Mobile app update manifest published by `mobile/build.sh` to storage:
+// { version, buildTime, apkKey, apkFilename, notes }. 404 until a build runs.
+export const getAppUpdateManifest = async () => {
+	const { data } = await axiosInstance.get("/storage/app-update-manifest");
+	return data;
+};
+
 // List objects + folders under a prefix (`""` for root). The backend collapses
 // keys by `/` so we get separate `folders` and `files` arrays.
 export const listObjects = async ({

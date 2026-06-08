@@ -16,6 +16,7 @@ use crate::db::db::DbPool;
 mod agenda;
 mod buckets;
 mod calendar;
+pub mod conversations;
 pub mod memory;
 mod notes;
 mod self_config;
@@ -36,6 +37,7 @@ fn all_defs() -> Vec<(&'static str, &'static str, Value)> {
     defs.extend(shares::defs());
     defs.extend(self_config::defs());
     defs.extend(memory::defs());
+    defs.extend(conversations::defs());
     defs.extend(web::defs());
     defs
 }
@@ -132,6 +134,8 @@ pub async fn dispatch(
         "memory_list" => memory::memory_list(pool, agent, args).await,
         "memory_confirm" => memory::memory_confirm(pool, agent, args).await,
         "memory_reject" => memory::memory_reject(pool, agent, args).await,
+        // ── Conversations (L3 FTS over chat history, scoped to the active agent) ──
+        "search_conversations" => conversations::search_conversations(pool, agent, args).await,
         // ── Web ──
         "web_search" => web::web_search(pool, args).await,
         "web_fetch" => web::web_fetch(args).await,
