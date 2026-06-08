@@ -1433,7 +1433,9 @@ const styles = StyleSheet.create({
 	jumpBtn: {
 		position: "absolute",
 		bottom: 12,
-		alignSelf: "center",
+		// Anchored bottom-LEFT, opposite the right-aligned context chip, so the
+		// two never overlap (the chip can be wide).
+		left: 12,
 		width: 32,
 		height: 32,
 		alignItems: "center",

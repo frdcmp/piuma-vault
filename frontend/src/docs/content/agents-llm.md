@@ -48,6 +48,18 @@ By domain:
 - **Web** — web search, web fetch
 - **Self-config** — read self, update instructions / user context / memory /
   persona (scoped to the active agent)
+- **Memory (L2)** — search, save, update, delete, list, confirm, reject
+- **Always-in-context (L1)** — context add / replace / remove / list
+
+## Memory
+
+The agent has a layered, persistent memory so it learns User's preferences
+and ongoing work across conversations. Relevant facts are auto-injected into the
+system prompt each turn, and a background "dialectic" pass derives new ones. This
+is a system in its own right — see **[Agent Memory](/docs/agent-memory)** for the
+layers (L1–L4), the database tables, the per-turn flow, and how L2 vs L4 differ.
+
+The live state is browsable in the admin **Memory** dashboard (`/admin/memory`).
 
 ## Web search
 

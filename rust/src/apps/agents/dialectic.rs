@@ -105,18 +105,25 @@ async fn run(pool: &DbPool, conv_id: Uuid, agent: &str) -> Result<(), String> {
     ];
 
     // Generous budget: the default model is a reasoning model, so a small cap
-    // leaves `content` empty (all tokens go to reasoning).
+    // leaves `content` empty (all tokens go to reasoning before any answer).
     let raw = deepseek::complete(
         &provider.api_key,
         provider.base_url.as_deref(),
         &model.model_id,
         &messages,
-        1024,
+        8000,
     )
     .await?;
 
+    let insights = parse_insights(&raw);
+    log::info!(
+        "dialectic ({conv_id}): model returned {} chars, parsed {} insight(s)",
+        raw.len(),
+        insights.len()
+    );
+
     let mut saved = 0;
-    for (category, content) in parse_insights(&raw) {
+    for (category, content) in insights {
         match memory::save_derived(pool, agent, &content, Some(&category), Some(conv_id)).await {
             Ok("inserted") | Ok("corroborated") => saved += 1,
             Ok(_) => {}

@@ -5,6 +5,7 @@
 // need no backend. The sidebar is rendered from `DOC_GROUPS`.
 
 import adminPanel from "./content/admin-panel.md?raw";
+import agentMemory from "./content/agent-memory.md?raw";
 import agentsLlm from "./content/agents-llm.md?raw";
 import architecture from "./content/architecture.md?raw";
 import authSecurity from "./content/auth-security.md?raw";
@@ -52,6 +53,7 @@ export const DOC_GROUPS = [
 				body: tasksCalendar,
 			},
 			{ slug: "agents-llm", title: "LLM Chat & Agents", body: agentsLlm },
+			{ slug: "agent-memory", title: "Agent Memory", body: agentMemory },
 			{ slug: "storage", title: "File Storage", body: storage },
 			{ slug: "sharing", title: "Sharing", body: sharing },
 			{
@@ -66,7 +68,6 @@ export const DOC_GROUPS = [
 		items: [
 			{ slug: "admin-panel", title: "Admin Panel", body: adminPanel },
 			{ slug: "mobile", title: "Mobile App", body: mobile },
-			{ slug: "api-reference", title: "API Reference", body: apiReference },
 			{
 				slug: "operations",
 				title: "Operations & Deployment",

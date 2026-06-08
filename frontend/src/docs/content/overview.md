@@ -15,6 +15,9 @@ at Cloudflare.
   embeddings for semantic search.
 - **LLM chat & agents** — conversational agents with editable personas, multiple
   providers/models, streaming, and a large catalog of tools that act on your vault.
+- **Agent memory** — a layered, persistent memory (L1–L4) so the agent learns your
+  preferences and ongoing work across conversations, with an admin dashboard to
+  curate it.
 - **Tasks, calendar & agenda** — one-off and recurring (RRULE) tasks, calendar
   events with alerts, buckets and relational tags, and a consolidated agenda.
 - **File storage** — S3-compatible object storage with a CDN, presigned

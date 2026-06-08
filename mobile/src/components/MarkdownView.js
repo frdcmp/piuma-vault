@@ -144,7 +144,6 @@ const styles = StyleSheet.create({
   tableRow: { flexDirection: 'row' },
   tableHeaderRow: { backgroundColor: colors.panel },
   tableCell: {
-    width: 200,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRightWidth: 1,
@@ -554,6 +553,24 @@ const renderBlockToken = (token, depth, ctx) => {
       );
     case 'table': {
       const rows = [token.header, ...token.rows];
+      // Size each column to its widest cell instead of a fixed width, so a
+      // narrow column (e.g. "#") stays narrow and a text-heavy one ("Task")
+      // gets the room. Approximate width by char count (the chat font is ~8px
+      // wide at 14px), clamped so tiny columns aren't cramped and long ones wrap.
+      const COL_CHAR_W = 8;
+      const COL_PAD = 24; // paddingHorizontal * 2
+      const COL_MIN = 44;
+      const COL_MAX = 280;
+      const colCount = token.header.length;
+      const cellLen = (c) => (c && typeof c.text === 'string' ? c.text.length : 0);
+      const colWidths = Array.from({ length: colCount }, (_, ci) => {
+        let maxLen = 0;
+        for (const row of rows) {
+          const l = cellLen(row[ci]);
+          if (l > maxLen) maxLen = l;
+        }
+        return Math.max(COL_MIN, Math.min(COL_MAX, maxLen * COL_CHAR_W + COL_PAD));
+      });
       return (
         <ScrollView
           key={key}
@@ -584,7 +601,14 @@ const renderBlockToken = (token, depth, ctx) => {
                     ? [baseCellStyle, ctx.textStyle]
                     : baseCellStyle;
                   return (
-                    <View key={cellKey} style={[styles.tableCell, isLast && styles.tableCellLast]}>
+                    <View
+                      key={cellKey}
+                      style={[
+                        styles.tableCell,
+                        { width: colWidths[ci] },
+                        isLast && styles.tableCellLast,
+                      ]}
+                    >
                       <Text style={cellTextStyle}>
                         {cell.tokens
                           ? renderInlineTokens(cell.tokens, cellTextStyle, ctx)

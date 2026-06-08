@@ -27,7 +27,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
             "Read a note's full content by its id (get the id from search_notes first).",
             json!({
                 "type": "object",
-                "properties": { "id": { "type": "string", "description": "note UUID" } },
+                "properties": { "id": { "type": "string", "description": "note UUID — must come from a prior search_notes / read_note / browse_folder result; never invent or guess it" } },
                 "required": ["id"]
             }),
         ),
@@ -79,7 +79,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
             json!({
                 "type": "object",
                 "properties": {
-                    "id": { "type": "string", "description": "note UUID" },
+                    "id": { "type": "string", "description": "note UUID — must come from a prior search_notes / read_note / browse_folder result; never invent or guess it" },
                     "title": { "type": "string" },
                     "content": { "type": "string" },
                     "folder": { "type": "string" },
@@ -94,7 +94,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
             json!({
                 "type": "object",
                 "properties": {
-                    "id": { "type": "string", "description": "note UUID" },
+                    "id": { "type": "string", "description": "note UUID — must come from a prior search_notes / read_note / browse_folder result; never invent or guess it" },
                     "text": { "type": "string", "description": "markdown to append" }
                 },
                 "required": ["id", "text"]
@@ -105,7 +105,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
             "Move a note to the trash (soft delete — recoverable). Confirm with the user before deleting.",
             json!({
                 "type": "object",
-                "properties": { "id": { "type": "string", "description": "note UUID" } },
+                "properties": { "id": { "type": "string", "description": "note UUID — must come from a prior search_notes / read_note / browse_folder result; never invent or guess it" } },
                 "required": ["id"]
             }),
         ),
@@ -245,7 +245,7 @@ pub async fn read_note(pool: &DbPool, user_id: &str, args: &Value) -> Result<Val
         Some((title, content, folder, tags)) => {
             Ok(json!({ "title": title, "content": content, "folder": folder, "tags": tags }))
         }
-        None => Err("note not found".into()),
+        None => Err("note not found for that id — call search_notes to get the correct id, then retry".into()),
     }
 }
 
@@ -388,7 +388,7 @@ pub async fn update_note(pool: &DbPool, user_id: &str, args: &Value) -> Result<V
             }
             Ok(json!({ "id": id, "title": title, "updated": true }))
         }
-        None => Err("note not found".into()),
+        None => Err("note not found for that id — call search_notes to get the correct id, then retry".into()),
     }
 }
 
@@ -411,7 +411,7 @@ pub async fn append_to_note(pool: &DbPool, user_id: &str, args: &Value) -> Resul
             enqueue_embedding(pool, id, &new_content).await;
             Ok(json!({ "id": id, "title": title, "appended": true }))
         }
-        None => Err("note not found".into()),
+        None => Err("note not found for that id — call search_notes to get the correct id, then retry".into()),
     }
 }
 
@@ -434,6 +434,6 @@ pub async fn delete_note(pool: &DbPool, user_id: &str, args: &Value) -> Result<V
                 .await;
             Ok(json!({ "id": id, "title": title, "trashed": true }))
         }
-        None => Err("note not found".into()),
+        None => Err("note not found for that id — call search_notes to get the correct id, then retry".into()),
     }
 }
