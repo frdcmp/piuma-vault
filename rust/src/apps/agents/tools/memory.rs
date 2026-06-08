@@ -21,9 +21,12 @@ const EMBED_DIMS: u32 = 1536;
 /// topic" and is treated as a duplicate on save. (Stage-B NLI — distinguishing
 /// duplicate / contradiction / extension — lands with L4.)
 const DUP_DISTANCE: f64 = 0.15;
-/// Per-turn retrieval floors (cosine distance = 1 − similarity).
-const FLOOR_CONFIRMED: f64 = 0.5;
-const FLOOR_PENDING: f64 = 0.3;
+/// Per-turn retrieval floors (cosine distance = 1 − similarity). Tuned loose so
+/// related-but-not-identical facts actually surface (text-embedding-3-large puts
+/// topical matches around 0.4–0.65 distance); tighten from the turn inspector if
+/// retrieval gets noisy. Pending/derived facts use the stricter floor.
+const FLOOR_CONFIRMED: f64 = 0.65;
+const FLOOR_PENDING: f64 = 0.5;
 
 pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
     vec![
@@ -47,7 +50,8 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                 "properties": {
                     "content": { "type": "string", "description": "the fact, one self-contained statement" },
                     "category": { "type": "string", "description": "health | preferences | personal | work | convention | derived" },
-                    "confidence": { "type": "string", "description": "high | medium | low (default medium)" },
+                    "source": { "type": "string", "description": "user_stated = User told you directly or asked you to remember it; agent_observed = you inferred it. Set user_stated for things he says about himself — it's saved as high confidence. Default agent_observed." },
+                    "confidence": { "type": "string", "description": "high | medium | low. Omit to let it default from source (user_stated→high, else medium)." },
                     "tags": { "type": "array", "items": { "type": "string" } }
                 },
                 "required": ["content"]
@@ -255,8 +259,16 @@ pub async fn save_derived(
 pub async fn memory_save(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
     let content = req_str(args, "content")?;
     let category = opt_string(args, "category");
-    let confidence = opt_string(args, "confidence").unwrap_or_else(|| "medium".into());
     let source = opt_string(args, "source").unwrap_or_else(|| "agent_observed".into());
+    // Default confidence from source: a fact User stated directly is high;
+    // something the agent merely inferred is medium.
+    let confidence = opt_string(args, "confidence").unwrap_or_else(|| {
+        if source == "user_stated" {
+            "high".into()
+        } else {
+            "medium".into()
+        }
+    });
     let status = opt_string(args, "status").unwrap_or_else(|| "confirmed".into());
     let tags = opt_str_array(args, "tags").unwrap_or_default();
 

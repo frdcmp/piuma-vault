@@ -1,151 +1,225 @@
+/* memory — vault pixel memory dashboard. Tokens from vault-pixel.css.
+   Mirrors the apiKeys/projects per-page table-theming pattern. */
+
+.mem-root {
+	font-family: var(--vp-font);
+	color: var(--vp-text);
+}
+
+/* ---- Header --------------------------------------------------------------- */
 .mem-header {
 	display: flex;
 	align-items: flex-start;
 	justify-content: space-between;
 	gap: 16px;
-	margin-bottom: 20px;
+	margin-bottom: 24px;
+}
+.mem-title {
+	margin: 0;
+	font-size: 22px;
+	font-weight: 900;
+	letter-spacing: 0.5px;
+	color: var(--vp-text);
+	text-shadow: 2px 2px 0 #000;
+}
+.mem-subtitle {
+	margin: 6px 0 0;
+	font-size: 12px;
+	color: var(--vp-muted);
+	max-width: 720px;
 }
 
-/* ── Layer map ─────────────────────────────────────────────── */
+/* ---- Layer map (stat cards) ----------------------------------------------- */
 .mem-layers {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-	gap: 12px;
-	margin-bottom: 20px;
+	gap: 16px;
+	margin-bottom: 24px;
 }
-
 .mem-layer {
 	position: relative;
 	text-align: left;
-	border: 1px solid var(--border-color, #e5e7eb);
-	border-left: 4px solid var(--mem-accent, #1677ff);
-	border-radius: 10px;
+	font-family: var(--vp-font);
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	border-left: 4px solid var(--mem-accent, var(--vp-accent));
+	box-shadow: var(--vp-shadow);
 	padding: 14px 16px;
-	background: var(--card-bg, #fff);
+	color: var(--vp-text);
 	cursor: pointer;
 	transition:
-		transform 0.12s ease,
-		box-shadow 0.12s ease,
-		border-color 0.12s;
-	overflow: hidden;
-}
-.mem-layer::after {
-	content: "";
-	position: absolute;
-	inset: 0;
-	background: var(--mem-accent);
-	opacity: 0;
-	transition: opacity 0.12s ease;
-	pointer-events: none;
+		transform 0.1s ease,
+		box-shadow 0.1s ease,
+		border-color 0.1s ease;
 }
 .mem-layer:hover {
-	transform: translateY(-2px);
-	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+	transform: translate(-1px, -1px);
+	box-shadow: var(--vp-shadow-lg);
 }
 .mem-layer--active {
-	border-color: var(--mem-accent);
-	box-shadow: 0 0 0 2px color-mix(in srgb, var(--mem-accent) 30%, transparent);
+	border-color: var(--mem-accent, var(--vp-accent));
 }
-.mem-layer--active::after {
-	opacity: 0.06;
-}
-
 .mem-layer-head {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	color: var(--mem-accent);
+	color: var(--mem-accent, var(--vp-accent));
 }
 .mem-layer-icon {
-	font-size: 18px;
+	font-size: 16px;
 }
 .mem-layer-tag {
-	font-weight: 700;
+	font-weight: 800;
 	font-size: 12px;
-	letter-spacing: 0.06em;
-	opacity: 0.8;
+	letter-spacing: 1px;
+	text-transform: uppercase;
 }
 .mem-layer-count {
-	font-size: 30px;
-	font-weight: 700;
-	line-height: 1.1;
-	margin-top: 6px;
+	font-size: 32px;
+	font-weight: 800;
+	line-height: 1;
+	margin-top: 10px;
+	text-shadow: 2px 2px 0 #000;
 }
 .mem-layer-title {
-	font-weight: 600;
-	margin-top: 2px;
+	margin-top: 8px;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-muted);
 }
 .mem-layer-sub {
-	font-size: 12px;
-	color: var(--text-muted, #8c8c8c);
+	margin-top: 2px;
+	font-size: 11px;
+	color: var(--vp-faint);
 }
 
-/* ── Filters + table ───────────────────────────────────────── */
+/* ---- Filters + shared cell bits ------------------------------------------- */
 .mem-filters {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 10px;
-	margin-bottom: 14px;
+	margin-bottom: 16px;
 }
-
+.mem-muted {
+	color: var(--vp-muted);
+}
 .mem-cell-content {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-}
-.mem-noembed {
-	margin: 0;
-	font-size: 11px;
 }
 .mem-actions {
 	display: flex;
 	gap: 6px;
 	justify-content: flex-end;
 }
-.mem-muted {
-	color: var(--text-muted, #8c8c8c);
+
+/* ---- Pixel tags (vp-tag style) -------------------------------------------- */
+.mem-tag {
+	display: inline-block;
+	font-family: var(--vp-font);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.4px;
+	text-transform: uppercase;
+	padding: 1px 6px;
+	border: 1px solid var(--vp-border);
+	background: var(--vp-bg-soft);
+	color: var(--vp-muted);
+	white-space: nowrap;
+}
+.mem-tag--green {
+	border-color: var(--vp-accent-2);
+	color: var(--vp-accent-2);
+}
+.mem-tag--gold {
+	border-color: var(--vp-accent);
+	color: var(--vp-accent);
+}
+.mem-tag--blue {
+	border-color: var(--vp-accent-4);
+	color: var(--vp-accent-4);
+}
+.mem-tag--purple {
+	border-color: #b07cff;
+	color: #b07cff;
+}
+.mem-tag--red {
+	border-color: var(--vp-accent-3);
+	color: var(--vp-accent-3);
 }
 
-/* ── L1 gauges ─────────────────────────────────────────────── */
+/* ---- Pixel capacity bar (replaces antd Progress) -------------------------- */
+.mem-bar {
+	flex: 1;
+	min-width: 60px;
+	height: 10px;
+	background: var(--vp-bg-soft);
+	border: 1px solid var(--vp-border);
+	overflow: hidden;
+}
+.mem-bar-fill {
+	height: 100%;
+	background: var(--vp-accent-2);
+	transition: width 0.2s ease;
+}
+.mem-bar-fill--warn {
+	background: var(--vp-accent);
+}
+.mem-bar-fill--hot {
+	background: var(--vp-accent-3);
+}
+
+/* ---- L1 gauges ------------------------------------------------------------ */
 .mem-l1 {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-	gap: 18px;
+	gap: 16px;
 }
 .mem-gauge {
-	border: 1px solid var(--border-color, #e5e7eb);
-	border-radius: 10px;
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
 	padding: 14px 16px;
-	background: var(--card-bg, #fff);
 }
 .mem-gauge-head {
 	display: flex;
 	align-items: baseline;
 	justify-content: space-between;
-	margin-bottom: 6px;
+	gap: 8px;
+	margin-bottom: 8px;
 }
 .mem-gauge-label {
-	font-weight: 600;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-text);
 }
 .mem-gauge-num {
-	font-size: 12px;
-	color: var(--text-muted, #8c8c8c);
+	font-size: 11px;
+	color: var(--vp-muted);
+	white-space: nowrap;
 }
 .mem-gauge-body {
 	margin: 10px 0 0;
-	padding: 10px;
-	background: var(--code-bg, #f6f8fa);
-	border-radius: 8px;
+	padding: 12px;
+	background: var(--vp-bg-soft);
+	border: 1px solid var(--vp-border-soft);
+	font-family: var(--vp-font);
 	font-size: 12.5px;
-	line-height: 1.5;
+	line-height: 1.6;
+	color: var(--vp-text);
 	white-space: pre-wrap;
 	word-break: break-word;
 	max-height: 320px;
 	overflow: auto;
 }
 
-/* ── Turn inspector ────────────────────────────────────────── */
+/* ---- Turn inspector ------------------------------------------------------- */
 .mem-retrieved {
 	display: flex;
 	flex-direction: column;
@@ -157,10 +231,267 @@
 	align-items: center;
 	gap: 10px;
 	font-size: 13px;
+	color: var(--vp-text);
 }
 .mem-retrieved-sim {
 	font-variant-numeric: tabular-nums;
-	font-weight: 600;
-	color: #389e0d;
+	font-weight: 700;
+	color: var(--vp-accent-2);
 	min-width: 42px;
+}
+
+/* =============================================================================
+   Restyle kept antd components to the pixel language.
+   ============================================================================= */
+
+/* ---- Table (mirrors apiKeys vp-table) ------------------------------------- */
+.vp-table .ant-table {
+	background: transparent;
+	font-family: var(--vp-font);
+	color: var(--vp-text);
+}
+.vp-table .ant-table-thead > tr > th {
+	background: var(--vp-bg-soft) !important;
+	color: var(--vp-muted) !important;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	border-bottom: 2px solid var(--vp-border) !important;
+}
+.vp-table .ant-table-thead > tr > th::before {
+	display: none !important;
+}
+.vp-table .ant-table-tbody > tr > td {
+	background: transparent !important;
+	color: var(--vp-text);
+	border-bottom: 1px solid var(--vp-border-soft) !important;
+	font-size: 13px;
+}
+.vp-table .ant-table-tbody > tr:hover > td,
+.vp-table .ant-table-cell-row-hover {
+	background: var(--vp-bg-soft) !important;
+}
+.vp-table .ant-table-expanded-row > td {
+	background: var(--vp-bg-soft) !important;
+}
+.vp-table .ant-table-placeholder,
+.vp-table .ant-table-placeholder:hover > td {
+	background: transparent !important;
+}
+.vp-table .ant-pagination .ant-pagination-item,
+.vp-table .ant-pagination .ant-pagination-prev .ant-pagination-item-link,
+.vp-table .ant-pagination .ant-pagination-next .ant-pagination-item-link {
+	background: var(--vp-bg-soft) !important;
+	border: 2px solid var(--vp-border) !important;
+	border-radius: 0 !important;
+	color: var(--vp-text) !important;
+}
+.vp-table .ant-pagination .ant-pagination-item-active {
+	border-color: var(--vp-accent) !important;
+}
+.vp-table .ant-pagination .ant-pagination-item-active a {
+	color: var(--vp-accent) !important;
+}
+
+/* ---- Tabs ----------------------------------------------------------------- */
+.mem-root .ant-tabs {
+	font-family: var(--vp-font);
+	color: var(--vp-text);
+}
+.mem-root .ant-tabs-top > .ant-tabs-nav::before {
+	border-bottom: 2px solid var(--vp-border) !important;
+}
+.mem-root .ant-tabs-tab {
+	color: var(--vp-muted) !important;
+	font-weight: 700;
+	letter-spacing: 0.3px;
+}
+.mem-root .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+	color: var(--vp-accent) !important;
+}
+.mem-root .ant-tabs-ink-bar {
+	background: var(--vp-accent) !important;
+}
+
+/* ---- Segmented ------------------------------------------------------------ */
+.mem-root .ant-segmented {
+	background: var(--vp-panel) !important;
+	border: 2px solid var(--vp-border);
+	border-radius: 0 !important;
+	padding: 2px;
+	font-family: var(--vp-font);
+}
+.mem-root .ant-segmented-item {
+	border-radius: 0 !important;
+	color: var(--vp-muted) !important;
+}
+.mem-root .ant-segmented-item:hover:not(.ant-segmented-item-selected) {
+	color: var(--vp-text) !important;
+	background: transparent !important;
+}
+.mem-root .ant-segmented-item-selected {
+	background: var(--vp-accent) !important;
+	border-radius: 0 !important;
+	box-shadow: none !important;
+}
+/* The label is the element antd actually colors — force dark text on the
+   accent pill (and on the sliding thumb during the click→load transition). */
+.mem-root .ant-segmented-item-selected,
+.mem-root .ant-segmented-item-selected .ant-segmented-item-label,
+.mem-root .ant-segmented-item-selected:hover .ant-segmented-item-label {
+	color: var(--vp-bg) !important;
+	font-weight: 700;
+}
+.mem-root .ant-segmented-thumb {
+	background: var(--vp-accent) !important;
+	border-radius: 0 !important;
+	box-shadow: none !important;
+}
+
+/* ---- Select + search input (closed control) ------------------------------- */
+.mem-root .ant-select .ant-select-selector,
+.mem-root .ant-input,
+.mem-root .ant-input-affix-wrapper {
+	background: var(--vp-bg-soft) !important;
+	border: 2px solid var(--vp-border) !important;
+	border-radius: 0 !important;
+	color: var(--vp-text) !important;
+	font-family: var(--vp-font);
+}
+.mem-root .ant-select-focused .ant-select-selector,
+.mem-root .ant-input:focus,
+.mem-root .ant-input-affix-wrapper-focused {
+	border-color: var(--vp-accent) !important;
+	box-shadow: none !important;
+}
+.mem-root .ant-select-selection-placeholder,
+.mem-root .ant-input::placeholder {
+	color: var(--vp-faint) !important;
+}
+.mem-root .ant-select-selection-item {
+	color: var(--vp-text) !important;
+}
+.mem-root .ant-select-clear,
+.mem-root .ant-select-arrow {
+	color: var(--vp-muted) !important;
+	background: transparent !important;
+}
+.mem-root .ant-input-search-button {
+	background: var(--vp-panel) !important;
+	border: 2px solid var(--vp-border) !important;
+	border-radius: 0 !important;
+	color: var(--vp-muted) !important;
+}
+
+/* Portaled select dropdown (rendered at <body>, outside .mem-root). */
+.mem-pop {
+	background: var(--vp-panel) !important;
+	border: 2px solid var(--vp-border) !important;
+	border-radius: 0 !important;
+	font-family: var(--vp-font);
+}
+.mem-pop .ant-select-item {
+	color: var(--vp-text) !important;
+	border-radius: 0 !important;
+}
+.mem-pop .ant-select-item-option-active,
+.mem-pop .ant-select-item-option-selected {
+	background: var(--vp-bg-soft) !important;
+	color: var(--vp-accent) !important;
+}
+
+/* ---- Empty ---------------------------------------------------------------- */
+.mem-root .ant-empty-description {
+	color: var(--vp-muted) !important;
+	font-family: var(--vp-font);
+}
+.vp-table .ant-table-placeholder,
+.vp-table .ant-table-placeholder > td,
+.vp-table .ant-table-placeholder:hover > td {
+	background: transparent !important;
+}
+
+/* ---- Loading (antd Spin) -------------------------------------------------- */
+/* The default Spin mask is a near-white overlay — on the dark page it reads as
+   an ugly grey block. Recolor the mask to the page bg and the dots to accent. */
+.mem-root .ant-spin-container::after {
+	background: var(--vp-bg) !important;
+}
+.mem-root .ant-spin-blur {
+	opacity: 0.35 !important;
+}
+.mem-root .ant-spin-dot-item {
+	background: var(--vp-accent) !important;
+}
+.mem-root .ant-spin-text {
+	color: var(--vp-muted) !important;
+	font-family: var(--vp-font);
+}
+
+/* ---- Legend --------------------------------------------------------------- */
+.mem-legend {
+	border: 1px solid var(--vp-border);
+	border-radius: 10px;
+	background: var(--vp-panel);
+	margin-bottom: 18px;
+	overflow: hidden;
+}
+.mem-legend > summary {
+	cursor: pointer;
+	padding: 11px 14px;
+	font-family: var(--vp-font);
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--vp-text);
+	list-style: none;
+	user-select: none;
+}
+.mem-legend > summary::-webkit-details-marker {
+	display: none;
+}
+.mem-legend > summary::before {
+	content: "▸ ";
+	color: var(--vp-muted);
+}
+.mem-legend[open] > summary::before {
+	content: "▾ ";
+}
+.mem-legend[open] > summary {
+	border-bottom: 1px solid var(--vp-border-soft);
+}
+.mem-legend-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+	gap: 18px;
+	padding: 16px 14px;
+}
+.mem-legend-grid h4 {
+	margin: 0 0 8px;
+	font-size: 12px;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--vp-muted);
+}
+.mem-legend-row {
+	display: grid;
+	grid-template-columns: 86px 1fr;
+	align-items: start;
+	gap: 8px;
+	margin-bottom: 8px;
+	font-size: 12.5px;
+	line-height: 1.45;
+	color: var(--vp-text);
+}
+.mem-legend-note {
+	margin: 0;
+	font-size: 12.5px;
+	line-height: 1.5;
+	color: var(--vp-muted);
+}
+
+.mem-header-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
 }

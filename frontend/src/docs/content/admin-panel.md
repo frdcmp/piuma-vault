@@ -16,6 +16,20 @@ vars, with a test button for each:
 Storing these settings in the database means they can be changed at runtime without
 a redeploy.
 
+## Memory
+
+The **Memory** dashboard (`/admin/memory`) is where you scout and curate the
+agent's layered memory:
+
+- a **layer map** (L1 / L2 / L4) with live counts,
+- **Entries (L2 / L4)** — browse, filter, and confirm / reject / delete facts,
+- **Always-in-context (L1)** — the agent's always-in-prompt scratchpad,
+- **Turn inspector** — what the agent retrieved each turn (with similarity), the
+  feedback loop for tuning retrieval.
+
+For the full model — layers, tables, the per-turn flow, and how L2 vs L4 differ —
+see **[Agent Memory](/docs/agent-memory)**.
+
 ## API keys
 
 Generate scoped keys for programmatic access. Keys carry scoped permissions (e.g.
