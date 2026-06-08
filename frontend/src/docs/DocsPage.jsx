@@ -78,7 +78,7 @@ export default function DocsPage() {
 	if (!doc) return <Navigate to={`/docs/${FIRST_SLUG}`} replace />;
 
 	return (
-		<div className="vp-page vp-page--narrow vp-docs-page">
+		<div className="vp-page vp-docs-page">
 			<div className="vp-page-head">
 				<h1 className="vp-page-title">{doc.title}</h1>
 			</div>
