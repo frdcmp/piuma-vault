@@ -1,4 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AlarmHost from "./admin/components/alarm/AlarmHost";
 import PageLayout from "./admin/components/layout/PageLayout";
@@ -28,6 +29,10 @@ import { queryClient } from "./api/queryClient";
 import SharedFolderPage from "./share/SharedFolderPage";
 import SharedNotePage from "./share/SharedNotePage";
 
+// Public docs site — code-split so it stays out of the main app bundle.
+const DocsLayout = lazy(() => import("./docs/DocsLayout"));
+const DocsPage = lazy(() => import("./docs/DocsPage"));
+
 function AppContent() {
 	return (
 		<BrowserRouter
@@ -55,6 +60,26 @@ function AppContent() {
 
 				{/* Public shared folder viewer */}
 				<Route path="/s/:slug" element={<SharedFolderPage />} />
+
+				{/* Public documentation site */}
+				<Route
+					path="/docs"
+					element={
+						<Suspense fallback={null}>
+							<DocsLayout />
+						</Suspense>
+					}
+				>
+					<Route index element={<Navigate to="overview" replace />} />
+					<Route
+						path=":slug"
+						element={
+							<Suspense fallback={null}>
+								<DocsPage />
+							</Suspense>
+						}
+					/>
+				</Route>
 
 				{/* Admin auth routes (no layout) */}
 				<Route path="/admin/login" element={<Login />} />

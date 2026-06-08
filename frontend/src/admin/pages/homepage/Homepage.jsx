@@ -2,6 +2,7 @@ import {
 	BookOutlined,
 	CloudOutlined,
 	DatabaseOutlined,
+	FileTextOutlined,
 	RocketOutlined,
 	SafetyOutlined,
 	SearchOutlined,
@@ -88,6 +89,9 @@ const Homepage = () => {
 					<PvButton to="/admin/about" icon={<SearchOutlined />}>
 						About
 					</PvButton>
+					<PvButton to="/docs" icon={<FileTextOutlined />}>
+						Read the Docs
+					</PvButton>
 				</div>
 			</div>
 
@@ -108,7 +112,7 @@ const Homepage = () => {
 					Everything the vault does — and nothing it doesn't.
 				</p>
 			</div>
-			<div className="vp-grid">
+			<div className="vp-home-features">
 				{FEATURES.map((feature) => (
 					<div className="vp-card" key={feature.title}>
 						<div className="vp-home-feature-icon">{feature.icon}</div>

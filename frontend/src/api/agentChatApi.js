@@ -67,6 +67,16 @@ export const clearConversation = async (id) =>
 export const retitleConversation = async (id) =>
 	(await axiosInstance.post(`/agents/conversations/${id}/retitle`)).data;
 
+// STOP — cancel the conversation's running turn mid-stream.
+export const stopConversation = async (id) =>
+	(await axiosInstance.post(`/agents/conversations/${id}/stop`)).data;
+
+// INJECT — queue a message into the running turn (consumed next round). A 409
+// means no turn is active (the caller should send via /chat instead).
+export const injectMessage = async (id, message) =>
+	(await axiosInstance.post(`/agents/conversations/${id}/inject`, { message }))
+		.data;
+
 // All enabled models across providers — for the /models command picker.
 export const fetchAllModels = async () =>
 	(await axiosInstance.get("/agents/models")).data;
@@ -198,6 +208,10 @@ export async function streamChat({
 		}
 	} catch (e) {
 		if (e?.name === "AbortError") return;
+		// Transport-level drop (stream reset / connection abort), NOT a backend
+		// error frame. The turn keeps running + is persisted server-side, so the
+		// caller can recover by refetching. Tagged so it can tell the two apart.
+		e.isTransport = true;
 		onError?.(e);
 	}
 }

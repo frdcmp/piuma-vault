@@ -2,6 +2,7 @@
 //! API; the agent is a parameter on the conversation row. See md/ plan.
 
 pub mod chat;
+pub mod control;
 pub mod handlers;
 pub mod identities;
 pub mod models;

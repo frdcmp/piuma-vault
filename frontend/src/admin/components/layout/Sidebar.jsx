@@ -5,6 +5,7 @@ import {
 	DatabaseOutlined,
 	DeleteOutlined,
 	DownOutlined,
+	FileTextOutlined,
 	FolderOpenOutlined,
 	HomeOutlined,
 	KeyOutlined,
@@ -27,6 +28,7 @@ const NAVIGATION = [
 	{ key: "/admin/notes", icon: <BookOutlined />, label: "Vault" },
 	{ key: "/admin/agents", icon: <RobotOutlined />, label: "Agents" },
 	{ key: "/admin/about", icon: <AppstoreOutlined />, label: "About" },
+	{ key: "/docs", icon: <FileTextOutlined />, label: "Docs" },
 	{ key: "/storage", icon: <FolderOpenOutlined />, label: "Storage" },
 ];
 

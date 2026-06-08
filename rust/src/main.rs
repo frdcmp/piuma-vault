@@ -76,6 +76,8 @@ async fn main() -> io::Result<()> {
     let notes_bus = apps::notes::events::NotesEventBus::new();
     let tasks_bus = apps::tasks::events::TasksEventBus::new();
     let calendar_bus = apps::calendar::events::CalendarEventBus::new();
+    // Control plane for in-flight chat turns: STOP (cancel) + INJECT (mailbox).
+    let turn_control = apps::agents::control::TurnControl::new();
 
     // CORS policy is read from the environment once (see cors.rs) and used to
     // build a fresh middleware per worker.
@@ -92,6 +94,7 @@ async fn main() -> io::Result<()> {
             .app_data(web::Data::new(notes_bus.clone()))
             .app_data(web::Data::new(tasks_bus.clone()))
             .app_data(web::Data::new(calendar_bus.clone()))
+            .app_data(web::Data::new(turn_control.clone()))
             .configure(apps::health::routes::configure_routes)
             .configure(apps::auth::routes::configure_routes)
             .configure(apps::openclaw::routes::configure_routes)

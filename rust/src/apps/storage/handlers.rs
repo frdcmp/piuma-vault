@@ -135,6 +135,55 @@ pub(crate) async fn download_url(
     Ok((presigned.uri().to_string(), chrono::Utc::now().timestamp() + secs as i64))
 }
 
+// Storage key of the mobile update manifest published by `mobile/build.sh -p apk`.
+const UPDATE_MANIFEST_KEY: &str = "expo/pv/apk/latest.json";
+
+// GET /storage/app-update-manifest — read the mobile update manifest straight
+// from storage and return it as JSON. Proxied server-side rather than handed out
+// as a signed CDN URL: the CDN edge can 403 the app's own HTTP client. Any
+// authenticated user may read it — it's only version metadata. 404 until a build
+// has published a manifest.
+pub async fn app_update_manifest(
+    _user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+) -> impl Responder {
+    let (client, bucket) = match s3_client(pool.get_ref()).await {
+        Ok(v) => v,
+        Err(e) => return err(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let obj = match client
+        .get_object()
+        .bucket(&bucket)
+        .key(UPDATE_MANIFEST_KEY)
+        .send()
+        .await
+    {
+        Ok(o) => o,
+        Err(_) => {
+            return err(
+                actix_web::http::StatusCode::NOT_FOUND,
+                "no update manifest published",
+            )
+        }
+    };
+    let bytes = match obj.body.collect().await {
+        Ok(b) => b.into_bytes(),
+        Err(e) => {
+            return err(
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("read manifest: {e}"),
+            )
+        }
+    };
+    match serde_json::from_slice::<serde_json::Value>(&bytes) {
+        Ok(json) => HttpResponse::Ok().json(json),
+        Err(e) => err(
+            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("manifest is not valid JSON: {e}"),
+        ),
+    }
+}
+
 pub(crate) fn is_dir_marker(o: &aws_sdk_s3::types::Object) -> bool {
     let etag_blank = o
         .e_tag()

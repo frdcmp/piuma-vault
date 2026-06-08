@@ -19,6 +19,7 @@ use crate::apps::settings;
 use crate::apps::tasks::events::TasksEventBus;
 use crate::db::db::DbPool;
 
+use super::control::TurnControl;
 use super::models::{ApiError, ChatTurnReq, ConversationRow, ModelRow, ProviderRow};
 use super::providers::{deepseek, openclaw as oc_gateway};
 use super::{identities, registry, tools};
@@ -136,6 +137,19 @@ fn inject_context(messages: &mut [Value], context: &str) {
     }
 }
 
+/// Removes a turn's control entry (cancel token + injection mailbox) when the
+/// streaming task ends — on normal completion, early break, error, or panic.
+struct TurnGuard {
+    control: TurnControl,
+    conv: Uuid,
+}
+
+impl Drop for TurnGuard {
+    fn drop(&mut self) {
+        self.control.end(self.conv);
+    }
+}
+
 pub async fn chat(
     user: AuthenticatedUser,
     pool: web::Data<DbPool>,
@@ -144,6 +158,7 @@ pub async fn chat(
     notes_bus: web::Data<NotesEventBus>,
     tasks_bus: web::Data<TasksEventBus>,
     calendar_bus: web::Data<CalendarEventBus>,
+    control: web::Data<TurnControl>,
 ) -> impl Responder {
     let conv_id = path.into_inner();
     let req = body.into_inner();
@@ -271,10 +286,21 @@ pub async fn chat(
     // Prepend a dynamic "current time" block so the agent can resolve relative
     // dates and emit correctly-offset timestamps (it otherwise has no clock).
     let now_block = current_time_context(timezone.as_deref(), client_now.as_deref());
-    let system = match resolved.system_prompt.trim().is_empty() {
-        true => now_block,
-        false => format!("{now_block}\n\n{}", resolved.system_prompt),
-    };
+    // Tell the agent its live runtime model. Without this it has no idea which
+    // model it is and (wrongly) infers it from notes/plans, which go stale when
+    // the conversation's model is changed.
+    let model_block = format!(
+        "# Your model\nYou are running on \"{}\" (provider: {}, API model id: {}). \
+         This is the authoritative model for THIS conversation right now. When asked which \
+         model or LLM you are, answer with this directly — do NOT look it up in notes, plans, \
+         or documents, which may be out of date.",
+        model_row.display_name, provider.kind, model_row.model_id,
+    );
+    let mut blocks = vec![now_block, model_block];
+    if !resolved.system_prompt.trim().is_empty() {
+        blocks.push(resolved.system_prompt.clone());
+    }
+    let system = blocks.join("\n\n");
     if !system.trim().is_empty() {
         messages.push(json!({ "role": "system", "content": system }));
     }
@@ -289,6 +315,11 @@ pub async fn chat(
     let pool2 = db.clone();
     let user_id = user.user_id.clone();
     let agent_kind = conv.agent.clone();
+    // Register this turn's cancel token *before* spawning so a STOP that arrives
+    // the instant streaming begins finds it. `control` is cloned into the task
+    // for draining injections and tearing the turn down on exit.
+    let cancel = control.begin(conv_id);
+    let control = control.get_ref().clone();
     // Live-update buses (cloned into the spawned task) so agent mutations push
     // to connected clients just like the HTTP handlers do.
     let notes_bus = notes_bus.get_ref().clone();
@@ -301,15 +332,57 @@ pub async fn chat(
     let model = model_row.model_id.clone();
 
     actix_web::rt::spawn(async move {
+        // Drop guard: clears this turn's cancel token + injection mailbox however
+        // the task exits (completion, break, error, panic).
+        let _guard = TurnGuard { control: control.clone(), conv: conv_id };
+
+        // Heartbeat: emit an SSE comment every 15s so the stream never sits idle
+        // during a slow tool round or while a reasoning model thinks before its
+        // first token. Without it, Cloudflare/HTTP-2/the mobile radio reset the
+        // idle stream ("stream was reset" / "connection abort"). Mirrors the
+        // notes-events bus. Aborted when the turn ends (and stops itself if the
+        // client has disconnected).
+        let hb_tx = tx.clone();
+        let heartbeat = actix_web::rt::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(15));
+            ticker.tick().await; // consume the immediate first tick
+            loop {
+                ticker.tick().await;
+                if hb_tx
+                    .unbounded_send(Ok(Bytes::from_static(b": ping\n\n")))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+
         let mut display: Vec<Value> = Vec::new();
         let mut tin = 0;
         let mut tout = 0;
         let mut stop = "end_turn".to_string();
         let mut errored = false;
         let mut answered = false;
+        // Set when STOP cancels the turn mid-stream. We persist what we have and
+        // mark the stop reason "cancelled".
+        let mut stopped = false;
 
-        for _round in 0..MAX_ROUNDS {
-            match deepseek::call(&api_key, base_url.as_deref(), &model, &messages, &tool_schemas, &tx).await {
+        'rounds: for _round in 0..MAX_ROUNDS {
+            // INJECT: fold any messages queued mid-turn into the next round before
+            // the model is called, so it sees them immediately.
+            for inj in control.drain(conv_id) {
+                let _ = tx.unbounded_send(Ok(frame(json!({ "type": "injected", "text": inj }))));
+                messages.push(json!({ "role": "user", "content": inj }));
+            }
+
+            // STOP: race the streaming round against the cancel signal. Dropping
+            // the call future closes the in-flight provider socket immediately.
+            let round = tokio::select! {
+                biased;
+                _ = cancel.cancelled() => { stopped = true; break 'rounds; }
+                r = deepseek::call(&api_key, base_url.as_deref(), &model, &messages, &tool_schemas, &tx) => r,
+            };
+            match round {
                 Ok(res) => {
                     tin += res.tokens_in;
                     tout += res.tokens_out;
@@ -339,6 +412,11 @@ pub async fn chat(
                         display.push(json!({ "type": "text", "text": res.text }));
                     }
                     for tc in &res.tool_calls {
+                        // STOP: don't start a new tool once cancelled.
+                        if cancel.is_cancelled() {
+                            stopped = true;
+                            break 'rounds;
+                        }
                         let args: Value = serde_json::from_str(&tc.arguments).unwrap_or_else(|_| json!({}));
                         // Announce the tool (with its args) so the client can show it
                         // live, then signal completion once it has run.
@@ -346,9 +424,14 @@ pub async fn chat(
                             json!({ "type": "tool", "id": tc.id, "name": tc.name, "args": args.clone() }),
                         )));
                         display.push(json!({ "type": "tool_use", "name": tc.name, "input": args.clone() }));
-                        let result = match tools::dispatch(&pool2, &user_id, &agent_kind, &tc.name, &args).await {
-                            Ok(v) => v,
-                            Err(e) => json!({ "error": e }),
+                        // STOP: a long-running tool can be cancelled too.
+                        let result = tokio::select! {
+                            biased;
+                            _ = cancel.cancelled() => { stopped = true; break 'rounds; }
+                            r = tools::dispatch(&pool2, &user_id, &agent_kind, &tc.name, &args) => match r {
+                                Ok(v) => v,
+                                Err(e) => json!({ "error": e }),
+                            },
                         };
                         let ok = result.get("error").is_none();
                         if ok {
@@ -374,31 +457,41 @@ pub async fn chat(
         // The loop ran out of rounds while the model still wanted tools. Make one
         // final turn with tools disabled so it must synthesise an answer from what
         // it has gathered — otherwise the turn ends on a tool_use with no reply.
-        if !errored && !answered {
+        // Skipped if the turn was stopped.
+        if !errored && !answered && !stopped {
             messages.push(json!({
                 "role": "user",
                 "content": "You've reached the tool-call limit for this turn. Answer now \
                             using the information you've already gathered — do not request \
                             more tools. If something is still unknown, say so briefly.",
             }));
-            match deepseek::call(&api_key, base_url.as_deref(), &model, &messages, &[], &tx).await {
-                Ok(res) => {
-                    tin += res.tokens_in;
-                    tout += res.tokens_out;
-                    stop = res.finish.clone();
-                    if !res.thinking.trim().is_empty() {
-                        display.push(json!({ "type": "thinking", "text": res.thinking }));
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => { stopped = true; }
+                r = deepseek::call(&api_key, base_url.as_deref(), &model, &messages, &[], &tx) => match r {
+                    Ok(res) => {
+                        tin += res.tokens_in;
+                        tout += res.tokens_out;
+                        stop = res.finish.clone();
+                        if !res.thinking.trim().is_empty() {
+                            display.push(json!({ "type": "thinking", "text": res.thinking }));
+                        }
+                        if !res.text.trim().is_empty() {
+                            display.push(json!({ "type": "text", "text": res.text }));
+                        }
                     }
-                    if !res.text.trim().is_empty() {
-                        display.push(json!({ "type": "text", "text": res.text }));
+                    Err(e) => {
+                        log::error!("chat: deepseek final answer failed: {e}");
+                        let _ = tx.unbounded_send(Ok(frame(json!({ "type": "error", "error": e }))));
+                        errored = true;
                     }
-                }
-                Err(e) => {
-                    log::error!("chat: deepseek final answer failed: {e}");
-                    let _ = tx.unbounded_send(Ok(frame(json!({ "type": "error", "error": e }))));
-                    errored = true;
-                }
+                },
             }
+        }
+
+        // A stopped turn still persists what was gathered, tagged "cancelled".
+        if stopped {
+            stop = "cancelled".to_string();
         }
 
         if !errored {
@@ -432,11 +525,15 @@ pub async fn chat(
             }))));
 
             // Replace the fallback title with an AI-generated subject line now
-            // that the first exchange exists. Best-effort, after `done`.
-            if first_turn {
+            // that the first exchange exists. Best-effort, after `done`. Skipped
+            // on a stopped turn — no point spending an LLM call on a cancelled one.
+            if first_turn && !stopped {
                 super::title::generate(&pool2, conv_id).await;
             }
         }
+
+        // Turn is done — stop the heartbeat.
+        heartbeat.abort();
     });
 
     HttpResponse::Ok()
@@ -551,4 +648,58 @@ async fn gateway_turn(
         .insert_header(("Cache-Control", "no-cache"))
         .insert_header(("X-Accel-Buffering", "no"))
         .streaming(rx)
+}
+
+/// `POST /agents/conversations/{id}/stop` — STOP. Fires the conversation's cancel
+/// token so the running turn halts mid-stream. Idempotent / safe if no turn is
+/// active. Returns 202 with whether a turn was actually cancelled.
+pub async fn stop(
+    _user: AuthenticatedUser,
+    path: web::Path<Uuid>,
+    control: web::Data<TurnControl>,
+) -> impl Responder {
+    let cancelled = control.cancel(path.into_inner());
+    HttpResponse::Accepted().json(json!({ "cancelled": cancelled }))
+}
+
+#[derive(serde::Deserialize)]
+pub struct InjectReq {
+    pub message: String,
+}
+
+/// `POST /agents/conversations/{id}/inject` — INJECT. Queues a user message into
+/// the running turn (consumed at the next round boundary) and persists it. Does
+/// NOT open a stream. If no turn is active the client should POST `/chat` instead,
+/// so this returns 409 `{ queued: false }` in that case.
+pub async fn inject(
+    _user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    path: web::Path<Uuid>,
+    body: web::Json<InjectReq>,
+    control: web::Data<TurnControl>,
+) -> impl Responder {
+    let conv_id = path.into_inner();
+    let text = body.into_inner().message.trim().to_string();
+    if text.is_empty() {
+        return HttpResponse::BadRequest().json(ApiError::new("empty message"));
+    }
+    if !control.is_active(conv_id) {
+        return HttpResponse::Conflict().json(json!({ "queued": false }));
+    }
+    // Persist the injected turn as a user message so reloaded history is coherent
+    // (it sorts before the assistant message, which is saved when the turn ends).
+    let content = json!([{ "type": "text", "text": text }]);
+    if let Err(e) = sqlx::query(
+        "INSERT INTO db_chat_messages (conversation_id, role, content) VALUES ($1, 'user', $2)",
+    )
+    .bind(conv_id)
+    .bind(&content)
+    .execute(pool.get_ref())
+    .await
+    {
+        log::error!("inject: persist user msg: {e}");
+        return HttpResponse::InternalServerError().json(ApiError::new("database error"));
+    }
+    control.inject(conv_id, text);
+    HttpResponse::Accepted().json(json!({ "queued": true }))
 }

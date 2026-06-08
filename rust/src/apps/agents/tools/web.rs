@@ -156,16 +156,21 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
 // Crude HTML → text: drop script/style, strip tags, decode a few entities,
 // collapse whitespace. Good enough to feed a page's gist to the model.
 fn html_to_text(html: &str) -> String {
-    let mut out = String::with_capacity(html.len());
     let bytes = html.as_bytes();
-    let lower = html.to_lowercase();
+    // ASCII-only lowercasing keeps byte positions (and char boundaries) identical
+    // to `html`, and tag names we match (`<script`/`<style`) are ASCII anyway.
+    // Match on byte slices so a multibyte char in the page can never land us on a
+    // non-char-boundary index and panic.
+    let lower = html.to_ascii_lowercase();
+    let lbytes = lower.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(html.len());
     let mut i = 0;
     let mut in_tag = false;
-    let mut skip_until: Option<&str> = None;
+    let mut skip_until: Option<&[u8]> = None;
 
     while i < bytes.len() {
         if let Some(close) = skip_until {
-            if lower[i..].starts_with(close) {
+            if lbytes[i..].starts_with(close) {
                 i += close.len();
                 skip_until = None;
             } else {
@@ -173,28 +178,31 @@ fn html_to_text(html: &str) -> String {
             }
             continue;
         }
-        if lower[i..].starts_with("<script") {
-            skip_until = Some("</script>");
+        if lbytes[i..].starts_with(b"<script") {
+            skip_until = Some(b"</script>");
             i += 7;
             continue;
         }
-        if lower[i..].starts_with("<style") {
-            skip_until = Some("</style>");
+        if lbytes[i..].starts_with(b"<style") {
+            skip_until = Some(b"</style>");
             i += 6;
             continue;
         }
-        let c = bytes[i] as char;
-        if c == '<' {
+        let b = bytes[i];
+        if b == b'<' {
             in_tag = true;
-        } else if c == '>' {
+        } else if b == b'>' {
             in_tag = false;
-            out.push(' ');
+            out.push(b' ');
         } else if !in_tag {
-            out.push(c);
+            // Only ASCII tag delimiters are dropped, so multibyte sequences
+            // always survive intact — decode the kept bytes as UTF-8 at the end.
+            out.push(b);
         }
         i += 1;
     }
 
+    let out = String::from_utf8_lossy(&out);
     let decoded = out
         .replace("&nbsp;", " ")
         .replace("&amp;", "&")

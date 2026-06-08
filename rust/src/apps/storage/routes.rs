@@ -23,5 +23,9 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route(
             "/storage/signed-url",
             web::post().to(handlers::signed_url),
+        )
+        .route(
+            "/storage/app-update-manifest",
+            web::get().to(handlers::app_update_manifest),
         );
 }
