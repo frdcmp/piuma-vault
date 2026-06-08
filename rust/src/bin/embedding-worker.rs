@@ -55,12 +55,16 @@ async fn main() {
             }
         };
 
-        if jobs.is_empty() {
+        let memory_jobs = drain_memory_jobs(&pool, max_attempts).await;
+
+        if jobs.is_empty() && memory_jobs.is_empty() {
             sleep(poll_interval).await;
             continue;
         }
 
-        log::info!("Found {} embedding job(s)", jobs.len());
+        if !jobs.is_empty() {
+            log::info!("Found {} embedding job(s)", jobs.len());
+        }
 
         for (_job_id, note_id, content, attempts) in jobs {
             log::info!("Embedding note {note_id} (attempt {}/{})", attempts + 1, max_attempts);
@@ -113,5 +117,81 @@ async fn main() {
             // Brief pause between embeddings to respect API rate limits
             sleep(Duration::from_millis(200)).await;
         }
+
+        if !memory_jobs.is_empty() {
+            log::info!("Found {} memory embedding job(s)", memory_jobs.len());
+        }
+        for (entry_id, content, attempts) in memory_jobs {
+            log::info!("Embedding memory {entry_id} (attempt {}/{})", attempts + 1, max_attempts);
+            match apps::embeddings::embed(&pool, &content, 1536).await {
+                Ok(embedding) => {
+                    let pg_vec = pgvector::Vector::from(embedding);
+                    match sqlx::query(
+                        "UPDATE db_memory_entries SET embedding = $1, updated_at = NOW() WHERE id = $2 AND is_active",
+                    )
+                    .bind(&pg_vec)
+                    .bind(entry_id)
+                    .execute(&pool)
+                    .await
+                    {
+                        Ok(_) => log::info!("✅ Embedded memory {entry_id}"),
+                        Err(e) => {
+                            log::error!("Failed to store embedding for memory {entry_id}: {e}");
+                            let _ = sqlx::query(
+                                "INSERT INTO db_memory_embedding_jobs (memory_entry_id, content) VALUES ($1, $2)",
+                            )
+                            .bind(entry_id)
+                            .bind(&content)
+                            .execute(&pool)
+                            .await;
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Embedding API failed for memory {entry_id}: {e}");
+                    if attempts + 1 < max_attempts {
+                        let _ = sqlx::query(
+                            "INSERT INTO db_memory_embedding_jobs (memory_entry_id, content, attempts) VALUES ($1, $2, $3)",
+                        )
+                        .bind(entry_id)
+                        .bind(&content)
+                        .bind(attempts + 1)
+                        .execute(&pool)
+                        .await;
+                    } else {
+                        log::warn!("Memory {entry_id} exhausted {} embedding attempts, dropped", max_attempts);
+                    }
+                }
+            }
+            sleep(Duration::from_millis(200)).await;
+        }
     }
+}
+
+/// Claim up to 5 pending memory embedding jobs (FOR UPDATE SKIP LOCKED), mirroring
+/// the notes `embedding_jobs` drain. Returns `(memory_entry_id, content, attempts)`.
+async fn drain_memory_jobs(
+    pool: &backend::db::db::DbPool,
+    max_attempts: i32,
+) -> Vec<(uuid::Uuid, String, i32)> {
+    sqlx::query_as(
+        r#"
+        DELETE FROM db_memory_embedding_jobs
+        WHERE id IN (
+            SELECT id FROM db_memory_embedding_jobs
+            WHERE attempts < $1
+            ORDER BY created_at
+            LIMIT 5
+            FOR UPDATE SKIP LOCKED
+        )
+        RETURNING memory_entry_id, content, attempts
+        "#,
+    )
+    .bind(max_attempts)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_else(|e| {
+        log::error!("Failed to poll memory jobs: {e}");
+        Vec::new()
+    })
 }

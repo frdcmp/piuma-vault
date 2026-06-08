@@ -17,6 +17,7 @@ export * from "./calendarQuery";
 export * from "./dbDumpQuery";
 export * from "./folderSharesQuery";
 export * from "./healthQuery";
+export * from "./memoryQuery";
 export * from "./notesQuery";
 export * from "./notificationsQuery";
 export * from "./servicesQuery";

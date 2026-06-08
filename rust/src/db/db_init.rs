@@ -680,6 +680,71 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_chat_msg_conv ON db_chat_messages USING btree (conversation_id, created_at)",
         ],
     },
+    // L2 semantic memory — vector-searchable facts/preferences, scoped per agent.
+    TableDefinition {
+        name: "db_memory_entries",
+        sql: r#"
+            CREATE TABLE db_memory_entries (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                agent TEXT NOT NULL REFERENCES db_agent_profiles(agent) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                embedding vector(1536),
+                category TEXT,
+                confidence TEXT NOT NULL DEFAULT 'medium',
+                source TEXT NOT NULL DEFAULT 'agent_observed',
+                status TEXT NOT NULL DEFAULT 'confirmed',
+                source_conversation_id UUID REFERENCES db_chat_conversations(id) ON DELETE SET NULL,
+                source_message_id UUID REFERENCES db_chat_messages(id) ON DELETE SET NULL,
+                tags TEXT[] NOT NULL DEFAULT '{}',
+                related_ids UUID[] NOT NULL DEFAULT '{}',
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                contradicts_id UUID REFERENCES db_memory_entries(id) ON DELETE SET NULL,
+                expires_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_memory_agent ON db_memory_entries USING btree (agent, status, is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_memory_category ON db_memory_entries USING btree (agent, category)",
+            "CREATE INDEX IF NOT EXISTS idx_memory_embedding ON db_memory_entries USING hnsw (embedding vector_cosine_ops)",
+        ],
+    },
+    // Embedding queue for memory entries — same pattern as `embedding_jobs`.
+    TableDefinition {
+        name: "db_memory_embedding_jobs",
+        sql: r#"
+            CREATE TABLE db_memory_embedding_jobs (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                memory_entry_id UUID NOT NULL REFERENCES db_memory_entries(id) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                started_at TIMESTAMPTZ,
+                attempts INTEGER NOT NULL DEFAULT 0
+            )
+        "#,
+        indices: &[],
+    },
+    // Phase 0 observability — what the agent "knew" each turn (L1 usage + the
+    // L2 entries retrieved), for the admin inspector panel.
+    TableDefinition {
+        name: "db_agent_turn_logs",
+        sql: r#"
+            CREATE TABLE db_agent_turn_logs (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                conversation_id UUID NOT NULL REFERENCES db_chat_conversations(id) ON DELETE CASCADE,
+                message_id UUID REFERENCES db_chat_messages(id) ON DELETE SET NULL,
+                agent TEXT NOT NULL,
+                retrieved JSONB NOT NULL DEFAULT '[]',
+                l1_memory_chars INTEGER,
+                l1_memory_pct INTEGER,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_turn_logs_conv ON db_agent_turn_logs USING btree (conversation_id, created_at)",
+        ],
+    },
 ];
 
 pub async fn init_db(pool: &DbPool) -> Result<InitResult, sqlx::Error> {

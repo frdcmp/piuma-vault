@@ -16,6 +16,7 @@ use crate::db::db::DbPool;
 mod agenda;
 mod buckets;
 mod calendar;
+pub mod memory;
 mod notes;
 mod self_config;
 mod shares;
@@ -34,6 +35,7 @@ fn all_defs() -> Vec<(&'static str, &'static str, Value)> {
     defs.extend(storage::defs());
     defs.extend(shares::defs());
     defs.extend(self_config::defs());
+    defs.extend(memory::defs());
     defs.extend(web::defs());
     defs
 }
@@ -118,6 +120,18 @@ pub async fn dispatch(
         "update_user_context" => self_config::update_user_context(pool, agent, args).await,
         "update_memory" => self_config::update_memory(pool, agent, args).await,
         "update_persona" => self_config::update_persona(pool, agent, args).await,
+        "context_add" => self_config::context_add(pool, agent, args).await,
+        "context_replace" => self_config::context_replace(pool, agent, args).await,
+        "context_remove" => self_config::context_remove(pool, agent, args).await,
+        "context_list" => self_config::context_list(pool, agent, args).await,
+        // ── Memory (L2 semantic store, scoped to the active agent) ──
+        "memory_search" => memory::memory_search(pool, agent, args).await,
+        "memory_save" => memory::memory_save(pool, agent, args).await,
+        "memory_update" => memory::memory_update(pool, agent, args).await,
+        "memory_delete" => memory::memory_delete(pool, agent, args).await,
+        "memory_list" => memory::memory_list(pool, agent, args).await,
+        "memory_confirm" => memory::memory_confirm(pool, agent, args).await,
+        "memory_reject" => memory::memory_reject(pool, agent, args).await,
         // ── Web ──
         "web_search" => web::web_search(pool, args).await,
         "web_fetch" => web::web_fetch(args).await,

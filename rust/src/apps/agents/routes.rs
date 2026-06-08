@@ -1,11 +1,28 @@
 use actix_web::web;
 
-use super::{chat, handlers};
+use super::{chat, handlers, memory_admin};
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg
         // Agents listing
         .service(web::resource("/agents").route(web::get().to(handlers::list_agents)))
+        // Memory dashboard (admin) — static segments, registered before the
+        // `/agents/{agent}` wildcard further down.
+        .service(web::resource("/agents/memory/overview").route(web::get().to(memory_admin::overview)))
+        .service(web::resource("/agents/memory/entries").route(web::get().to(memory_admin::list_entries)))
+        .service(web::resource("/agents/memory/turn-logs").route(web::get().to(memory_admin::turn_logs)))
+        .service(
+            web::resource("/agents/memory/entries/{id}/confirm")
+                .route(web::post().to(memory_admin::confirm_entry)),
+        )
+        .service(
+            web::resource("/agents/memory/entries/{id}/reject")
+                .route(web::post().to(memory_admin::reject_entry)),
+        )
+        .service(
+            web::resource("/agents/memory/entries/{id}")
+                .route(web::delete().to(memory_admin::delete_entry)),
+        )
         .service(
             web::resource("/agents/default-agent")
                 .route(web::get().to(handlers::get_default_agent))

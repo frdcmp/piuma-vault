@@ -16,6 +16,7 @@ import DbDump from "./admin/pages/dbDump";
 import Files from "./admin/pages/files";
 import Health from "./admin/pages/health";
 import Homepage from "./admin/pages/homepage";
+import Memory from "./admin/pages/memory";
 import NoteEditor from "./admin/pages/notes/NoteEditor";
 import NotesLayout from "./admin/pages/notes/NotesLayout";
 import Profile from "./admin/pages/profile";
@@ -97,6 +98,7 @@ function AppContent() {
 				>
 					<Route index element={<Homepage />} />
 					<Route path="agents" element={<AgentsPage />} />
+					<Route path="memory" element={<Memory />} />
 					<Route path="about" element={<About />} />
 					<Route path="projects" element={<Projects />} />
 					<Route path="files" element={<Files />} />
