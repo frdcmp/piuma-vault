@@ -5,7 +5,7 @@
 
   ### A Personal Second-Brain, Agentic LLM Workspace & Media Vault
   
-  *The personal playground of Piuma Vault — accessible at [vault.example.com](https://vault.example.com)*
+  *A highly secure, self-hosted personal second brain and LLM developer workspace — view the documentation at `/docs` on your running instance*
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-f7c948.svg?style=flat-square)](LICENSE)
   [![Stack: Rust](https://img.shields.io/badge/Backend-Rust_1.75+-3a4150.svg?logo=rust&style=flat-square)](https://www.rust-lang.org/)
@@ -181,11 +181,9 @@ bun run format       # Re-format code to spec
 ├── frontend/    # React 19 SPA + Vite web dashboard (Milkdown editor, Ant Design, CSS Grid)
 ├── rust/        # High-performance Actix-web server (binaries: backend API & offline embedding-worker)
 ├── mobile/      # Expo & React Native companion app for phone triggers (persisted queries, async stores)
-├── nginx/       # Nginx server configuration (reverse-proxy bindings, TLS configs, and client IP mappings)
-├── md/          # Systems documentation, features roadmap, and markdown resumes
-└── CLAUDE.md    # Codebase styleguide, rules, conventions, and fast commands index
+└── nginx/       # Nginx server configuration (reverse-proxy bindings, TLS configs, and client IP mappings)
 ```
 
 ---
 
-*Made with 💛 by [Piuma Vault](https://github.com/pv)*
+*Made with 💛 by open source contributors*
