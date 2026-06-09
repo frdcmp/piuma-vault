@@ -360,6 +360,12 @@
 	color: var(--accent);
 }
 
+/* Bell shown when a task has one or more alerts configured. */
+.task-alert {
+	color: var(--accent);
+	font-size: 0.72rem;
+}
+
 /* Bucket badge — sits to the left of the title (before .task-main). */
 .task-bucket {
 	flex: none;
