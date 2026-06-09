@@ -5,8 +5,9 @@ across conversations — preferences, patterns, ongoing work — instead of star
 cold every chat. It's built entirely on the existing stack (PostgreSQL +
 pgvector + Azure OpenAI embeddings); no extra services.
 
-There are four conceptual layers. **They are a logical model, not four tables** —
-in fact L2 and L4 share a single table (see below).
+There are four conceptual layers, numbered L1 through L4. **They are a logical
+model, not four separate tables** — L2 and L4 share a single table, and the
+distinction between them is explained in detail further down.
 
 ## The four layers at a glance
 
@@ -16,6 +17,65 @@ in fact L2 and L4 share a single table (see below).
 | **L2** | Semantic long-term memory (vector-searchable facts) | `db_memory_entries` rows | Yes — top-K by relevance |
 | **L3** | Conversation full-text search | `db_chat_messages` (FTS over chat history) | No — on-demand tool |
 | **L4** | Dialectic reasoning (auto-derived insights) | writes rows into `db_memory_entries` | Indirectly — via L2 |
+
+## Each layer, in plain terms
+
+### L1 — always-in-context scratchpad
+
+Two text columns on `db_agent_profiles`: `memory` (a short working scratchpad)
+and `user_context` (standing profile/preferences). These are concatenated into
+the system prompt on **every** turn, so they're reserved for things the agent
+genuinely needs in front of it constantly. There are hard caps (`memory` 2,200
+chars, `user_context` 1,375) and a normalized-match dedup.
+
+Because L1 is small and always-on, it's almost always near-empty by design —
+most things go to L2 via `memory_save` and only the most essential bits
+graduate up.
+
+### L2 — semantic long-term memory
+
+The agent's recall. A table of discrete facts (`db_memory_entries`), each one a
+self-contained statement like *"User prefers Rust for backend work"*. Every
+row has a 1536-dim `embedding` (Azure OpenAI `text-embedding-3-large`, HNSW
+cosine) so the agent can find relevant facts by semantic similarity rather than
+keyword match.
+
+On each turn, the user message is pre-embedded (cached on `db_chat_messages`)
+and the top-K facts are injected into the prompt behind a graded relevance
+floor. Confirmed facts use a looser floor (~0.65); pending facts a tighter
+floor (~0.5) so unverified guesses only surface when strongly on-topic. Each
+injected fact carries a `[provenance]` tag (`[user-stated]`, `[observed]`,
+`[derived]`, …) so the agent can weight them appropriately.
+
+A fact's lifecycle in L2 is governed by two columns: `source` (where it came
+from) and `status` (how trusted it is). See *Status, source & confidence*
+below.
+
+### L3 — conversation full-text search
+
+L2 is lossy on purpose: it stores *distilled* facts and discards the rest. L3
+fills that gap by making the **verbatim chat transcript** keyword-searchable
+via Postgres FTS over `db_chat_messages` (`content_text` + a `GENERATED`
+`content_tsv` tsvector + a partial GIN index).
+
+Unlike L1 and L2, L3 is **never auto-injected**. The agent calls the
+`search_conversations` tool when you reference a past discussion ("what did we
+decide about X?", "remember when…"). Results are full-text-ranked, aggregated
+to the conversation level, and returned with a `ts_headline` excerpt around the
+matched terms. The admin **Conversation search (L3)** tab runs the same query
+the tool uses, so you can see what the agent would find.
+
+### L4 — dialectic reasoning
+
+The *thinking* layer. Every N assistant turns (configurable per agent, default
+3), an async job reads the recent transcript and runs a multi-pass reasoning
+sweep to extract implicit facts the user never stated explicitly — patterns,
+preferences, recurring themes. Pass 1 extracts raw observations; pass 2
+synthesizes patterns; pass 3 connects meta-patterns. Depth is configurable
+(1–3) per agent, and the model can be overridden via the
+`db_agent_profiles.dialectic_*` columns.
+
+The output of L4 is **not** a separate store — see the next section.
 
 ## L2 vs L4 — the key distinction
 
@@ -28,13 +88,53 @@ stores.** They are the same table, `db_memory_entries`. The difference is
 - **L4** is a *process*, not a place. The dialectic pass runs in the background
   and **writes new rows into the same `db_memory_entries` table**, tagged
   `source = 'dialectic_derived'` and `status = 'pending'`. Those pending rows are
-  "L4 output." Supports **multi-pass depth (1-3)** and **per-agent config**
-  (cadence, depth, model override via `db_agent_profiles.dialectic_*` columns).
+  "L4 output."
 
 So a row is "L4" while it's a pending guess, and effectively becomes "L2" once
 it's confirmed (`status` flips to `confirmed`). Same table, different lifecycle
 stage. The admin Memory page shows them together in the **Entries (L2 / L4)** tab
 and just filters by status.
+
+Pending facts graduate to `confirmed` through three paths: explicit
+confirmation (you click ✓ or the agent calls `memory_confirm`), corroboration
+(Stage-B NLI re-derives the same fact — see *L4 dialectic* below), or an
+opportunistic ask during normal chat when the pending fact surfaces as
+strongly relevant.
+
+## Chat to Memory Flow
+
+This flowchart illustrates the complete lifecycle of how conversations and direct commands flow from active chat interactions into the agent's memory layers, and how pending insights graduate into confirmed long-term memory:
+
+```mermaid
+flowchart TD
+    Chat([User & Agent Chat]) -->|context_add| L1[(L1 Scratchpad<br/>db_agent_profiles)]
+    
+    %% Direct Stating & Observation Paths (Left Side)
+    Chat -->|Direct User Request| US[User Stated Fact]
+    Chat -->|Agent Inference| AO[Agent Observed Fact]
+    
+    US -->|memory_save| L2C[(L2 Confirmed Facts<br/>db_memory_entries)]
+    AO -->|memory_save| L2C
+
+    %% Passive Logging & Dialectic Paths (Right Side)
+    Chat -->|Passive Write| L3[(L3 Conversation Search<br/>db_chat_messages)]
+    L3 -->|Every N Turns| L4[L4 Dialectic Job]
+    L4 -->|Multi-Pass GPT Sweep| L4P[(L4 Pending Facts<br/>db_memory_entries)]
+
+    %% Graduation Funnel (Clean direct routing without subgraph boundary box)
+    L4P -->|Explicit UI ✓ Click| L2C
+    L4P -->|Stage-B NLI Corroboration| L2C
+    L4P -->|Opportunistic Ask in Chat| L2C
+
+    %% Prompt Injection (Bottom)
+    L2C -->|Distance < 0.65| Injected([Injected into Next Prompt])
+    L4P -->|Distance < 0.5| Injected
+
+    %% Styles and Classes for gorgeous, readable theme integration
+    classDef store fill:#1b1e25,stroke:#3a4150,stroke-width:2px;
+    classDef action fill:#15171c,stroke:#3a4150,stroke-width:2px;
+    class L1,L2C,L3,L4P store;
+```
 
 ## Tables
 
@@ -89,30 +189,32 @@ when a pending fact is confirmed.
 
 ## The per-turn flow
 
-```
-User sends a message
-   │
-   ▼
-1. SYSTEM PROMPT ASSEMBLY
-     • time + model blocks
-     • agent instructions + persona
-     • L1: db_agent_profiles.memory + user_context (always in)
-     • L2: embed the message → pgvector search → inject top-K relevant
-            facts, tagged with provenance ([user-stated] / [derived] …)
-   │
-   ▼
-2. LLM TOOL LOOP (streaming)
-     • the agent can call memory_save / memory_search / context_add …
-   │
-   ▼
-3. Assistant answers → persisted
-   │
-   ├─ write a db_agent_turn_logs row (what was retrieved + L1 usage)
-   │
-   ▼
-4. POST-TURN HOOK (fire-and-forget, every 3rd assistant turn)
-     • L4 dialectic: summarise the last few turns with the model,
-       derive implicit facts → save as pending rows in db_memory_entries
+```mermaid
+flowchart TD
+    Start([User sends a message]) --> SP[1. System prompt assembly]
+    SP --> SP1[Time + model blocks]
+    SP --> SP2[Agent instructions + persona]
+    SP --> SP3["L1: db_agent_profiles.memory + user_context<br/>(always in)"]
+    SP --> SP4["L2: embed user message → pgvector search<br/>→ top-K facts, tagged with provenance"]
+    SP4 --> SP4a{Distance &lt; floor?}
+    SP4a -->|yes| SP4b[Inject fact with [provenance] tag]
+    SP4a -->|no| SP4c[Skip]
+    SP3 --> Loop
+    SP4b --> Loop
+    SP2 --> Loop
+    SP1 --> Loop
+    SP4c --> Loop
+
+    Loop["2. LLM tool loop (streaming)<br/>memory_save / memory_search / context_add / ..."]
+    Loop --> Answer{Assistant answers}
+
+    Answer --> Persist[3. Persist assistant turn]
+    Persist --> Log[Write db_agent_turn_logs row<br/>retrieved memories + L1 usage]
+
+    Log --> Cadence{Every Nth<br/>assistant turn?}
+    Cadence -->|yes| L4["4. L4 dialectic (async)<br/>multi-pass depth 1-3<br/>→ source=dialectic_derived, status=pending"]
+    Cadence -->|no| Done([Done])
+    L4 --> Done
 ```
 
 ### L2 retrieval (step 1)
@@ -217,22 +319,3 @@ immediately); if the provider is down, the row is inserted without a vector and 
 `db_memory_embedding_jobs` row is queued for the worker to backfill. Same model
 and pipeline as note embeddings: Azure OpenAI `text-embedding-3-large`, 1536-dim,
 HNSW cosine index.
-
-## Implementation status (2026-06-09)
-
-**All planned features are now implemented.** The deferred items from the
-original plan have been shipped:
-
-- ✅ **L1** — compaction tools (context_add/replace/remove/list), hard caps, normalized dedup.
-- ✅ **L2** — full semantic memory: all `memory_*` tools, ingraded floor retrieval, Stage-A cosine dedup.
-- ✅ **L3** — conversation FTS, `search_conversations` tool, admin search tab.
-- ✅ **L4** — dialectic reasoning, multi-pass depth (1-3), per-agent config (cadence/depth/model).
-- ✅ **Stage-B NLI** — entailment/contradiction/neutral judgment on dialectic re-derivation, populates `contradicts_id` and `related_ids`.
-- ✅ **Confirmation funnel** — all three paths: explicit confirm, corroboration (NLI-assisted), opportunistic ask.
-- ✅ **Pre-embed** — user messages embedded on write (`db_chat_messages.embedding`), retrieval reads cached vector.
-- ✅ **Periodic cleanup** — expired pending entries (>60 days) auto-rejected every 10 min by the embedding-worker.
-- ✅ **Memory graph** — `related_ids` populated on neutral NLI results, traversable via `memory_related(id)`.
-- ✅ **Cross-conversation patterns** — hourly category-count aggregation across agents by the embedding-worker.
-- ✅ **Phase-0 turn logging** + `/admin/memory` dashboard with Turn inspector.
-
-Nothing is deferred; the implementation matches the plan.

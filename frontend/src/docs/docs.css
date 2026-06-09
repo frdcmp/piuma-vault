@@ -239,6 +239,46 @@
 	margin: 28px 0;
 }
 
+/* ---- Mermaid diagrams (fenced ```mermaid in docs) ----------------------- */
+/* Mermaid emits a div.mermaid wrapper around an inline <svg>. We override
+   react-markdown's <pre> styling for that case (no traffic-light dots, no
+   overflow scroll, centered) and tune the SVG to the vault-pixel theme. */
+.vp-docs-mermaid {
+	background: var(--vp-bg);
+	border: 2px solid var(--vp-border);
+	border-left: 3px solid var(--vp-accent);
+	padding: 18px 16px;
+	margin: 1em 0;
+	overflow-x: auto;
+	text-align: center;
+}
+
+.vp-docs-mermaid .mermaid {
+	display: inline-block;
+	text-align: left;
+}
+
+.vp-docs-mermaid svg {
+	max-width: 100%;
+	height: auto;
+	font-family: var(--vp-font) !important;
+}
+
+.vp-docs-mermaid--error {
+	background: var(--vp-bg);
+	border-left-color: var(--vp-accent-3);
+	color: var(--vp-accent-3);
+}
+
+.vp-docs-mermaid--error pre {
+	background: transparent;
+	border: none;
+	padding: 8px 0 0;
+	margin: 0;
+	color: inherit;
+	white-space: pre-wrap;
+}
+
 /* ---- Responsive: sidebar becomes an off-canvas drawer --------------------- */
 @media (max-width: 860px) {
 	.vp-docs-topbar {

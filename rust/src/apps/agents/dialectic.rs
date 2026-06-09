@@ -28,7 +28,7 @@ const DEFAULT_CADENCE: i64 = 3;
 const LAST_N: i64 = 6;
 
 const SYSTEM_PASS1: &str = "You are a reasoning engine. Analyze a conversation between \
-User and his AI agent and derive implicit facts, preferences, patterns, and \
+the User and their AI agent and derive implicit facts, preferences, patterns, and \
 goals that were NOT explicitly stated.\n\n\
 Rules:\n\
 - Only derive what is strongly implied, not what is merely possible.\n\
@@ -43,7 +43,7 @@ Rules:\n\
 Output ONLY the lines, no preamble.";
 
 const SYSTEM_PASS2: &str = "You are a reasoning engine. Below are observations derived \
-from a conversation between User and his AI agent. Synthesize these into \
+from a conversation between the User and their AI agent. Synthesize these into \
 broader patterns and deeper insights.\n\n\
 Rules:\n\
 - Combine related observations into broader patterns.\n\
@@ -58,7 +58,7 @@ Rules:\n\
 Output ONLY the lines, no preamble.";
 
 const SYSTEM_PASS3: &str = "You are a reasoning engine. Below are synthesized patterns \
-derived from conversations between User and his AI agent. Find the deepest \
+derived from conversations between the User and their AI agent. Find the deepest \
 insights that connect these patterns.\n\n\
 Rules:\n\
 - Find meta-patterns that connect multiple patterns below.\n\
