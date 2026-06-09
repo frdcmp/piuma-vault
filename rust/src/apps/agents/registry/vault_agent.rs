@@ -79,5 +79,21 @@ pub static DEF: AgentDef = AgentDef {
         // Web (server-side, provider-agnostic)
         "web_search",
         "web_fetch",
+        // GitHub (token from admin → Services) — read
+        "github_list_repos",
+        "github_search_repos",
+        "github_read_file",
+        "github_list_dir",
+        "github_list_commits",
+        "github_list_branches",
+        "github_list_issues",
+        "github_list_prs",
+        // GitHub — write (additive: file commit, issue, branch, PR)
+        "github_create_or_update_file",
+        "github_create_issue",
+        "github_create_branch",
+        "github_create_pull_request",
+        // Navigation — agent-initiated "Go" actions (note/event/task/view/url)
+        "navigate",
     ],
 };

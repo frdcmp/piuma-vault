@@ -18,8 +18,8 @@ import {
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import WorkspaceShell from "../../../chat/WorkspaceShell";
 import BucketTagFilter from "../../../components/BucketTagFilter";
 import ManageBucketsModal from "../../../components/ManageBucketsModal";
@@ -30,6 +30,7 @@ import {
 	useRecurringTasks,
 	useTagRegistry,
 	useTagsLiveUpdates,
+	useTask,
 	useTasks,
 	useTasksLiveUpdates,
 	useToggleTask,
@@ -38,7 +39,7 @@ import {
 import { formatDate } from "../../../utils/dateTime";
 import { rankBefore, rankBetween } from "../../../utils/rank";
 import { tagColor } from "../../../utils/tagColor";
-import { PvButton } from "../../components/ui";
+import { PvButton, pvMessage } from "../../components/ui";
 import RecurringTaskModal from "./RecurringTaskModal";
 import TaskModal from "./TaskModal";
 import "./Tasks.css";
@@ -175,6 +176,36 @@ export default function TasksPage() {
 	const [bucketSel, setBucketSel] = useState(ALL); // { key, bucketId, label }
 	const [tags, setTags] = useState([]); // active tag names
 	const [showRecurring, setShowRecurring] = useState(false); // sidebar view toggle
+
+	// Deep-link: /tasks?task=<id> opens that task's modal (e.g. from a chat link).
+	// Prefer the already-loaded list; fall back to fetching by id. Clear the param
+	// on close so it doesn't reopen; a missing id degrades to a toast.
+	const [searchParams, setSearchParams] = useSearchParams();
+	const deepTaskId = searchParams.get("task");
+	const taskInList = deepTaskId ? tasks.find((t) => t.id === deepTaskId) : null;
+	const { data: fetchedTask, error: taskErr } = useTask(
+		taskInList ? null : deepTaskId,
+	);
+	const deepTask = taskInList || fetchedTask;
+	const clearTaskParam = useCallback(() => {
+		setSearchParams(
+			(prev) => {
+				const next = new URLSearchParams(prev);
+				next.delete("task");
+				return next;
+			},
+			{ replace: true },
+		);
+	}, [setSearchParams]);
+	useEffect(() => {
+		if (deepTaskId && deepTask) setTaskModal({ task: deepTask });
+	}, [deepTaskId, deepTask]);
+	useEffect(() => {
+		if (deepTaskId && taskErr) {
+			pvMessage.error("That task couldn't be found.");
+			clearTaskParam();
+		}
+	}, [deepTaskId, taskErr, clearTaskParam]);
 
 	// Per-tag colour from the registry (falls back to the derived hue).
 	const tagColorOf = (name) =>
@@ -508,7 +539,10 @@ export default function TasksPage() {
 						defaultTags={taskModal.defaultTags}
 						defaultBucket={taskModal.defaultBucket}
 						newRank={taskModal.newRank}
-						onClose={() => setTaskModal(null)}
+						onClose={() => {
+							setTaskModal(null);
+							clearTaskParam();
+						}}
 					/>
 				) : null}
 				{recModal ? (

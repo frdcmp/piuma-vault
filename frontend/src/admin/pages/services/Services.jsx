@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
 	useServices,
 	useTestEmbedding,
+	useTestGithub,
 	useTestStorage,
 	useTestWebsearch,
 	useUpdateServices,
@@ -31,6 +32,8 @@ const EMPTY = {
 	websearch_tavily_api_key: "",
 	websearch_serpapi_api_key: "",
 	websearch_exa_api_key: "",
+	github_api_base: "",
+	github_token: "",
 };
 
 // Service tabs. Each maps to one panel below; the form state is shared, so a
@@ -39,6 +42,7 @@ const TABS = [
 	{ id: "embeddings", label: "Embeddings" },
 	{ id: "search", label: "Search" },
 	{ id: "storage", label: "Storage" },
+	{ id: "github", label: "GitHub" },
 ];
 
 // Web-search providers we ship adapters for. Each has its own key setting.
@@ -112,10 +116,12 @@ const Services = () => {
 	const testEmb = useTestEmbedding();
 	const testS3 = useTestStorage();
 	const testWs = useTestWebsearch();
+	const testGh = useTestGithub();
 	const [form, setForm] = useState(EMPTY);
 	const [embResult, setEmbResult] = useState(null);
 	const [s3Result, setS3Result] = useState(null);
 	const [wsResult, setWsResult] = useState(null);
+	const [ghResult, setGhResult] = useState(null);
 	const [vendor, setVendor] = useState("aws");
 	const [activeTab, setActiveTab] = useState("embeddings");
 	const v = VENDORS[vendor];
@@ -148,6 +154,7 @@ const Services = () => {
 				s3_access_key_id: data.s3_access_key_id || "",
 				s3_cdn_url: data.s3_cdn_url || "",
 				websearch_provider: data.websearch_provider || "brave",
+				github_api_base: data.github_api_base || "",
 			}));
 		}
 	}, [data]);
@@ -174,7 +181,10 @@ const Services = () => {
 			s3_access_key_id: form.s3_access_key_id.trim(),
 			s3_cdn_url: form.s3_cdn_url.trim(),
 			websearch_provider: form.websearch_provider || "brave",
+			github_api_base: form.github_api_base.trim(),
 		};
+		if (form.github_token.trim())
+			payload.github_token = form.github_token.trim();
 		if (form.azure_embedding_api_key.trim())
 			payload.azure_embedding_api_key = form.azure_embedding_api_key.trim();
 		if (form.s3_secret_access_key.trim())
@@ -197,6 +207,7 @@ const Services = () => {
 				websearch_tavily_api_key: "",
 				websearch_serpapi_api_key: "",
 				websearch_exa_api_key: "",
+				github_token: "",
 			}));
 			pvMessage.success("Services saved");
 		} catch (err) {
@@ -263,6 +274,7 @@ const Services = () => {
 		"s3_cdn_url",
 		"s3_cdn_token_key",
 	];
+	const GH_KEYS = ["github_api_base", "github_token"];
 
 	// Current form values for a live test; blank secrets fall back to saved.
 	const embTestPayload = () => {
@@ -297,6 +309,12 @@ const Services = () => {
 	const wsTestPayload = () => {
 		const p = { provider: wsProvider };
 		if (form[wsMeta.key].trim()) p.api_key = form[wsMeta.key].trim();
+		return p;
+	};
+
+	const ghTestPayload = () => {
+		const p = { github_api_base: form.github_api_base.trim() };
+		if (form.github_token.trim()) p.github_token = form.github_token.trim();
 		return p;
 	};
 
@@ -356,6 +374,7 @@ const Services = () => {
 						embeddings: !!data.azure_embedding_api_key_set,
 						search: wsAnySet,
 						storage: !!data.s3_secret_access_key_set,
+						github: !!data.github_token_set,
 					};
 					return (
 						<div className="vp-stack">
@@ -641,6 +660,65 @@ const Services = () => {
 											requestClear(S3_KEYS, setS3Result, "storage")
 										}
 										result={s3Result}
+									/>
+								</PvPanel>
+							)}
+
+							{/* GitHub — PAT powering the agent's github_* tools. */}
+							{activeTab === "github" && (
+								<PvPanel title="integrations · github">
+									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
+										Powers the agent's <code>github_*</code> tools (read repos,
+										files, commits, issues, PRs; create
+										files/issues/branches/PRs). Use a fine-grained personal
+										access token scoped to just the repos the agent should
+										touch.
+									</p>
+									<div className="vp-field">
+										<span className="vp-label">
+											API Base{" "}
+											<span className="vp-muted vp-svc-chip">optional</span>
+										</span>
+										<input
+											className="vp-input"
+											type="text"
+											spellCheck={false}
+											placeholder="https://api.github.com (set for GitHub Enterprise)"
+											value={form.github_api_base}
+											onChange={set("github_api_base")}
+										/>
+									</div>
+									<div className="vp-field" style={{ marginBottom: 0 }}>
+										<span className="vp-label">
+											Personal Access Token{" "}
+											{data.github_token_set ? (
+												<span className="vp-tag vp-tag--green vp-svc-chip">
+													set
+												</span>
+											) : (
+												<span className="vp-tag vp-tag--red vp-svc-chip">
+													unset
+												</span>
+											)}
+										</span>
+										<input
+											className="vp-input"
+											type="password"
+											autoComplete="new-password"
+											placeholder={secretPlaceholder(data.github_token_set)}
+											value={form.github_token}
+											onChange={set("github_token")}
+										/>
+										<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
+											github.com → Settings → Developer settings → Personal
+											access tokens
+										</span>
+									</div>
+									<TestRow
+										pending={testGh.isPending}
+										onTest={() => runTest(testGh, setGhResult, ghTestPayload())}
+										onClear={() => requestClear(GH_KEYS, setGhResult, "GitHub")}
+										result={ghResult}
 									/>
 								</PvPanel>
 							)}

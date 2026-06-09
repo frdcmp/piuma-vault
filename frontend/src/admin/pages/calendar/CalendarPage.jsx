@@ -7,11 +7,12 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import WorkspaceShell from "../../../chat/WorkspaceShell";
 import BucketTagFilter from "../../../components/BucketTagFilter";
 import ManageBucketsModal from "../../../components/ManageBucketsModal";
 import {
+	useCalendarEvent,
 	useCalendarEvents,
 	useCalendarLiveUpdates,
 	useCompleteOccurrence,
@@ -24,7 +25,12 @@ import {
 } from "../../../queries";
 import { expandRecurrence } from "../../../utils/recurrence";
 import { tagColor } from "../../../utils/tagColor";
-import { PvButton, PvPopover, PvTag } from "../../components/ui";
+import {
+	PvButton,
+	PvPopover,
+	PvTag,
+	pvMessage,
+} from "../../components/ui";
 import RecurringTaskModal from "../tasks/RecurringTaskModal";
 import TaskModal from "../tasks/TaskModal";
 import "./Calendar.css";
@@ -109,6 +115,33 @@ export default function CalendarPage() {
 	const { data: recurring = [] } = useRecurringTasks();
 	const toggleTask = useToggleTask();
 	const completeOccurrence = useCompleteOccurrence();
+
+	// Deep-link: /admin/calendar?event=<id> opens that event's modal (e.g. from a
+	// chat link). Fetch the event by id, open it, and clear the param on close so
+	// it doesn't reopen. A missing/forbidden id degrades to a toast.
+	const [searchParams, setSearchParams] = useSearchParams();
+	const deepEventId = searchParams.get("event");
+	const { data: deepEvent, error: deepEventError } =
+		useCalendarEvent(deepEventId);
+	const clearEventParam = useCallback(() => {
+		setSearchParams(
+			(prev) => {
+				const next = new URLSearchParams(prev);
+				next.delete("event");
+				return next;
+			},
+			{ replace: true },
+		);
+	}, [setSearchParams]);
+	useEffect(() => {
+		if (deepEventId && deepEvent) setModal({ event: deepEvent });
+	}, [deepEventId, deepEvent]);
+	useEffect(() => {
+		if (deepEventId && deepEventError) {
+			pvMessage.error("That event couldn't be found.");
+			clearEventParam();
+		}
+	}, [deepEventId, deepEventError, clearEventParam]);
 
 	// Completed recurring occurrences, keyed "recurrenceId|YYYY-MM-DD".
 	const materialized = useMemo(() => {
@@ -356,7 +389,10 @@ export default function CalendarPage() {
 					<EventModal
 						event={modal.event}
 						initialDate={modal.date}
-						onClose={() => setModal(null)}
+						onClose={() => {
+							setModal(null);
+							clearEventParam();
+						}}
 					/>
 				) : null}
 				{taskModal ? (

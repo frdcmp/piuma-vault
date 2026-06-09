@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	Alert,
 	Keyboard,
+	Linking,
 	Platform,
 	Pressable,
 	ScrollView,
@@ -12,6 +13,7 @@ import {
 	TextInput,
 	View,
 } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import {
 	SafeAreaView,
@@ -161,6 +163,17 @@ const blocksToParts = (content) => {
 			const t = tail();
 			if (t?.kind === "text") t.text += b.text;
 			else parts.push({ kind: "text", id: `p${parts.length}`, text: b.text });
+		} else if (b.type === "tool_use" && b.name === "navigate") {
+			const a = b.input || {};
+			parts.push({
+				kind: "nav",
+				id: `p${parts.length}`,
+				target: a.target,
+				navId: a.id,
+				route: a.route,
+				url: a.url,
+				label: a.label,
+			});
 		} else if (b.type === "tool_use") {
 			let run = tail();
 			if (run?.kind !== "tools") {
@@ -198,6 +211,47 @@ const appendTextPart = (parts, text) => {
 	if (t?.kind === "text") next[next.length - 1] = { ...t, text: t.text + text };
 	else next.push({ kind: "text", id: `p${next.length}`, text });
 	return next;
+};
+
+// Map a `navigate`-tool intent to an in-app path (mirrors the web scheme). The
+// path is then resolved to a screen by `goTo` in the screen component.
+const navTargetToPath = ({ target, id, route, url } = {}) => {
+	switch (target) {
+		case "note":
+			return id ? `/notes/${id}` : null;
+		case "event":
+			return id ? `/admin/calendar?event=${id}` : null;
+		case "task":
+			return id ? `/tasks?task=${id}` : null;
+		case "view": {
+			const r = (route || "").toLowerCase();
+			if (r.includes("calendar")) return "/admin/calendar";
+			if (r.includes("task")) return "/tasks";
+			if (r.includes("storage") || r.includes("file")) return "/storage";
+			if (r.includes("note")) return "/notes";
+			return null;
+		}
+		case "url":
+			return /^https?:\/\//i.test(url || "") ? url : null;
+		default:
+			return null;
+	}
+};
+
+const NAV_FALLBACK_LABEL = {
+	note: "note",
+	event: "event",
+	task: "task",
+	view: "view",
+	url: "link",
+};
+
+// Pull a query param value out of an in-app path like "/tasks?task=<id>".
+const paramFrom = (path, key) => {
+	const q = path.indexOf("?");
+	if (q < 0) return null;
+	const params = new URLSearchParams(path.slice(q + 1));
+	return params.get(key);
 };
 
 const TOOL_GLYPH = { running: "⛏", done: "✓", error: "✕" };
@@ -297,12 +351,18 @@ function ToolActivity({ tools, isStreaming }) {
 
 // One text segment of an assistant turn, progressively revealed (drips toward the
 // streamed target; instant for reloaded turns since it mounts already-full).
-function AssistantTextPart({ text }) {
+function AssistantTextPart({ text, onLinkPress }) {
 	const { text: visible } = useProgressiveText(text || "");
-	return <MarkdownView source={visible} textStyle={chatMarkdownTextStyle} />;
+	return (
+		<MarkdownView
+			source={visible}
+			textStyle={chatMarkdownTextStyle}
+			onLinkPress={onLinkPress}
+		/>
+	);
 }
 
-function AssistantBubble({ parts, isStreaming }) {
+function AssistantBubble({ parts, isStreaming, onNavigate }) {
 	const isEmpty = !parts?.length;
 
 	// Avatar only appears while the dog is "thinking" — the ThinkingLoader
@@ -336,7 +396,35 @@ function AssistantBubble({ parts, isStreaming }) {
 							<Text style={styles.injectText}>{p.text}</Text>
 						</View>
 					);
-				return <AssistantTextPart key={p.id} text={p.text} />;
+				if (p.kind === "nav") {
+					const to = navTargetToPath({
+						target: p.target,
+						id: p.navId,
+						route: p.route,
+						url: p.url,
+					});
+					if (!to) return null;
+					const navLabel =
+						p.label || NAV_FALLBACK_LABEL[p.target] || "open";
+					return (
+						<Pressable
+							key={p.id}
+							style={styles.navAction}
+							onPress={() => onNavigate?.(to)}
+							hitSlop={6}
+						>
+							<Text style={styles.navActionIcon}>↗</Text>
+							<Text style={styles.navActionLabel}>Go → {navLabel}</Text>
+						</Pressable>
+					);
+				}
+				return (
+					<AssistantTextPart
+						key={p.id}
+						text={p.text}
+						onLinkPress={onNavigate}
+					/>
+				);
 			})}
 			{isStreaming ? <StreamingCursor /> : null}
 		</View>
@@ -345,6 +433,43 @@ function AssistantBubble({ parts, isStreaming }) {
 
 export default function ChatScreen({ onClose, notePath, noteId }) {
 	const insets = useSafeAreaInsets();
+	const navigation = useNavigation();
+
+	// Single navigation entry point for chat links and "Go" actions. Maps in-app
+	// paths (mirroring the web scheme) to native screens; external http(s) open in
+	// the browser. Returns true when it handled the target (so MarkdownView skips
+	// its Linking fallback).
+	const goTo = useCallback(
+		(to) => {
+			if (!to) return false;
+			if (/^https?:\/\//i.test(to)) {
+				Linking.openURL(to).catch(() => {});
+				return true;
+			}
+			if (!to.startsWith("/")) return false;
+			if (to.startsWith("/notes")) {
+				const id = to.match(/^\/notes\/([^/?#]+)/)?.[1];
+				navigation.navigate("VaultHome", id ? { noteId: id } : {});
+				return true;
+			}
+			if (to.startsWith("/tasks")) {
+				const id = paramFrom(to, "task");
+				navigation.navigate("Tasks", id ? { taskId: id } : {});
+				return true;
+			}
+			if (to.startsWith("/admin/calendar")) {
+				const id = paramFrom(to, "event");
+				navigation.navigate("Calendar", id ? { eventId: id } : {});
+				return true;
+			}
+			if (to.startsWith("/storage")) {
+				navigation.navigate("Storage");
+				return true;
+			}
+			return false;
+		},
+		[navigation],
+	);
 	const [messages, setMessages] = useState([]);
 	const [input, setInput] = useState("");
 	const [inputHeight, setInputHeight] = useState(INPUT_MIN_H);
@@ -816,6 +941,30 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				onText: appendText,
 				onThinking: () => {},
 				onTool: (evt) => {
+					// `navigate` renders a "Go" action, not a tool chip — handle it up
+					// front (only on announce; ignore the nameless `done` frame).
+					if (evt.name === "navigate") {
+						if (evt.done) return;
+						setMessages((curr) => {
+							const updated = [...curr];
+							const last = { ...updated[updated.length - 1] };
+							const parts = [...(last.parts || [])];
+							const a = evt.args || {};
+							parts.push({
+								kind: "nav",
+								id: `p${parts.length}`,
+								target: a.target,
+								navId: a.id,
+								route: a.route,
+								url: a.url,
+								label: a.label,
+							});
+							last.parts = parts;
+							updated[updated.length - 1] = last;
+							return updated;
+						});
+						return;
+					}
 					setMessages((curr) => {
 						const updated = [...curr];
 						const last = updated[updated.length - 1];
@@ -955,6 +1104,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 											key={m.id}
 											parts={m.parts}
 											isStreaming={isStreamingThis}
+											onNavigate={goTo}
 										/>
 									);
 								})
@@ -1435,6 +1585,21 @@ const styles = StyleSheet.create({
 		color: colors.accent4,
 	},
 	injectText: { flex: 1, color: colors.text, fontFamily: MONO, fontSize: 13 },
+	navAction: {
+		flexDirection: "row",
+		alignItems: "center",
+		alignSelf: "flex-start",
+		gap: 6,
+		marginVertical: 6,
+		paddingVertical: 6,
+		paddingHorizontal: 12,
+		borderWidth: 1,
+		borderColor: colors.accent,
+		borderRadius: 4,
+		backgroundColor: colors.bgSoft,
+	},
+	navActionIcon: { color: colors.accent, fontFamily: MONO, fontSize: 14 },
+	navActionLabel: { color: colors.text, fontFamily: MONO, fontSize: 13 },
 
 	// ── TOOL ACTIVITY (which plugins the agent ran this turn) ─
 	tools: { gap: 4, marginBottom: 10 },

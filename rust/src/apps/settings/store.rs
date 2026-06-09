@@ -22,6 +22,10 @@ pub const WEBSEARCH_BRAVE_API_KEY: &str = "websearch_brave_api_key";
 pub const WEBSEARCH_TAVILY_API_KEY: &str = "websearch_tavily_api_key";
 pub const WEBSEARCH_SERPAPI_API_KEY: &str = "websearch_serpapi_api_key";
 pub const WEBSEARCH_EXA_API_KEY: &str = "websearch_exa_api_key";
+// GitHub — a personal access token used by the agent's `github_*` tools. An
+// optional API base lets the same tools target a GitHub Enterprise host.
+pub const GITHUB_TOKEN: &str = "github_token";
+pub const GITHUB_API_BASE: &str = "github_api_base";
 
 /// Resolved S3 connection config (all required fields present).
 #[derive(Debug, Clone)]
@@ -67,6 +71,23 @@ pub async fn set(pool: &DbPool, key: &str, value: &str) -> Result<(), sqlx::Erro
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// Resolve the GitHub personal access token. Errors if unset.
+pub async fn github_token(pool: &DbPool) -> Result<String, String> {
+    get(pool, GITHUB_TOKEN)
+        .await
+        .ok_or_else(|| "GitHub token not set — add it in admin → Services".to_string())
+}
+
+/// Resolve the GitHub REST API base (no trailing slash). Defaults to the public
+/// `https://api.github.com`; override for GitHub Enterprise.
+pub async fn github_api_base(pool: &DbPool) -> String {
+    get(pool, GITHUB_API_BASE)
+        .await
+        .map(|v| v.trim_end_matches('/').to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "https://api.github.com".to_string())
 }
 
 /// Resolve Azure embedding config as `(url, api_key)`. Errors if either is unset.

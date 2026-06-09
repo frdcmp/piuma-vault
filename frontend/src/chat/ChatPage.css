@@ -891,3 +891,38 @@ button.chat-context-tag-main {
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 }
+
+/* Inline entity links the agent emits (e.g. [title](/notes/<id>)). Internal
+   ones navigate client-side; external open in a new tab (default <a>). */
+.vault-chat-link {
+	color: var(--accent, #7aa2f7);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	cursor: pointer;
+}
+.vault-chat-link:hover {
+	color: var(--accent-2, #9ece6a);
+}
+
+/* Agent-initiated "Go" action (the `navigate` tool). A click-to-go button —
+   never an automatic redirect. */
+.chat-nav-action {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin: 4px 0;
+	padding: 4px 10px;
+	font: inherit;
+	font-size: 13px;
+	color: var(--text, #d6dbe5);
+	background: var(--bg-soft, #15171c);
+	border: 1px solid var(--accent, #7aa2f7);
+	border-radius: 4px;
+	cursor: pointer;
+}
+.chat-nav-action:hover {
+	background: var(--vp-hover, #1c1f27);
+}
+.chat-nav-action-icon {
+	color: var(--accent, #7aa2f7);
+}

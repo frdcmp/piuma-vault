@@ -19,6 +19,7 @@ import DateTimePickerField from "../components/DateTimePickerField";
 import ManageBucketsSheet from "../components/ManageBucketsSheet";
 import TagPicker from "../components/TagPicker";
 import {
+	useCalendarEvent,
 	useCalendarEvents,
 	useCalendarLiveUpdates,
 	useCreateEvent,
@@ -184,7 +185,7 @@ function MonthBlock({ month, byDay, todayKey, onPickDay }) {
 	);
 }
 
-export default function CalendarScreen({ navigation }) {
+export default function CalendarScreen({ navigation, route }) {
 	const insets = useSafeAreaInsets();
 	// The calendar renders both events and tasks, so subscribe to both streams
 	// to reflect changes made on another device.
@@ -203,6 +204,19 @@ export default function CalendarScreen({ navigation }) {
 	const [daySheet, setDaySheet] = useState(null); // dayjs | null
 	const [eventSheet, setEventSheet] = useState(null); // { event } | { date } | null
 	const pendingEvent = useRef(null); // chains daySheet -> eventSheet across the close animation
+
+	// Deep-link: a Calendar route param `eventId` (set by a chat link/Go action)
+	// opens that event's sheet. Fetch it by id, open it, then clear the param so
+	// it doesn't reopen on the next focus.
+	const deepEventId = route?.params?.eventId;
+	const { data: deepEvent } = useCalendarEvent(deepEventId);
+	useEffect(() => {
+		if (deepEventId && deepEvent) {
+			setEventSheet({ event: deepEvent });
+			navigation.setParams({ eventId: undefined });
+		}
+	}, [deepEventId, deepEvent, navigation]);
+
 	const [sel, setSel] = useState(ALL); // tag filter selection
 	const [filterOpen, setFilterOpen] = useState(false);
 	const [manageSheet, setManageSheet] = useState(false);

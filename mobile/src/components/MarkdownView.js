@@ -326,7 +326,12 @@ const renderInlineTokens = (tokens, baseStyle, ctx) => {
           <Text
             key={k}
             style={[baseStyle, styles.link]}
-            onPress={() => Linking.openURL(t.href).catch(() => {})}
+            onPress={() => {
+              // Let the host intercept in-app links (e.g. /notes/<id>) and
+              // route them via navigation; fall back to opening externally.
+              if (ctx.onLinkPress?.(t.href)) return;
+              Linking.openURL(t.href).catch(() => {});
+            }}
           >
             {renderInlineTokens(t.tokens, [baseStyle, styles.link], ctx)}
           </Text>,
@@ -642,6 +647,7 @@ export default function MarkdownView({
   scrollRef,
   onMatchCountChange,
   textStyle,
+  onLinkPress,
 }) {
   const blockYMap = useRef(new Map()).current;
   const blockRangesRef = useRef([]);
@@ -660,7 +666,14 @@ export default function MarkdownView({
   blockKey = 0;
   matchCounter = 0;
   const blockRanges = [];
-  const ctx = { searchQuery, activeMatchIndex, blockRanges, blockYMap, textStyle };
+  const ctx = {
+    searchQuery,
+    activeMatchIndex,
+    blockRanges,
+    blockYMap,
+    textStyle,
+    onLinkPress,
+  };
 
   let body = null;
   if (tokens === null) {

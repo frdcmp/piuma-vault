@@ -19,5 +19,9 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     .service(
         web::resource("/admin/settings/services/test/websearch")
             .route(web::post().to(handlers::test_websearch)),
+    )
+    .service(
+        web::resource("/admin/settings/services/test/github")
+            .route(web::post().to(handlers::test_github)),
     );
 }

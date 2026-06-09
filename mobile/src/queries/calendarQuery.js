@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createEvent,
 	deleteEvent,
+	fetchEvent,
 	fetchEvents,
 	updateEvent,
 } from "../api/calendarApi";
@@ -10,7 +11,17 @@ import { useResourceLiveUpdates } from "./liveUpdates";
 export const calendarKeys = {
 	all: ["calendar"],
 	range: (from, to, tag) => ["calendar", "range", from, to, tag ?? null],
+	detail: (id) => ["calendar", "detail", id],
 };
+
+// Single event by id — used for deep-linking (Calendar route param eventId)
+// when the event falls outside the loaded window.
+export const useCalendarEvent = (id) =>
+	useQuery({
+		queryKey: calendarKeys.detail(id),
+		queryFn: () => fetchEvent(id),
+		enabled: !!id,
+	});
 
 export const useCalendarEvents = ({ from, to, tag } = {}, options = {}) =>
 	useQuery({

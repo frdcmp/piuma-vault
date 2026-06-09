@@ -75,7 +75,7 @@ const buildRrule = (freq, byday) => {
 
 const ALL = { key: "all", names: null, label: "all" };
 
-export default function TasksScreen({ navigation }) {
+export default function TasksScreen({ navigation, route }) {
 	const insets = useSafeAreaInsets();
 	useTasksLiveUpdates(); // refetch when tasks change on another device
 	useTagsLiveUpdates("tasks"); // keep buckets + tags fresh
@@ -90,6 +90,19 @@ export default function TasksScreen({ navigation }) {
 	const [taskSheet, setTaskSheet] = useState(null); // { task } | {} | null
 	const [recSheet, setRecSheet] = useState(false);
 	const [manageSheet, setManageSheet] = useState(false);
+
+	// Deep-link: a Tasks route param `taskId` (set by a chat link/Go action) opens
+	// that task's sheet. The full task list is loaded, so resolve it locally, then
+	// clear the param so it doesn't reopen on the next focus.
+	const deepTaskId = route?.params?.taskId;
+	useEffect(() => {
+		if (!deepTaskId) return;
+		const task = tasks.find((t) => t.id === deepTaskId);
+		if (task) {
+			setTaskSheet({ task });
+			navigation.setParams({ taskId: undefined });
+		}
+	}, [deepTaskId, tasks, navigation]);
 	// Bucket + tag filter independently and combine (AND). `bucketSel` is the
 	// bucket constraint (all / nobucket / a specific bucket); `tags` is the active
 	// tag (single, kept as an array so it composes with the bucket). "all" resets

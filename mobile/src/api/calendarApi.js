@@ -10,6 +10,11 @@ export const fetchEvents = async ({ from, to, tag } = {}) => {
 	return data;
 };
 
+export const fetchEvent = async (id) => {
+	const { data } = await axiosInstance.get(`/admin/calendar/events/${id}`);
+	return data;
+};
+
 export const createEvent = async (payload) => {
 	const { data } = await axiosInstance.post("/admin/calendar/events", payload);
 	return data;

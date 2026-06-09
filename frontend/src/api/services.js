@@ -38,3 +38,11 @@ export const testWebsearch = async (payload) => {
 	);
 	return data;
 };
+
+export const testGithub = async (payload) => {
+	const { data } = await axiosInstance.post(
+		"/admin/settings/services/test/github",
+		payload,
+	);
+	return data;
+};
