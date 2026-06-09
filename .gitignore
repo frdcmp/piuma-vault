@@ -74,6 +74,7 @@ target
 keys
 
 # Custom/Secret scripts and files
+md/
 update_servers.sh
 generate_keys.py
 generate_vapid.py
