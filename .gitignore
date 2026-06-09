@@ -72,3 +72,9 @@ target
 
 # keys
 keys
+
+# Custom/Secret scripts and files
+update_servers.sh
+generate_keys.py
+generate_vapid.py
+.github/full-stack.instructions.md
