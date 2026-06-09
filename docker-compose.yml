@@ -68,16 +68,10 @@ services:
       - EMAIL_PORT=${EMAIL_PORT}
       - EMAIL_HOST_USER=${EMAIL_HOST_USER}
       - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD}
-      # Registration
-      - ALLOW_REGISTRATION=false
+      # Registration (set to true to enable user signups)
+      - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-false}
       # Canonical site URL (also used as the OTP / 2FA issuer label)
-      - SITE_URL=${SITE_URL:-https://vault.example.com}
-      # JWT keys — set one of:
-      #   JWT_PRIVATE_KEY_PEM / JWT_PUBLIC_KEY_PEM (raw multi-line PEM)
-      #   JWT_PRIVATE_KEY_PATH / JWT_PUBLIC_KEY_PATH (PEM file path inside container)
-      # If neither is set the dev keys at /app/src/keys/ are used as a fallback.
-      - JWT_PRIVATE_KEY_PATH=${JWT_PRIVATE_KEY_PATH:-}
-      - JWT_PUBLIC_KEY_PATH=${JWT_PUBLIC_KEY_PATH:-}
+      - SITE_URL=${SITE_URL}
       # Web Push (VAPID) — served to the browser + used by the /test endpoint.
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-}

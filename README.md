@@ -3,9 +3,9 @@
   
   # Piuma Vault
 
-  ### A Personal Second-Brain, Agentic LLM Workspace & Media Vault
+  ### A Personal Second-Brain, Agentic LLM Workspace & Private Media Vault
   
-  *A highly secure, self-hosted personal second brain and LLM developer workspace — view the documentation at `/docs` on your running instance*
+  *A highly secure, privacy-first, self-hosted digital workspace integrating rich notes, an AI agent with long-term memory, file hosting, tasks, and scheduling.*
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-f7c948.svg?style=flat-square)](LICENSE)
   [![Stack: Rust](https://img.shields.io/badge/Backend-Rust_1.75+-3a4150.svg?logo=rust&style=flat-square)](https://www.rust-lang.org/)
@@ -16,26 +16,50 @@
 
 ---
 
-**Piuma Vault** is a secure, personal digital ecosystem combining rich notes, multi-provider LLM chat interfaces, private file/media storage, public share links, and calendar/task scheduling, plus a companion Expo mobile app. It runs on a lightweight, secure stack utilizing a highly concurrent Rust API backend, a reactive web interface, and semantic vector search.
+**Piuma Vault** is a secure, unified personal ecosystem designed to be your self-hosted "second brain" and AI development workspace. Instead of jumping between disconnected apps for note-taking, AI chat, file storage, calendars, and tasks, Piuma Vault brings them all together into a beautiful, lightweight, and cohesive interface.
 
 ---
 
-## 🛠️ The Tech Stack
+## ✨ Features
 
-| Layer | Technologies & Libraries |
-| :--- | :--- |
-| **Frontend Web** | React 19, Vite 7, Ant Design 5, `@ant-design/x`, TanStack Query 5, Zustand, Three.js, Milkdown |
-| **Backend API** | Rust, Actix-web 4, SQLx 0.8 (compile-time checked, no ORM), Tokio, Lettre, Moka Cache |
-| **Database** | PostgreSQL 15 + `pgvector` (HNSW indices) |
-| **Proxy / Edge** | Nginx reverse-proxy (edge route mapping & security layers), Cloudflare (TLS termination) |
-| **Mobile App** | Expo / React Native, AsyncStorage, React Navigation, TanStack Query |
-| **Orchestration**| Docker Compose (modular `server-stack` & `db-stack` profiles) |
+### 🧠 1. Agentic AI Workspace & Layered Memory
+Connect your favorite LLM models (DeepSeek, Anthropic, Gemini, OpenAI, etc.) and chat with an assistant that actually remembers your context. Features a unique **4-layer persistent memory system**:
+*   **L1 (Scratchpad):** An active, always-in-context scratchpad of immediate preferences.
+*   **L2 (Semantic Facts):** High-trust, vector-searchable statements recalled via cosine similarity.
+*   **L3 (Conversational Index):** High-performance Postgres Full-Text Search (FTS) to look up historical messages.
+*   **L4 (Dialectic Reasoning):** An background process that analyzes your chats to automatically extract long-term preferences, habits, and facts.
+
+### 📝 2. Modern Knowledge Base & Notes Vault
+*   **Dual Editors:** Swap between block-based editor (`BlockNote`) and markdown-rendered editor (`Milkdown`).
+*   **Hybrid Search:** Search your notes instantly using both high-performance keyword full-text search and semantic vector search (`pgvector`).
+*   **Web Sharing:** Publish notes or complete folders to beautiful public URLs with secure, random slugs.
+*   **Organization:** Group your notes via buckets, tags, and category folders.
+
+### 📁 3. Secure File Storage & Media Vault
+*   Host your private documents, images, and media securely.
+*   Uses high-performance S3-compatible cloud storage (with native support for Bunny Storage + CDN).
+*   Integrated file browser and media gallery directly in the dashboard.
+
+### 🗓️ 4. Unified Tasks & Calendar
+*   Manage your personal calendar events directly.
+*   Keep track of to-do items with a robust task-management suite, including support for **recurring tasks** and scheduling.
+*   Injected directly as context for your AI agent when organizing your day.
+
+### 📱 5. Companion Mobile App
+*   Stay connected on the go with a native companion app built on **Expo / React Native**.
+*   Synchronizes with your vault to view notes, manage tasks, and trigger agent workflows from your phone.
+
+### 🔒 6. Privacy-First Security
+*   **Self-Hosted:** You own and control 100% of your data.
+*   **Secure Auth:** Protected by JWT Bearer authentication (RS256 keys) and explicit API Keys.
+*   **Multi-Factor:** Built-in TOTP/2FA support.
+*   **Telemetry:** Dashboard includes live system health diagnostics, database backups, and active service monitors.
 
 ---
 
 ## 🏛️ System Architecture
 
-This flowchart outlines how request routing, data management, and background vector processing operate in the vault ecosystem:
+Piuma Vault utilizes a highly concurrent Rust backend (Actix-web) and a reactive React SPA. Static assets are served and proxied through Nginx, while database vectors are processed asynchronously in the background.
 
 ```mermaid
 flowchart TD
@@ -55,24 +79,11 @@ flowchart TD
     class DB store;
 ```
 
-- **`backend`** (`rust/src/main.rs`) — High-throughput Actix-web server hosting the primary vault API. Routes are registered relatively (e.g. `/admin/notes`) while Nginx prepends the `/api/v1/` edge namespace. Secures entrypoints with JWTs (RS256 keys) or explicit API Keys, implementing granular permissions and multi-factor authentication (TOTP/2FA).
-- **`embedding-worker`** (`rust/src/bin/embedding-worker.rs`) — An offline background service that drains the `embedding_jobs` table using a robust `FOR UPDATE SKIP LOCKED` query mechanism. It submits payloads to Azure OpenAI (`text-embedding-3-large`) and saves 1536-dimensional vectors for semantic note recall and memory lookup.
-- **Zero-Migration Bootstrap** — Database initialization runs strictly on boot, dynamically mapping the schema using high-performance, create-if-not-exists `TABLES` statements managed by the rust executable.
-
 ---
 
-## 🧠 Agent Memory System
+## 🧠 Agent Memory Flow
 
-The AI agent possesses a layered, persistent memory architecture built directly on the existing PostgreSQL + `pgvector` stack, allowing it to synthesize preferences, implicit observations, and conversation threads over multiple sessions:
-
-*   **L1 (Scratchpad):** An always-in-context, hard-capped memory panel (`db_agent_profiles.memory` & `user_context`) injected directly into every user prompt.
-*   **L2 (Semantic Facts):** High-trust, vector-searchable statements recalled via cosine similarity (`<=>`) from `db_memory_entries` when relevant to active user messages.
-*   **L3 (Conversational index):** A high-performance Postgres FTS (Full-Text Search) over historical messages (`content_tsv`) triggered manually by the agent.
-*   **L4 (Dialectic Reasoning):** An asynchronous background process running at a customizable turn cadence to derive implicit, behavioral patterns and write them as pending entries.
-
-### Chat to Memory Flow
-
-This flowchart illustrates the complete lifecycle of how active chat interactions flow into the agent's memory layers and how pending insights graduate into confirmed long-term memory:
+This flowchart illustrates how chat interactions graduate from short-term context into confirmed long-term memory, and how they are injected back into the LLM context:
 
 ```mermaid
 flowchart TD
@@ -90,7 +101,7 @@ flowchart TD
     L3 -->|Every N Turns| L4[L4 Dialectic Job]
     L4 -->|Multi-Pass GPT Sweep| L4P[(L4 Pending Facts<br/>db_memory_entries)]
 
-    %% Graduation Funnel (Clean direct routing without subgraph boundary box)
+    %% Graduation Funnel
     L4P -->|Explicit UI ✓ Click| L2C
     L4P -->|Stage-B NLI Corroboration| L2C
     L4P -->|Opportunistic Ask in Chat| L2C
@@ -107,83 +118,47 @@ flowchart TD
 
 ---
 
-## 🚀 Getting Started
+## 🛠️ Tech Stack
 
-### Prerequisites
+| Layer | Technologies & Libraries |
+| :--- | :--- |
+| **Frontend Web** | React 19, Vite 7, Ant Design 5, `@ant-design/x`, TanStack Query 5, Zustand, Three.js, Milkdown |
+| **Backend API** | Rust, Actix-web 4, SQLx 0.8 (compile-time checked raw SQL), Tokio, Lettre, Moka Cache |
+| **Database** | PostgreSQL 15 + `pgvector` (HNSW indices) |
+| **Proxy & Edge** | Nginx reverse-proxy, Cloudflare (TLS termination) |
+| **Mobile App** | Expo / React Native, AsyncStorage, React Navigation, TanStack Query |
+| **Orchestration**| Docker Compose (modular `server-stack` & `db-stack` profiles) |
 
-*   **Docker** + **Docker Compose**
-*   **Bun** (for the frontend node environment)
-*   **Rust Toolchain** (strictly for local checks/diagnostics)
+---
 
-### 1. Configuration
+## 🚀 Quick Start (Docker Compose)
 
-Clone the environment template and configure your secrets, API keys, and server bindings:
+Piuma Vault is designed to be easily self-hosted using Docker. 
 
+### 1. Configure the Environment
+Clone the template environment file and fill in your secrets, SMTP credentials, Bunny Storage keys, and domain configuration:
 ```bash
 cp .env.example .env
-# Open .env and fill in DB, SMTP, Bunny Storage, and JWT credentials.
 ```
 
-> [!NOTE]
-> Azure OpenAI embeddings configurations and individual LLM Provider API routes (DeepSeek, Anthropic, Gemini, OpenAI) are managed directly inside the Database and configured dynamically at runtime in the admin **Services** and **Agents** dashboards, not via static environment variables.
-
-*JWT signature keypairs (RS256) are generated automatically into `rust/src/keys/` during the bootstrap build. For remote hosting, you can override them via `JWT_PRIVATE_KEY_PEM` & `JWT_PUBLIC_KEY_PEM` variables.*
-
-### 2. Execution
-
-You can run the stack natively using standard Compose targets:
-
+### 2. Start the Stack
+Run Docker Compose with the profiles for the servers and database:
 ```bash
-# Start the full stack (production-ready reverse proxy, backend worker, postgres db)
 docker compose --profile server-stack --profile db-stack up -d
-
-# Start backend container watch only (rust recompiles inside container via cargo watch)
-docker compose --profile server-stack up
-
-# Run frontend development workspace locally (proxies backend calls to nginx edge)
-cd frontend
-bun install
-bun run dev
-
-# Follow container runtime logs
-docker compose logs -f rust
 ```
 
-By default (`NGINX_PORT=8034`), the unified backend API health diagnostics can be queried at: `http://localhost:8034/api/v1/health`
+Your vault is now running! By default, the application is exposed via Nginx at `http://localhost:8034`.
 
 ---
 
-## 🧪 Local Development
+## 📖 Development & Documentation
 
-Perform direct verification and optimization tasks without invoking container builds:
+Deep architectural specifications, database schemas, local development steps, and mobile build instructions are decoupled from this file to keep it clean. 
 
-```bash
-# Backend — Check for syntax, types, and schema compliance without triggering a build
-cd rust
-cargo check
-
-# Frontend — Run Biome quality sweeps, formats, and build bundle validation
-cd frontend
-bun run dev          # Start local Vite workspace (Vite 7)
-bun run build        # Validate output bundles and compression outputs (gzip + brotli)
-bun run lint         # Check Biome code warnings/rules
-bun run format       # Re-format code to spec
-```
-
-> [!IMPORTANT]
-> Backend timezone metrics are processed exclusively in UTC. Always route timezone conversions through the client-side module: `frontend/src/utils/dateTime.js`.
-
----
-
-##  Repository Layout
-
-```
-├── frontend/    # React 19 SPA + Vite web dashboard (Milkdown editor, Ant Design, CSS Grid)
-├── rust/        # High-performance Actix-web server (binaries: backend API & offline embedding-worker)
-├── mobile/      # Expo & React Native companion app for phone triggers (persisted queries, async stores)
-└── nginx/       # Nginx server configuration (reverse-proxy bindings, TLS configs, and client IP mappings)
-```
+*   **Interactive Documentation:** Access `/docs` directly on your running vault instance for a comprehensive guide.
+*   **Markdown Guides:** Read through the markdown documentation in `/md` (e.g., plans, security specs, and integrations) or consult the primary workflow rules in `CLAUDE.md`.
 
 ---
 
 *Made with 💛 by open source contributors*
+
