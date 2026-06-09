@@ -6,6 +6,7 @@ import {
 	deleteRecurringTask,
 	deleteTask,
 	fetchRecurringTasks,
+	fetchTask,
 	fetchTasks,
 	toggleTask,
 	updateRecurringTask,
@@ -17,6 +18,7 @@ export const taskKeys = {
 	all: ["tasks"],
 	list: (filter) => ["tasks", "list", filter ?? {}],
 	recurring: () => ["tasks", "recurring"],
+	detail: (id) => ["tasks", "detail", id],
 };
 
 // Invalidate everything tasks-related: concrete tasks and recurring templates
@@ -33,6 +35,15 @@ export const useTasks = (filter = {}, options = {}) =>
 		keepPreviousData: true,
 		staleTime: 30_000,
 		...options,
+	});
+
+// Single task by id — used for deep-linking (?task=<id>) when the task isn't in
+// the loaded list.
+export const useTask = (id) =>
+	useQuery({
+		queryKey: taskKeys.detail(id),
+		queryFn: () => fetchTask(id),
+		enabled: !!id,
 	});
 
 export const useCreateTask = () => {

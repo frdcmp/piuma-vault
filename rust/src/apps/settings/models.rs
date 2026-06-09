@@ -23,6 +23,9 @@ pub struct ServiceConfigResponse {
     pub websearch_tavily_api_key_set: bool,
     pub websearch_serpapi_api_key_set: bool,
     pub websearch_exa_api_key_set: bool,
+    // GitHub: the API base (plain) + a `*_set` flag for the secret token.
+    pub github_api_base: String,
+    pub github_token_set: bool,
 }
 
 /// Partial update. Any omitted field is left unchanged; a secret sent as an
@@ -43,6 +46,16 @@ pub struct UpdateServiceConfig {
     pub websearch_tavily_api_key: Option<String>,
     pub websearch_serpapi_api_key: Option<String>,
     pub websearch_exa_api_key: Option<String>,
+    pub github_api_base: Option<String>,
+    pub github_token: Option<String>,
+}
+
+/// Optional GitHub overrides for a "try now" check. Blank fields fall back to
+/// saved config.
+#[derive(Debug, Default, Deserialize)]
+pub struct TestGithubRequest {
+    pub github_api_base: Option<String>,
+    pub github_token: Option<String>,
 }
 
 /// Optional web-search overrides for a "try now" check. Blank fields fall back

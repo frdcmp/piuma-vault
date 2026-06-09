@@ -17,6 +17,8 @@ mod agenda;
 mod buckets;
 mod calendar;
 pub mod conversations;
+pub mod github;
+mod navigation;
 pub mod memory;
 mod notes;
 mod self_config;
@@ -39,6 +41,8 @@ fn all_defs() -> Vec<(&'static str, &'static str, Value)> {
     defs.extend(memory::defs());
     defs.extend(conversations::defs());
     defs.extend(web::defs());
+    defs.extend(github::defs());
+    defs.extend(navigation::defs());
     defs
 }
 
@@ -140,6 +144,21 @@ pub async fn dispatch(
         // ── Web ──
         "web_search" => web::web_search(pool, args).await,
         "web_fetch" => web::web_fetch(args).await,
+        // ── GitHub (token from admin → Services) ──
+        "github_list_repos" => github::list_repos(pool, args).await,
+        "github_search_repos" => github::search_repos(pool, args).await,
+        "github_read_file" => github::read_file(pool, args).await,
+        "github_list_dir" => github::list_dir(pool, args).await,
+        "github_list_commits" => github::list_commits(pool, args).await,
+        "github_list_branches" => github::list_branches(pool, args).await,
+        "github_list_issues" => github::list_issues(pool, args).await,
+        "github_list_prs" => github::list_prs(pool, args).await,
+        "github_create_or_update_file" => github::create_or_update_file(pool, args).await,
+        "github_create_issue" => github::create_issue(pool, args).await,
+        "github_create_branch" => github::create_branch(pool, args).await,
+        "github_create_pull_request" => github::create_pull_request(pool, args).await,
+        // ── Navigation (client renders a one-click "Go" action) ──
+        "navigate" => navigation::navigate(args).await,
         other => Err(format!("unknown tool: {other}")),
     }
 }

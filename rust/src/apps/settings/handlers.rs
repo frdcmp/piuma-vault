@@ -1,8 +1,8 @@
 use actix_web::{web, HttpResponse, Responder};
 
 use super::models::{
-    ServiceConfigResponse, TestEmbeddingRequest, TestStorageRequest, TestWebsearchRequest,
-    UpdateServiceConfig,
+    ServiceConfigResponse, TestEmbeddingRequest, TestGithubRequest, TestStorageRequest,
+    TestWebsearchRequest, UpdateServiceConfig,
 };
 use super::store;
 use crate::apps::auth::middleware::check_permission;
@@ -41,6 +41,8 @@ async fn current_config(pool: &DbPool) -> ServiceConfigResponse {
         websearch_tavily_api_key_set: store::get(pool, store::WEBSEARCH_TAVILY_API_KEY).await.is_some(),
         websearch_serpapi_api_key_set: store::get(pool, store::WEBSEARCH_SERPAPI_API_KEY).await.is_some(),
         websearch_exa_api_key_set: store::get(pool, store::WEBSEARCH_EXA_API_KEY).await.is_some(),
+        github_api_base: store::get(pool, store::GITHUB_API_BASE).await.unwrap_or_default(),
+        github_token_set: store::get(pool, store::GITHUB_TOKEN).await.is_some(),
     }
 }
 
@@ -82,6 +84,8 @@ pub async fn update_services(
         (store::WEBSEARCH_TAVILY_API_KEY, body.websearch_tavily_api_key),
         (store::WEBSEARCH_SERPAPI_API_KEY, body.websearch_serpapi_api_key),
         (store::WEBSEARCH_EXA_API_KEY, body.websearch_exa_api_key),
+        (store::GITHUB_API_BASE, body.github_api_base),
+        (store::GITHUB_TOKEN, body.github_token),
     ];
 
     for (key, maybe_value) in updates {
@@ -158,6 +162,40 @@ pub async fn test_websearch(
     };
     match crate::apps::web_search::run(&provider, &key, "piuma vault test query", 3).await {
         Ok(hits) => test_result(true, format!("OK — {provider} returned {} results", hits.len())),
+        Err(e) => test_result(false, e),
+    }
+}
+
+/// POST /admin/settings/services/test/github — verify the token by calling
+/// `GET {base}/user`. An optional body lets the dashboard test unsaved values;
+/// blank fields fall back to the saved config.
+pub async fn test_github(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    body: Option<web::Json<TestGithubRequest>>,
+) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden();
+    }
+    let req = body.map(|b| b.into_inner()).unwrap_or_default();
+    let pool = pool.get_ref();
+    let token = match req
+        .github_token
+        .filter(|t| !t.trim().is_empty())
+        .map(|t| t.trim().to_string())
+    {
+        Some(t) => t,
+        None => match store::github_token(pool).await {
+            Ok(t) => t,
+            Err(e) => return test_result(false, e),
+        },
+    };
+    let base = match req.github_api_base.filter(|b| !b.trim().is_empty()) {
+        Some(b) => b.trim().trim_end_matches('/').to_string(),
+        None => store::github_api_base(pool).await,
+    };
+    match crate::apps::agents::tools::github::whoami(&base, &token).await {
+        Ok(login) => test_result(true, format!("OK — authenticated as {login}")),
         Err(e) => test_result(false, e),
     }
 }

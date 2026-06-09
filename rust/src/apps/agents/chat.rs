@@ -301,7 +301,25 @@ pub async fn chat(
          or documents, which may be out of date.",
         model_row.display_name, provider.kind, model_row.model_id,
     );
-    let mut blocks = vec![now_block, model_block];
+    // Teach every agent the in-app link convention so it can hand the user
+    // clickable links straight to the entity it's talking about. Ids MUST come
+    // from tool results (never invented); the client validates and degrades a
+    // stale id to a toast rather than a broken view.
+    let link_block = String::from(
+        "# Linking & navigation\n\n\
+         When you reference a specific note, calendar event, or task that you got from a tool, \
+         link it with its real id using these in-app paths so the user can click straight to it:\n\
+         - Note: `[title](/notes/<id>)`\n\
+         - Calendar event: `[title](/admin/calendar?event=<id>)`\n\
+         - Task: `[title](/tasks?task=<id>)`\n\
+         - A whole view: `/notes`, `/tasks`, `/admin/calendar`, `/storage`\n\
+         Only ever use ids returned by your tools — never guess one. External web pages: use a \
+         normal `https://` markdown link.\n\n\
+         To actively TAKE the user somewhere (not just offer a link), call the `navigate` tool — \
+         it surfaces a one-click \"Go\" button. Prefer inline links for passing mentions; use \
+         `navigate` when the user asked to be taken/shown/opened somewhere.",
+    );
+    let mut blocks = vec![now_block, model_block, link_block];
     if !resolved.system_prompt.trim().is_empty() {
         blocks.push(resolved.system_prompt.clone());
     }

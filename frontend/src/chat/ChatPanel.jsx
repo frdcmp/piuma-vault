@@ -8,6 +8,7 @@ import {
 	useState,
 } from "react";
 import ReactMarkdown from "react-markdown";
+import { useNavigate } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 import { PvModal } from "@/admin/components/ui";
 import {
@@ -85,6 +86,18 @@ const blocksToParts = (content) => {
 			const t = tail();
 			if (t?.kind === "text") t.text += b.text;
 			else parts.push({ kind: "text", id: `p${parts.length}`, text: b.text });
+		} else if (b.type === "tool_use" && b.name === "navigate") {
+			// A navigation intent renders as a "Go" action, not a tool chip.
+			const a = b.input || {};
+			parts.push({
+				kind: "nav",
+				id: `p${parts.length}`,
+				target: a.target,
+				navId: a.id,
+				route: a.route,
+				url: a.url,
+				label: a.label,
+			});
 		} else if (b.type === "tool_use") {
 			let run = tail();
 			if (run?.kind !== "tools") {
@@ -125,6 +138,68 @@ const appendTextPart = (parts, text) => {
 	else next.push({ kind: "text", id: `p${next.length}`, text });
 	return next;
 };
+
+// Map a `navigate`-tool intent to an in-app path (or pass through an external
+// URL). Returns null for anything we don't recognise, so the action is dropped
+// rather than sending the user somewhere bogus.
+const navTargetToPath = ({ target, id, route, url } = {}) => {
+	switch (target) {
+		case "note":
+			return id ? `/notes/${id}` : null;
+		case "event":
+			return id ? `/admin/calendar?event=${id}` : null;
+		case "task":
+			return id ? `/tasks?task=${id}` : null;
+		case "view": {
+			const r = (route || "").toLowerCase();
+			if (r.includes("calendar")) return "/admin/calendar";
+			if (r.includes("task")) return "/tasks";
+			if (r.includes("storage") || r.includes("file")) return "/storage";
+			if (r.includes("note")) return "/notes";
+			return null;
+		}
+		case "url":
+			return /^https?:\/\//i.test(url || "") ? url : null;
+		default:
+			return null;
+	}
+};
+
+const NAV_FALLBACK_LABEL = {
+	note: "note",
+	event: "event",
+	task: "task",
+	view: "view",
+	url: "link",
+};
+
+// Custom markdown <a>: internal app paths navigate client-side (keeping the
+// chat dock open); external http(s) links open in a new tab; anything else
+// (e.g. a stripped/odd scheme) renders as inert text.
+function VaultLink({ href = "", children, onNavigate }) {
+	if (href.startsWith("/")) {
+		return (
+			<a
+				className="vault-chat-link"
+				href={href}
+				onClick={(e) => {
+					e.preventDefault();
+					onNavigate?.(href);
+				}}
+			>
+				{children}
+			</a>
+		);
+	}
+	if (/^https?:\/\//i.test(href)) {
+		return (
+			<a href={href} target="_blank" rel="noopener noreferrer">
+				{children}
+			</a>
+		);
+	}
+	return <span>{children}</span>;
+}
 
 const TOOL_ICON = { running: "⚙", done: "✓", error: "✗" };
 
@@ -271,8 +346,13 @@ function UserBubble({ content, context }) {
 	);
 }
 
-function AssistantBubble({ parts, isStreaming, label }) {
+function AssistantBubble({ parts, isStreaming, label, onNavigate }) {
 	const empty = !parts?.length;
+	// Bind the custom link renderer to this bubble's navigation handler.
+	const mdComponents = useMemo(
+		() => ({ a: (props) => <VaultLink {...props} onNavigate={onNavigate} /> }),
+		[onNavigate],
+	);
 	return (
 		<div className="chat-assistant-row">
 			<span className="chat-role">{label}</span>
@@ -308,8 +388,39 @@ function AssistantBubble({ parts, isStreaming, label }) {
 										<span className="chat-inject-text">{p.text}</span>
 									</div>
 								);
+							if (p.kind === "nav") {
+								const to = navTargetToPath({
+									target: p.target,
+									id: p.navId,
+									route: p.route,
+									url: p.url,
+								});
+								if (!to) return null;
+								const navLabel =
+									p.label || NAV_FALLBACK_LABEL[p.target] || "open";
+								return (
+									<button
+										key={p.id}
+										type="button"
+										className="chat-nav-action"
+										onClick={() => onNavigate?.(to)}
+										title={to}
+									>
+										<span className="chat-nav-action-icon" aria-hidden="true">
+											↗
+										</span>
+										<span className="chat-nav-action-label">
+											Go → {navLabel}
+										</span>
+									</button>
+								);
+							}
 							return (
-								<ReactMarkdown key={p.id} remarkPlugins={[remarkGfm]}>
+								<ReactMarkdown
+									key={p.id}
+									remarkPlugins={[remarkGfm]}
+									components={mdComponents}
+								>
 									{p.text}
 								</ReactMarkdown>
 							);
@@ -325,6 +436,24 @@ function AssistantBubble({ parts, isStreaming, label }) {
 // Embedded chat panel — runs on the agents API. Pick the agent (default set in
 // admin → Agents), stream the reply, and attach "locked" notes as context.
 export default function ChatPanel({ onClose, onOpenNote }) {
+	const navigate = useNavigate();
+	// Single navigation entry point for chat links and "Go" actions: internal
+	// app paths route client-side (dock stays open); external http(s) open a new
+	// tab. Note links prefer onOpenNote (workspace bridge) when provided.
+	const goTo = useCallback(
+		(to) => {
+			if (!to) return;
+			if (/^https?:\/\//i.test(to)) {
+				window.open(to, "_blank", "noopener,noreferrer");
+				return;
+			}
+			if (!to.startsWith("/")) return;
+			const noteMatch = to.match(/^\/notes\/([^/?#]+)$/);
+			if (noteMatch && onOpenNote) onOpenNote(noteMatch[1]);
+			else navigate(to);
+		},
+		[navigate, onOpenNote],
+	);
 	const { data: agents = [] } = useAgentList();
 	const { data: def } = useDefaultAgent();
 	const [agentKind, setAgentKind] = useState("");
@@ -617,7 +746,31 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				onThinking: () => {},
 				// Tools land in stream order: a new call opens (or extends) the
 				// trailing tool-run part; its completion flips that chip's status.
-				onTool: (t) =>
+				// The `navigate` tool is special — it renders a "Go" action, not a
+				// chip — so it's handled up front (only on announce; ignore `done`).
+				onTool: (t) => {
+					if (t.name === "navigate") {
+						if (t.done) return;
+						setMessages((curr) => {
+							const updated = [...curr];
+							const last = { ...updated[updated.length - 1] };
+							const parts = [...(last.parts || [])];
+							const a = t.args || {};
+							parts.push({
+								kind: "nav",
+								id: `p${parts.length}`,
+								target: a.target,
+								navId: a.id,
+								route: a.route,
+								url: a.url,
+								label: a.label,
+							});
+							last.parts = parts;
+							updated[updated.length - 1] = last;
+							return updated;
+						});
+						return;
+					}
 					setMessages((curr) => {
 						const updated = [...curr];
 						const last = { ...updated[updated.length - 1] };
@@ -655,7 +808,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 						last.parts = parts;
 						updated[updated.length - 1] = last;
 						return updated;
-					}),
+					});
+				},
 				onError: (e) => {
 					// A transport drop (stream reset / connection abort) doesn't mean
 					// the turn failed — it keeps running and is persisted server-side.
@@ -1067,6 +1221,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 										parts={m.parts}
 										isStreaming={streamingThis}
 										label={agentLabel}
+										onNavigate={goTo}
 									/>
 								);
 							})
