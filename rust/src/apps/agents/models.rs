@@ -155,6 +155,10 @@ pub struct AgentProfileRow {
     pub memory: String,
     /// Per-agent slash-command macros: [{ name, description, prompt }].
     pub commands: Json,
+    pub dialectic_cadence: Option<i32>,
+    pub dialectic_depth: Option<i32>,
+    pub dialectic_model_id: Option<String>,
+    pub dialectic_observe_vault: Option<bool>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

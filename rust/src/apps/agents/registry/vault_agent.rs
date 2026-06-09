@@ -73,6 +73,7 @@ pub static DEF: AgentDef = AgentDef {
         "memory_list",
         "memory_confirm",
         "memory_reject",
+        "memory_related",
         // L3 conversation retrieval (full-text search over chat history)
         "search_conversations",
         // Web (server-side, provider-agnostic)

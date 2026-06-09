@@ -134,6 +134,7 @@ pub async fn dispatch(
         "memory_list" => memory::memory_list(pool, agent, args).await,
         "memory_confirm" => memory::memory_confirm(pool, agent, args).await,
         "memory_reject" => memory::memory_reject(pool, agent, args).await,
+        "memory_related" => memory::memory_related(pool, agent, args).await,
         // ── Conversations (L3 FTS over chat history, scoped to the active agent) ──
         "search_conversations" => conversations::search_conversations(pool, agent, args).await,
         // ── Web ──

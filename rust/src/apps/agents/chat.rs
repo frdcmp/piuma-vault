@@ -233,14 +233,28 @@ pub async fn chat(
     let tool_schemas = tools::schemas_for(&enabled);
 
     // Persist user message + set a title on the first turn.
+    // Pre-embed the user message so L2 retrieval can use the cached vector
+    // instead of calling the embedding API synchronously each turn.
     let user_content = json!([{ "type": "text", "text": msg }]);
-    if let Err(e) = sqlx::query("INSERT INTO db_chat_messages (conversation_id, role, content, content_text) VALUES ($1, 'user', $2, $3)")
-        .bind(conv_id)
-        .bind(&user_content)
-        .bind(blocks_to_text(&user_content))
-        .execute(db)
-        .await
-    {
+    let user_text = blocks_to_text(&user_content);
+    let user_emb = crate::apps::embeddings::embed(db, &user_text, 1536).await.ok();
+    if let Err(e) = if let Some(ref emb) = user_emb {
+        let pg_vec = pgvector::Vector::from(emb.clone());
+        sqlx::query("INSERT INTO db_chat_messages (conversation_id, role, content, content_text, embedding) VALUES ($1, 'user', $2, $3, $4)")
+            .bind(conv_id)
+            .bind(&user_content)
+            .bind(&user_text)
+            .bind(&pg_vec)
+            .execute(db)
+            .await
+    } else {
+        sqlx::query("INSERT INTO db_chat_messages (conversation_id, role, content, content_text) VALUES ($1, 'user', $2, $3)")
+            .bind(conv_id)
+            .bind(&user_content)
+            .bind(&user_text)
+            .execute(db)
+            .await
+    } {
         log::error!("chat: persist user msg: {e}");
         return HttpResponse::InternalServerError().json(ApiError::new("database error"));
     }
@@ -293,10 +307,28 @@ pub async fn chat(
     }
     // L2: retrieve relevant long-term memories for this message and inject them as
     // a system block (best-effort; empty when nothing clears the distance floor).
-    let retrieved = tools::memory::retrieve_for_turn(db, &conv.agent, &msg, 5).await;
+    // Uses the precomputed user-message embedding when available to skip a
+    // synchronous embed call.
+    let retrieved = tools::memory::retrieve_for_turn(db, &conv.agent, user_emb.as_ref(), &msg, 5).await;
     let mem_block = tools::memory::format_block(&retrieved);
     if !mem_block.trim().is_empty() {
         blocks.push(mem_block);
+    }
+    // Opportunistic ask: surface 1-2 most-relevant pending facts for the agent
+    // to casually verify with User.
+    let pending: Vec<_> = retrieved.iter().filter(|r| r.status == "pending").collect();
+    if !pending.is_empty() {
+        let mut pending_block = String::from(
+            "# Pending facts (unconfirmed — verify with User)\n\n\
+             These are derived hypotheses that seemed relevant to this turn. When one comes up \
+             naturally in conversation, casually ask User if it's accurate (e.g. \"I've had \
+             the impression you prefer X — is that right?\"). Use `memory_confirm` if he agrees, \
+             `memory_reject` if he disagrees.\n",
+        );
+        for p in pending.iter().take(2) {
+            pending_block.push_str(&format!("- [derived, unconfirmed] {}\n", p.content));
+        }
+        blocks.push(pending_block);
     }
     // Phase 0 observability: snapshot what was retrieved + L1 usage for the turn log.
     // L1 "always-in-context" usage spans BOTH injected fields — the agent's

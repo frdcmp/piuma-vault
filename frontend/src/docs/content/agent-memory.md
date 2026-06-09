@@ -28,7 +28,8 @@ stores.** They are the same table, `db_memory_entries`. The difference is
 - **L4** is a *process*, not a place. The dialectic pass runs in the background
   and **writes new rows into the same `db_memory_entries` table**, tagged
   `source = 'dialectic_derived'` and `status = 'pending'`. Those pending rows are
-  "L4 output."
+  "L4 output." Supports **multi-pass depth (1-3)** and **per-agent config**
+  (cadence, depth, model override via `db_agent_profiles.dialectic_*` columns).
 
 So a row is "L4" while it's a pending guess, and effectively becomes "L2" once
 it's confirmed (`status` flips to `confirmed`). Same table, different lifecycle
@@ -47,15 +48,18 @@ and just filters by status.
   - `confidence` — `high` · `medium` · `low`.
   - `category`, `tags[]` — free-form topical labels.
   - `expires_at` — TTL (pending/derived facts expire after 60 days if never confirmed).
-  - `contradicts_id`, `related_ids[]` — links between entries.
+   - `contradicts_id`, `related_ids[]` — links between entries (populated by Stage-B NLI
+     entailment/contradiction/neutral judgment on dialectic re-derivation).
   - `is_active` — soft-delete flag.
 - **`db_memory_embedding_jobs`** — embedding queue. The same `embedding-worker`
   binary that embeds notes also drains this, calling Azure OpenAI
   (`text-embedding-3-large`, 1536-dim) and writing the vector back.
-- **`db_chat_messages`** — **L3**. The chat transcript. Two columns back the
-  full-text search: `content_text` (the flattened plain text of a message's text
-  blocks, written by the chat loop) and `content_tsv` (a `GENERATED` tsvector
-  derived from it). A partial GIN index covers user + assistant turns.
+- **`db_chat_messages`** — **L3** + pre-embed cache. The chat transcript. Now
+  stores a precomputed `embedding vector(1536)` on write so L2 retrieval skips
+  the synchronous embed call. Two more columns back the full-text search:
+  `content_text` (the flattened plain text of a message's text blocks, written
+  by the chat loop) and `content_tsv` (a `GENERATED` tsvector derived from it).
+  A partial GIN index covers user + assistant turns.
 - **`db_agent_turn_logs`** — observability (the **Turn inspector**): one row per
   completed turn recording which memories were retrieved (+ scores) and how full
   L1 was.
@@ -113,9 +117,10 @@ User sends a message
 
 ### L2 retrieval (step 1)
 
-The message is embedded and compared by **cosine distance** (`<=>`, where
-distance = 1 − similarity). A **graded floor** decides what's relevant enough to
-inject:
+The user message is **pre-embedded on write** (`db_chat_messages.embedding`) so
+retrieval reads the cached vector instead of calling the embedding API
+synchronously. Compared by **cosine distance** (`<=>`, where distance = 1 −
+similarity). A **graded floor** decides what's relevant enough to inject:
 
 - `confirmed` facts: distance < **0.65** (similarity > 0.35).
 - `pending`/derived facts: the tighter distance < **0.5** — so guesses surface
@@ -126,27 +131,37 @@ Confirmed facts are ranked above pending, top 5 are injected, and each carries a
 not established fact. If nothing clears the floor, nothing is injected (better
 empty than noisy). Thresholds are tuned by watching the **Turn inspector**.
 
+If any pending facts clear the floor, an additional **"Pending facts"** block
+instructs the agent to casually verify them conversationally ("I've had the
+impression you prefer X — is that right?") — **opportunistic ask** in the
+confirmation funnel.
+
 ### L4 dialectic (step 4)
 
-Every 3 assistant turns *within a conversation*, an async job:
+Every N assistant turns (configurable per agent, default 3), an async job:
 
-1. Reads the last several turns.
-2. Asks the model to extract implicit facts/preferences/patterns it can infer
-   (one `[category] fact` per line).
-3. Saves each as `source=dialectic_derived`, `status=pending`, `confidence=medium`,
-   `expires_at = now + 60 days`.
+1. Reads the last several turns and the agent's dialectic config from
+   `db_agent_profiles` (cadence, depth, optional model override).
+2. Runs **multi-pass** (depth 1-3): pass 1 extracts raw observations from the
+   transcript; pass 2 synthesizes patterns; pass 3 connects meta-patterns.
+3. Saves each insight as `source=dialectic_derived`, `status=pending`,
+   `confidence=medium`, `expires_at = now + 60 days`.
 
 Pending facts auto-inject (at the tighter floor) but are clearly low-trust. They
-**graduate** to `confirmed` when:
+**graduate** to `confirmed` through three paths:
 
-- User confirms one (the ✓ button, or `memory_confirm`), **or**
-- the dialectic independently re-derives the same fact later (corroboration).
+1. **Explicit confirmation** — User clicks ✓ or the agent calls `memory_confirm`.
+2. **Corroboration** — the dialectic re-derives the same fact. A **Stage-B NLI**
+   check (entailment/contradiction/neutral) runs on re-derivation against
+   confirmed entries; `entails` means duplicate (skip), `contradicts` populates
+   `contradicts_id` and deactivates the old entry, `neutral` links both via
+   `related_ids`. Pending entries skip NLI and promote directly on cosine
+   match (< 0.15).
+3. **Opportunistic ask** — when pending facts clear the retrieval floor, the
+   agent is instructed to casually verify them conversationally.
 
-A re-derivation of a near-duplicate (cosine distance < 0.15) is treated as
-corroboration rather than a new row.
-
-> Note: cadence counts assistant turns *per conversation*, so very short chats
-> never trigger the dialectic pass.
+> Note: expired pending entries (>60 days, never confirmed) are automatically
+> rejected by a periodic worker sweep every 10 minutes.
 
 ## L3 — conversation retrieval
 
@@ -183,7 +198,8 @@ profile/preferences.
 **L2 (semantic store):**
 `memory_search(query)`, `memory_save(content, source?, category?, confidence?, tags?)`,
 `memory_update(id, content)`, `memory_delete(id)`, `memory_list(category?)`,
-`memory_confirm(id)`, `memory_reject(id)`.
+`memory_confirm(id)`, `memory_reject(id)`, `memory_related(id)`
+(graph traversal via `related_ids`).
 
 **L1 (always-in-context):**
 `context_add(text)`, `context_replace(old, new)`, `context_remove(text)`,
@@ -202,10 +218,21 @@ immediately); if the provider is down, the row is inserted without a vector and 
 and pipeline as note embeddings: Azure OpenAI `text-embedding-3-large`, 1536-dim,
 HNSW cosine index.
 
-## Implementation status
+## Implementation status (2026-06-09)
 
-Built: L1 (compaction tools), L2 (full), L3 (conversation FTS + the
-`search_conversations` tool + admin search), L4 (dialectic + confirmation
-funnel), Phase-0 turn logging, and the `/admin/memory` dashboard. Deferred:
-NLI-based contradiction detection, pre-embedding the user message on write, and
-per-agent dialectic config (cadence/depth/model are currently constants).
+**All planned features are now implemented.** The deferred items from the
+original plan have been shipped:
+
+- ✅ **L1** — compaction tools (context_add/replace/remove/list), hard caps, normalized dedup.
+- ✅ **L2** — full semantic memory: all `memory_*` tools, ingraded floor retrieval, Stage-A cosine dedup.
+- ✅ **L3** — conversation FTS, `search_conversations` tool, admin search tab.
+- ✅ **L4** — dialectic reasoning, multi-pass depth (1-3), per-agent config (cadence/depth/model).
+- ✅ **Stage-B NLI** — entailment/contradiction/neutral judgment on dialectic re-derivation, populates `contradicts_id` and `related_ids`.
+- ✅ **Confirmation funnel** — all three paths: explicit confirm, corroboration (NLI-assisted), opportunistic ask.
+- ✅ **Pre-embed** — user messages embedded on write (`db_chat_messages.embedding`), retrieval reads cached vector.
+- ✅ **Periodic cleanup** — expired pending entries (>60 days) auto-rejected every 10 min by the embedding-worker.
+- ✅ **Memory graph** — `related_ids` populated on neutral NLI results, traversable via `memory_related(id)`.
+- ✅ **Cross-conversation patterns** — hourly category-count aggregation across agents by the embedding-worker.
+- ✅ **Phase-0 turn logging** + `/admin/memory` dashboard with Turn inspector.
+
+Nothing is deferred; the implementation matches the plan.
