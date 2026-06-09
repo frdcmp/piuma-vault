@@ -315,15 +315,15 @@ pub async fn chat(
         blocks.push(mem_block);
     }
     // Opportunistic ask: surface 1-2 most-relevant pending facts for the agent
-    // to casually verify with User.
+    // to casually verify with the user.
     let pending: Vec<_> = retrieved.iter().filter(|r| r.status == "pending").collect();
     if !pending.is_empty() {
         let mut pending_block = String::from(
-            "# Pending facts (unconfirmed — verify with User)\n\n\
+            "# Pending facts (unconfirmed — verify with the user)\n\n\
              These are derived hypotheses that seemed relevant to this turn. When one comes up \
-             naturally in conversation, casually ask User if it's accurate (e.g. \"I've had \
-             the impression you prefer X — is that right?\"). Use `memory_confirm` if he agrees, \
-             `memory_reject` if he disagrees.\n",
+             naturally in conversation, casually ask the user if it's accurate (e.g. \"I've had \
+             the impression you prefer X — is that right?\"). Use `memory_confirm` if they agree, \
+             `memory_reject` if they disagree.\n",
         );
         for p in pending.iter().take(2) {
             pending_block.push_str(&format!("- [derived, unconfirmed] {}\n", p.content));

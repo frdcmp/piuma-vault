@@ -54,7 +54,7 @@ By domain:
 
 ## Memory
 
-The agent has a layered, persistent memory so it learns User's preferences
+The agent has a layered, persistent memory so it learns the user's preferences
 and ongoing work across conversations. Relevant facts are auto-injected into the
 system prompt each turn, and a background "dialectic" pass derives new ones. This
 is a system in its own right — see **[Agent Memory](/docs/agent-memory)** for the

@@ -5,6 +5,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import PvPanel from "../admin/components/ui/PvPanel/PvPanel";
 import { DOC_BY_SLUG, FIRST_SLUG } from "./docsManifest";
+import Mermaid from "./Mermaid";
 
 // Flatten a heading's React children to plain text so we can derive an id.
 const toText = (children) => {
@@ -62,6 +63,30 @@ const markdownComponents = {
 			<a href={href} target="_blank" rel="noopener noreferrer" {...props}>
 				{children}
 			</a>
+		);
+	},
+	pre({ children, ...props }) {
+		// If the child is a code block with language-mermaid, render it directly
+		// to avoid nesting inside a <pre> element which gets standard code box styling.
+		const isMermaid =
+			children?.props &&
+			/language-mermaid/.test(children.props.className || "");
+		if (isMermaid) {
+			return children;
+		}
+		return <pre {...props}>{children}</pre>;
+	},
+	code({ inline, className, children, ...props }) {
+		// Fenced ```mermaid blocks render as diagrams instead of code.
+		const match = /language-(\w+)/.exec(className || "");
+		const lang = match?.[1];
+		if (!inline && lang === "mermaid") {
+			return <Mermaid chart={String(children).replace(/\n$/, "")} />;
+		}
+		return (
+			<code className={className} {...props}>
+				{children}
+			</code>
 		);
 	},
 };

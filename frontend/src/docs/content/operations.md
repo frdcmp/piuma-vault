@@ -26,10 +26,11 @@ TLS terminates at Cloudflare; the origin serves plain HTTP.
 
 ## Deploying
 
-`update_servers.sh` is the SSH deploy helper. It pulls, builds the front end, and
-runs `docker compose up` on the remote host(s). The Rust services run under
-`cargo watch` in their containers and hot-reload — so a deploy is largely "pull +
-restart the relevant services."
+Deployments are typically run via Docker Compose on the host machine. The Rust services run under hot-reload or production profiles in their containers — so a deploy is largely a `git pull` followed by a container restart:
+
+```bash
+docker compose pull && docker compose up -d
+```
 
 ## JWT keys
 
@@ -58,5 +59,4 @@ nginx/       default.conf.template (edge proxy)
 md/          docs, plans, RESUME.md
 docker-compose.yml   service orchestration (profiles server-stack, db-stack)
 generate_keys.py     regenerate the JWT RSA key pair
-update_servers.sh    SSH deploy helper
 ```
