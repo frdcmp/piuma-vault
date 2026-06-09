@@ -78,3 +78,5 @@ update_servers.sh
 generate_keys.py
 generate_vapid.py
 .github/full-stack.instructions.md
+CLAUDE.md
+.vscode/
