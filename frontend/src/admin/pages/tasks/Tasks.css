@@ -592,3 +592,201 @@
 	font-size: 0.78rem;
 	margin: 0;
 }
+
+/* ── Task detail VIEW (inline click-to-edit) ──────────────────────────────────
+   Opening an existing task shows a read view; each value is a button that swaps
+   to its editor in place and auto-saves. Reuses the .tasks-form palette tokens. */
+.task-view {
+	gap: 14px;
+}
+
+/* Title: large, click to rename inline. */
+.task-view-title {
+	align-self: stretch;
+	text-align: left;
+	background: none;
+	border: none;
+	border-bottom: 1px solid transparent;
+	padding: 2px 0;
+	font: inherit;
+	font-size: 1.15rem;
+	font-weight: 600;
+	color: var(--text);
+	cursor: text;
+}
+.task-view-title:hover {
+	border-bottom-color: var(--border);
+}
+.task-view-title.is-done {
+	text-decoration: line-through;
+	color: var(--muted);
+}
+.task-view-title-input {
+	background: var(--bg);
+	border: 1px solid var(--accent);
+	border-radius: 4px;
+	color: var(--text);
+	padding: 6px 8px;
+	font: inherit;
+	font-size: 1.15rem;
+	font-weight: 600;
+}
+.task-view-title-input:focus {
+	outline: none;
+}
+
+/* Metadata: label / value rows. */
+.task-view-meta {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.task-view-row {
+	display: grid;
+	grid-template-columns: 84px 1fr;
+	align-items: center;
+	gap: 10px;
+	min-height: 34px;
+}
+.task-view-row--top {
+	align-items: start;
+}
+.task-view-label {
+	font-size: 0.72rem;
+	letter-spacing: 0.4px;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+.task-view-value {
+	display: inline-flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	min-height: 30px;
+	text-align: left;
+	background: none;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	padding: 4px 8px;
+	width: 100%;
+	font: inherit;
+	font-size: 0.9rem;
+	color: var(--text);
+	cursor: pointer;
+}
+.task-view-value:hover {
+	border-color: var(--border);
+	background: var(--bg-soft);
+}
+.task-view-tags {
+	flex-wrap: wrap;
+}
+.task-view-empty {
+	color: var(--muted);
+	font-style: italic;
+}
+/* The editor that replaces a value occupies the value column. */
+.task-view-edit {
+	min-width: 0;
+}
+.task-view-select {
+	width: 100%;
+}
+
+/* Priority + bucket dots. */
+.prio-dot,
+.bucket-dot {
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	flex: 0 0 auto;
+}
+.prio-dot.prio-0 {
+	background: var(--muted);
+}
+.prio-dot.prio-1 {
+	background: var(--accent-2);
+}
+.prio-dot.prio-2 {
+	background: var(--accent);
+}
+.prio-dot.prio-3 {
+	background: var(--accent-3);
+}
+
+/* Notes: rendered markdown when viewing, textarea when editing. */
+.task-view-notes {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.task-view-notes-display {
+	text-align: left;
+	background: none;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	padding: 8px;
+	margin: -1px;
+	min-height: 48px;
+	font: inherit;
+	color: var(--text);
+	cursor: text;
+}
+.task-view-notes-display:hover {
+	border-color: var(--border);
+	background: var(--bg-soft);
+}
+.task-view-md {
+	font-size: 0.9rem;
+	line-height: 1.5;
+}
+.task-view-md > :first-child {
+	margin-top: 0;
+}
+.task-view-md > :last-child {
+	margin-bottom: 0;
+}
+.task-view-md p {
+	margin: 0 0 8px;
+}
+.task-view-md code {
+	color: var(--accent-4);
+}
+
+/* The inline editors live OUTSIDE .tasks-field, so they don't inherit the dark
+   form-field theming — restate it (else the notes textarea + priority select
+   render as native white controls). Box metrics match the display value they
+   replace so swapping view->edit doesn't resize/recenter the modal. */
+.task-view-select,
+.task-view .tasks-textarea-auto {
+	background: var(--bg);
+	border: 1px solid var(--accent);
+	border-radius: 4px;
+	color: var(--text);
+	font: inherit;
+	font-size: 0.9rem;
+	color-scheme: dark;
+}
+.task-view-select:focus,
+.task-view .tasks-textarea-auto:focus {
+	outline: none;
+}
+.task-view-select {
+	width: 100%;
+	min-height: 30px;
+	padding: 4px 28px 4px 8px;
+	appearance: none;
+	-webkit-appearance: none;
+	-moz-appearance: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%238a93a3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 8px center;
+}
+.task-view .tasks-textarea-auto {
+	padding: 8px;
+	min-height: 48px;
+}
+.task-view-title-input {
+	padding: 2px 8px;
+	margin: 0 -9px; /* cancel 8px pad + 1px border so the title text stays put */
+}
