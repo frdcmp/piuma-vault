@@ -926,3 +926,19 @@ button.chat-context-tag-main {
 .chat-nav-action-icon {
 	color: var(--accent, #7aa2f7);
 }
+
+/* Conversation-loading state — pixel Piuma running while history is fetched
+   (restore on open or a /sessions switch), so the panel never looks "empty"
+   mid-load and then pop the messages in. */
+.chat-loading {
+	margin: 96px auto 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 14px;
+}
+.chat-loading-label {
+	color: var(--muted, #8a93a3);
+	font-size: 0.8rem;
+	letter-spacing: 0.4px;
+}

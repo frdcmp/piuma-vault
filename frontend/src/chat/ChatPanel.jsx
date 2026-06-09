@@ -489,6 +489,13 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const [hydrated, setHydrated] = useState(
 		() => !localStorage.getItem(STORAGE_KEY),
 	);
+	// True while a conversation's history is being fetched (restore on mount or a
+	// /sessions switch) — drives the pixel-Piuma loader so the panel doesn't read
+	// as "empty" mid-load and then pop. Seeded true when there's a stored
+	// conversation to restore.
+	const [loadingConv, setLoadingConv] = useState(
+		() => !!localStorage.getItem(STORAGE_KEY),
+	);
 	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
 	const inputRef = useRef(null);
@@ -532,11 +539,13 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 					})),
 				);
 				setHydrated(true);
+				setLoadingConv(false);
 			})
 			.catch(() => {
 				localStorage.removeItem(STORAGE_KEY);
 				setConversationId(null);
 				setHydrated(true);
+				setLoadingConv(false);
 			});
 		return () => {
 			cancelled = true;
@@ -598,6 +607,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		abortRef.current?.abort();
 		abortRef.current = null;
 		setIsStreaming(false);
+		setLoadingConv(false);
 		setMessages([]);
 		setConversationId(null);
 		setModelId(null);
@@ -895,6 +905,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		abortRef.current?.abort();
 		abortRef.current = null;
 		setIsStreaming(false);
+		setLoadingConv(false);
 		setMessages([]);
 		setConversationId(null);
 		setModelId(null);
@@ -925,6 +936,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		setOverlay(null);
 		setTitleMenu(false);
 		setConversationId(id);
+		setMessages([]);
+		setLoadingConv(true);
 		localStorage.setItem(STORAGE_KEY, id);
 		try {
 			const d = await fetchConversation(id);
@@ -939,6 +952,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			);
 		} catch {
 			/* ignore */
+		} finally {
+			setLoadingConv(false);
 		}
 	}, []);
 
@@ -1196,7 +1211,14 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			<div className="chat-messages-viewport">
 				<div ref={scrollRef} className="chat-messages" onScroll={handleScroll}>
 					<div className="chat-messages-inner">
-						{messages.length === 0 ? (
+						{loadingConv && messages.length === 0 ? (
+							<div className="chat-loading">
+								<PiumaRunning pixelSize={3} />
+								<span className="chat-loading-label">
+									loading conversation…
+								</span>
+							</div>
+						) : messages.length === 0 ? (
 							<div className="chat-empty">
 								<div className="chat-empty-title">{agentLabel} is ready.</div>
 								<div className="chat-empty-sub">
