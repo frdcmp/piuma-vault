@@ -13,6 +13,8 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use super::*;
+use crate::apps::agents::providers::deepseek;
+use crate::apps::agents::models::{ModelRow, ProviderRow};
 use crate::apps::embeddings;
 use crate::db::db::DbPool;
 
@@ -107,6 +109,15 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                 "required": ["id"]
             }),
         ),
+        (
+            "memory_related",
+            "Return memory entries linked to the given entry via the related_ids graph (facts that extend or are compatible with it).",
+            json!({
+                "type": "object",
+                "properties": { "id": { "type": "string" } },
+                "required": ["id"]
+            }),
+        ),
     ]
 }
 
@@ -121,13 +132,25 @@ pub struct Retrieved {
     pub distance: f64,
 }
 
-/// Top-K active memories for `query`, with a graded distance floor (confirmed
-/// facts at < 0.5, pending at the tighter < 0.3) and confirmed ranked first.
-/// Returns empty on any failure (embedding/provider down) — retrieval is
-/// best-effort and never blocks the turn.
-pub async fn retrieve_for_turn(pool: &DbPool, agent: &str, query: &str, limit: i64) -> Vec<Retrieved> {
-    let Ok(emb) = embeddings::embed(pool, query, EMBED_DIMS).await else {
-        return Vec::new();
+/// Top-K active memories for the given query, with a graded distance floor
+/// (confirmed facts at < 0.5, pending at the tighter < 0.3) and confirmed
+/// ranked first. Pass a `precomputed` embedding to skip the synchronous embed
+/// call; falls back to embedding `query` inline if not provided.
+/// Returns empty on any failure — retrieval is best-effort and never blocks the
+/// turn.
+pub async fn retrieve_for_turn(
+    pool: &DbPool,
+    agent: &str,
+    precomputed: Option<&Vec<f32>>,
+    query: &str,
+    limit: i64,
+) -> Vec<Retrieved> {
+    let emb = match precomputed {
+        Some(v) => v.clone(),
+        None => match embeddings::embed(pool, query, EMBED_DIMS).await {
+            Ok(e) => e,
+            Err(_) => return Vec::new(),
+        },
     };
     let vec = pgvector::Vector::from(emb);
     let rows: Vec<(Uuid, String, String, String, f64)> = sqlx::query_as(
@@ -176,11 +199,79 @@ pub fn format_block(entries: &[Retrieved]) -> String {
     s
 }
 
+/// Stage-B NLI: send (new_fact, existing_fact) to a small model to judge the
+/// semantic relationship. Returns `entails` (duplicate — existing already covers
+/// the new), `contradicts`, or `neutral` (different but compatible). Uses the
+/// default LLM provider/model; best-effort — falls back to cosine-only on any
+/// failure.
+async fn nli_check(pool: &DbPool, new_fact: &str, existing_fact: &str) -> Option<&'static str> {
+    let model: ModelRow = sqlx::query_as(
+        "SELECT * FROM db_llm_models WHERE is_default AND enabled LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()??;
+    let provider: ProviderRow = sqlx::query_as("SELECT * FROM db_llm_providers WHERE id = $1")
+        .bind(model.provider_id)
+        .fetch_optional(pool)
+        .await
+        .ok()??;
+    if provider.kind != "deepseek" || provider.api_key.trim().is_empty() {
+        return None;
+    }
+    let prompt = format!(
+        "You are a semantic comparison engine. Compare two facts and determine their relationship.\n\
+         \nNEW FACT: {new_fact}\n\
+         EXISTING FACT: {existing_fact}\n\
+         \nDoes the NEW fact CONTRADICT, DUPLICATE (entail/say the same thing), or EXTEND \
+         (different but compatible) the EXISTING fact?\n\
+         Answer with exactly one word: entails | contradicts | neutral",
+    );
+    let messages = vec![serde_json::json!({ "role": "user", "content": prompt })];
+    let raw = deepseek::complete(
+        &provider.api_key,
+        provider.base_url.as_deref(),
+        &model.model_id,
+        &messages,
+        32,
+    )
+    .await
+    .ok()?;
+    let trimmed = raw.trim().to_lowercase();
+    if trimmed.contains("entails") {
+        Some("entails")
+    } else if trimmed.contains("contradicts") || trimmed.contains("contradict") {
+        Some("contradicts")
+    } else if trimmed.contains("neutral") || trimmed.contains("extend") {
+        Some("neutral")
+    } else {
+        // Model didn't follow the format — default to the safe choice: neutral
+        // (save both; don't lose data on a misparse).
+        Some("neutral")
+    }
+}
+
+/// Append `new_id` to the `related_ids` array of `entry_id` (if not already
+/// present). Used when NLI returns `neutral` to link extended/related facts.
+async fn link_related(pool: &DbPool, entry_id: Uuid, new_id: Uuid) {
+    let _ = sqlx::query(
+        "UPDATE db_memory_entries \
+         SET related_ids = array_append(related_ids, $2), updated_at = NOW() \
+         WHERE id = $1 AND NOT ($2 = ANY(related_ids))",
+    )
+    .bind(entry_id)
+    .bind(new_id)
+    .execute(pool)
+    .await;
+}
+
 /// Save a dialectic-derived fact as a low-trust pending entry (60-day TTL),
 /// `source=dialectic_derived`, `confidence=medium`. Dedups against the agent's
 /// active entries; if the nearest neighbour is a close match that is itself
 /// pending, treat the re-derivation as corroboration and promote it to confirmed
-/// instead of inserting a duplicate. Returns the outcome label.
+/// instead of inserting a duplicate. If the nearest neighbour is confirmed and
+/// close, runs Stage-B NLI to judge entail/contradict/neutral.
+/// Returns the outcome label.
 pub async fn save_derived(
     pool: &DbPool,
     agent: &str,
@@ -221,19 +312,89 @@ pub async fn save_derived(
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?;
-    if let Some((id, dist, status)) = nearest {
+    if let Some((existing_id, dist, status)) = nearest {
         if dist < DUP_DISTANCE {
             if status == "pending" {
+                // Corroboration: re-derivation confirms a pending fact.
                 let _ = sqlx::query(
                     "UPDATE db_memory_entries \
                      SET confidence = 'high', status = 'confirmed', expires_at = NULL, updated_at = NOW() \
                      WHERE id = $1",
                 )
-                .bind(id)
+                .bind(existing_id)
                 .execute(pool)
                 .await;
                 return Ok("corroborated");
             }
+            // Close match against a confirmed entry — run Stage-B NLI to
+            // judge entail/contradict/neutral.
+            let existing_content: Option<String> = sqlx::query_scalar(
+                "SELECT content FROM db_memory_entries WHERE id = $1",
+            )
+            .bind(existing_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+            if let Some(ref existing_content) = existing_content {
+                if let Some(judgment) = nli_check(pool, content, existing_content).await {
+                    match judgment {
+                        "entails" => {
+                            return Ok("duplicate");
+                        }
+                        "contradicts" => {
+                            let new_id: Uuid = sqlx::query_scalar(
+                                "INSERT INTO db_memory_entries \
+                                   (agent, content, embedding, category, confidence, source, status, source_conversation_id, contradicts_id, expires_at) \
+                                 VALUES ($1, $2, $3, $4, 'medium', 'dialectic_derived', 'pending', $5, $6, NOW() + INTERVAL '60 days') \
+                                 RETURNING id",
+                            )
+                            .bind(agent)
+                            .bind(content)
+                            .bind(&vec)
+                            .bind(category)
+                            .bind(conversation_id)
+                            .bind(existing_id)
+                            .fetch_one(pool)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                            let _ = sqlx::query(
+                                "UPDATE db_memory_entries SET is_active = FALSE, updated_at = NOW() WHERE id = $1",
+                            )
+                            .bind(existing_id)
+                            .execute(pool)
+                            .await;
+                            log::warn!(
+                                "dialectic contradiction: new '{}' contradicts existing {} — \
+                                 old deactivated, new saved as {}",
+                                content, existing_id, new_id
+                            );
+                            return Ok("inserted");
+                        }
+                        _ => {
+                            // neutral — save both, link via related_ids.
+                            let new_id: Uuid = sqlx::query_scalar(
+                                "INSERT INTO db_memory_entries \
+                                   (agent, content, embedding, category, confidence, source, status, source_conversation_id, expires_at) \
+                                 VALUES ($1, $2, $3, $4, 'medium', 'dialectic_derived', 'pending', $5, NOW() + INTERVAL '60 days') \
+                                 RETURNING id",
+                            )
+                            .bind(agent)
+                            .bind(content)
+                            .bind(&vec)
+                            .bind(category)
+                            .bind(conversation_id)
+                            .fetch_one(pool)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                            link_related(pool, existing_id, new_id).await;
+                            link_related(pool, new_id, existing_id).await;
+                            return Ok("inserted");
+                        }
+                    }
+                }
+            }
+            // Fallback: no NLI available or couldn't fetch existing content.
             return Ok("duplicate");
         }
     }
@@ -515,4 +676,36 @@ pub async fn memory_reject(pool: &DbPool, agent: &str, args: &Value) -> Result<V
         return Err("memory entry not found".into());
     }
     Ok(json!({ "rejected": true, "id": id }))
+}
+
+pub async fn memory_related(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
+    let id = uuid_arg(args, "id")?;
+    let related: Option<Vec<Uuid>> = sqlx::query_scalar(
+        "SELECT related_ids FROM db_memory_entries WHERE id = $1 AND agent = $2 AND is_active",
+    )
+    .bind(id)
+    .bind(agent)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .flatten();
+    let ids = related.unwrap_or_default();
+    if ids.is_empty() {
+        return Ok(json!({ "entries": [] }));
+    }
+    let rows: Vec<(Uuid, String, Option<String>, String, String)> = sqlx::query_as(
+        "SELECT id, content, category, confidence, source FROM db_memory_entries \
+         WHERE id = ANY($1) AND is_active ORDER BY created_at DESC",
+    )
+    .bind(&ids)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    let entries: Vec<Value> = rows
+        .into_iter()
+        .map(|(eid, content, category, confidence, source)| {
+            json!({ "id": eid, "content": content, "category": category, "confidence": confidence, "source": source })
+        })
+        .collect();
+    Ok(json!({ "entries": entries }))
 }

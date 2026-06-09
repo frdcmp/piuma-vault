@@ -564,6 +564,10 @@ const TABLES: &[TableDefinition] = &[
                 user_context TEXT NOT NULL DEFAULT '',
                 memory TEXT NOT NULL DEFAULT '',
                 commands JSONB NOT NULL DEFAULT '[]',
+                dialectic_cadence INTEGER NOT NULL DEFAULT 3,
+                dialectic_depth INTEGER NOT NULL DEFAULT 1,
+                dialectic_model_id TEXT,
+                dialectic_observe_vault BOOLEAN NOT NULL DEFAULT FALSE,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
@@ -671,6 +675,7 @@ const TABLES: &[TableDefinition] = &[
                 content JSONB NOT NULL DEFAULT '[]',
                 content_text TEXT,
                 content_tsv TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', coalesce(content_text, ''))) STORED,
+                embedding vector(1536),
                 model_used TEXT,
                 provider_kind TEXT,
                 tokens_input INTEGER,

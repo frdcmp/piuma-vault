@@ -1,10 +1,10 @@
 /// Embedding Worker — polls `embedding_jobs` via `FOR UPDATE SKIP LOCKED`,
 /// calls Azure OpenAI to generate 1536-dim embeddings, stores them in the
-/// notes table, and removes completed jobs.
-use std::time::Duration;
+/// notes table, and removes completed jobs. Also handles periodic cleanup:
+/// expired pending memory entries and cross-conversation pattern detection.
+use std::time::{Duration, Instant};
 use tokio::time::sleep;
 
-use backend::db;
 use backend::apps;
 
 #[tokio::main]
@@ -13,7 +13,7 @@ async fn main() {
 
     log::info!("🧠 Embedding Worker starting...");
 
-    let pool = match db::db::create_pool().await {
+    let pool = match backend::db::db::create_pool().await {
         Ok(p) => {
             log::info!("✅ Database connection pool established");
             p
@@ -27,8 +27,39 @@ async fn main() {
     // Main loop: poll for pending jobs
     let poll_interval = Duration::from_secs(2);
     let max_attempts = 3;
+    let mut last_cleanup = Instant::now();
+    let cleanup_interval = Duration::from_secs(600); // every 10 minutes
+    let mut last_cross_conv = Instant::now();
+    let cross_conv_interval = Duration::from_secs(3600); // every hour
 
     loop {
+        // Periodic: reject expired pending memory entries.
+        if last_cleanup.elapsed() >= cleanup_interval {
+            match sqlx::query(
+                "UPDATE db_memory_entries \
+                 SET status = 'rejected', is_active = FALSE, updated_at = NOW() \
+                 WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at < NOW() \
+                   AND is_active",
+            )
+            .execute(&pool)
+            .await
+            {
+                Ok(r) => {
+                    if r.rows_affected() > 0 {
+                        log::info!("🧹 Cleanup: rejected {} expired pending memory entries", r.rows_affected());
+                    }
+                }
+                Err(e) => log::error!("Cleanup query failed: {e}"),
+            }
+            last_cleanup = Instant::now();
+        }
+
+        // Periodic: cross-conversation pattern detection.
+        if last_cross_conv.elapsed() >= cross_conv_interval {
+            cross_conversation_patterns(&pool).await;
+            last_cross_conv = Instant::now();
+        }
+
         // Claim up to 5 jobs at a time with FOR UPDATE SKIP LOCKED
         let jobs: Vec<(uuid::Uuid, uuid::Uuid, String, i32)> = match sqlx::query_as(
             r#"
@@ -194,4 +225,42 @@ async fn drain_memory_jobs(
         log::error!("Failed to poll memory jobs: {e}");
         Vec::new()
     })
+}
+
+/// Hourly cross-conversation pattern detection: counts dialectic-derived facts
+/// that share the same category, grouped by agent. A future iteration will
+/// cluster by embedding distance for true pattern mining.
+async fn cross_conversation_patterns(pool: &backend::db::db::DbPool) {
+    #[derive(sqlx::FromRow)]
+    struct CategoryCount {
+        agent: String,
+        category: Option<String>,
+        cnt: Option<i64>,
+    }
+    let rows: Vec<CategoryCount> = match sqlx::query_as(
+        "SELECT agent, category, COUNT(*) AS cnt \
+         FROM db_memory_entries \
+         WHERE source = 'dialectic_derived' AND status = 'confirmed' AND is_active \
+         GROUP BY agent, category \
+         ORDER BY cnt DESC LIMIT 20",
+    )
+    .fetch_all(pool)
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("Cross-conversation patterns query failed: {e}");
+            return;
+        }
+    };
+    if rows.is_empty() {
+        return;
+    }
+    log::info!(
+        "🔍 Cross-conversation: top dialectic-derived categories by agent: {}",
+        rows.iter()
+            .map(|r| format!("{}/{:?}={}", r.agent, r.category, r.cnt.unwrap_or(0)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
 }
