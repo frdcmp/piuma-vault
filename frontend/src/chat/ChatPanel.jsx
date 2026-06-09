@@ -10,7 +10,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import { useNavigate } from "react-router-dom";
 import remarkGfm from "remark-gfm";
-import { PvModal } from "@/admin/components/ui";
+import { PvModal, pvMessage } from "@/admin/components/ui";
 import {
 	clearConversation,
 	createConversation,
@@ -496,6 +496,13 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const [loadingConv, setLoadingConv] = useState(
 		() => !!localStorage.getItem(STORAGE_KEY),
 	);
+	// The currently-shown conversation, as a ref — so async writers (a detached
+	// stream, the recover poller) can bail if the user has switched away, instead
+	// of clobbering the conversation now on screen.
+	const conversationIdRef = useRef(conversationId);
+	useEffect(() => {
+		conversationIdRef.current = conversationId;
+	}, [conversationId]);
 	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
 	const inputRef = useRef(null);
@@ -630,8 +637,11 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const recoverTurn = useCallback(async (convId) => {
 		for (let i = 0; i < 24; i++) {
 			await new Promise((r) => setTimeout(r, 2500)); // ~60s total
+			// Bail if the user switched away — don't overwrite another conversation.
+			if (conversationIdRef.current !== convId) return;
 			try {
 				const d = await fetchConversation(convId);
+				if (conversationIdRef.current !== convId) return;
 				const msgs = d.messages || [];
 				const last = msgs[msgs.length - 1];
 				if (last && last.role === "assistant") {
@@ -649,6 +659,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				/* keep trying */
 			}
 		}
+		if (conversationIdRef.current !== convId) return;
 		setMessages((curr) => {
 			const updated = [...curr];
 			const last = updated[updated.length - 1];
@@ -935,6 +946,14 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const switchConversation = useCallback(async (id) => {
 		setOverlay(null);
 		setTitleMenu(false);
+		// Detach any active stream WITHOUT cancelling the backend turn — it keeps
+		// running and is persisted, so it's intact when you switch back. Aborting
+		// the fetch stops its onText/onTool callbacks writing into this new
+		// conversation. (Contrast stopStreaming, which also tells the server to
+		// cancel.)
+		abortRef.current?.abort();
+		abortRef.current = null;
+		setIsStreaming(false);
 		setConversationId(id);
 		setMessages([]);
 		setLoadingConv(true);
@@ -1043,11 +1062,12 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		async (m) => {
 			setOverlay(null);
 			setModelId(m.id);
+			pvMessage.success(`Model switched to ${m.display_name}`);
 			if (conversationId) {
 				try {
 					await updateConversation({ id: conversationId, model_id: m.id });
 				} catch {
-					/* ignore */
+					pvMessage.error("Couldn't save the model change");
 				}
 			}
 		},

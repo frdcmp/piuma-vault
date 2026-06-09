@@ -75,6 +75,9 @@ const buildRrule = (freq, byday) => {
 
 const ALL = { key: "all", names: null, label: "all" };
 
+// `alerts` arrives as a JSON array of { offset_minutes, channels? } objects.
+const hasAlerts = (t) => Array.isArray(t.alerts) && t.alerts.length > 0;
+
 export default function TasksScreen({ navigation, route }) {
 	const insets = useSafeAreaInsets();
 	useTasksLiveUpdates(); // refetch when tasks change on another device
@@ -487,7 +490,7 @@ export default function TasksScreen({ navigation, route }) {
 											{t.title}
 										</Text>
 										{/* Meta line: bucket + due on the left, tags on the right. */}
-										{bucket || t.due_at || tagsOf.length ? (
+										{bucket || t.due_at || tagsOf.length || hasAlerts(t) ? (
 											<View style={s.metaRow}>
 												<View style={s.metaLeft}>
 													{bucket ? (
@@ -518,6 +521,14 @@ export default function TasksScreen({ navigation, route }) {
 														<Text style={[s.meta, s.due]}>
 															due <TimeAgo value={t.due_at} />
 														</Text>
+													) : null}
+													{hasAlerts(t) ? (
+														<Ionicons
+															name="notifications-outline"
+															size={12}
+															color={colors.accent}
+															style={s.alertIcon}
+														/>
 													) : null}
 												</View>
 												{tagsOf.length ? (
@@ -1104,6 +1115,8 @@ const s = StyleSheet.create({
 	},
 	meta: { fontFamily: MONO, fontSize: 11, letterSpacing: 0.3 },
 	due: { color: colors.accent },
+	// Bell shown when a task has one or more alerts configured.
+	alertIcon: { marginLeft: 2 },
 	tag: { color: colors.accent2 },
 	rrule: { color: colors.accent4 },
 	metaSep: { color: colors.muted },

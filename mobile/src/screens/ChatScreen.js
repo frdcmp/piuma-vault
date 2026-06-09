@@ -492,6 +492,22 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	// it off for the next send. Mobile keeps it to a single note (no tabs, no
 	// lock state) — the chip just mirrors whatever note opened this chat.
 	const [contextAttached, setContextAttached] = useState(true);
+	// Transient confirmation banner (e.g. "Model switched to …"). Auto-clears.
+	const [toast, setToast] = useState("");
+	const toastTimer = useRef(null);
+	const flashToast = useCallback((msg) => {
+		setToast(msg);
+		if (toastTimer.current) clearTimeout(toastTimer.current);
+		toastTimer.current = setTimeout(() => setToast(""), 2000);
+	}, []);
+	useEffect(() => () => clearTimeout(toastTimer.current), []);
+	// Mirror of the shown conversation so async writers (a detached stream, the
+	// recover poller) can bail if the user switched away rather than clobber the
+	// conversation now on screen.
+	const conversationIdRef = useRef(conversationId);
+	useEffect(() => {
+		conversationIdRef.current = conversationId;
+	}, [conversationId]);
 	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
 	// Stick-to-bottom: only auto-follow new content while the user is already
@@ -645,7 +661,14 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	// Open a stored conversation (from the /sessions picker).
 	const switchConversation = useCallback(async (id) => {
 		setOverlay(null);
+		// Detach any active stream WITHOUT cancelling the backend turn — it keeps
+		// running and is persisted, so it's intact when you switch back. Aborting
+		// the fetch stops its callbacks writing into this new conversation.
+		abortRef.current?.abort();
+		abortRef.current = null;
+		setIsStreaming(false);
 		setConversationId(id);
+		setMessages([]);
 		try {
 			await AsyncStorage.setItem(CONV_STORAGE_KEY, id);
 			const d = await fetchConversation(id);
@@ -669,15 +692,16 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		async (m) => {
 			setOverlay(null);
 			setModelId(m.id); // optimistic; also carried into a not-yet-created convo
+			flashToast(`Model switched to ${m.display_name}`);
 			if (conversationId) {
 				try {
 					await updateConversation({ id: conversationId, model_id: m.id });
 				} catch {
-					/* ignore */
+					flashToast("Couldn't save the model change");
 				}
 			}
 		},
-		[conversationId],
+		[conversationId, flashToast],
 	);
 
 	const saveTitle = useCallback(async () => {
@@ -799,8 +823,11 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	const recoverTurn = useCallback(async (convId) => {
 		for (let i = 0; i < 24; i++) {
 			await new Promise((r) => setTimeout(r, 2500)); // ~60s total
+			// Bail if the user switched away — don't overwrite another conversation.
+			if (conversationIdRef.current !== convId) return;
 			try {
 				const d = await fetchConversation(convId);
+				if (conversationIdRef.current !== convId) return;
 				const msgs = d.messages || [];
 				const last = msgs[msgs.length - 1];
 				if (last && last.role === "assistant") {
@@ -820,6 +847,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				/* keep trying */
 			}
 		}
+		if (conversationIdRef.current !== convId) return;
 		// Gave up — leave a gentle note rather than a hard error.
 		setMessages((curr) => {
 			const updated = [...curr];
@@ -1060,6 +1088,12 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 							</Pressable>
 						) : null}
 					</View>
+
+					{toast ? (
+						<View style={styles.toast}>
+							<Text style={styles.toastText}>{toast}</Text>
+						</View>
+					) : null}
 
 					<View style={styles.messagesWrap}>
 						<ScrollView
@@ -1600,6 +1634,22 @@ const styles = StyleSheet.create({
 	},
 	navActionIcon: { color: colors.accent, fontFamily: MONO, fontSize: 14 },
 	navActionLabel: { color: colors.text, fontFamily: MONO, fontSize: 13 },
+	toast: {
+		marginHorizontal: 12,
+		marginTop: 6,
+		paddingVertical: 6,
+		paddingHorizontal: 10,
+		borderWidth: 1,
+		borderColor: colors.accent2,
+		borderRadius: 4,
+		backgroundColor: colors.bgSoft,
+	},
+	toastText: {
+		color: colors.accent2,
+		fontFamily: MONO,
+		fontSize: 12,
+		textAlign: "center",
+	},
 
 	// ── TOOL ACTIVITY (which plugins the agent ran this turn) ─
 	tools: { gap: 4, marginBottom: 10 },

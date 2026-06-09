@@ -1,3 +1,4 @@
+import { BellOutlined } from "@ant-design/icons";
 import {
 	closestCenter,
 	DndContext,
@@ -54,6 +55,9 @@ const PRIORITY_COLOR = [
 ];
 
 const ALL = { key: "all", names: null, label: "All" };
+
+// `alerts` arrives as a JSON array of { offset_minutes, channels? } objects.
+const hasAlerts = (t) => Array.isArray(t.alerts) && t.alerts.length > 0;
 
 // One pending task row, draggable via its handle (the rest of the row stays
 // clickable: ☐ toggles, the body opens the modal, #tags filter).
@@ -118,11 +122,20 @@ function SortableTaskRow({
 			) : null}
 			<button type="button" className="task-main" onClick={() => onOpen(t)}>
 				<span className="task-title">{t.title}</span>
-				{t.due_at ? (
+				{t.due_at || hasAlerts(t) ? (
 					<span className="task-meta">
-						<span className="task-due">
-							due <TimeAgo value={t.due_at} />
-						</span>
+						{t.due_at ? (
+							<span className="task-due">
+								due <TimeAgo value={t.due_at} />
+							</span>
+						) : null}
+						{hasAlerts(t) ? (
+							<BellOutlined
+								className="task-alert"
+								title="Has alerts set"
+								aria-label="Has alerts set"
+							/>
+						) : null}
 					</span>
 				) : null}
 			</button>
