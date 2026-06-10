@@ -5,7 +5,10 @@ import { useSprite } from "./SpriteProvider";
 // cells using the active mascot's palette. Stateless — animation lives in the
 // caller.
 export default function Sprite({ rows, pixelSize = 8 }) {
-	const { spriteColor } = useSprite();
+	const { spriteColor, ready } = useSprite();
+	// Until the active mascot has actually resolved (or fallen back on error),
+	// render nothing rather than flash the baked-in default and swap it out.
+	if (!ready) return null;
 	return (
 		<div style={{ lineHeight: 0 }}>
 			{rows.map((row, r) => (

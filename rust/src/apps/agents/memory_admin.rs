@@ -52,6 +52,7 @@ pub struct EntriesQuery {
     category: Option<String>,
     q: Option<String>,
     limit: Option<i64>,
+    offset: Option<i64>,
 }
 
 /// GET /agents/memory/entries — filterable list of L2/L4 entries (embedding
@@ -62,6 +63,7 @@ pub async fn list_entries(
     q: web::Query<EntriesQuery>,
 ) -> impl Responder {
     let limit = q.limit.unwrap_or(200).clamp(1, 1000);
+    let offset = q.offset.unwrap_or(0).max(0);
     match sqlx::query_as::<_, MemoryEntryOut>(
         "SELECT id, agent, content, category, confidence, source, status, tags, is_active, \
                 (embedding IS NOT NULL) AS embedded, expires_at, created_at, updated_at \
@@ -71,7 +73,7 @@ pub async fn list_entries(
            AND ($3::text IS NULL OR source = $3) \
            AND ($4::text IS NULL OR category = $4) \
            AND ($5::text IS NULL OR content ILIKE '%' || $5 || '%') \
-         ORDER BY created_at DESC LIMIT $6",
+         ORDER BY created_at DESC LIMIT $6 OFFSET $7",
     )
     .bind(&q.agent)
     .bind(&q.status)
@@ -79,6 +81,7 @@ pub async fn list_entries(
     .bind(&q.category)
     .bind(&q.q)
     .bind(limit)
+    .bind(offset)
     .fetch_all(pool.get_ref())
     .await
     {
