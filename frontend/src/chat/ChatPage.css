@@ -682,69 +682,83 @@ button.chat-context-tag-main {
 	background: rgba(255, 107, 107, 0.08);
 }
 
-/* Slash-command menu — keyboard + mouse navigable. */
+/* Slash-command menu — keyboard + mouse navigable. Pixel-styled to match the
+   vault design language (sharp corners, 2px border, hard offset shadow). */
 .slash-menu {
 	background: var(--vp-panel, #1b1e25);
-	border: 1px solid var(--vp-border-soft, #2a2f39);
-	border-radius: 6px;
-	margin-bottom: 6px;
-	max-height: 200px;
+	border: 2px solid var(--vp-border, #3a4150);
+	border-radius: var(--vp-radius, 0);
+	box-shadow: var(--vp-shadow-lg, 4px 4px 0 0 #000);
+	image-rendering: pixelated;
+	margin-bottom: 8px;
+	max-height: 220px;
 	overflow-y: auto;
+	font-family: var(--vp-font, monospace);
 }
 .slash-item {
-	display: block;
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
 	width: 100%;
 	text-align: left;
 	background: none;
-	border: none;
+	border: 0;
+	border-left: 3px solid transparent;
 	color: var(--vp-text, #d6dbe5);
-	padding: 6px 10px;
+	padding: 7px 12px;
 	cursor: pointer;
 	font-family: inherit;
 	font-size: 13px;
-	transition: background 0.1s ease;
+	transition: background 0.08s steps(2, end);
+}
+.slash-item + .slash-item {
+	border-top: 1px solid var(--vp-border-soft, #2a2f39);
 }
 .slash-item:hover,
 .slash-item.is-active {
 	background: var(--vp-hover, rgba(92, 208, 169, 0.12));
-}
-.slash-item.is-active {
-	box-shadow: inset 2px 0 0 var(--vp-accent-2, #5cd0a9);
+	border-left-color: var(--vp-accent-2, #5cd0a9);
 }
 .slash-item:active {
 	background: var(--vp-active, rgba(92, 208, 169, 0.2));
 }
 .slash-item-name {
 	color: var(--vp-accent-2, #5cd0a9);
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	flex-shrink: 0;
 }
 /* Agent-specific commands use a distinct hue so they read apart from the
    global/client commands (which stay accent-2 green). */
 .slash-item--agent .slash-item-name {
 	color: var(--vp-accent-4, #6ab0ff);
 }
+.slash-item--agent:hover,
 .slash-item--agent.is-active {
-	box-shadow: inset 2px 0 0 var(--vp-accent-4, #6ab0ff);
+	border-left-color: var(--vp-accent-4, #6ab0ff);
 }
 .slash-item-desc {
 	color: var(--vp-muted, #8a93a3);
-	margin-left: 8px;
 	font-size: 12px;
 }
 
-/* Sessions / models picker rows — keyboard + mouse navigable. */
+/* Sessions / models picker rows — keyboard + mouse navigable. Pixel-styled to
+   match the vault design language (sharp corners, accent edge highlight). */
 .picker-item {
 	display: block;
 	width: 100%;
 	text-align: left;
 	background: none;
-	border: none;
+	border: 0;
+	border-left: 3px solid transparent;
 	color: var(--vp-text, #d6dbe5);
-	padding: 5px 8px;
-	border-radius: 4px;
+	padding: 8px 10px;
+	border-radius: var(--vp-radius, 0);
 	cursor: pointer;
 	font-family: inherit;
 	font-size: 13px;
-	transition: background 0.1s ease;
+	transition: background 0.08s steps(2, end);
 }
 .picker-item.ellipsis {
 	overflow: hidden;
@@ -754,9 +768,7 @@ button.chat-context-tag-main {
 .picker-item:hover,
 .picker-item.is-active {
 	background: var(--vp-hover, rgba(92, 208, 169, 0.12));
-}
-.picker-item.is-active {
-	box-shadow: inset 2px 0 0 var(--vp-accent-2, #5cd0a9);
+	border-left-color: var(--vp-accent-2, #5cd0a9);
 }
 .picker-item:active {
 	background: var(--vp-active, rgba(92, 208, 169, 0.2));
@@ -782,23 +794,24 @@ button.chat-context-tag-main {
 .picker-row {
 	display: flex;
 	align-items: center;
-	border-radius: 4px;
+	border-left: 3px solid transparent;
+	border-radius: var(--vp-radius, 0);
+	transition: background 0.08s steps(2, end);
 }
 .picker-row:hover,
 .picker-row.is-active {
 	background: var(--vp-hover, rgba(92, 208, 169, 0.12));
-}
-.picker-row.is-active {
-	box-shadow: inset 2px 0 0 var(--vp-accent-2, #5cd0a9);
+	border-left-color: var(--vp-accent-2, #5cd0a9);
 }
 .picker-row .picker-item {
 	flex: 1 1 auto;
 	min-width: 0;
+	border-left: 0;
 }
 .picker-row .picker-item:hover,
 .picker-row .picker-item:active {
 	background: none;
-	box-shadow: none;
+	border-left-color: transparent;
 }
 .picker-del {
 	flex: 0 0 auto;
@@ -820,15 +833,16 @@ button.chat-context-tag-main {
 .picker-search {
 	width: 100%;
 	box-sizing: border-box;
-	margin-bottom: 6px;
-	padding: 6px 8px;
-	background: var(--vp-input-bg, #14171d);
-	border: 1px solid var(--vp-border-soft, #2a2f39);
-	border-radius: 4px;
+	margin: 10px 0 0;
+	padding: 8px 10px;
+	background: var(--vp-bg-soft, #14171d);
+	border: 2px solid var(--vp-border, #3a4150);
+	border-radius: var(--vp-radius, 0);
 	color: var(--vp-text, #d6dbe5);
 	font-family: inherit;
 	font-size: 13px;
 	outline: none;
+	transition: border-color 0.1s;
 }
 .picker-search:focus {
 	border-color: var(--vp-accent-2, #5cd0a9);
@@ -837,40 +851,83 @@ button.chat-context-tag-main {
 	color: var(--vp-faint, #5b6373);
 }
 
-/* Picker overlay (sessions/models): header + search stay pinned, list scrolls. */
+/* Picker overlay (sessions/models): header + search stay pinned, list scrolls.
+   Pixel-styled to match the vault panels (sharp corners, 2px frame, title bar
+   with the three "traffic light" dots). */
 .picker-overlay {
 	display: flex;
 	flex-direction: column;
-	max-height: 280px;
-	margin-bottom: 6px;
-	padding: 8px;
+	max-height: 300px;
+	margin-bottom: 8px;
+	padding: 0 10px 10px;
 	background: var(--vp-panel, #1b1e25);
-	border: 1px solid var(--vp-border-soft, #2a2f39);
-	border-radius: 6px;
+	border: 2px solid var(--vp-border, #3a4150);
+	border-radius: var(--vp-radius, 0);
+	image-rendering: pixelated;
+	font-family: var(--vp-font, monospace);
 }
+/* Title bar spans the full panel width — break out of the body's side padding. */
 .picker-head {
 	display: flex;
-	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 6px;
+	gap: 8px;
+	margin: 0 -10px;
+	padding: 6px 10px 6px 12px;
+	background: var(--vp-bg-soft, #15171c);
+	border-bottom: 2px solid var(--vp-border, #3a4150);
+}
+.picker-dots {
+	display: inline-flex;
+	gap: 4px;
+	margin-right: 4px;
+}
+.picker-dots span {
+	width: 8px;
+	height: 8px;
+	display: block;
+	background: var(--vp-border, #3a4150);
+}
+.picker-dots span:nth-child(1) {
+	background: var(--vp-accent-3, #ff6b6b);
+}
+.picker-dots span:nth-child(2) {
+	background: var(--vp-accent, #f7c948);
+}
+.picker-dots span:nth-child(3) {
+	background: var(--vp-accent-2, #5cd0a9);
 }
 .picker-title {
-	font-size: 12px;
-	color: var(--vp-muted, #8a93a3);
+	flex: 1;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: var(--vp-accent, #f7c948);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 .picker-close {
+	flex: none;
 	background: none;
 	border: none;
 	color: var(--vp-muted, #8a93a3);
 	cursor: pointer;
 	font-size: 16px;
+	line-height: 1;
+	transition: color 0.1s;
+}
+.picker-close:hover {
+	color: var(--vp-accent-3, #ff6b6b);
 }
 .picker-list {
 	flex: 1 1 auto;
 	min-height: 0;
+	margin-top: 10px;
 	overflow-y: auto;
 }
 .picker-empty {
+	padding: 10px;
 	color: var(--vp-faint, #5b6373);
 	font-size: 12px;
 }
@@ -970,6 +1027,14 @@ button.chat-context-tag-main {
 	margin: 0;
 	z-index: 30;
 	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+/* Keep the pixel hard-shadow on the floating pickers (layered with the soft lift
+   so they still read as floating above the chat). */
+.slash-menu,
+.picker-overlay {
+	box-shadow:
+		var(--vp-shadow-lg, 4px 4px 0 0 #000),
+		0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
 /* Sessions picker loading state — pixel Piuma while the list loads (held ~1s so

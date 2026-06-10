@@ -188,6 +188,38 @@ pub async fn list_models(
     }
 }
 
+/// Live model catalog from the provider's own API — powers the wire-id
+/// suggestions in the admin UI. Best-effort: a bad key or unreachable provider
+/// surfaces as a 502 with the upstream message.
+pub async fn list_available_models(
+    _user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let provider: Option<ProviderRow> =
+        match sqlx::query_as("SELECT * FROM db_llm_providers WHERE id = $1")
+            .bind(path.into_inner())
+            .fetch_optional(pool.get_ref())
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => return db_err(e),
+        };
+    let Some(provider) = provider else {
+        return HttpResponse::NotFound().json(ApiError::new("provider not found"));
+    };
+    match super::providers::catalog::list_models(
+        &provider.kind,
+        &provider.api_key,
+        provider.base_url.as_deref(),
+    )
+    .await
+    {
+        Ok(models) => HttpResponse::Ok().json(json!({ "models": models })),
+        Err(e) => HttpResponse::BadGateway().json(ApiError::new(e)),
+    }
+}
+
 /// All enabled models across providers — for the `/models` chat command picker.
 pub async fn list_all_models(_user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
     let rows: Vec<(Uuid, String, String, bool, String)> = sqlx::query_as(
