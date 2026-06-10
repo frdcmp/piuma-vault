@@ -34,7 +34,6 @@ import {
 	streamChat,
 	updateConversation,
 } from "../api/agentChatApi";
-import BottomSheet from "../components/BottomSheet";
 import MarkdownView from "../components/MarkdownView";
 import PiumaRunning from "../components/PiumaRunning";
 import { toast } from "../components/Toast";
@@ -306,15 +305,30 @@ function UserBubble({ content, context }) {
 }
 
 // Persistent list of tools the agent ran/is running for one assistant turn.
+// Chips size to content and wrap; we count the wrapped ROWS (distinct chip
+// y-offsets) and only collapse a longer settled run (3+ rows) into a summary.
 function ToolActivity({ tools, isStreaming }) {
 	const [expanded, setExpanded] = useState(false);
+	const [rowCount, setRowCount] = useState(1);
+	const chipY = useRef(new Map());
 	if (!tools?.length) return null;
 	const anyErr = tools.some((t) => t.status === "error");
+
+	// Each chip reports its top offset; distinct offsets = number of wrapped rows.
+	const onChipLayout = (id) => (e) => {
+		chipY.current.set(id, Math.round(e.nativeEvent.layout.y));
+		const n = new Set(chipY.current.values()).size;
+		setRowCount((p) => (p === n ? p : n));
+	};
 
 	const list = (
 		<View style={styles.tools}>
 			{tools.map((t) => (
-				<View key={t.id} style={[styles.tool, styles[`tool_${t.status}`]]}>
+				<View
+					key={t.id}
+					onLayout={onChipLayout(t.id)}
+					style={[styles.tool, styles[`tool_${t.status}`]]}
+				>
 					<Text style={[styles.toolIcon, styles[`toolIcon_${t.status}`]]}>
 						{TOOL_GLYPH[t.status] || "⛏"}
 					</Text>
@@ -329,9 +343,10 @@ function ToolActivity({ tools, isStreaming }) {
 		</View>
 	);
 
-	// Live: show the full activity as it streams. Once settled it collapses to a
-	// one-line summary you can tap to re-expand (matches the web chat).
-	if (isStreaming) return list;
+	// Show the full activity while streaming, and while it fits in fewer than 3
+	// wrapped rows. Only collapse a longer settled run (3+ rows) into a one-line,
+	// tap-to-expand summary.
+	if (isStreaming || rowCount < 3) return list;
 	return (
 		<View style={styles.toolsWrap}>
 			<Pressable
@@ -482,6 +497,9 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	const [messages, setMessages] = useState([]);
 	const [input, setInput] = useState("");
 	const [inputHeight, setInputHeight] = useState(INPUT_MIN_H);
+	// Composer height — measured so the floating picker (slash list / sessions /
+	// models / rename) anchors just above the input, like the web chat.
+	const [composerH, setComposerH] = useState(0);
 	const [isStreaming, setIsStreaming] = useState(false);
 	const [keyboardVisible, setKeyboardVisible] = useState(false);
 	// Active agents conversation + the agent for new chats (admin default).
@@ -768,14 +786,28 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	useEffect(() => {
 		if (overlay !== "sessions") return;
 		const q = sessionQuery.trim();
+		let cancelled = false;
 		const t = setTimeout(async () => {
 			try {
-				setPickList(await fetchConversations(undefined, q || undefined));
+				const data = await fetchConversations(undefined, q || undefined);
+				if (cancelled) return;
+				const finish = () => {
+					if (cancelled) return;
+					setPickList(data);
+					setSessionsLoading(false);
+				};
+				// Hold the loader for a ~1s floor (set on open) so it doesn't flash.
+				const wait = Math.max(0, sessionsMinUntil.current - Date.now());
+				if (wait > 0) setTimeout(finish, wait);
+				else finish();
 			} catch {
-				/* ignore */
+				if (!cancelled) setSessionsLoading(false);
 			}
 		}, 200);
-		return () => clearTimeout(t);
+		return () => {
+			cancelled = true;
+			clearTimeout(t);
+		};
 	}, [overlay, sessionQuery]);
 
 	// Slash menu: client commands + the active agent's macros, filtered by the
@@ -1091,23 +1123,23 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 								{isStreaming ? "streaming" : "idle"}
 							</Text>
 						</View>
-						{messages.length > 0 ? (
-							<Pressable
-								onPress={handleClearConversation}
-								style={({ pressed }) => [
-									styles.clearBtn,
-									pressed && styles.clearBtnPressed,
-								]}
-								hitSlop={8}
-								accessibilityLabel="Clear conversation"
-							>
-								<Ionicons
-									name="trash-outline"
-									size={14}
-									color={colors.accent3}
-								/>
-							</Pressable>
-						) : null}
+						<Pressable
+							onPress={handleClearConversation}
+							disabled={messages.length === 0}
+							style={({ pressed }) => [
+								styles.clearBtn,
+								pressed && styles.clearBtnPressed,
+								messages.length === 0 && styles.clearBtnDisabled,
+							]}
+							hitSlop={8}
+							accessibilityLabel="New conversation"
+						>
+							<Ionicons
+								name="create-outline"
+								size={16}
+								color={messages.length === 0 ? colors.muted : colors.text}
+							/>
+						</Pressable>
 					</View>
 
 					<View style={styles.messagesWrap}>
@@ -1219,7 +1251,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					</View>
 
 					{slashMatches.length > 0 ? (
-						<View style={styles.slashMenu}>
+						<View style={[styles.slashMenu, { bottom: composerH + 6 }]}>
 							{slashMatches.map((c) => (
 								<Pressable
 									key={`${c.kind}-${c.name}`}
@@ -1247,6 +1279,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					) : null}
 
 					<View
+						onLayout={(e) => setComposerH(e.nativeEvent.layout.height)}
 						style={[
 							styles.composer,
 							{ paddingBottom: keyboardVisible ? 10 : insets.bottom + 10 },
@@ -1323,19 +1356,20 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					</View>
 				</View>
 
-				<BottomSheet
-					visible={!!overlay}
-					onClose={() => setOverlay(null)}
-					title={
-						overlay === "models"
-							? "Pick a model"
-							: overlay === "sessions"
-								? "Switch conversation"
-								: overlay === "title"
-									? "Rename conversation"
-									: ""
-					}
-				>
+				{overlay ? (
+					<View style={[styles.floatPicker, { bottom: composerH + 6 }]}>
+						<View style={styles.floatHead}>
+							<Text style={styles.floatTitle}>
+								{overlay === "models"
+									? "Pick a model"
+									: overlay === "sessions"
+										? "Switch conversation"
+										: "Rename conversation"}
+							</Text>
+							<Pressable onPress={() => setOverlay(null)} hitSlop={8}>
+								<Text style={styles.floatClose}>×</Text>
+							</Pressable>
+						</View>
 					{overlay === "title" ? (
 						<View style={styles.overlayTitleWrap}>
 							<Pressable
@@ -1470,7 +1504,8 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 							) : null}
 						</>
 					)}
-				</BottomSheet>
+					</View>
+				) : null}
 			</SafeAreaView>
 		</KeyboardAvoidingView>
 	);
@@ -1532,12 +1567,15 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		borderWidth: 1,
-		borderColor: "rgba(255, 107, 107, 0.4)",
-		backgroundColor: "rgba(255, 107, 107, 0.08)",
+		borderColor: colors.border,
+		backgroundColor: colors.bgSoft,
 	},
 	clearBtnPressed: {
 		transform: [{ translateX: 1 }, { translateY: 1 }],
-		backgroundColor: "rgba(255, 107, 107, 0.18)",
+		backgroundColor: colors.panel,
+	},
+	clearBtnDisabled: {
+		opacity: 0.4,
 	},
 	statusDot: { width: 6, height: 6 },
 	statusText: {
@@ -1658,7 +1696,13 @@ const styles = StyleSheet.create({
 	navActionLabel: { color: colors.text, fontFamily: MONO, fontSize: 13 },
 
 	// ── TOOL ACTIVITY (which plugins the agent ran this turn) ─
-	tools: { gap: 4, marginBottom: 10 },
+	tools: {
+		flexDirection: "row",
+		flexWrap: "wrap",
+		alignItems: "flex-start",
+		gap: 4,
+		marginBottom: 10,
+	},
 	// Collapsed one-line summary shown after the turn settles.
 	toolsWrap: { marginBottom: 10 },
 	toolsSummary: {
@@ -1892,13 +1936,50 @@ const styles = StyleSheet.create({
 	sendLabelDisabled: { color: colors.muted },
 
 	// ── SLASH COMMAND MENU ───────────────────────────────────
+	// Floating pickers (slash list + sessions/models/rename) — anchored just above
+	// the composer (bottom set inline from the measured composer height), so they
+	// overlay the chat instead of pushing the input down. Mirrors the web chat.
 	slashMenu: {
-		marginHorizontal: 12,
-		marginBottom: 6,
+		position: "absolute",
+		left: 12,
+		right: 12,
+		zIndex: 60,
+		elevation: 16,
 		borderWidth: 1,
 		borderColor: colors.border,
 		backgroundColor: colors.panel,
-		maxHeight: 220,
+		maxHeight: 240,
+	},
+	floatPicker: {
+		position: "absolute",
+		left: 12,
+		right: 12,
+		zIndex: 60,
+		elevation: 16,
+		maxHeight: 420,
+		padding: 8,
+		borderWidth: 1,
+		borderColor: colors.border,
+		borderRadius: 6,
+		backgroundColor: colors.panel,
+	},
+	floatHead: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		marginBottom: 6,
+	},
+	floatTitle: {
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 12,
+		fontWeight: "700",
+	},
+	floatClose: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 18,
+		paddingHorizontal: 4,
 	},
 	slashItem: {
 		flexDirection: "row",

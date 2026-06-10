@@ -139,6 +139,8 @@ export default function PiumaEmptyState({
 	const fall = useRef(new Animated.Value(-400)).current;
 	const float = useRef(new Animated.Value(0)).current;
 	const caret = useRef(new Animated.Value(1)).current;
+	// jump: one-shot hop played when Piuma is tapped (0 = grounded).
+	const jump = useRef(new Animated.Value(0)).current;
 	const [dims, setDims] = useState({ width: 0, height: 0 });
 	// Text currently typed out by the terminal-style typewriter.
 	const [typed, setTyped] = useState("");
@@ -252,6 +254,32 @@ export default function PiumaEmptyState({
 		inputRange: [0, 1],
 		outputRange: ["-3deg", "3deg"],
 	});
+	// 0 → grounded, 1 → top of the hop.
+	const jumpY = jump.interpolate({
+		inputRange: [0, 1],
+		outputRange: [0, -40],
+	});
+
+	// Play a quick up-and-down hop. Ignores taps while already mid-jump.
+	const boop = () => {
+		jump.stopAnimation((v) => {
+			if (v > 0) return;
+			Animated.sequence([
+				Animated.timing(jump, {
+					toValue: 1,
+					duration: 220,
+					easing: Easing.out(Easing.quad),
+					useNativeDriver: true,
+				}),
+				Animated.timing(jump, {
+					toValue: 0,
+					duration: 260,
+					easing: Easing.bounce,
+					useNativeDriver: true,
+				}),
+			]).start();
+		});
+	};
 
 	return (
 		<View
@@ -261,13 +289,20 @@ export default function PiumaEmptyState({
 			{dims.width > 0 && (
 				<PixelStarfield width={dims.width} height={dims.height} />
 			)}
-			<Animated.View
-				style={{
-					transform: [{ translateY: fall }, { translateY: floatY }, { rotate }],
-				}}
-			>
-				<PiumaPixelArt pixelSize={8} />
-			</Animated.View>
+			<Pressable onPress={boop} accessibilityLabel="Boop Piuma">
+				<Animated.View
+					style={{
+						transform: [
+							{ translateY: fall },
+							{ translateY: floatY },
+							{ translateY: jumpY },
+							{ rotate },
+						],
+					}}
+				>
+					<PiumaPixelArt pixelSize={8} />
+				</Animated.View>
+			</Pressable>
 			<Text style={styles.text}>
 				{typed}
 				<Animated.Text style={[styles.caret, { opacity: caret }]}>

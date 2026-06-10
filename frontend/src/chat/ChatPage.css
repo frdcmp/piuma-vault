@@ -94,13 +94,16 @@
 	background: var(--accent-2);
 }
 .chat-clear {
-	color: var(--accent-3);
+	color: var(--muted, #8a93a3);
 	font-size: 14pt;
 	cursor: pointer;
 }
-.chat-clear:hover {
-	border-color: var(--accent-3);
-	background: rgba(255, 107, 107, 0.12);
+.chat-clear:hover:not(:disabled) {
+	color: var(--accent-2, #5cd0a9);
+}
+.chat-clear:disabled {
+	opacity: 0.35;
+	cursor: default;
 }
 .chat-close {
 	text-decoration: none;
@@ -239,7 +242,9 @@
    answer streams in, so it doubles as a record of what the agent did. */
 .chat-tools {
 	display: flex;
-	flex-direction: column;
+	flex-direction: row;
+	flex-wrap: wrap;
+	align-items: flex-start;
 	gap: 4px;
 	margin-bottom: 10px;
 }
@@ -247,7 +252,10 @@
 	display: inline-flex;
 	align-items: baseline;
 	gap: 6px;
+	/* Size to content so chips pack several per row; cap so one long arg (e.g. a
+	   note title) ellipsizes instead of hogging the whole line. */
 	max-width: 100%;
+	min-width: 0;
 	padding: 3px 8px;
 	font-size: 9pt;
 	border: 1px solid var(--border);
@@ -941,4 +949,53 @@ button.chat-context-tag-main {
 	color: var(--muted, #8a93a3);
 	font-size: 0.8rem;
 	letter-spacing: 0.4px;
+}
+
+/* Floating pickers — the /command menu, the /sessions·/models picker, and the
+   /title menu OVERLAY the messages instead of growing the composer (which used
+   to shove the input down). Anchored to the input-row wrapper so they start just
+   above the text field and extend up over the chat, each scrolling within its
+   own max-height. */
+.chat-composer-fields {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+}
+.slash-menu,
+.picker-overlay {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: calc(100% + 6px);
+	margin: 0;
+	z-index: 30;
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Sessions picker loading state — pixel Piuma while the list loads (held ~1s so
+   the open doesn't flash "None" → list), then the content fades in. */
+.picker-loading {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 10px;
+	padding: 22px 0;
+}
+.picker-loading-label {
+	color: var(--muted, #8a93a3);
+	font-size: 0.8rem;
+	letter-spacing: 0.4px;
+}
+.picker-list > * {
+	animation: picker-fade-in 0.22s ease;
+}
+@keyframes picker-fade-in {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
