@@ -222,8 +222,9 @@ pub async fn list_available_models(
 
 /// All enabled models across providers — for the `/models` chat command picker.
 pub async fn list_all_models(_user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
-    let rows: Vec<(Uuid, String, String, bool, String)> = sqlx::query_as(
-        "SELECT m.id, m.model_id, m.display_name, m.is_default, p.display_name \
+    let rows: Vec<(Uuid, String, String, bool, String, f64, f64, f64)> = sqlx::query_as(
+        "SELECT m.id, m.model_id, m.display_name, m.is_default, p.display_name, \
+                m.price_input, m.price_output, m.price_cached \
          FROM db_llm_models m JOIN db_llm_providers p ON p.id = m.provider_id \
          WHERE m.enabled AND p.enabled ORDER BY p.display_name, m.display_name",
     )
@@ -232,8 +233,8 @@ pub async fn list_all_models(_user: AuthenticatedUser, pool: web::Data<DbPool>) 
     .unwrap_or_default();
     let models: Vec<serde_json::Value> = rows
         .into_iter()
-        .map(|(id, model_id, display_name, is_default, provider)| {
-            json!({ "id": id, "model_id": model_id, "display_name": display_name, "is_default": is_default, "provider": provider })
+        .map(|(id, model_id, display_name, is_default, provider, price_input, price_output, price_cached)| {
+            json!({ "id": id, "model_id": model_id, "display_name": display_name, "is_default": is_default, "provider": provider, "price_input": price_input, "price_output": price_output, "price_cached": price_cached })
         })
         .collect();
     HttpResponse::Ok().json(models)
@@ -259,8 +260,8 @@ pub async fn create_model(
     match sqlx::query_as::<_, ModelRow>(
         "INSERT INTO db_llm_models \
             (provider_id, model_id, display_name, supports_thinking, supports_tools, \
-             supports_vision, context_window, config, is_default) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *",
+             supports_vision, context_window, price_input, price_output, price_cached, config, is_default) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *",
     )
     .bind(provider_id)
     .bind(&b.model_id)
@@ -269,6 +270,9 @@ pub async fn create_model(
     .bind(b.supports_tools)
     .bind(b.supports_vision)
     .bind(b.context_window)
+    .bind(b.price_input)
+    .bind(b.price_output)
+    .bind(b.price_cached)
     .bind(&b.config)
     .bind(b.is_default)
     .fetch_one(pool.get_ref())
@@ -307,6 +311,9 @@ pub async fn update_model(
             config = COALESCE($7, config), \
             is_default = COALESCE($8, is_default), \
             enabled = COALESCE($9, enabled), \
+            price_input = COALESCE($10, price_input), \
+            price_output = COALESCE($11, price_output), \
+            price_cached = COALESCE($12, price_cached), \
             updated_at = NOW() \
          WHERE id = $1 RETURNING *",
     )
@@ -319,6 +326,9 @@ pub async fn update_model(
     .bind(&b.config)
     .bind(b.is_default)
     .bind(b.enabled)
+    .bind(b.price_input)
+    .bind(b.price_output)
+    .bind(b.price_cached)
     .fetch_optional(pool.get_ref())
     .await
     {

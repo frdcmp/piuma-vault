@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import PiumaSprite from "../../../sprites/PiumaSprite";
 import {
+	BODY,
+	IDLE_LEGS,
 	legFrameAt,
-	PIUMA_BODY,
-	PIUMA_IDLE_LEGS,
-	PIUMA_WALK_FRAME_MS,
-	PIUMA_WALK_LEGS,
-} from "../../../sprites/piuma";
+	Sprite,
+	WALK_FRAME_MS,
+	WALK_LEGS,
+} from "../../../sprites";
 import "./PiumaPixelArt.css";
 
 const GRAVITY = 2600; // px/s², downward pull while falling
@@ -87,11 +87,7 @@ export default function PiumaPixelArt({ pixelSize = 8 }) {
 			s.facing = dir < 0 ? 1 : -1;
 			s.ox += dir * WALK_SPEED * dt;
 			// Swap the walk legs on the shared cadence.
-			const frame = legFrameAt(
-				s.t * 1000,
-				PIUMA_WALK_LEGS.length,
-				PIUMA_WALK_FRAME_MS,
-			);
+			const frame = legFrameAt(s.t * 1000, WALK_LEGS.length, WALK_FRAME_MS);
 			if (frame !== s.legFrame) {
 				s.legFrame = frame;
 				setLegFrame(frame);
@@ -231,11 +227,8 @@ export default function PiumaPixelArt({ pixelSize = 8 }) {
 			}}
 			style={{ display: "inline-block", lineHeight: 0 }}
 		>
-			<PiumaSprite
-				rows={[
-					...PIUMA_BODY,
-					...(legFrame >= 0 ? PIUMA_WALK_LEGS[legFrame] : PIUMA_IDLE_LEGS),
-				]}
+			<Sprite
+				rows={[...BODY, ...(legFrame >= 0 ? WALK_LEGS[legFrame] : IDLE_LEGS)]}
 				pixelSize={pixelSize}
 			/>
 		</button>

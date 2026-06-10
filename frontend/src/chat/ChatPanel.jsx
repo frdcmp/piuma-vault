@@ -405,9 +405,21 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				return;
 			}
 			if (!to.startsWith("/")) return;
-			const noteMatch = to.match(/^\/notes\/([^/?#]+)$/);
+			// Salvage note links the agent built from the note's folder path + id
+			// (e.g. /projects/piuma-vault/<uuid>) instead of the canonical
+			// /notes/<id>. Any internal path carrying a note UUID that isn't a known
+			// route IS a note. (Calendar/task carry their UUID in a query param, and
+			// start with /admin or /tasks, so they're excluded.)
+			let path = to;
+			const uuid = path.match(
+				/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+			);
+			if (uuid && !/^\/(notes|tasks|storage|admin)\b/.test(path)) {
+				path = `/notes/${uuid[0]}`;
+			}
+			const noteMatch = path.match(/^\/notes\/([^/?#]+)$/);
 			if (noteMatch && onOpenNote) onOpenNote(noteMatch[1]);
-			else navigate(to);
+			else navigate(path);
 		},
 		[navigate, onOpenNote],
 	);

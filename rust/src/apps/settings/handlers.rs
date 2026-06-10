@@ -130,7 +130,7 @@ pub async fn test_embedding(
         Err(e) => return test_result(false, e),
     };
     match embedding::embed_with("connection test", 1536, &url, &api_key).await {
-        Ok(v) => test_result(true, format!("OK — received a {}-dim embedding", v.len())),
+        Ok((v, _)) => test_result(true, format!("OK — received a {}-dim embedding", v.len())),
         Err(e) => test_result(false, e),
     }
 }

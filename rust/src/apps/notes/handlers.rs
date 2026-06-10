@@ -216,7 +216,7 @@ async fn list_with_search(
         if let Some(vec) = cache.get(&key).await {
             Some(vec)
         } else {
-            match embedding::embed(pool.get_ref(), search, 1536).await {
+            match embedding::embed(pool.get_ref(), search, 1536, "embedding:search").await {
                 Ok(vec) => {
                     cache.insert(key, vec.clone()).await;
                     Some(vec)

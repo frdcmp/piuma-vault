@@ -14,3 +14,4 @@ pub mod routes;
 pub mod seed;
 pub mod title;
 pub mod tools;
+pub mod usage;

@@ -47,6 +47,7 @@
 		"react-dom": "^19.1.1",
 		"react-markdown": "^10.1.0",
 		"react-router-dom": "^6.18.0",
+		"recharts": "^3.8.1",
 		"rehype-highlight": "^7.0.2",
 		"remark-directive": "^4.0.0",
 		"remark-gfm": "^4.0.1",

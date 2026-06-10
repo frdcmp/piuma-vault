@@ -298,7 +298,13 @@ pub async fn call(
             }
 
             if let Some(u) = v.get("usageMetadata") {
-                out.tokens_in = u.get("promptTokenCount").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+                let prompt = u.get("promptTokenCount").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+                let cached = u
+                    .get("cachedContentTokenCount")
+                    .and_then(|x| x.as_i64())
+                    .unwrap_or(0) as i32;
+                out.tokens_cached = cached;
+                out.tokens_in = (prompt - cached).max(0);
                 out.tokens_out =
                     u.get("candidatesTokenCount").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
             }

@@ -1,9 +1,9 @@
-import { piumaColor } from "./piuma";
+import { spriteColor } from "./index";
 
-// Presentational pixel grid for a single Piuma pose. `rows` is an array of
-// equal-length pixel-code strings (see piuma.js); renders flex rows of
-// solid-color cells. Stateless — animation lives in the caller.
-export default function PiumaSprite({ rows, pixelSize = 8 }) {
+// Presentational pixel grid for a single pose of the active mascot. `rows` is an
+// array of equal-length pixel-code strings (see ./index.js); renders flex rows
+// of solid-color cells. Stateless — animation lives in the caller.
+export default function Sprite({ rows, pixelSize = 8 }) {
 	return (
 		<div style={{ lineHeight: 0 }}>
 			{rows.map((row, r) => (
@@ -16,7 +16,7 @@ export default function PiumaSprite({ rows, pixelSize = 8 }) {
 							style={{
 								width: pixelSize,
 								height: pixelSize,
-								backgroundColor: piumaColor(code),
+								backgroundColor: spriteColor(code),
 							}}
 						/>
 					))}

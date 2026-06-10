@@ -34,6 +34,11 @@ pub struct CallResult {
     pub finish: String,
     pub tokens_in: i32,
     pub tokens_out: i32,
+    /// Cache-read input tokens (served from prompt cache, billed cheaply).
+    pub tokens_cached: i32,
+    /// Cache-creation input tokens (Anthropic only; billed ~1.25x). Other
+    /// providers don't surface a separate write count, so this stays 0.
+    pub tokens_cache_write: i32,
 }
 
 /// Whether the chat loop can drive this provider kind.

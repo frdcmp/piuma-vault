@@ -187,7 +187,14 @@ pub async fn call(
             }
 
             if let Some(usage) = v.get("usage").filter(|u| !u.is_null()) {
-                out.tokens_in = usage.get("prompt_tokens").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+                let prompt = usage.get("prompt_tokens").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+                // DeepSeek reports cache hits/misses; `prompt_tokens` is hit + miss.
+                let cached = usage
+                    .get("prompt_cache_hit_tokens")
+                    .and_then(|x| x.as_i64())
+                    .unwrap_or(0) as i32;
+                out.tokens_cached = cached;
+                out.tokens_in = (prompt - cached).max(0);
                 out.tokens_out = usage.get("completion_tokens").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
             }
         }

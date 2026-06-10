@@ -1,0 +1,159 @@
+/* ── Stat cards ─────────────────────────────────────────────────────────── */
+.tu-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	gap: 12px;
+}
+
+.tu-stat .vp-panel-body {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.tu-stat-value {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	font-size: 1.6rem;
+	font-weight: 700;
+	line-height: 1;
+	text-shadow: 2px 2px 0 #000;
+}
+
+.tu-stat-suffix {
+	font-size: 0.75rem;
+	font-weight: 500;
+}
+
+.tu-chart {
+	overflow-x: auto;
+}
+
+/* ── antd Select + RangePicker (closed controls) ────────────────────────── */
+.tu-root .ant-select .ant-select-selector,
+.tu-root .ant-picker {
+	background: var(--vp-bg-soft) !important;
+	border: 2px solid var(--vp-border) !important;
+	border-radius: 0 !important;
+	color: var(--vp-text) !important;
+	font-family: var(--vp-font);
+	box-shadow: none !important;
+}
+.tu-root .ant-select-focused .ant-select-selector,
+.tu-root .ant-picker-focused {
+	border-color: var(--vp-accent) !important;
+	box-shadow: none !important;
+}
+.tu-root .ant-select-selection-placeholder,
+.tu-root .ant-picker-input > input::placeholder {
+	color: var(--vp-faint) !important;
+}
+.tu-root .ant-select-selection-item,
+.tu-root .ant-picker-input > input {
+	color: var(--vp-text) !important;
+}
+.tu-root .ant-select-clear,
+.tu-root .ant-select-arrow,
+.tu-root .ant-picker-suffix,
+.tu-root .ant-picker-separator,
+.tu-root .ant-picker-clear {
+	color: var(--vp-muted) !important;
+	background: transparent !important;
+}
+
+/* ── Portaled popups (Select dropdown + DatePicker panel) ───────────────── */
+.tu-pop {
+	background: var(--vp-panel) !important;
+	border: 2px solid var(--vp-border) !important;
+	border-radius: 0 !important;
+	font-family: var(--vp-font);
+}
+.tu-pop .ant-select-item {
+	color: var(--vp-text) !important;
+	border-radius: 0 !important;
+}
+.tu-pop .ant-select-item-option-active,
+.tu-pop .ant-select-item-option-selected {
+	background: var(--vp-bg-soft) !important;
+	color: var(--vp-accent) !important;
+}
+/* DatePicker calendar panel */
+.tu-pop .ant-picker-panel-container,
+.tu-pop .ant-picker-panel,
+.tu-pop .ant-picker-header,
+.tu-pop .ant-picker-footer {
+	background: var(--vp-panel) !important;
+	border-color: var(--vp-border) !important;
+	color: var(--vp-text) !important;
+}
+.tu-pop .ant-picker-header,
+.tu-pop .ant-picker-header button,
+.tu-pop .ant-picker-content th,
+.tu-pop .ant-picker-cell {
+	color: var(--vp-muted) !important;
+}
+.tu-pop .ant-picker-cell-in-view {
+	color: var(--vp-text) !important;
+}
+.tu-pop .ant-picker-cell-selected .ant-picker-cell-inner,
+.tu-pop .ant-picker-cell-range-start .ant-picker-cell-inner,
+.tu-pop .ant-picker-cell-range-end .ant-picker-cell-inner {
+	background: var(--vp-accent) !important;
+	color: var(--vp-bg) !important;
+	border-radius: 0 !important;
+}
+.tu-pop .ant-picker-cell-in-range .ant-picker-cell-inner {
+	background: var(--vp-bg-soft) !important;
+}
+.tu-pop .ant-picker-cell-today .ant-picker-cell-inner::before {
+	border-color: var(--vp-accent) !important;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+.tu-root .ant-table {
+	background: transparent;
+	font-family: var(--vp-font);
+	color: var(--vp-text);
+}
+.tu-root .ant-table-thead > tr > th {
+	background: var(--vp-bg-soft);
+	color: var(--vp-muted);
+	border-bottom: 2px solid var(--vp-border);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+}
+.tu-root .ant-table-thead > tr > th::before {
+	display: none !important;
+}
+.tu-root .ant-table-tbody > tr > td {
+	background: var(--vp-panel);
+	border-bottom: 1px solid var(--vp-border-soft);
+	color: var(--vp-text);
+	font-size: 13px;
+}
+.tu-root .ant-table-tbody > tr:hover > td,
+.tu-root .ant-table-cell-row-hover {
+	background: var(--vp-panel-alt) !important;
+}
+.tu-root .ant-table-placeholder,
+.tu-root .ant-table-placeholder:hover > td {
+	background: var(--vp-panel) !important;
+}
+.tu-root .ant-empty-description {
+	color: var(--vp-muted) !important;
+}
+
+/* ── Recharts (dark theme) ──────────────────────────────────────────────── */
+.tu-root .recharts-legend-item-text {
+	color: var(--vp-text) !important;
+	font-family: var(--vp-font);
+	font-size: 12px;
+}
+.tu-root .recharts-default-tooltip {
+	background: var(--vp-panel) !important;
+	border: 2px solid var(--vp-border) !important;
+	border-radius: 0 !important;
+}

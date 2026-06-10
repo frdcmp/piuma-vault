@@ -26,5 +26,6 @@ export * from "./sharesQuery";
 export * from "./storageQuery";
 export * from "./tagsQuery";
 export * from "./tasksQuery";
+export * from "./tokenUsageQuery";
 export * from "./userQuery";
 export { useUpdateProfile, useUserMe } from "./userQuery";

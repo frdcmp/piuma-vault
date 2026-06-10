@@ -147,7 +147,7 @@ pub async fn retrieve_for_turn(
 ) -> Vec<Retrieved> {
     let emb = match precomputed {
         Some(v) => v.clone(),
-        None => match embeddings::embed(pool, query, EMBED_DIMS).await {
+        None => match embeddings::embed(pool, query, EMBED_DIMS, "embedding:memory").await {
             Ok(e) => e,
             Err(_) => return Vec::new(),
         },
@@ -280,7 +280,7 @@ pub async fn save_derived(
     category: Option<&str>,
     conversation_id: Option<Uuid>,
 ) -> Result<&'static str, String> {
-    let Ok(emb) = embeddings::embed(pool, content, EMBED_DIMS).await else {
+    let Ok(emb) = embeddings::embed(pool, content, EMBED_DIMS, "embedding:memory").await else {
         let id: Uuid = sqlx::query_scalar(
             "INSERT INTO db_memory_entries \
                (agent, content, category, confidence, source, status, source_conversation_id, expires_at) \
@@ -434,7 +434,7 @@ pub async fn memory_save(pool: &DbPool, agent: &str, args: &Value) -> Result<Val
     let status = opt_string(args, "status").unwrap_or_else(|| "confirmed".into());
     let tags = opt_str_array(args, "tags").unwrap_or_default();
 
-    let emb = embeddings::embed(pool, &content, EMBED_DIMS).await.ok();
+    let emb = embeddings::embed(pool, &content, EMBED_DIMS, "embedding:memory").await.ok();
 
     // Stage A — duplicate gate against the agent's active entries.
     if let Some(ref e) = emb {
@@ -509,7 +509,7 @@ pub async fn memory_save(pool: &DbPool, agent: &str, args: &Value) -> Result<Val
 pub async fn memory_update(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
     let id = uuid_arg(args, "id")?;
     let content = req_str(args, "content")?;
-    let emb = embeddings::embed(pool, &content, EMBED_DIMS).await.ok();
+    let emb = embeddings::embed(pool, &content, EMBED_DIMS, "embedding:memory").await.ok();
 
     let affected = if let Some(e) = emb {
         let vec = pgvector::Vector::from(e);
@@ -570,7 +570,7 @@ pub async fn memory_delete(pool: &DbPool, agent: &str, args: &Value) -> Result<V
 pub async fn memory_search(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
     let q = req_str(args, "query")?;
     let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(5).clamp(1, 20);
-    let emb = embeddings::embed(pool, &q, EMBED_DIMS).await.ok();
+    let emb = embeddings::embed(pool, &q, EMBED_DIMS, "embedding:memory").await.ok();
 
     let rows: Vec<(Uuid, String, Option<String>, String, String, f64)> = if let Some(e) = emb {
         let vec = pgvector::Vector::from(e);

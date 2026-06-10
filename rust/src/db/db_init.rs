@@ -629,6 +629,9 @@ const TABLES: &[TableDefinition] = &[
                 supports_tools BOOLEAN NOT NULL DEFAULT TRUE,
                 supports_vision BOOLEAN NOT NULL DEFAULT FALSE,
                 context_window INTEGER,
+                price_input DOUBLE PRECISION NOT NULL DEFAULT 0,
+                price_output DOUBLE PRECISION NOT NULL DEFAULT 0,
+                price_cached DOUBLE PRECISION NOT NULL DEFAULT 0,
                 config JSONB NOT NULL DEFAULT '{}',
                 is_default BOOLEAN NOT NULL DEFAULT FALSE,
                 enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -690,6 +693,36 @@ const TABLES: &[TableDefinition] = &[
         indices: &[
             "CREATE INDEX IF NOT EXISTS idx_chat_msg_conv ON db_chat_messages USING btree (conversation_id, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_chat_msg_content_tsv ON db_chat_messages USING gin (content_tsv) WHERE role IN ('user', 'assistant')",
+        ],
+    },
+    // Append-only token-usage ledger: one row per LLM/embedding call. Powers the
+    // admin Token Usage analytics page (spend per model, per source, over time).
+    // `kind` is the coarse bucket ('chat' | 'embedding'); `source` is the call
+    // site ('chat', 'embedding:notes', 'embedding:memory', 'embedding:search',
+    // 'embedding:chat'). Token counts use a uniform convention across providers:
+    // `tokens_input` = full-price (uncached) input, `tokens_cached` = cache-read
+    // (cheap), `tokens_cache_write` = cache-creation (Anthropic, ~1.25x).
+    TableDefinition {
+        name: "db_token_usage",
+        sql: r#"
+            CREATE TABLE db_token_usage (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                kind TEXT NOT NULL,
+                source TEXT NOT NULL,
+                provider_kind TEXT,
+                model TEXT NOT NULL,
+                tokens_input INTEGER NOT NULL DEFAULT 0,
+                tokens_output INTEGER NOT NULL DEFAULT 0,
+                tokens_cached INTEGER NOT NULL DEFAULT 0,
+                tokens_cache_write INTEGER NOT NULL DEFAULT 0,
+                conversation_id UUID REFERENCES db_chat_conversations(id) ON DELETE SET NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_token_usage_created ON db_token_usage USING btree (created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_token_usage_model ON db_token_usage USING btree (model, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_token_usage_source ON db_token_usage USING btree (source, created_at DESC)",
         ],
     },
     // L2 semantic memory — vector-searchable facts/preferences, scoped per agent.
