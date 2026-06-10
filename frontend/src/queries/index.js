@@ -23,6 +23,7 @@ export * from "./notificationsQuery";
 export * from "./screenLockQuery";
 export * from "./servicesQuery";
 export * from "./sharesQuery";
+export * from "./spritesQuery";
 export * from "./storageQuery";
 export * from "./tagsQuery";
 export * from "./tasksQuery";

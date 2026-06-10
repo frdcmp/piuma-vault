@@ -263,6 +263,21 @@ const TABLES: &[TableDefinition] = &[
         indices: &[],
     },
     TableDefinition {
+        name: "sprites",
+        sql: r#"
+            CREATE TABLE sprites (
+                id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                key         TEXT UNIQUE NOT NULL,
+                name        TEXT NOT NULL,
+                definition  JSONB NOT NULL,
+                is_builtin  BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[],
+    },
+    TableDefinition {
         name: "note_shares",
         sql: r#"
             CREATE TABLE note_shares (

@@ -8,6 +8,7 @@ import About from "./admin/pages/about";
 import AgentsPage from "./admin/pages/agents/AgentsPage";
 import ApiKeysPage from "./admin/pages/apiKeys";
 import ApiTest from "./admin/pages/apiTest";
+import Appearance from "./admin/pages/appearance";
 import ForgotPassword from "./admin/pages/auth/forgotPassword";
 import Login from "./admin/pages/auth/login";
 import VerifyEmail from "./admin/pages/auth/verifyEmail";
@@ -33,6 +34,7 @@ import PixelLoader from "./components/PixelLoader";
 import ScreenLockGate from "./components/ScreenLockGate";
 import SharedFolderPage from "./share/SharedFolderPage";
 import SharedNotePage from "./share/SharedNotePage";
+import { SpriteProvider } from "./sprites";
 
 // Public docs site — code-split so it stays out of the main app bundle.
 const DocsLayout = lazy(() => import("./docs/DocsLayout"));
@@ -102,6 +104,7 @@ function AppContent() {
 				>
 					<Route index element={<Homepage />} />
 					<Route path="agents" element={<AgentsPage />} />
+					<Route path="appearance" element={<Appearance />} />
 					<Route path="memory" element={<Memory />} />
 					<Route path="about" element={<About />} />
 					<Route path="projects" element={<Projects />} />
@@ -173,7 +176,9 @@ function AppContent() {
 function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
-			<AppContent />
+			<SpriteProvider>
+				<AppContent />
+			</SpriteProvider>
 		</QueryClientProvider>
 	);
 }

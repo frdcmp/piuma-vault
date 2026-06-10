@@ -63,6 +63,9 @@ async fn main() -> io::Result<()> {
     // Seed the first agent (vault_agent / piuma) if not already configured.
     apps::agents::seed::seed_defaults(&pool).await;
 
+    // Seed the built-in mascot sprites (only when the table is empty).
+    apps::sprites::seed::seed_builtins(&pool).await;
+
     println!("⚡ Starting high-performance HTTP server...");
 
     // Auth rate limiter — shared across all workers / requests so the limits
@@ -109,6 +112,7 @@ async fn main() -> io::Result<()> {
             .configure(apps::storage::routes::configure_routes)
             .configure(apps::storage_shares::routes::configure_routes)
             .configure(apps::settings::routes::configure_routes)
+            .configure(apps::sprites::routes::configure_routes)
             .configure(apps::db_dump::routes::configure_routes)
     })
     .workers(num_cpus::get() * 2)  // 2 workers per CPU core for high concurrency

@@ -16,11 +16,12 @@ import {
 	SearchOutlined,
 	SettingOutlined,
 	ShareAltOutlined,
+	SmileOutlined,
 	UpOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { SPRITE, Sprite } from "../../../sprites";
+import { Sprite, useSprite } from "../../../sprites";
 import SearchModal from "../search/SearchModal";
 import SupportModal from "../support/SupportModal";
 import "../../vault-pixel.css";
@@ -37,6 +38,7 @@ const NAVIGATION = [
 ];
 
 const RESOURCES = [
+	{ key: "/admin/appearance", icon: <SmileOutlined />, label: "Appearance" },
 	{ key: "/admin/shares", icon: <ShareAltOutlined />, label: "Shares" },
 	{ key: "/admin/api-keys", icon: <KeyOutlined />, label: "API Keys" },
 	{ key: "/admin/services", icon: <ApiOutlined />, label: "Services" },
@@ -65,6 +67,7 @@ const NavItem = ({ item, active, onNavigate }) => (
 );
 
 const Sidebar = ({ inDrawer = false, onNavigate }) => {
+	const { sprite } = useSprite();
 	const location = useLocation();
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [supportModalOpen, setSupportModalOpen] = useState(false);
@@ -126,7 +129,7 @@ const Sidebar = ({ inDrawer = false, onNavigate }) => {
 				<div className="vp-sidebar-brand">
 					<div className="vp-sidebar-brand-left">
 						<span className="vp-sidebar-logo" role="img" aria-label="Piuma">
-							<Sprite rows={SPRITE} pixelSize={2} />
+							<Sprite rows={sprite} pixelSize={2} />
 						</span>
 						<span className="vp-sidebar-wordmark">vault</span>
 					</div>

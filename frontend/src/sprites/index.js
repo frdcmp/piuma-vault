@@ -1,42 +1,19 @@
 // ============================================================================
-//  ACTIVE MASCOT
+//  MASCOT SPRITES
 //
-//  Every component renders whatever character this points at. To re-skin the
-//  whole app, add a sibling folder (e.g. ./bubu) exporting the same shape as
-//  ./piuma, then swap the import below:
+//  The active mascot now lives in the DB and is selected in the admin Appearance
+//  page — no code change needed to switch or add characters. Components read it
+//  via `useSprite()` (provided by <SpriteProvider>, near the app root).
 //
-//      import character from "./piuma";
-//   // import character from "./bubu";
+//  `./piuma` remains as the baked-in default used for first paint / offline /
+//  pre-provider fallback (see SpriteProvider).
 // ============================================================================
-import character from "./piuma";
 
-// --- Identity / colors -------------------------------------------------------
-export const SPRITE_NAME = character.name;
-export const PALETTE = character.palette;
-export const spriteColor = (code) => character.palette[code] || "transparent";
-
-// --- Poses -------------------------------------------------------------------
-// Shared top rows; only the legs change between poses.
-export const BODY = character.body;
-export const IDLE_LEGS = character.idleLegs;
-// Full static standing sprite (body + idle legs).
-export const SPRITE = [...character.body, ...character.idleLegs];
-
-// Walk / gallop leg cycles and their per-frame durations.
-export const WALK_LEGS = character.walkLegs;
-export const WALK_FRAME_MS = character.walkFrameMs;
-export const GALLOP_LEGS = character.gallopLegs;
-export const GALLOP_FRAME_MS = character.gallopFrameMs;
-
-// --- Geometry ----------------------------------------------------------------
-export const COLS = character.body[0].length;
-export const ROWS = SPRITE.length;
+export { default as Sprite } from "./Sprite";
+export { SpriteProvider, useSprite } from "./SpriteProvider";
+export { default as useSpriteCycle } from "./useSpriteCycle";
 
 // Which frame of a `frameCount`-long cycle is showing at `elapsedMs`. Pure, so
 // it works equally for interval- and requestAnimationFrame-driven animations.
 export const legFrameAt = (elapsedMs, frameCount, frameMs) =>
 	Math.floor(elapsedMs / frameMs) % frameCount;
-
-// --- Shared rendering / animation helpers ------------------------------------
-export { default as Sprite } from "./Sprite";
-export { default as useSpriteCycle } from "./useSpriteCycle";
