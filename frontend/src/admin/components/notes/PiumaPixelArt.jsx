@@ -1,4 +1,4 @@
-import React from "react";
+import { useState } from "react";
 import "./PiumaPixelArt.css";
 
 const RAW_DOG_SPRITE = [
@@ -42,10 +42,18 @@ function codeToColor(code) {
 export default function PiumaPixelArt({ pixelSize = 8 }) {
 	const cols = RAW_DOG_SPRITE[0].length;
 	const rows = RAW_DOG_SPRITE.length;
+	// Toggled on click to play a one-shot jump that overrides the idle float.
+	const [jumping, setJumping] = useState(false);
 
 	return (
-		<div
-			className="piuma-pixel-art"
+		<button
+			type="button"
+			className={`piuma-pixel-art${jumping ? " is-jumping" : ""}`}
+			aria-label="Boop Piuma"
+			onClick={() => setJumping(true)}
+			onAnimationEnd={(e) => {
+				if (e.animationName === "piuma-jump") setJumping(false);
+			}}
 			style={{
 				display: "grid",
 				gridTemplateColumns: `repeat(${cols}, ${pixelSize}px)`,
@@ -69,6 +77,6 @@ export default function PiumaPixelArt({ pixelSize = 8 }) {
 					);
 				}),
 			)}
-		</div>
+		</button>
 	);
 }

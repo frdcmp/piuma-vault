@@ -2,6 +2,15 @@
 	image-rendering: pixelated;
 	animation: piuma-float 3s ease-in-out infinite;
 	filter: drop-shadow(4px 4px 0 #000);
+	padding: 0;
+	border: 0;
+	background: transparent;
+	cursor: pointer;
+}
+
+/* One-shot jump on click — overrides the idle float for its duration. */
+.piuma-pixel-art.is-jumping {
+	animation: piuma-jump 0.55s ease-out;
 }
 
 @keyframes piuma-float {
@@ -14,5 +23,26 @@
 	}
 	75% {
 		transform: translateY(-8px) rotate(3deg);
+	}
+}
+
+@keyframes piuma-jump {
+	0% {
+		transform: translateY(0) scaleY(1) scaleX(1);
+	}
+	15% {
+		transform: translateY(0) scaleY(0.8) scaleX(1.15);
+	}
+	45% {
+		transform: translateY(-40px) scaleY(1.12) scaleX(0.92) rotate(-4deg);
+	}
+	70% {
+		transform: translateY(-40px) scaleY(1.1) scaleX(0.92) rotate(4deg);
+	}
+	88% {
+		transform: translateY(0) scaleY(0.85) scaleX(1.12);
+	}
+	100% {
+		transform: translateY(0) scaleY(1) scaleX(1);
 	}
 }

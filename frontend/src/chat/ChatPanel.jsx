@@ -1,4 +1,4 @@
-import { DeleteOutlined } from "@ant-design/icons";
+import { DeleteOutlined, FormOutlined } from "@ant-design/icons";
 import {
 	useCallback,
 	useEffect,
@@ -216,24 +216,11 @@ const toolArgsSummary = (args) => {
 		.join(", ");
 };
 
-// Group tools by name for the collapsed summary line, busiest first —
-// e.g. "9× search notes · 4× read note · 1× browse folder".
-const toolSummary = (tools) => {
-	const counts = new Map();
-	for (const t of tools) counts.set(t.name, (counts.get(t.name) || 0) + 1);
-	const parts = [...counts.entries()]
-		.sort((a, b) => b[1] - a[1])
-		.map(([name, n]) => `${n}× ${name.replace(/_/g, " ")}`);
-	const shown = parts.slice(0, 4).join(" · ");
-	return parts.length > 4 ? `${shown} · +${parts.length - 4} more` : shown;
-};
-
-function ToolList({ tools, isStreaming }) {
-	const [expanded, setExpanded] = useState(false);
+// Tool activity — always shown in full (chips wrap to fit). No
+// collapse-to-summary on completion; the run stays visible as a record.
+function ToolList({ tools }) {
 	if (!tools?.length) return null;
-	const anyErr = tools.some((t) => t.status === "error");
-
-	const list = (
+	return (
 		<div className="chat-tools">
 			{tools.map((t) => {
 				// Prefer a resolved entity name (note/task title) over raw UUID args.
@@ -248,35 +235,6 @@ function ToolList({ tools, isStreaming }) {
 					</div>
 				);
 			})}
-		</div>
-	);
-
-	// Live: show the full activity as it streams. Once the turn settles it
-	// collapses to a one-line summary you can click to re-expand.
-	if (isStreaming) return list;
-	return (
-		<div className="chat-tools-wrap">
-			<button
-				type="button"
-				className={`chat-tools-summary ${anyErr ? "chat-tools-summary--error" : ""}`}
-				onClick={() => setExpanded((v) => !v)}
-				aria-expanded={expanded}
-			>
-				<span className="chat-tools-caret" aria-hidden="true">
-					{expanded ? "▾" : "▸"}
-				</span>
-				<span className="chat-tools-summary-icon" aria-hidden="true">
-					🔧
-				</span>
-				<span className="chat-tools-summary-text">
-					{tools.length} tool{tools.length === 1 ? "" : "s"} ·{" "}
-					{toolSummary(tools)}
-				</span>
-				<span className="chat-tool-icon" aria-hidden="true">
-					{anyErr ? "✗" : "✓"}
-				</span>
-			</button>
-			{expanded ? list : null}
 		</div>
 	);
 }
@@ -379,13 +337,7 @@ function AssistantBubble({ parts, isStreaming, label, onNavigate }) {
 						{/* Text, tool runs, and mid-turn injections — in stream order. */}
 						{parts.map((p) => {
 							if (p.kind === "tools")
-								return (
-									<ToolList
-										key={p.id}
-										tools={p.tools}
-										isStreaming={isStreaming}
-									/>
-								);
+								return <ToolList key={p.id} tools={p.tools} />;
 							if (p.kind === "inject")
 								return (
 									<div key={p.id} className="chat-inject">
@@ -902,20 +854,39 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		}
 	}, [overlayActive]);
 
+	// While the sessions list is loading, show the pixel-Piuma loader (kept up for
+	// a ~1s floor so the open doesn't flash "None" → list). Only the initial open
+	// arms the floor; search refetches update the list in place.
+	const [sessionsLoading, setSessionsLoading] = useState(false);
+	const sessionsMinUntil = useRef(0);
+
 	// Load the sessions list (debounced) whenever the picker is open and the
 	// search query changes. `q` matches conversation title or message text.
 	useEffect(() => {
 		if (overlay !== "sessions") return;
 		const q = sessionQuery.trim();
+		let cancelled = false;
 		const t = setTimeout(async () => {
 			try {
-				setPickList(await fetchConversations(undefined, q || undefined));
-				setOverlayActive(0);
+				const data = await fetchConversations(undefined, q || undefined);
+				if (cancelled) return;
+				const finish = () => {
+					if (cancelled) return;
+					setPickList(data);
+					setOverlayActive(0);
+					setSessionsLoading(false);
+				};
+				const wait = Math.max(0, sessionsMinUntil.current - Date.now());
+				if (wait > 0) setTimeout(finish, wait);
+				else finish();
 			} catch {
-				/* ignore */
+				if (!cancelled) setSessionsLoading(false);
 			}
 		}, 200);
-		return () => clearTimeout(t);
+		return () => {
+			cancelled = true;
+			clearTimeout(t);
+		};
 	}, [overlay, sessionQuery]);
 
 	const startNewChat = useCallback(() => {
@@ -1058,6 +1029,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				setPickList([]);
 				setSessionQuery("");
 				setOverlayActive(0);
+				setSessionsLoading(true);
+				sessionsMinUntil.current = Date.now() + 1000;
 				setOverlay("sessions");
 			}
 		},
@@ -1211,17 +1184,16 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				>
 					<span className="chat-status-dot" />
 				</div>
-				{messages.length > 0 ? (
-					<button
-						type="button"
-						className="chat-clear"
-						onClick={() => setConfirmClearOpen(true)}
-						aria-label="New conversation"
-						title="New conversation"
-					>
-						<DeleteOutlined />
-					</button>
-				) : null}
+				<button
+					type="button"
+					className="chat-clear"
+					onClick={() => setConfirmClearOpen(true)}
+					aria-label="New conversation"
+					title="New conversation"
+					disabled={messages.length === 0}
+				>
+					<FormOutlined />
+				</button>
 				{onClose ? (
 					<button
 						type="button"
@@ -1312,165 +1284,174 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 							))}
 						</div>
 					) : null}
-					{slashMatches.length > 0 ? (
-						<div className="slash-menu">
-							{slashMatches.map((c, i) => (
-								<button
-									key={`${c.kind}-${c.name}`}
-									type="button"
-									ref={i === slashActive ? slashActiveRef : null}
-									className={`slash-item${i === slashActive ? " is-active" : ""}${c.kind === "agent" ? " slash-item--agent" : ""}`}
-									onClick={() => runCommand(c)}
-									onMouseEnter={() => setSlashActive(i)}
-								>
-									<span className="slash-item-name">/{c.name}</span>
-									<span className="slash-item-desc">
-										{c.description}
-										{c.kind === "agent" ? " · agent" : ""}
-									</span>
-								</button>
-							))}
-						</div>
-					) : null}
-					{titleMenu ? (
-						<div className="slash-menu">
-							{TITLE_ACTIONS.map((a, i) => (
-								<button
-									key={a.key}
-									type="button"
-									className={`slash-item${i === titleActive ? " is-active" : ""}`}
-									onClick={() => runTitleAction(a.key)}
-									onMouseEnter={() => setTitleActive(i)}
-								>
-									<span className="slash-item-name">{a.label}</span>
-									<span className="slash-item-desc">{a.desc}</span>
-								</button>
-							))}
-						</div>
-					) : null}
-					{overlay ? (
-						<div className="picker-overlay">
-							<div className="picker-head">
-								<strong className="picker-title">
-									{overlay === "models"
-										? "Pick a model"
-										: "Switch conversation"}
-								</strong>
-								<button
-									type="button"
-									className="picker-close"
-									onClick={() => setOverlay(null)}
-								>
-									×
-								</button>
+					<div className="chat-composer-fields">
+						{slashMatches.length > 0 ? (
+							<div className="slash-menu">
+								{slashMatches.map((c, i) => (
+									<button
+										key={`${c.kind}-${c.name}`}
+										type="button"
+										ref={i === slashActive ? slashActiveRef : null}
+										className={`slash-item${i === slashActive ? " is-active" : ""}${c.kind === "agent" ? " slash-item--agent" : ""}`}
+										onClick={() => runCommand(c)}
+										onMouseEnter={() => setSlashActive(i)}
+									>
+										<span className="slash-item-name">/{c.name}</span>
+										<span className="slash-item-desc">
+											{c.description}
+											{c.kind === "agent" ? " · agent" : ""}
+										</span>
+									</button>
+								))}
 							</div>
-							{overlay === "sessions" ? (
-								<input
-									className="picker-search"
-									type="text"
-									value={sessionQuery}
-									onChange={(e) => setSessionQuery(e.target.value)}
-									onKeyDown={handleOverlayNav}
-									placeholder="Search title or message text…"
-									// biome-ignore lint/a11y/noAutofocus: focus the search box when the picker opens
-									autoFocus
-								/>
-							) : null}
-							<div className="picker-list">
-								{pickList.length === 0 ? (
-									<div className="picker-empty">None</div>
-								) : overlay === "models" ? (
-									pickList.map((m, i) => {
-										// The model actually in use: the conversation's override,
-										// or — when it has none — the default (what the backend
-										// falls back to). That one gets the ◆ marker.
-										const inUse = modelId ? m.id === modelId : m.is_default;
-										return (
-											<button
-												key={m.id}
-												type="button"
-												ref={i === overlayActive ? overlayActiveRef : null}
-												className={`picker-item${i === overlayActive ? " is-active" : ""}${inUse ? " is-current" : ""}`}
-												onClick={() => pickModel(m)}
-												onMouseEnter={() => setOverlayActive(i)}
-											>
-												<span className="picker-item-mark" aria-hidden="true">
-													{inUse ? "◆" : ""}
-												</span>
-												{m.display_name}{" "}
-												<span className="picker-item-meta">
-													{m.provider}
-													{m.is_default ? " · default" : ""}
-												</span>
-											</button>
-										);
-									})
-								) : (
-									pickList.map((c, i) => (
-										<div
-											key={c.id}
-											ref={i === overlayActive ? overlayActiveRef : null}
-											className={`picker-row${i === overlayActive ? " is-active" : ""}`}
-										>
-											<button
-												type="button"
-												className="picker-item ellipsis"
-												onClick={() => switchConversation(c.id)}
-												onMouseEnter={() => setOverlayActive(i)}
-											>
-												{c.title || "Untitled"}
-											</button>
-											<button
-												type="button"
-												className="picker-del"
-												onClick={() => removeConversation(c.id)}
-												onMouseEnter={() => setOverlayActive(i)}
-												aria-label="Delete conversation"
-												title="Delete conversation"
-											>
-												<DeleteOutlined />
-											</button>
+						) : null}
+						{titleMenu ? (
+							<div className="slash-menu">
+								{TITLE_ACTIONS.map((a, i) => (
+									<button
+										key={a.key}
+										type="button"
+										className={`slash-item${i === titleActive ? " is-active" : ""}`}
+										onClick={() => runTitleAction(a.key)}
+										onMouseEnter={() => setTitleActive(i)}
+									>
+										<span className="slash-item-name">{a.label}</span>
+										<span className="slash-item-desc">{a.desc}</span>
+									</button>
+								))}
+							</div>
+						) : null}
+						{overlay ? (
+							<div className="picker-overlay">
+								<div className="picker-head">
+									<strong className="picker-title">
+										{overlay === "models"
+											? "Pick a model"
+											: "Switch conversation"}
+									</strong>
+									<button
+										type="button"
+										className="picker-close"
+										onClick={() => setOverlay(null)}
+									>
+										×
+									</button>
+								</div>
+								{overlay === "sessions" ? (
+									<input
+										className="picker-search"
+										type="text"
+										value={sessionQuery}
+										onChange={(e) => setSessionQuery(e.target.value)}
+										onKeyDown={handleOverlayNav}
+										placeholder="Search title or message text…"
+										// biome-ignore lint/a11y/noAutofocus: focus the search box when the picker opens
+										autoFocus
+									/>
+								) : null}
+								<div className="picker-list">
+									{overlay === "sessions" && sessionsLoading ? (
+										<div className="picker-loading">
+											<PiumaRunning pixelSize={2} />
+											<span className="picker-loading-label">loading…</span>
 										</div>
-									))
-								)}
+									) : pickList.length === 0 ? (
+										<div className="picker-empty">None</div>
+									) : overlay === "models" ? (
+										pickList.map((m, i) => {
+											// The model actually in use: the conversation's override,
+											// or — when it has none — the default (what the backend
+											// falls back to). That one gets the ◆ marker.
+											const inUse = modelId ? m.id === modelId : m.is_default;
+											return (
+												<button
+													key={m.id}
+													type="button"
+													ref={i === overlayActive ? overlayActiveRef : null}
+													className={`picker-item${i === overlayActive ? " is-active" : ""}${inUse ? " is-current" : ""}`}
+													onClick={() => pickModel(m)}
+													onMouseEnter={() => setOverlayActive(i)}
+												>
+													<span className="picker-item-mark" aria-hidden="true">
+														{inUse ? "◆" : ""}
+													</span>
+													{m.display_name}{" "}
+													<span className="picker-item-meta">
+														{m.provider}
+														{m.is_default ? " · default" : ""}
+													</span>
+												</button>
+											);
+										})
+									) : (
+										pickList.map((c, i) => (
+											<div
+												key={c.id}
+												ref={i === overlayActive ? overlayActiveRef : null}
+												className={`picker-row${i === overlayActive ? " is-active" : ""}`}
+											>
+												<button
+													type="button"
+													className="picker-item ellipsis"
+													onClick={() => switchConversation(c.id)}
+													onMouseEnter={() => setOverlayActive(i)}
+												>
+													{c.title || "Untitled"}
+												</button>
+												<button
+													type="button"
+													className="picker-del"
+													onClick={() => removeConversation(c.id)}
+													onMouseEnter={() => setOverlayActive(i)}
+													aria-label="Delete conversation"
+													title="Delete conversation"
+												>
+													<DeleteOutlined />
+												</button>
+											</div>
+										))
+									)}
+								</div>
 							</div>
+						) : null}
+						<div className="chat-composer-row">
+							<textarea
+								ref={inputRef}
+								className="chat-input"
+								value={input}
+								onChange={(e) => {
+									setInput(e.target.value);
+									setSlashActive(0);
+									setTitleMenu(false);
+								}}
+								onKeyDown={onKeyDown}
+								placeholder={
+									compact
+										? `Ask ${agentLabel}…`
+										: `Ask ${agentLabel} anything...`
+								}
+								rows={1}
+							/>
+							{showStop ? (
+								<button
+									type="button"
+									className="chat-send chat-stop"
+									onClick={stopStreaming}
+									title="Stop the agent"
+								>
+									stop ◼
+								</button>
+							) : (
+								<button
+									type="button"
+									className="chat-send"
+									onClick={sendMessage}
+									disabled={!canSend}
+								>
+									send ↑
+								</button>
+							)}
 						</div>
-					) : null}
-					<div className="chat-composer-row">
-						<textarea
-							ref={inputRef}
-							className="chat-input"
-							value={input}
-							onChange={(e) => {
-								setInput(e.target.value);
-								setSlashActive(0);
-								setTitleMenu(false);
-							}}
-							onKeyDown={onKeyDown}
-							placeholder={
-								compact ? `Ask ${agentLabel}…` : `Ask ${agentLabel} anything...`
-							}
-							rows={1}
-						/>
-						{showStop ? (
-							<button
-								type="button"
-								className="chat-send chat-stop"
-								onClick={stopStreaming}
-								title="Stop the agent"
-							>
-								stop ◼
-							</button>
-						) : (
-							<button
-								type="button"
-								className="chat-send"
-								onClick={sendMessage}
-								disabled={!canSend}
-							>
-								send ↑
-							</button>
-						)}
 					</div>
 				</div>
 			</div>
