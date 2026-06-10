@@ -5,6 +5,7 @@ import "react-native-gesture-handler";
 import "./src/utils/dayjsConfig";
 import notifee, { EventType } from "@notifee/react-native";
 import { registerRootComponent } from "expo";
+import { Platform } from "react-native";
 
 import App from "./App";
 import {
@@ -33,6 +34,17 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
 	}
 	if (notification?.id) await notifee.cancelNotification(notification.id);
 });
+
+// Android home-screen widgets. The task handler must be registered at the entry
+// (it runs headlessly when the OS updates a widget, before App mounts), and
+// importing backgroundTask defines the periodic refresh task. Guarded to Android
+// + require()'d so the native-only module never loads in the web/iOS bundles.
+if (Platform.OS === "android") {
+	const { registerWidgetTaskHandler } = require("react-native-android-widget");
+	const { widgetTaskHandler } = require("./src/widgets/widgetTaskHandler");
+	registerWidgetTaskHandler(widgetTaskHandler);
+	require("./src/widgets/backgroundTask");
+}
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
 // It also ensures that whether you load the app in Expo Go or in a native build,

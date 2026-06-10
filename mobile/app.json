@@ -2,7 +2,8 @@
   "expo": {
     "name": "pv vault",
     "slug": "pv",
-    "version": "1.0.11",
+    "version": "1.0.12",
+    "scheme": "piumavault",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -17,7 +18,7 @@
     "android": {
       "package": "com.pv.vault",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 4,
+      "versionCode": 5,
       "adaptiveIcon": {
         "backgroundColor": "#0e0f12",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -49,7 +50,37 @@
           "faceIDPermission": "Unlock Piuma Vault with Face ID."
         }
       ],
-      "./plugins/withAndroidAlarm"
+      "./plugins/withAndroidAlarm",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "Tasks",
+              "label": "Vault Tasks",
+              "description": "Upcoming and overdue tasks",
+              "minWidth": "180dp",
+              "minHeight": "180dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 3,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "Calendar",
+              "label": "Vault Calendar",
+              "description": "Upcoming events",
+              "minWidth": "180dp",
+              "minHeight": "180dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 3,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ],
+      "expo-background-task"
     ]
   }
 }

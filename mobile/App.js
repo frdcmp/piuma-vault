@@ -24,6 +24,7 @@ import { alarmFromNotifee, EventType } from "./src/utils/alarm";
 import { registerForPushNotifications } from "./src/utils/notifications";
 import { asyncStoragePersister, queryClient } from "./src/utils/queryClient";
 import { colors } from "./src/utils/theme";
+import { useWidgetSync } from "./src/widgets/useWidgetSync";
 
 // Turn a delivered notification into an in-app alarm payload.
 function alarmFromNotification(notification) {
@@ -91,6 +92,10 @@ export default function App() {
 	//     getInitialNotification(), and while foregrounded onForegroundEvent
 	//     fires DELIVERED. Either way we present the in-app modal, which owns the
 	//     looping sound — so we don't double up with Notifee's loopSound.
+	// Keep the Android home-screen widgets in sync with in-app data changes,
+	// foreground transitions, and the periodic background task.
+	useWidgetSync();
+
 	const present = useAlarmStore((s) => s.present);
 	useEffect(() => {
 		const received = Notifications.addNotificationReceivedListener((n) =>

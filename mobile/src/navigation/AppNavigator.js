@@ -1,5 +1,6 @@
 import { DarkTheme, NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import * as Linking from "expo-linking";
 import { useEffect, useState } from "react";
 import UpdatePrompt from "../components/UpdatePrompt";
 import CalendarScreen from "../screens/CalendarScreen";
@@ -16,6 +17,21 @@ import { colors } from "../utils/theme";
 const SPLASH_MIN_MS = 3000;
 
 const Stack = createNativeStackNavigator();
+
+// Deep links — used by the Android home-screen widgets to jump straight to a
+// screen (e.g. piumavault://tasks?id=…). The `id` param is passed through to the
+// screen for future per-item navigation; screens ignore it until then.
+const linking = {
+	prefixes: [Linking.createURL("/"), "piumavault://"],
+	config: {
+		screens: {
+			VaultHome: "home",
+			Calendar: "calendar",
+			Tasks: "tasks",
+			Storage: "storage",
+		},
+	},
+};
 
 const VaultTheme = {
 	...DarkTheme,
@@ -48,7 +64,7 @@ export default function AppNavigator() {
 		<>
 			{/* Prompts once on open when a newer APK is published (Android only). */}
 			{token ? <UpdatePrompt /> : null}
-			<NavigationContainer theme={VaultTheme}>
+			<NavigationContainer theme={VaultTheme} linking={linking}>
 				<Stack.Navigator
 					screenOptions={{
 						headerShown: false,
