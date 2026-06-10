@@ -3,7 +3,7 @@
 //
 //  The active mascot lives in the DB and is selected in the web admin Appearance
 //  page. Components read it via `useSprite()` (provided by <SpriteProvider> at
-//  the app root). `./piuma` remains the baked-in default for cold-launch /
+//  the app root). `./fallback-sprite` is the baked-in default for cold-launch /
 //  offline fallback.
 // ============================================================================
 export { SpriteProvider, useSprite } from './SpriteProvider';

@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 
 // Clickable/draggable pixel grid. `rows` is an array of equal-length code
-// strings; painting a cell writes the `paint` code (use "." to erase to
-// transparent). Calls `onChange(nextRows)` with the updated grid.
+// strings; left-click paints the `paint` code, right-click (or right-drag)
+// quick-erases to transparent ("."). Calls `onChange(nextRows)`.
 export default function PixelCanvas({
 	rows,
 	palette,
@@ -11,6 +11,7 @@ export default function PixelCanvas({
 	scale = 18,
 }) {
 	const painting = useRef(false);
+	const erasing = useRef(false);
 
 	// Release the drag even if the pointer comes up outside the grid.
 	useEffect(() => {
@@ -21,12 +22,14 @@ export default function PixelCanvas({
 		return () => window.removeEventListener("pointerup", stop);
 	}, []);
 
-	const setCell = (r, c) => {
+	const setCell = (r, c, code) => {
 		const row = rows[r];
-		if (row[c] === paint) return;
-		const nextRow = row.slice(0, c) + paint + row.slice(c + 1);
+		if (row[c] === code) return;
+		const nextRow = row.slice(0, c) + code + row.slice(c + 1);
 		onChange(rows.map((x, i) => (i === r ? nextRow : x)));
 	};
+
+	const paintCell = (r, c) => setCell(r, c, erasing.current ? "." : paint);
 
 	const color = (code) => palette[code] || "transparent";
 
@@ -44,13 +47,16 @@ export default function PixelCanvas({
 							key={c}
 							type="button"
 							aria-label={`pixel ${r},${c}`}
+							// Right-click erases instead of opening the browser menu.
+							onContextMenu={(e) => e.preventDefault()}
 							onPointerDown={(e) => {
 								e.preventDefault();
+								erasing.current = e.button === 2;
 								painting.current = true;
-								setCell(r, c);
+								paintCell(r, c);
 							}}
 							onPointerEnter={() => {
-								if (painting.current) setCell(r, c);
+								if (painting.current) paintCell(r, c);
 							}}
 							className="vp-pixcell"
 							style={{

@@ -29,7 +29,7 @@ try {
 	DocumentPicker = null;
 }
 import MarkdownView from "./MarkdownView";
-import PiumaLoader from "./PiumaLoader";
+import SpriteLoader from "./SpriteLoader";
 import ShareSheet from "./ShareSheet";
 import { BottomBar, useTopInset } from "./SystemBars";
 
@@ -312,7 +312,7 @@ export default function NoteEditor({
 	}, []);
 
 	if (isEditing && isLoading) {
-		return <PiumaLoader message="Loading note" />;
+		return <SpriteLoader message="Loading note" />;
 	}
 
 	const s = STATUS[status];

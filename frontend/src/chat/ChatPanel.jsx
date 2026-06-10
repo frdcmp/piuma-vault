@@ -47,7 +47,7 @@ const TITLE_ACTIONS = [
 ];
 
 import useNotesWorkspaceStore from "../store/notesWorkspaceStore";
-import PiumaRunning from "./PiumaRunning";
+import SpriteRunner from "./SpriteRunner";
 import "./ChatPage.css";
 
 // Persists the active conversation so the panel restores it across mounts.
@@ -322,7 +322,7 @@ function AssistantBubble({ parts, isStreaming, label, onNavigate }) {
 			<div className="chat-assistant-body">
 				{empty && isStreaming ? (
 					<div className="chat-thinking">
-						<PiumaRunning pixelSize={2} />
+						<SpriteRunner pixelSize={2} />
 						<div className="chat-thinking-body">
 							<span className="chat-thinking-label">thinking…</span>
 							<span className="chat-thinking-dots" aria-hidden="true">
@@ -1246,7 +1246,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 					<div className="chat-messages-inner">
 						{loadingConv && messages.length === 0 ? (
 							<div className="chat-loading">
-								<PiumaRunning pixelSize={3} />
+								<SpriteRunner pixelSize={3} />
 								<span className="chat-loading-label">
 									loading conversation…
 								</span>
@@ -1395,7 +1395,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 								<div className="picker-list">
 									{overlay === "sessions" && sessionsLoading ? (
 										<div className="picker-loading">
-											<PiumaRunning pixelSize={2} />
+											<SpriteRunner pixelSize={2} />
 											<span className="picker-loading-label">loading…</span>
 										</div>
 									) : pickList.length === 0 ? (

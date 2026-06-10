@@ -38,7 +38,7 @@ import { notesKeys } from "../queries/notesQuery";
 import { formatDate } from "../utils/dateTime";
 import { colors } from "../utils/theme";
 import BottomSheet, { BottomSheetItem } from "./BottomSheet";
-import PiumaRunning from "./PiumaRunning";
+import SpriteRunner from "./SpriteRunner";
 import { BottomBar, useTopInset } from "./SystemBars";
 
 function useDebounced(value, delay = 300) {
@@ -279,7 +279,7 @@ function NoteRow({
 				) : null}
 				{loading ? (
 					<View style={styles.miniDogBox}>
-						<PiumaRunning pixelSize={1} />
+						<SpriteRunner pixelSize={1} />
 					</View>
 				) : (
 					<Text
@@ -708,7 +708,7 @@ export default function NotesListPanel({
 						<View>
 							{searchQuery.isFetching || folderSearchQuery.isFetching ? (
 								<View style={styles.searchLoader}>
-									<PiumaRunning pixelSize={6} />
+									<SpriteRunner pixelSize={6} />
 									<Text style={styles.searchLoaderText}>fetching...</Text>
 								</View>
 							) : null}
@@ -733,7 +733,7 @@ export default function NotesListPanel({
 										>
 											{anyLoading ? (
 												<View style={styles.miniDogBox}>
-													<PiumaRunning pixelSize={1} />
+													<SpriteRunner pixelSize={1} />
 												</View>
 											) : (
 												<Text style={styles.folderMatchToggle}>[+]</Text>

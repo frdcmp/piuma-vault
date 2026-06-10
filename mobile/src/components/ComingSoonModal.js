@@ -10,7 +10,7 @@ import {
 	View,
 } from "react-native";
 import { colors } from "../utils/theme";
-import PiumaAvatar from "./PiumaAvatar";
+import SpriteAvatar from "./SpriteAvatar";
 import { BottomBar } from "./SystemBars";
 
 const MONO = Platform.select({
@@ -76,7 +76,7 @@ export default function ComingSoonModal({
 			<Pressable style={styles.overlay} onPress={onClose}>
 				<Pressable style={styles.card} onPress={() => {}}>
 					<Animated.View style={{ transform: [{ translateY: floatY }] }}>
-						<PiumaAvatar pixelSize={6} />
+						<SpriteAvatar pixelSize={6} />
 					</Animated.View>
 					<Text style={styles.title}>Coming soon</Text>
 					<Text style={styles.quip}>

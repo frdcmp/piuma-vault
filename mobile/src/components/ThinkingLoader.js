@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
-import PiumaAvatar from './PiumaAvatar';
+import SpriteAvatar from './SpriteAvatar';
 import { colors } from '../utils/theme';
 
 const MONO = Platform.select({
@@ -63,7 +63,7 @@ export default function ThinkingLoader({ label = 'piuma is sniffing the trail' }
   return (
     <View style={styles.row}>
       <View style={styles.avatarBox}>
-        <PiumaAvatar pixelSize={2} />
+        <SpriteAvatar pixelSize={2} />
       </View>
       <View style={styles.body}>
         <Text style={styles.label}>{label}</Text>

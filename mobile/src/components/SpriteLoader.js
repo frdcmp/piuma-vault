@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
-import PiumaRunning from './PiumaRunning';
+import SpriteRunner from './SpriteRunner';
 import PixelStarfield from './PixelStarfield';
 import { colors } from '../utils/theme';
 
@@ -15,7 +15,7 @@ function LoadingDots() {
   return <Text style={styles.dots}>{'.'.repeat(n)}</Text>;
 }
 
-export default function PiumaLoader({ message = 'Loading', pixelSize = 8 }) {
+export default function SpriteLoader({ message = 'Loading', pixelSize = 8 }) {
   const [dims, setDims] = useState({ width: 0, height: 0 });
   return (
     <View
@@ -25,7 +25,7 @@ export default function PiumaLoader({ message = 'Loading', pixelSize = 8 }) {
       {dims.width > 0 && (
         <PixelStarfield width={dims.width} height={dims.height} />
       )}
-      <PiumaRunning pixelSize={pixelSize} />
+      <SpriteRunner pixelSize={pixelSize} />
       {message ? (
         <View style={styles.labelWrap}>
           <Text style={styles.label}>{message}</Text>

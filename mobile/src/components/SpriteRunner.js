@@ -4,7 +4,7 @@ import { Sprite, useSprite } from '../sprites';
 
 const BOUNCE_MS = 280; // one full bob = two leg frames
 
-export default function PiumaRunning({ pixelSize = 10 }) {
+export default function SpriteRunner({ pixelSize = 10 }) {
   const { body, gallopLegs, gallopFrameMs } = useSprite();
   const [frame, setFrame] = useState(0);
   const bounce = useRef(new Animated.Value(0)).current;

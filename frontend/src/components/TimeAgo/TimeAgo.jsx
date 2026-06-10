@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { timeAgo } from "../utils/dateTime";
+import { timeAgo } from "../../utils/dateTime";
 
 /**
  * Renders a relative time (e.g. "6 minutes ago") that updates itself over time,

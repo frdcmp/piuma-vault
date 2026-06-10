@@ -95,7 +95,7 @@
 	display: grid;
 	grid-template-columns: auto 1fr;
 	gap: 16px;
-	align-items: start;
+	align-items: stretch;
 }
 @media (max-width: 720px) {
 	.vp-sprite-editor-grid {
@@ -243,20 +243,26 @@
 	gap: 16px;
 	flex-wrap: wrap;
 	justify-content: space-around;
+	align-items: flex-end;
+	padding: 8px 0;
 }
 .vp-sprite-previews > div {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 4px;
+	gap: 8px;
 	font-family: var(--vp-font);
-	font-size: 10px;
+	font-size: 11px;
+	letter-spacing: 1px;
 	text-transform: uppercase;
 	color: var(--vp-muted);
 }
 .vp-sprite-timings {
 	display: flex;
 	gap: 12px;
+}
+.vp-sprite-timings .vp-field {
+	flex: 1;
 }
 .vp-sprite-actions {
 	display: flex;

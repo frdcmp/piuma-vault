@@ -90,7 +90,23 @@ STEPS=("Preflight checks" "Docker image" "Build artifact" "Fix ownership" "Verif
 TOTAL=${#STEPS[@]}
 CUR=0
 LOGDIR="$(mktemp -d)"
-trap 'printf "%s" "$SHOW"; rm -rf "$LOGDIR"' EXIT
+
+# Deterministic name for every `docker run` below so the cleanup trap can stop
+# the container. `docker run` without `-d` only attaches the CLI client; on
+# Ctrl-C the client dies but the (--rm) container keeps building on the daemon.
+CONTAINER="pv-build-$$"
+
+cleanup() {
+	printf "%s" "$SHOW"
+	# Stop the build container if it's still running (Ctrl-C / failure / normal
+	# exit). `docker stop` triggers --rm so it's also removed.
+	docker stop "$CONTAINER" >/dev/null 2>&1 || true
+	rm -rf "$LOGDIR"
+}
+trap cleanup EXIT
+# Convert SIGINT/SIGTERM into a normal exit so the EXIT trap above runs and the
+# container is stopped instead of being orphaned on the daemon.
+trap 'exit 130' INT TERM
 
 banner() {
 	printf "%s" "$HIDE"
@@ -175,7 +191,7 @@ build_artifact() {
 		echo "skipping build (reusing $OUT)"
 		return 0
 	fi
-	docker run --rm \
+	docker run --rm --name "$CONTAINER" \
 		-v "$PWD":/app \
 		-v /app/node_modules \
 		-v pv-gradle:/root/.gradle \
@@ -188,18 +204,18 @@ build_artifact() {
 }
 
 fix_owner() {
-	docker run --rm -v "$PWD":/app "$IMAGE" chown "$(id -u):$(id -g)" "/app/$OUT"
+	docker run --rm --name "$CONTAINER" -v "$PWD":/app "$IMAGE" chown "$(id -u):$(id -g)" "/app/$OUT"
 	ls -l "$OUT" >/dev/null
 }
 
 verify_artifact() {
 	if [ "$EXT" = "apk" ]; then
-		docker run --rm -v "$PWD":/app "$IMAGE" \
+		docker run --rm --name "$CONTAINER" -v "$PWD":/app "$IMAGE" \
 			bash -lc '$ANDROID_HOME/build-tools/36.0.0/aapt dump badging /app/'"$OUT"' \
 				| grep -E "^package:|application-label:|targetSdkVersion:"'
 	else
 		# AAB is a zip; aapt can't read it. Sanity-check the bundle structure.
-		docker run --rm -v "$PWD":/app "$IMAGE" \
+		docker run --rm --name "$CONTAINER" -v "$PWD":/app "$IMAGE" \
 			bash -lc 'unzip -l /app/'"$OUT"' | grep -E "BundleConfig.pb|base/manifest|base/dex" | head'
 		echo "aab ok ($(du -h "$OUT" | cut -f1))"
 	fi

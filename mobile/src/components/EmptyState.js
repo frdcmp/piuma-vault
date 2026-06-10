@@ -21,13 +21,14 @@ const MONO = Platform.select({
 	default: "monospace",
 });
 
-const QUIPS = [
-	"Pick a note, or Piuma keeps floating...",
-	"Nothing selected. Piuma is judging you.",
-	"Empty. Piuma fetched a whole lot of nothing.",
-	"No note open — Piuma's getting dizzy up here.",
-	"Go on, click something. Piuma dares you.",
-	"404: note not selected. Piuma shrugs.",
+// Quips reference the active mascot by name.
+const makeQuips = (name) => [
+	`Pick a note, or ${name} keeps floating...`,
+	`Nothing selected. ${name} is judging you.`,
+	`Empty. ${name} fetched a whole lot of nothing.`,
+	`No note open — ${name}'s getting dizzy up here.`,
+	`Go on, click something. ${name} dares you.`,
+	`404: note not selected. ${name} shrugs.`,
 ];
 
 // A row of chevrons that fades in sequence to imply a swipe direction.
@@ -78,7 +79,7 @@ function SwipeChevrons({ dir }) {
 	);
 }
 
-export default function PiumaEmptyState({
+export default function EmptyState({
 	onFiles,
 	onChat,
 	onStorage,
@@ -86,7 +87,7 @@ export default function PiumaEmptyState({
 	onCalendar,
 	onLogout,
 }) {
-	const { sprite } = useSprite();
+	const { sprite, name } = useSprite();
 	// fall: entrance drop from above the layout. float: idle bob after landing.
 	const fall = useRef(new Animated.Value(-400)).current;
 	const float = useRef(new Animated.Value(0)).current;
@@ -139,6 +140,7 @@ export default function PiumaEmptyState({
 	// it, then move to the next one. A single recursive timeout chain drives the
 	// whole cycle so the speeds stay independent of React's render cadence.
 	useEffect(() => {
+		const QUIPS = makeQuips(name);
 		const TYPE_MS = 55; // per character typed
 		const DELETE_MS = 25; // per character erased
 		const HOLD_MS = 2400; // pause on the full line
@@ -174,7 +176,7 @@ export default function PiumaEmptyState({
 
 		timeout = setTimeout(tick, GAP_MS);
 		return () => clearTimeout(timeout);
-	}, []);
+	}, [name]);
 
 	// Blinking terminal caret that trails the typed text (1s hard blink).
 	useEffect(() => {
@@ -241,7 +243,7 @@ export default function PiumaEmptyState({
 			{dims.width > 0 && (
 				<PixelStarfield width={dims.width} height={dims.height} />
 			)}
-			<Pressable onPress={boop} accessibilityLabel="Boop Piuma">
+			<Pressable onPress={boop} accessibilityLabel={`Boop ${name}`}>
 				<Animated.View
 					style={{
 						transform: [
@@ -349,7 +351,7 @@ export default function PiumaEmptyState({
 					<Pressable style={styles.confirmCard} onPress={() => {}}>
 						<Text style={styles.confirmTitle}>Log out?</Text>
 						<Text style={styles.confirmHint}>
-							Piuma will miss you. You'll need to sign back in.
+							{name} will miss you. You'll need to sign back in.
 						</Text>
 						<View style={styles.confirmActions}>
 							<Pressable

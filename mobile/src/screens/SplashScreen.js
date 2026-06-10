@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Dimensions, Platform, StyleSheet, Text, View } from 'react-native';
-import PiumaRunning from '../components/PiumaRunning';
+import SpriteRunner from '../components/SpriteRunner';
 import PixelStarfield from '../components/PixelStarfield';
 import { colors } from '../utils/theme';
 
@@ -34,7 +34,7 @@ export default function SplashScreen() {
   return (
     <View style={[styles.container, fullscreen]}>
       <PixelStarfield width={dims.width} height={dims.height} />
-      <PiumaRunning pixelSize={10} />
+      <SpriteRunner pixelSize={10} />
       <View style={styles.labelWrap}>
         <Text style={styles.label}>Fetching your vault</Text>
         <LoadingDots />

@@ -36,9 +36,9 @@ import {
 	updateConversation,
 } from "../api/agentChatApi";
 import MarkdownView from "../components/MarkdownView";
-import PiumaRunning from "../components/PiumaRunning";
+import SpriteRunner from "../components/SpriteRunner";
 import { toast } from "../components/Toast";
-import PiumaAvatar from "../components/PiumaAvatar";
+import SpriteAvatar from "../components/SpriteAvatar";
 import StreamingCursor from "../components/StreamingCursor";
 import { TOP_EXTRA } from "../components/SystemBars";
 import ThinkingLoader from "../components/ThinkingLoader";
@@ -1192,14 +1192,14 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 							{loadingConv && messages.length === 0 ? (
 								<View style={styles.empty}>
 									<View style={styles.emptyAvatar}>
-										<PiumaRunning pixelSize={3} />
+										<SpriteRunner pixelSize={3} />
 									</View>
 									<Text style={styles.emptySub}>loading conversation…</Text>
 								</View>
 							) : messages.length === 0 ? (
 								<View style={styles.empty}>
 									<View style={styles.emptyAvatar}>
-										<PiumaAvatar pixelSize={3} />
+										<SpriteAvatar pixelSize={3} />
 									</View>
 									<Text style={styles.emptyTitle}>Ready when you are.</Text>
 									<Text style={styles.emptySub}>
@@ -1448,7 +1448,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 						</View>
 					) : overlay === "sessions" && sessionsLoading ? (
 						<View style={styles.overlayLoading}>
-							<PiumaRunning pixelSize={2} />
+							<SpriteRunner pixelSize={2} />
 							<Text style={styles.overlayLoadingLabel}>loading…</Text>
 						</View>
 					) : (

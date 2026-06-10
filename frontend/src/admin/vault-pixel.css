@@ -4,7 +4,7 @@
    All admin layout + pages opt into this language by living under a
    `.vault-pixel` root (applied once on the app shell, and on full-screen auth
    pages). The palette/tokens mirror the existing pixel components
-   (PvModal.css, PiumaHome.css) so everything stays consistent.
+   (PvModal.css, Home.css) so everything stays consistent.
 
    Usage from a page:
      <div className="vp-page"> ... </div>

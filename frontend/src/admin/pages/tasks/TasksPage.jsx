@@ -22,8 +22,10 @@ import { CSS } from "@dnd-kit/utilities";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import WorkspaceShell from "../../../chat/WorkspaceShell";
-import BucketTagFilter from "../../../components/BucketTagFilter";
-import ManageBucketsModal from "../../../components/ManageBucketsModal";
+import {
+	BucketTagFilter,
+	ManageBucketsModal,
+} from "../../../components/buckets";
 import TimeAgo from "../../../components/TimeAgo";
 import UserMenu from "../../../components/UserMenu";
 import {

@@ -1,13 +1,14 @@
-// Piuma — the pixel dog mascot.
+// Fallback sprite — the baked-in default mascot (Piuma, the pixel dog).
+//
+// SpriteProvider renders this until the DB-backed active sprite loads, and
+// whenever it can't (error / cold launch). The live mascots live in the DB;
+// this is the one character that stays code-resident.
 //
 // A character definition: a palette plus a set of poses. A pose is an array of
 // equal-length strings; each character is a pixel "code" mapped to a color by
 // the palette ('.' or any unknown code = transparent). The top 10 `body` rows
 // are shared by every pose — only the two leg rows change, which is how the
 // idle / walk / gallop cycles are built.
-//
-// Consumed generically through ../index.js — swap the active character there to
-// re-skin the whole app.
 
 const palette = {
   B: '#ad7549', // base fur

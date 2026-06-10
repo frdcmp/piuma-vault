@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useTagRegistry } from "../queries";
-import { tagColor } from "../utils/tagColor";
+import { useTagRegistry } from "../../queries";
+import { tagColor } from "../../utils/tagColor";
 import "./BucketTags.css";
 
 /**

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { useScreenLockSettings, useUserMe } from "../queries";
-import useScreenLockStore from "../store/screenLockStore";
+import { useScreenLockSettings, useUserMe } from "../../queries";
+import useScreenLockStore from "../../store/screenLockStore";
 import ScreenLockOverlay from "./ScreenLockOverlay";
 
 // Public route prefixes where the lock never applies (no auth / not the vault owner).

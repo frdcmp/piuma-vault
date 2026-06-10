@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import NoteEditor from "../components/NoteEditor";
 import NotesListPanel from "../components/NotesListPanel";
-import PiumaEmptyState from "../components/PiumaEmptyState";
+import EmptyState from "../components/EmptyState";
 import { useTopInset } from "../components/SystemBars";
 import { useNote, useNotesLiveUpdates } from "../queries/notesQuery";
 import { useAuthStore } from "../stores/authStore";
@@ -284,7 +284,7 @@ export default function VaultHomeScreen({ navigation }) {
 				) : (
 					<View style={styles.emptyMain}>
 						<EmptyHeader onMenu={openLeft} onChat={openRight} />
-						<PiumaEmptyState
+						<EmptyState
 							onFiles={openLeft}
 							onChat={openRight}
 							onStorage={() => navigation.navigate("Storage")}

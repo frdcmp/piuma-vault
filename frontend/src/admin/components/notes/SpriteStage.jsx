@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { legFrameAt, Sprite, useSprite } from "../../../sprites";
-import "./PiumaPixelArt.css";
+import "./SpriteStage.css";
 
 const GRAVITY = 2600; // px/s², downward pull while falling
 const RESTITUTION = 0.34; // energy kept on each bounce
@@ -9,7 +9,7 @@ const WALK_SPEED = 160; // px/s along the ground back toward center
 const MAX_THROW = 1300; // clamp on release velocity
 const DRAG_THRESHOLD = 4; // px of movement before a press counts as a drag
 
-export default function PiumaPixelArt({ pixelSize = 8 }) {
+export default function SpriteStage({ pixelSize = 8 }) {
 	const { body, idleLegs, walkLegs, walkFrameMs } = useSprite();
 	const elRef = useRef(null);
 	// Toggled on a tap (not a drag) to play a one-shot jump over the idle float.
