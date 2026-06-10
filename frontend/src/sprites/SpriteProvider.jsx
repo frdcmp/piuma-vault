@@ -2,9 +2,13 @@ import { createContext, useContext, useMemo } from "react";
 import { useActiveSprite } from "../queries/spritesQuery";
 import DEFAULT_CHARACTER from "./fallback-sprite";
 
-// Provides the active mascot (fetched from the DB) to the whole tree. Until the
-// query resolves — and on error / offline / pre-provider — it falls back to a
-// baked-in default so first paint is never empty.
+// Provides the active mascot (fetched from the DB) to the whole tree.
+//
+// `ready` distinguishes "we have the real answer" from "still waiting". While
+// the query is in flight we report ready:false so consumers render nothing —
+// this avoids the flash where the baked-in default paints first and then gets
+// swapped for the DB sprite a moment later. The baked-in default is only ever
+// shown when the backend actually ERRORS (ready:true, but with DEFAULT).
 
 const SpriteContext = createContext(null);
 
@@ -29,13 +33,18 @@ function normalize(def, name) {
 }
 
 const DEFAULT = normalize(DEFAULT_CHARACTER, DEFAULT_CHARACTER.name);
+// Loading: hold (consumers render nothing). Error fallback: the baked-in default.
+const LOADING = { ...DEFAULT, ready: false };
+const FALLBACK = { ...DEFAULT, ready: true };
 
 export function SpriteProvider({ children }) {
-	const { data } = useActiveSprite();
-	const value = useMemo(
-		() => (data?.definition ? normalize(data.definition, data.name) : DEFAULT),
-		[data],
-	);
+	const { data, isError } = useActiveSprite();
+	const value = useMemo(() => {
+		if (data?.definition)
+			return { ...normalize(data.definition, data.name), ready: true };
+		if (isError) return FALLBACK; // backend failed — show the baked-in default
+		return LOADING; // still fetching — don't paint a soon-to-be-swapped sprite
+	}, [data, isError]);
 	return (
 		<SpriteContext.Provider value={value}>{children}</SpriteContext.Provider>
 	);
@@ -43,5 +52,5 @@ export function SpriteProvider({ children }) {
 
 // The active mascot. Safe outside a provider — returns the baked-in default.
 export function useSprite() {
-	return useContext(SpriteContext) || DEFAULT;
+	return useContext(SpriteContext) || FALLBACK;
 }

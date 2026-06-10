@@ -9,6 +9,16 @@ export const getScreenLock = async () => {
 	return data; // { enabled, timeout_seconds, pin_set }
 };
 
+// Update the config. Partial payloads are fine: { enabled }, { timeout_seconds }
+// or { pin } (6 digits). The PUT returns the fresh config.
+export const updateScreenLock = async (payload) => {
+	const { data } = await axiosInstance.put(
+		"/admin/settings/screen-lock",
+		payload,
+	);
+	return data;
+};
+
 export const verifyScreenLockPin = async (pin) => {
 	const { data } = await axiosInstance.post(
 		"/admin/settings/screen-lock/verify",

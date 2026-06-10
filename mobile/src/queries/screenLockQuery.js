@@ -1,11 +1,25 @@
-import { useQuery } from "@tanstack/react-query";
-import { getScreenLock } from "../api/screenLockApi";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getScreenLock, updateScreenLock } from "../api/screenLockApi";
 
-// Reads the global screen-lock config (enabled / timeout). Configured on web.
+const SCREEN_LOCK_KEY = ["screen-lock"];
+
+// Reads the global screen-lock config (enabled / timeout / pin_set).
 export const useScreenLockSettings = (options = {}) =>
 	useQuery({
-		queryKey: ["screen-lock"],
+		queryKey: SCREEN_LOCK_KEY,
 		queryFn: getScreenLock,
 		staleTime: 60_000,
 		...options,
 	});
+
+// Update the config (enable toggle, timeout, or PIN). The PUT returns the fresh
+// config, so seed the cache directly — ScreenLockGate reacts to it immediately.
+export const useUpdateScreenLock = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: updateScreenLock,
+		onSuccess: (data) => {
+			qc.setQueryData(SCREEN_LOCK_KEY, data);
+		},
+	});
+};

@@ -5,8 +5,15 @@ import { useEffect, useState } from "react";
 import UpdatePrompt from "../components/UpdatePrompt";
 import CalendarScreen from "../screens/CalendarScreen";
 import LoginScreen from "../screens/LoginScreen";
+import SettingsScreen from "../screens/SettingsScreen";
 import SplashScreen from "../screens/SplashScreen";
 import StorageScreen from "../screens/StorageScreen";
+import MemoryScreen from "../screens/settings/MemoryScreen";
+import ProfileScreen from "../screens/settings/ProfileScreen";
+import SecurityScreen from "../screens/settings/SecurityScreen";
+import SpritePickerScreen from "../screens/settings/SpritePickerScreen";
+import TokenUsageScreen from "../screens/settings/TokenUsageScreen";
+import TrashScreen from "../screens/settings/TrashScreen";
 import TasksScreen from "../screens/TasksScreen";
 import VaultHomeScreen from "../screens/VaultHomeScreen";
 import { useAuthStore } from "../stores/authStore";
@@ -84,6 +91,22 @@ export default function AppNavigator() {
 							/>
 							<Stack.Screen name="Calendar" component={CalendarScreen} />
 							<Stack.Screen name="Tasks" component={TasksScreen} />
+							<Stack.Screen name="Settings" component={SettingsScreen} />
+							<Stack.Screen name="SettingsProfile" component={ProfileScreen} />
+							<Stack.Screen
+								name="SettingsAppearance"
+								component={SpritePickerScreen}
+							/>
+							<Stack.Screen name="SettingsTrash" component={TrashScreen} />
+							<Stack.Screen
+								name="SettingsSecurity"
+								component={SecurityScreen}
+							/>
+							<Stack.Screen name="SettingsMemory" component={MemoryScreen} />
+							<Stack.Screen
+								name="SettingsTokenUsage"
+								component={TokenUsageScreen}
+							/>
 						</>
 					) : (
 						<Stack.Screen name="Login" component={LoginScreen} />

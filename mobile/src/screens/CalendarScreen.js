@@ -34,6 +34,7 @@ import {
 	useTasksLiveUpdates,
 	useToggleTask,
 } from "../queries/tasksQuery";
+import { usePrefsStore } from "../stores/prefsStore";
 import { formatTime } from "../utils/dateTime";
 import { syncLocalAlerts } from "../utils/notifications";
 import { expandRecurrence } from "../utils/recurrence";
@@ -220,7 +221,9 @@ export default function CalendarScreen({ navigation, route }) {
 	const [sel, setSel] = useState(ALL); // tag filter selection
 	const [filterOpen, setFilterOpen] = useState(false);
 	const [manageSheet, setManageSheet] = useState(false);
-	const [view, setView] = useState("month"); // "month" | "week" | "3day"
+	// Persisted across launches so the calendar reopens in the last-used layout.
+	const view = usePrefsStore((s) => s.calendarView); // "month" | "week" | "3day"
+	const setView = usePrefsStore((s) => s.setCalendarView);
 	// Anchor day for the agenda views; week derives its Monday from this.
 	const [periodStart, setPeriodStart] = useState(() => dayjs().startOf("day"));
 
@@ -370,11 +373,14 @@ export default function CalendarScreen({ navigation, route }) {
 		: "";
 
 	// Switching layout re-anchors to today so the user always lands on "now".
-	const selectView = useCallback((id) => {
-		setView(id);
-		setPeriodStart(dayjs().startOf("day"));
-		setFilterOpen(false);
-	}, []);
+	const selectView = useCallback(
+		(id) => {
+			setView(id);
+			setPeriodStart(dayjs().startOf("day"));
+			setFilterOpen(false);
+		},
+		[setView],
+	);
 
 	const stepPeriod = useCallback(
 		(dir) => {
@@ -755,9 +761,7 @@ function EventSheet({ event, initialDate, onClose }) {
 				{isEdit ? (
 					<Pressable
 						style={s.deleteBtn}
-						onPress={() =>
-							deleteEvent.mutate(event.id, { onSuccess: onClose })
-						}
+						onPress={() => deleteEvent.mutate(event.id, { onSuccess: onClose })}
 						disabled={busy}
 					>
 						{deleting ? (

@@ -17,6 +17,7 @@ import AlertsField from "../components/AlertsField";
 import BottomSheet from "../components/BottomSheet";
 import DateTimePickerField from "../components/DateTimePickerField";
 import ManageBucketsSheet from "../components/ManageBucketsSheet";
+import SpriteLoader from "../components/SpriteLoader";
 import TagPicker from "../components/TagPicker";
 import TimeAgo from "../components/TimeAgo";
 import {
@@ -82,8 +83,9 @@ export default function TasksScreen({ navigation, route }) {
 	const insets = useSafeAreaInsets();
 	useTasksLiveUpdates(); // refetch when tasks change on another device
 	useTagsLiveUpdates("tasks"); // keep buckets + tags fresh
-	const { data: tasks = [] } = useTasks();
-	const { data: recurring = [] } = useRecurringTasks();
+	const { data: tasks = [], isLoading: tasksLoading } = useTasks();
+	const { data: recurring = [], isLoading: recurringLoading } =
+		useRecurringTasks();
 	const { data: buckets = [] } = useBuckets();
 	const { data: tagRegistry = [] } = useTagRegistry();
 	const toggleTask = useToggleTask();
@@ -364,7 +366,11 @@ export default function TasksScreen({ navigation, route }) {
 				) : null}
 			</View>
 
-			{showRecurring ? (
+			{(showRecurring ? recurringLoading : tasksLoading) ? (
+				/* Initial load — show the running mascot instead of an empty state,
+				   which would otherwise read as "no tasks" before data arrives. */
+				<SpriteLoader message="Loading tasks" />
+			) : showRecurring ? (
 				<ScrollView contentContainerStyle={s.scroll}>
 					<View style={s.recHead}>
 						<Text style={s.section}>RECURRING · {recurring.length}</Text>

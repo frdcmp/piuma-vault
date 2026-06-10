@@ -85,6 +85,7 @@ export default function EmptyState({
 	onStorage,
 	onTasks,
 	onCalendar,
+	onSettings,
 	onLogout,
 }) {
 	const { sprite, name } = useSprite();
@@ -317,6 +318,16 @@ export default function EmptyState({
 				>
 					<Text style={styles.futureGlyph}>▤</Text>
 					<Text style={styles.hintText}>calendar</Text>
+				</Pressable>
+				<Pressable
+					onPress={onSettings}
+					style={({ pressed }) => [
+						styles.menuItem,
+						pressed && styles.menuItemPressed,
+					]}
+				>
+					<Text style={styles.futureGlyph}>⚙</Text>
+					<Text style={styles.hintText}>settings</Text>
 				</Pressable>
 				<Pressable
 					onPress={() => setConfirmLogout(true)}

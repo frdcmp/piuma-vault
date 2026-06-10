@@ -1,5 +1,5 @@
-import axiosInstance, { refreshAccessToken } from "./axiosInstance";
 import { useAuthStore } from "../stores/authStore";
+import axiosInstance, { refreshAccessToken } from "./axiosInstance";
 
 export { refreshAccessToken };
 
@@ -25,6 +25,18 @@ export const postLoginOtp = async ({
 		trust_device: !!trust_device,
 		...(device_label ? { device_label } : {}),
 	});
+	return data;
+};
+
+// Trusted devices — skip the OTP prompt for 30 days after their last verified
+// login. Listed and revocable from the mobile Security settings.
+export const getTrustedDevices = async () => {
+	const { data } = await axiosInstance.get("/auth/devices");
+	return data;
+};
+
+export const deleteTrustedDevice = async (id) => {
+	const { data } = await axiosInstance.delete(`/auth/devices/${id}`);
 	return data;
 };
 

@@ -11,9 +11,9 @@ import {
 	TouchableOpacity,
 	View,
 } from "react-native";
+import EmptyState from "../components/EmptyState";
 import NoteEditor from "../components/NoteEditor";
 import NotesListPanel from "../components/NotesListPanel";
-import EmptyState from "../components/EmptyState";
 import { useTopInset } from "../components/SystemBars";
 import { useNote, useNotesLiveUpdates } from "../queries/notesQuery";
 import { useAuthStore } from "../stores/authStore";
@@ -290,6 +290,7 @@ export default function VaultHomeScreen({ navigation }) {
 							onStorage={() => navigation.navigate("Storage")}
 							onTasks={() => navigation.navigate("Tasks")}
 							onCalendar={() => navigation.navigate("Calendar")}
+							onSettings={() => navigation.navigate("Settings")}
 							onLogout={logout}
 						/>
 					</View>
