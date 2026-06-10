@@ -1,19 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet } from 'react-native';
-import { BODY, GALLOP_FRAME_MS, GALLOP_LEGS, Sprite } from '../sprites';
+import { Sprite, useSprite } from '../sprites';
 
 const BOUNCE_MS = 280; // one full bob = two leg frames
 
 export default function PiumaRunning({ pixelSize = 10 }) {
+  const { body, gallopLegs, gallopFrameMs } = useSprite();
   const [frame, setFrame] = useState(0);
   const bounce = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const id = setInterval(() => {
-      setFrame((f) => (f + 1) % GALLOP_LEGS.length);
-    }, GALLOP_FRAME_MS);
+      setFrame((f) => (f + 1) % gallopLegs.length);
+    }, gallopFrameMs);
     return () => clearInterval(id);
-  }, []);
+  }, [gallopLegs.length, gallopFrameMs]);
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -39,7 +40,7 @@ export default function PiumaRunning({ pixelSize = 10 }) {
   const translateY = bounce.interpolate({ inputRange: [0, 1], outputRange: [0, -pixelSize / 2] });
   const rotate = bounce.interpolate({ inputRange: [0, 1], outputRange: ['-2deg', '2deg'] });
 
-  const rows = [...BODY, ...GALLOP_LEGS[frame]];
+  const rows = [...body, ...gallopLegs[frame % gallopLegs.length]];
 
   return (
     <Animated.View style={[styles.wrap, { transform: [{ translateY }, { rotate }] }]}>

@@ -1,10 +1,11 @@
 import { StyleSheet, View } from 'react-native';
-import { spriteColor } from './index';
+import { useSprite } from './SpriteProvider';
 
 // Presentational pixel grid for a single pose of the active mascot. `rows` is an
-// array of equal-length pixel-code strings (see ./index.js); renders rows of
-// solid-color cells. Stateless — animation lives in the caller.
+// array of equal-length pixel-code strings; renders rows of solid-color cells
+// using the active mascot's palette. Stateless — animation lives in the caller.
 export default function Sprite({ rows, pixelSize = 8 }) {
+  const { spriteColor } = useSprite();
   return (
     <View>
       {rows.map((row, r) => (

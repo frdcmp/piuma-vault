@@ -9,7 +9,7 @@ import {
 	Text,
 	View,
 } from "react-native";
-import { Sprite, SPRITE } from "../sprites";
+import { Sprite, useSprite } from "../sprites";
 import { colors } from "../utils/theme";
 import ComingSoonModal from "./ComingSoonModal";
 import PixelStarfield from "./PixelStarfield";
@@ -86,6 +86,7 @@ export default function PiumaEmptyState({
 	onCalendar,
 	onLogout,
 }) {
+	const { sprite } = useSprite();
 	// fall: entrance drop from above the layout. float: idle bob after landing.
 	const fall = useRef(new Animated.Value(-400)).current;
 	const float = useRef(new Animated.Value(0)).current;
@@ -251,7 +252,7 @@ export default function PiumaEmptyState({
 						],
 					}}
 				>
-					<Sprite rows={SPRITE} pixelSize={8} />
+					<Sprite rows={sprite} pixelSize={8} />
 				</Animated.View>
 			</Pressable>
 			<Text style={styles.text}>

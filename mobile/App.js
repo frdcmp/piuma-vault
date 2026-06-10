@@ -16,6 +16,7 @@ import AlarmModal from "./src/components/AlarmModal";
 import SystemBars from "./src/components/SystemBars";
 import ToastHost from "./src/components/Toast";
 import AppNavigator from "./src/navigation/AppNavigator";
+import { SpriteProvider } from "./src/sprites";
 import { useAlarmStore } from "./src/stores/alarmStore";
 import { useAuthStore } from "./src/stores/authStore";
 import { alarmFromNotifee, EventType } from "./src/utils/alarm";
@@ -122,7 +123,8 @@ export default function App() {
 				client={queryClient}
 				persistOptions={{ persister: asyncStoragePersister }}
 			>
-				<SafeAreaProvider initialMetrics={initialWindowMetrics}>
+				<SpriteProvider>
+					<SafeAreaProvider initialMetrics={initialWindowMetrics}>
 					<KeyboardProvider statusBarTranslucent>
 						<View style={{ flex: 1, backgroundColor: colors.bg }}>
 							<AppNavigator />
@@ -133,7 +135,8 @@ export default function App() {
 						<ToastHost />
 					</KeyboardProvider>
 				</SafeAreaProvider>
-			</PersistQueryClientProvider>
+			</SpriteProvider>
+				</PersistQueryClientProvider>
 		</GestureHandlerRootView>
 	);
 }

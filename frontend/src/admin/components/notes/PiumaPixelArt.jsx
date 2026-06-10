@@ -1,12 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-	BODY,
-	IDLE_LEGS,
-	legFrameAt,
-	Sprite,
-	WALK_FRAME_MS,
-	WALK_LEGS,
-} from "../../../sprites";
+import { legFrameAt, Sprite, useSprite } from "../../../sprites";
 import "./PiumaPixelArt.css";
 
 const GRAVITY = 2600; // px/s², downward pull while falling
@@ -17,6 +10,7 @@ const MAX_THROW = 1300; // clamp on release velocity
 const DRAG_THRESHOLD = 4; // px of movement before a press counts as a drag
 
 export default function PiumaPixelArt({ pixelSize = 8 }) {
+	const { body, idleLegs, walkLegs, walkFrameMs } = useSprite();
 	const elRef = useRef(null);
 	// Toggled on a tap (not a drag) to play a one-shot jump over the idle float.
 	const [jumping, setJumping] = useState(false);
@@ -87,7 +81,7 @@ export default function PiumaPixelArt({ pixelSize = 8 }) {
 			s.facing = dir < 0 ? 1 : -1;
 			s.ox += dir * WALK_SPEED * dt;
 			// Swap the walk legs on the shared cadence.
-			const frame = legFrameAt(s.t * 1000, WALK_LEGS.length, WALK_FRAME_MS);
+			const frame = legFrameAt(s.t * 1000, walkLegs.length, walkFrameMs);
 			if (frame !== s.legFrame) {
 				s.legFrame = frame;
 				setLegFrame(frame);
@@ -228,7 +222,7 @@ export default function PiumaPixelArt({ pixelSize = 8 }) {
 			style={{ display: "inline-block", lineHeight: 0 }}
 		>
 			<Sprite
-				rows={[...BODY, ...(legFrame >= 0 ? WALK_LEGS[legFrame] : IDLE_LEGS)]}
+				rows={[...body, ...(legFrame >= 0 ? walkLegs[legFrame] : idleLegs)]}
 				pixelSize={pixelSize}
 			/>
 		</button>

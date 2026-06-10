@@ -4,7 +4,7 @@ import {
 	SettingOutlined,
 } from "@ant-design/icons";
 import { Link, useNavigate } from "react-router-dom";
-import { SPRITE, Sprite } from "../../../sprites";
+import { Sprite, useSprite } from "../../../sprites";
 import useUiStore, { SCREEN_MODES } from "../../../store/uiStore";
 import AppBreadcrumbs from "./Breadcrumbs";
 import UserMenu from "./UserMenu";
@@ -13,6 +13,7 @@ import "./layout.css";
 
 const HeaderComponent = ({ onSidebarToggle, showSidebarToggle = false }) => {
 	const { screenMode } = useUiStore();
+	const { sprite } = useSprite();
 	const navigate = useNavigate();
 	const isPhone = screenMode === SCREEN_MODES.PHONE;
 
@@ -33,7 +34,7 @@ const HeaderComponent = ({ onSidebarToggle, showSidebarToggle = false }) => {
 					{isPhone ? (
 						<Link to="/notes" style={{ display: "flex", alignItems: "center" }}>
 							<span className="vp-header-logo" role="img" aria-label="Piuma">
-								<Sprite rows={SPRITE} pixelSize={2} />
+								<Sprite rows={sprite} pixelSize={2} />
 							</span>
 						</Link>
 					) : (
