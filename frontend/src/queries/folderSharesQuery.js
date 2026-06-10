@@ -3,6 +3,7 @@ import {
 	createFolderShare,
 	deleteFolderShare,
 	listFolderShares,
+	renewFolderShare,
 	updateFolderShare,
 } from "../api/folderShares";
 
@@ -40,6 +41,14 @@ export const useDeleteFolderShare = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: deleteFolderShare,
+		onSuccess: () => qc.invalidateQueries({ queryKey: folderShareKeys.all }),
+	});
+};
+
+export const useRenewFolderShare = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: renewFolderShare,
 		onSuccess: () => qc.invalidateQueries({ queryKey: folderShareKeys.all }),
 	});
 };

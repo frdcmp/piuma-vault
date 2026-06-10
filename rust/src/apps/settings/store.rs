@@ -26,6 +26,11 @@ pub const WEBSEARCH_EXA_API_KEY: &str = "websearch_exa_api_key";
 // optional API base lets the same tools target a GitHub Enterprise host.
 pub const GITHUB_TOKEN: &str = "github_token";
 pub const GITHUB_API_BASE: &str = "github_api_base";
+// Screen lock — idle PIN lock for the web app. Config is global (single-tenant).
+// The PIN is stored only as an argon2 hash; it is never returned to the client.
+pub const SCREEN_LOCK_ENABLED: &str = "screen_lock_enabled"; // "true" / "false"
+pub const SCREEN_LOCK_TIMEOUT_SECONDS: &str = "screen_lock_timeout_seconds"; // e.g. "300"
+pub const SCREEN_LOCK_PIN_HASH: &str = "screen_lock_pin_hash"; // argon2 PHC string (secret)
 
 /// Resolved S3 connection config (all required fields present).
 #[derive(Debug, Clone)]

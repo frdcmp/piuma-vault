@@ -1,0 +1,64 @@
+.vp-pixloader {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	background: var(--vp-bg, #14171c);
+	opacity: 1;
+	transition: opacity 0.35s ease;
+}
+
+/* Exit transition — fade the whole screen out. */
+.vp-pixloader.is-out {
+	opacity: 0;
+	pointer-events: none;
+}
+
+.vp-pixloader-inner {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 28px;
+}
+
+.vp-pixloader-text {
+	margin: 0;
+	font-family: "Press Start 2P", var(--vp-font);
+	font-size: 13px;
+	line-height: 1.6;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: var(--vp-accent, #f7c948);
+	text-shadow: 2px 2px 0 #000;
+}
+
+/* Cycling pixel ellipsis after the label. */
+.vp-pixloader-dots::after {
+	content: "";
+	animation: vp-pixloader-dots 1.2s steps(1, end) infinite;
+}
+
+@keyframes vp-pixloader-dots {
+	0% {
+		content: "";
+	}
+	25% {
+		content: ".";
+	}
+	50% {
+		content: "..";
+	}
+	75% {
+		content: "...";
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.vp-pixloader-dots::after {
+		content: "...";
+		animation: none;
+	}
+}

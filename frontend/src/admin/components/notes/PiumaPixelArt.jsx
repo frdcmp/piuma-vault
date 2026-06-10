@@ -1,60 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import PiumaSprite from "../../../sprites/PiumaSprite";
+import {
+	legFrameAt,
+	PIUMA_BODY,
+	PIUMA_IDLE_LEGS,
+	PIUMA_WALK_FRAME_MS,
+	PIUMA_WALK_LEGS,
+} from "../../../sprites/piuma";
 import "./PiumaPixelArt.css";
-
-const RAW_DOG_SPRITE = [
-	"................",
-	".....EEBB.......",
-	"....EBBBBB......",
-	"...BBBBBBBB.....",
-	"...BBYBBYBB.BBB.",
-	"...BMMNMMBBBBBB.",
-	"...BBMTMBBBBBBB.",
-	"...CCCCCCCCCCC..",
-	"...BWWWWWWWWBB..",
-	"...BWWWWWWWWBB..",
-	"...B.B....B.B...",
-	"...B.B....B.B...",
-];
-
-// Top 10 rows never move; only the last two leg rows swap.
-const BODY = RAW_DOG_SPRITE.slice(0, 10);
-const IDLE_LEGS = RAW_DOG_SPRITE.slice(10);
-// Four-frame walk: a diagonal trot. Each diagonal pair of legs swings forward
-// (lifted — no foot row) while the other pair stays planted, with a neutral
-// contact frame between steps. All feet stay under the body (cols 2–12).
-const NEUTRAL_LEGS = ["...B.B....B.B...", "...B.B....B.B..."];
-const RUN_LEGS = [
-	// front-left + back-right swing
-	["..B..B....BB....", ".....B....B....."],
-	NEUTRAL_LEGS,
-	// front-right + back-left swing
-	["...BB....B..B...", "...B........B..."],
-	NEUTRAL_LEGS,
-];
-const LEG_FRAME_MS = 120;
-
-function codeToColor(code) {
-	switch (code) {
-		case "B":
-			return "#ad7549"; // base
-		case "W":
-			return "#f5f5f5"; // belly
-		case "M":
-			return "#f5f5f5"; // muzzle
-		case "E":
-			return "#0d0d0d"; // ear
-		case "N":
-			return "#000000"; // nose
-		case "Y":
-			return "#090909"; // eye
-		case "T":
-			return "#ff7a9a"; // tongue
-		case "C":
-			return "#c0392b"; // collar
-		default:
-			return null;
-	}
-}
 
 const GRAVITY = 2600; // px/s², downward pull while falling
 const RESTITUTION = 0.34; // energy kept on each bounce
@@ -64,8 +17,6 @@ const MAX_THROW = 1300; // clamp on release velocity
 const DRAG_THRESHOLD = 4; // px of movement before a press counts as a drag
 
 export default function PiumaPixelArt({ pixelSize = 8 }) {
-	const cols = RAW_DOG_SPRITE[0].length;
-	const rows = RAW_DOG_SPRITE.length;
 	const elRef = useRef(null);
 	// Toggled on a tap (not a drag) to play a one-shot jump over the idle float.
 	const [jumping, setJumping] = useState(false);
@@ -135,8 +86,12 @@ export default function PiumaPixelArt({ pixelSize = 8 }) {
 			// Sprite faces left by default, so mirror only when walking right.
 			s.facing = dir < 0 ? 1 : -1;
 			s.ox += dir * WALK_SPEED * dt;
-			// Swap the gallop legs on the loader's cadence.
-			const frame = Math.floor((s.t * 1000) / LEG_FRAME_MS) % RUN_LEGS.length;
+			// Swap the walk legs on the shared cadence.
+			const frame = legFrameAt(
+				s.t * 1000,
+				PIUMA_WALK_LEGS.length,
+				PIUMA_WALK_FRAME_MS,
+			);
 			if (frame !== s.legFrame) {
 				s.legFrame = frame;
 				setLegFrame(frame);
@@ -274,30 +229,15 @@ export default function PiumaPixelArt({ pixelSize = 8 }) {
 			onAnimationEnd={(ev) => {
 				if (ev.animationName === "piuma-jump") setJumping(false);
 			}}
-			style={{
-				display: "grid",
-				gridTemplateColumns: `repeat(${cols}, ${pixelSize}px)`,
-				gridTemplateRows: `repeat(${rows}, ${pixelSize}px)`,
-				width: cols * pixelSize,
-				height: rows * pixelSize,
-			}}
+			style={{ display: "inline-block", lineHeight: 0 }}
 		>
-			{[...BODY, ...(legFrame >= 0 ? RUN_LEGS[legFrame] : IDLE_LEGS)].map(
-				(row, r) =>
-					row.split("").map((code, c) => {
-						const color = codeToColor(code);
-						return (
-							<div
-								key={`${r}-${c}`}
-								style={{
-									width: pixelSize,
-									height: pixelSize,
-									backgroundColor: color || "transparent",
-								}}
-							/>
-						);
-					}),
-			)}
+			<PiumaSprite
+				rows={[
+					...PIUMA_BODY,
+					...(legFrame >= 0 ? PIUMA_WALK_LEGS[legFrame] : PIUMA_IDLE_LEGS),
+				]}
+				pixelSize={pixelSize}
+			/>
 		</button>
 	);
 }

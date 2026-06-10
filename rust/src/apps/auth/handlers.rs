@@ -61,7 +61,7 @@ fn extract_frontend_base(req: &HttpRequest) -> String {
 
 // ── Argon2 with fast iterations (dev-friendly, still secure) ──
 
-pub(super) fn argon2_instance_pub() -> Argon2<'static> {
+pub fn argon2_instance_pub() -> Argon2<'static> {
     argon2_instance()
 }
 

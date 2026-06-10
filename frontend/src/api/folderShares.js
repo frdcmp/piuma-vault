@@ -40,6 +40,14 @@ export const deleteFolderShare = async (id) => {
 	return data;
 };
 
+// Renew: reset created_at to now and push expiry forward by its original lifespan.
+export const renewFolderShare = async (id) => {
+	const { data } = await axiosInstance.post(
+		`/admin/storage/shares/${id}/renew`,
+	);
+	return data;
+};
+
 // ── Public: a slug-scoped client used by the public viewer (no auth) ──
 // All paths are RELATIVE to the share root. `pwd` is appended when set.
 

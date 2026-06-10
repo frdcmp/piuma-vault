@@ -1,5 +1,6 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
+import PixelLoader from "../../../components/PixelLoader";
 import { useUserMe } from "../../../queries";
 
 const ProtectedRoute = ({ children, requiredPermission = "admin_access" }) => {
@@ -22,7 +23,7 @@ const ProtectedRoute = ({ children, requiredPermission = "admin_access" }) => {
 
 	// Still resolving the user (or the axios interceptor is mid-refresh).
 	if (fetchStatus === "fetching" && !me) {
-		return null;
+		return <PixelLoader message="Loading vault" />;
 	}
 
 	// /me failed even after the interceptor's refresh attempt — session is dead.

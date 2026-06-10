@@ -80,6 +80,13 @@
 	gap: 2px;
 }
 
+/* Anchored to the avatar's left edge so it opens rightward — used when the
+   avatar sits near the left edge of a narrow container (notes sidebar). */
+.user-menu-dropdown--left {
+	right: auto;
+	left: 0;
+}
+
 .user-menu-info {
 	padding: 2px 4px 6px;
 }

@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PvModal } from "@/admin/components/ui";
+import UserMenu from "../../../components/UserMenu";
 import {
 	notesKeys,
 	useBrowseFolder,
@@ -716,7 +717,10 @@ export default function NotesListSidebar({
 			{/* Header */}
 			<div className="notes-sidebar-header">
 				<div className="notes-sidebar-header-row">
-					<h3 className="notes-sidebar-title">Notes</h3>
+					<div className="notes-sidebar-title-group">
+						<UserMenu size={30} align="left" />
+						<h3 className="notes-sidebar-title">Notes</h3>
+					</div>
 					<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
 						<button
 							type="button"

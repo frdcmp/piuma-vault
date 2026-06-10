@@ -49,6 +49,7 @@ urlencoding = "2.1"
 lettre = { version = "0.11", features = ["tokio1", "tokio1-native-tls", "builder"] }
 sha2 = "0.10"
 base64 = "0.22"
+chacha20poly1305 = "0.10"
 pgvector = { version = "0.4", features = ["sqlx"] }
 moka = { version = "0.12", features = ["future"] }
 serde_yaml = "0.9"

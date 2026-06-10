@@ -15,6 +15,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                 .route(web::put().to(handlers::update_share))
                 .route(web::delete().to(handlers::delete_share)),
         )
+        .service(
+            web::resource("/admin/storage/shares/{id}/renew")
+                .route(web::post().to(handlers::renew_share)),
+        )
         // Public (slug-based, no auth)
         .service(web::resource("/share/f/{slug}").route(web::get().to(handlers::meta)))
         .service(web::resource("/share/f/{slug}/list").route(web::get().to(handlers::list)))

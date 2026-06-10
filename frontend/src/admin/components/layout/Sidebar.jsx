@@ -14,11 +14,13 @@ import {
 	RobotOutlined,
 	SearchOutlined,
 	SettingOutlined,
+	ShareAltOutlined,
 	UpOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import piumaLogo from "../../../img/dogs/piuma.png";
+import PiumaSprite from "../../../sprites/PiumaSprite";
+import { PIUMA_SPRITE } from "../../../sprites/piuma";
 import SearchModal from "../search/SearchModal";
 import SupportModal from "../support/SupportModal";
 import "../../vault-pixel.css";
@@ -35,6 +37,7 @@ const NAVIGATION = [
 ];
 
 const RESOURCES = [
+	{ key: "/admin/shares", icon: <ShareAltOutlined />, label: "Shares" },
 	{ key: "/admin/api-keys", icon: <KeyOutlined />, label: "API Keys" },
 	{ key: "/admin/services", icon: <ApiOutlined />, label: "Services" },
 	{ key: "/admin/trash", icon: <DeleteOutlined />, label: "Trash" },
@@ -117,7 +120,9 @@ const Sidebar = ({ inDrawer = false, onNavigate }) => {
 				{/* Brand */}
 				<div className="vp-sidebar-brand">
 					<div className="vp-sidebar-brand-left">
-						<img src={piumaLogo} alt="Piuma" className="vp-sidebar-logo" />
+						<span className="vp-sidebar-logo" role="img" aria-label="Piuma">
+							<PiumaSprite rows={PIUMA_SPRITE} pixelSize={2} />
+						</span>
 						<span className="vp-sidebar-wordmark">vault</span>
 					</div>
 					<button

@@ -23,10 +23,13 @@ import Profile from "./admin/pages/profile";
 import Projects from "./admin/pages/projects";
 import Services from "./admin/pages/services";
 import Settings from "./admin/pages/settings";
+import SharesPage from "./admin/pages/shares";
 import StorageExplorer from "./admin/pages/storage/StorageExplorer";
 import TasksPage from "./admin/pages/tasks/TasksPage";
 import TrashPage from "./admin/pages/trash";
 import { queryClient } from "./api/queryClient";
+import PixelLoader from "./components/PixelLoader";
+import ScreenLockGate from "./components/ScreenLockGate";
 import SharedFolderPage from "./share/SharedFolderPage";
 import SharedNotePage from "./share/SharedNotePage";
 
@@ -66,7 +69,7 @@ function AppContent() {
 				<Route
 					path="/docs"
 					element={
-						<Suspense fallback={null}>
+						<Suspense fallback={<PixelLoader />}>
 							<DocsLayout />
 						</Suspense>
 					}
@@ -75,7 +78,7 @@ function AppContent() {
 					<Route
 						path=":slug"
 						element={
-							<Suspense fallback={null}>
+							<Suspense fallback={<PixelLoader />}>
 								<DocsPage />
 							</Suspense>
 						}
@@ -108,6 +111,7 @@ function AppContent() {
 					<Route path="settings" element={<Settings />} />
 					<Route path="settings/:tab" element={<Settings />} />
 					<Route path="services" element={<Services />} />
+					<Route path="shares" element={<SharesPage />} />
 					<Route path="trash" element={<TrashPage />} />
 					<Route path="db-backups" element={<DbDump />} />
 					<Route path="test" element={<ApiTest />} />
@@ -158,6 +162,8 @@ function AppContent() {
 			{/* Loud, must-dismiss in-app alarm — rings when an alert fires while
 			    the app is open (the OS notification covers the closed-tab case). */}
 			<AlarmHost />
+			{/* Idle screen lock — blocks the whole app after inactivity. */}
+			<ScreenLockGate />
 		</BrowserRouter>
 	);
 }

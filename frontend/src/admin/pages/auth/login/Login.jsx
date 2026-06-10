@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import PixelLoader from "../../../../components/PixelLoader";
 import {
 	useLogin,
 	useLoginOtp,
@@ -28,6 +29,14 @@ const Login = () => {
 
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
+
+	// Once authenticated, show the pixel loader briefly so entering the vault
+	// feels like a transition rather than an instant cut.
+	const [landing, setLanding] = useState(false);
+	const enterVault = () => {
+		setLanding(true);
+		setTimeout(() => navigate(redirectTo), 1200);
+	};
 
 	// OTP second-step state. otpSession is held in memory only (never
 	// localStorage) — it's short-lived and only authorizes the next request.
@@ -101,7 +110,7 @@ const Login = () => {
 						setOtpCode("");
 						return;
 					}
-					navigate(redirectTo);
+					enterVault();
 				},
 				onError: (error) => {
 					const data = error?.response?.data;
@@ -137,7 +146,7 @@ const Login = () => {
 						setFormError("Unexpected response from server.");
 						return;
 					}
-					navigate(redirectTo);
+					enterVault();
 				},
 				onError: (error) => {
 					const data = error?.response?.data;
@@ -154,6 +163,10 @@ const Login = () => {
 			},
 		);
 	};
+
+	if (landing) {
+		return <PixelLoader message="Entering vault" />;
+	}
 
 	return (
 		<div className="vault-pixel vp-scanlines vp-auth-layout">
