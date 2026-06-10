@@ -37,6 +37,27 @@ function ModelsList({ providerId }) {
 	const [error, setError] = useState("");
 	const [pendingDelete, setPendingDelete] = useState(null);
 	const [picker, setPicker] = useState(false);
+	// Model being priced (USD per 1M tokens) + the editable values.
+	const [pricing, setPricing] = useState(null);
+	const [priceIn, setPriceIn] = useState(0);
+	const [priceOut, setPriceOut] = useState(0);
+	const [priceCached, setPriceCached] = useState(0);
+
+	const openPricing = (m) => {
+		setPricing(m);
+		setPriceIn(m.price_input ?? 0);
+		setPriceOut(m.price_output ?? 0);
+		setPriceCached(m.price_cached ?? 0);
+	};
+	const savePricing = () => {
+		updateModel.mutate({
+			id: pricing.id,
+			price_input: Number(priceIn) || 0,
+			price_output: Number(priceOut) || 0,
+			price_cached: Number(priceCached) || 0,
+		});
+		setPricing(null);
+	};
 	const {
 		data: catalog,
 		isFetching: catalogLoading,
@@ -99,6 +120,19 @@ function ModelsList({ providerId }) {
 					{m.supports_thinking && (
 						<span className="ag-tag ag-tag--purple">thinking</span>
 					)}
+					{(m.price_input > 0 || m.price_output > 0) && (
+						<span className="ag-muted" title="USD per 1M tokens (in / out)">
+							${m.price_input}/${m.price_output}
+						</span>
+					)}
+					<button
+						type="button"
+						className="ag-btn--icon"
+						title="Set token prices"
+						onClick={() => openPricing(m)}
+					>
+						$
+					</button>
 					<button
 						type="button"
 						className="ag-btn--icon ag-btn--danger"
@@ -192,6 +226,50 @@ function ModelsList({ providerId }) {
 			>
 				Delete <strong>{pendingDelete?.display_name}</strong>? This can't be
 				undone.
+			</PvModal>
+			<PvModal
+				open={!!pricing}
+				title={`Token prices — ${pricing?.display_name || ""}`}
+				confirmText="Save"
+				onConfirm={savePricing}
+				onCancel={() => setPricing(null)}
+			>
+				<p className="ag-muted" style={{ marginTop: 0 }}>
+					USD per 1M tokens. Used to estimate spend on the Token Usage page.
+				</p>
+				<label className="ag-row" style={{ gap: 8, marginBottom: 8 }}>
+					<span style={{ minWidth: 110 }}>Input</span>
+					<input
+						className="ag-input"
+						type="number"
+						min="0"
+						step="0.01"
+						value={priceIn}
+						onChange={(e) => setPriceIn(e.target.value)}
+					/>
+				</label>
+				<label className="ag-row" style={{ gap: 8, marginBottom: 8 }}>
+					<span style={{ minWidth: 110 }}>Output</span>
+					<input
+						className="ag-input"
+						type="number"
+						min="0"
+						step="0.01"
+						value={priceOut}
+						onChange={(e) => setPriceOut(e.target.value)}
+					/>
+				</label>
+				<label className="ag-row" style={{ gap: 8 }}>
+					<span style={{ minWidth: 110 }}>Cached (read)</span>
+					<input
+						className="ag-input"
+						type="number"
+						min="0"
+						step="0.01"
+						value={priceCached}
+						onChange={(e) => setPriceCached(e.target.value)}
+					/>
+				</label>
 			</PvModal>
 		</div>
 	);

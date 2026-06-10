@@ -26,6 +26,7 @@ import Settings from "./admin/pages/settings";
 import SharesPage from "./admin/pages/shares";
 import StorageExplorer from "./admin/pages/storage/StorageExplorer";
 import TasksPage from "./admin/pages/tasks/TasksPage";
+import TokenUsage from "./admin/pages/token-usage/TokenUsage";
 import TrashPage from "./admin/pages/trash";
 import { queryClient } from "./api/queryClient";
 import PixelLoader from "./components/PixelLoader";
@@ -111,6 +112,7 @@ function AppContent() {
 					<Route path="settings" element={<Settings />} />
 					<Route path="settings/:tab" element={<Settings />} />
 					<Route path="services" element={<Services />} />
+					<Route path="token-usage" element={<TokenUsage />} />
 					<Route path="shares" element={<SharesPage />} />
 					<Route path="trash" element={<TrashPage />} />
 					<Route path="db-backups" element={<DbDump />} />

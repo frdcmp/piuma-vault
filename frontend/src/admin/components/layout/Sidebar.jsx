@@ -1,6 +1,7 @@
 import {
 	ApiOutlined,
 	AppstoreOutlined,
+	BarChartOutlined,
 	BookOutlined,
 	DatabaseOutlined,
 	DeleteOutlined,
@@ -19,8 +20,7 @@ import {
 } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import PiumaSprite from "../../../sprites/PiumaSprite";
-import { PIUMA_SPRITE } from "../../../sprites/piuma";
+import { SPRITE, Sprite } from "../../../sprites";
 import SearchModal from "../search/SearchModal";
 import SupportModal from "../support/SupportModal";
 import "../../vault-pixel.css";
@@ -40,6 +40,11 @@ const RESOURCES = [
 	{ key: "/admin/shares", icon: <ShareAltOutlined />, label: "Shares" },
 	{ key: "/admin/api-keys", icon: <KeyOutlined />, label: "API Keys" },
 	{ key: "/admin/services", icon: <ApiOutlined />, label: "Services" },
+	{
+		key: "/admin/token-usage",
+		icon: <BarChartOutlined />,
+		label: "Token Usage",
+	},
 	{ key: "/admin/trash", icon: <DeleteOutlined />, label: "Trash" },
 	{ key: "/admin/db-backups", icon: <DatabaseOutlined />, label: "Backups" },
 	{ key: "/admin/settings", icon: <SettingOutlined />, label: "Settings" },
@@ -121,7 +126,7 @@ const Sidebar = ({ inDrawer = false, onNavigate }) => {
 				<div className="vp-sidebar-brand">
 					<div className="vp-sidebar-brand-left">
 						<span className="vp-sidebar-logo" role="img" aria-label="Piuma">
-							<PiumaSprite rows={PIUMA_SPRITE} pixelSize={2} />
+							<Sprite rows={SPRITE} pixelSize={2} />
 						</span>
 						<span className="vp-sidebar-wordmark">vault</span>
 					</div>

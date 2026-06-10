@@ -240,7 +240,7 @@ pub async fn chat(
     // instead of calling the embedding API synchronously each turn.
     let user_content = json!([{ "type": "text", "text": msg }]);
     let user_text = blocks_to_text(&user_content);
-    let user_emb = crate::apps::embeddings::embed(db, &user_text, 1536).await.ok();
+    let user_emb = crate::apps::embeddings::embed(db, &user_text, 1536, "embedding:chat").await.ok();
     if let Err(e) = if let Some(ref emb) = user_emb {
         let pg_vec = pgvector::Vector::from(emb.clone());
         sqlx::query("INSERT INTO db_chat_messages (conversation_id, role, content, content_text, embedding) VALUES ($1, 'user', $2, $3, $4)")
@@ -316,6 +316,8 @@ pub async fn chat(
          - Calendar event: `[title](/admin/calendar?event=<id>)`\n\
          - Task: `[title](/tasks?task=<id>)`\n\
          - A whole view: `/notes`, `/tasks`, `/admin/calendar`, `/storage`\n\
+         A note's link is ALWAYS `/notes/<id>` — use the note's `id`, never its `folder` path \
+         (e.g. write `/notes/<id>`, NOT `/projects/.../<id>`).\n\
          Only ever use ids returned by your tools — never guess one. External web pages: use a \
          normal `https://` markdown link.\n\n\
          To actively TAKE the user somewhere (not just offer a link), call the `navigate` tool — \
@@ -420,6 +422,8 @@ pub async fn chat(
         let mut display: Vec<Value> = Vec::new();
         let mut tin = 0;
         let mut tout = 0;
+        let mut tcached = 0;
+        let mut tcache_write = 0;
         let mut stop = "end_turn".to_string();
         let mut errored = false;
         let mut answered = false;
@@ -449,6 +453,8 @@ pub async fn chat(
                 Ok(res) => {
                     tin += res.tokens_in;
                     tout += res.tokens_out;
+                    tcached += res.tokens_cached;
+                    tcache_write += res.tokens_cache_write;
                     stop = res.finish.clone();
                     if !res.thinking.trim().is_empty() {
                         display.push(json!({ "type": "thinking", "text": res.thinking }));
@@ -564,8 +570,8 @@ pub async fn chat(
             let content = Value::Array(display);
             let msg_id: Option<Uuid> = sqlx::query_scalar(
                 "INSERT INTO db_chat_messages \
-                   (conversation_id, role, content, content_text, model_used, provider_kind, tokens_input, tokens_output, stop_reason) \
-                 VALUES ($1, 'assistant', $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+                   (conversation_id, role, content, content_text, model_used, provider_kind, tokens_input, tokens_output, tokens_cached, stop_reason) \
+                 VALUES ($1, 'assistant', $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
             )
             .bind(conv_id)
             .bind(&content)
@@ -574,11 +580,29 @@ pub async fn chat(
             .bind(&provider_kind)
             .bind(tin)
             .bind(tout)
+            .bind(tcached)
             .bind(&stop)
             .fetch_optional(&pool2)
             .await
             .ok()
             .flatten();
+            // Token-usage ledger row for the admin analytics page (chat spend).
+            if tin + tout + tcached + tcache_write > 0 {
+                let _ = sqlx::query(
+                    "INSERT INTO db_token_usage \
+                       (kind, source, provider_kind, model, tokens_input, tokens_output, tokens_cached, tokens_cache_write, conversation_id) \
+                     VALUES ('chat', 'chat', $1, $2, $3, $4, $5, $6, $7)",
+                )
+                .bind(&provider_kind)
+                .bind(&model_label)
+                .bind(tin)
+                .bind(tout)
+                .bind(tcached)
+                .bind(tcache_write)
+                .bind(conv_id)
+                .execute(&pool2)
+                .await;
+            }
             let _ = sqlx::query("UPDATE db_chat_conversations SET updated_at = NOW() WHERE id = $1")
                 .bind(conv_id)
                 .execute(&pool2)

@@ -486,8 +486,18 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				return true;
 			}
 			if (!to.startsWith("/")) return false;
-			if (to.startsWith("/notes")) {
-				const id = to.match(/^\/notes\/([^/?#]+)/)?.[1];
+			// Salvage note links the agent built from the note's folder path + id
+			// (e.g. /projects/piuma-vault/<uuid>) instead of /notes/<id>: any path
+			// with a note UUID that isn't a known route is a note.
+			let path = to;
+			const noteUuid = path.match(
+				/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+			);
+			if (noteUuid && !/^\/(notes|tasks|storage|admin)\b/.test(path)) {
+				path = `/notes/${noteUuid[0]}`;
+			}
+			if (path.startsWith("/notes")) {
+				const id = path.match(/^\/notes\/([^/?#]+)/)?.[1];
 				navigation.navigate("VaultHome", id ? { noteId: id } : {});
 				return true;
 			}

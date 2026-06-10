@@ -1,10 +1,10 @@
 import { StyleSheet, View } from 'react-native';
-import { piumaColor } from './piuma';
+import { spriteColor } from './index';
 
-// Presentational pixel grid for a single Piuma pose. `rows` is an array of
-// equal-length pixel-code strings (see piuma.js); renders rows of solid-color
-// cells. Stateless — animation lives in the caller.
-export default function PiumaSprite({ rows, pixelSize = 8 }) {
+// Presentational pixel grid for a single pose of the active mascot. `rows` is an
+// array of equal-length pixel-code strings (see ./index.js); renders rows of
+// solid-color cells. Stateless — animation lives in the caller.
+export default function Sprite({ rows, pixelSize = 8 }) {
   return (
     <View>
       {rows.map((row, r) => (
@@ -17,7 +17,7 @@ export default function PiumaSprite({ rows, pixelSize = 8 }) {
               style={{
                 width: pixelSize,
                 height: pixelSize,
-                backgroundColor: piumaColor(code),
+                backgroundColor: spriteColor(code),
               }}
             />
           ))}

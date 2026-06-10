@@ -16,6 +16,8 @@ struct EmbeddingRequest {
 #[derive(Deserialize, Debug)]
 struct EmbeddingResponse {
     data: Vec<EmbeddingData>,
+    #[serde(default)]
+    usage: Option<EmbeddingUsage>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -23,24 +25,54 @@ struct EmbeddingData {
     embedding: Vec<f32>,
 }
 
-/// Fetch a text embedding from Azure OpenAI.
+#[derive(Deserialize, Debug, Default)]
+struct EmbeddingUsage {
+    #[serde(default)]
+    prompt_tokens: i64,
+}
+
+/// The Azure deployment used for all embeddings; logged as the `model` in the
+/// token-usage ledger so embedding spend is attributable per provider/model.
+pub const EMBED_MODEL: &str = "text-embedding-3-large";
+
+/// Fetch a text embedding from Azure OpenAI and record its token usage.
 ///
 /// Endpoint URL and API key are resolved from the `app_settings` table (set via
-/// the Services dashboard). Requests `dimensions` as specified.
-pub async fn embed(pool: &DbPool, text: &str, dimensions: u32) -> Result<Vec<f32>, String> {
+/// the Services dashboard). `source` tags the call site for the admin analytics
+/// page (e.g. `embedding:notes`, `embedding:memory`, `embedding:search`,
+/// `embedding:chat`). Logging failures are swallowed — they never block embedding.
+pub async fn embed(
+    pool: &DbPool,
+    text: &str,
+    dimensions: u32,
+    source: &str,
+) -> Result<Vec<f32>, String> {
     let (url, api_key) = store::embedding_config(pool).await?;
-    embed_with(text, dimensions, &url, &api_key).await
+    let (embedding, tokens) = embed_with(text, dimensions, &url, &api_key).await?;
+    if tokens > 0 {
+        let _ = sqlx::query(
+            "INSERT INTO db_token_usage (kind, source, provider_kind, model, tokens_input) \
+             VALUES ('embedding', $1, 'azure', $2, $3)",
+        )
+        .bind(source)
+        .bind(EMBED_MODEL)
+        .bind(tokens as i32)
+        .execute(pool)
+        .await;
+    }
+    Ok(embedding)
 }
 
 /// Same as [`embed`], but with an explicit endpoint URL + API key instead of
-/// resolving them from the DB. Used by the Services "try now" check so admins
-/// can validate unsaved credentials before persisting them.
+/// resolving them from the DB, and without usage logging. Returns the embedding
+/// vector plus the prompt token count reported by the API. Used by the Services
+/// "try now" check so admins can validate unsaved credentials before saving.
 pub async fn embed_with(
     text: &str,
     dimensions: u32,
     url: &str,
     api_key: &str,
-) -> Result<Vec<f32>, String> {
+) -> Result<(Vec<f32>, i64), String> {
     let body = EmbeddingRequest {
         input: text.to_string(),
         model: "text-embedding-3-large".to_string(),
@@ -74,11 +106,12 @@ pub async fn embed_with(
         .await
         .map_err(|e| format!("Failed to parse embedding response: {}", e))?;
 
+    let tokens = parsed.usage.map(|u| u.prompt_tokens).unwrap_or(0);
     parsed
         .data
         .into_iter()
         .next()
-        .map(|d| d.embedding)
+        .map(|d| (d.embedding, tokens))
         .ok_or_else(|| "No embedding in response".to_string())
 }
 

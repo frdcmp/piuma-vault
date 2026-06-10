@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet } from 'react-native';
-import {
-  PIUMA_BODY,
-  PIUMA_GALLOP_FRAME_MS,
-  PIUMA_GALLOP_LEGS,
-} from '../sprites/piuma';
-import PiumaSprite from '../sprites/PiumaSprite';
+import { BODY, GALLOP_FRAME_MS, GALLOP_LEGS, Sprite } from '../sprites';
 
 const BOUNCE_MS = 280; // one full bob = two leg frames
 
@@ -15,8 +10,8 @@ export default function PiumaRunning({ pixelSize = 10 }) {
 
   useEffect(() => {
     const id = setInterval(() => {
-      setFrame((f) => (f + 1) % PIUMA_GALLOP_LEGS.length);
-    }, PIUMA_GALLOP_FRAME_MS);
+      setFrame((f) => (f + 1) % GALLOP_LEGS.length);
+    }, GALLOP_FRAME_MS);
     return () => clearInterval(id);
   }, []);
 
@@ -44,11 +39,11 @@ export default function PiumaRunning({ pixelSize = 10 }) {
   const translateY = bounce.interpolate({ inputRange: [0, 1], outputRange: [0, -pixelSize / 2] });
   const rotate = bounce.interpolate({ inputRange: [0, 1], outputRange: ['-2deg', '2deg'] });
 
-  const rows = [...PIUMA_BODY, ...PIUMA_GALLOP_LEGS[frame]];
+  const rows = [...BODY, ...GALLOP_LEGS[frame]];
 
   return (
     <Animated.View style={[styles.wrap, { transform: [{ translateY }, { rotate }] }]}>
-      <PiumaSprite rows={rows} pixelSize={pixelSize} />
+      <Sprite rows={rows} pixelSize={pixelSize} />
     </Animated.View>
   );
 }

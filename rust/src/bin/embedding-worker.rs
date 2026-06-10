@@ -100,7 +100,7 @@ async fn main() {
         for (_job_id, note_id, content, attempts) in jobs {
             log::info!("Embedding note {note_id} (attempt {}/{})", attempts + 1, max_attempts);
 
-            match apps::embeddings::embed(&pool, &content, 1536).await {
+            match apps::embeddings::embed(&pool, &content, 1536, "embedding:notes").await {
                 Ok(embedding) => {
                     let pg_vec = pgvector::Vector::from(embedding);
                     match sqlx::query(
@@ -154,7 +154,7 @@ async fn main() {
         }
         for (entry_id, content, attempts) in memory_jobs {
             log::info!("Embedding memory {entry_id} (attempt {}/{})", attempts + 1, max_attempts);
-            match apps::embeddings::embed(&pool, &content, 1536).await {
+            match apps::embeddings::embed(&pool, &content, 1536, "embedding:memory").await {
                 Ok(embedding) => {
                     let pg_vec = pgvector::Vector::from(embedding);
                     match sqlx::query(

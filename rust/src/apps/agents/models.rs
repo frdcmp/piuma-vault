@@ -103,6 +103,10 @@ pub struct ModelRow {
     pub supports_tools: bool,
     pub supports_vision: bool,
     pub context_window: Option<i32>,
+    /// USD per 1M tokens. `price_cached` is the cache-read rate.
+    pub price_input: f64,
+    pub price_output: f64,
+    pub price_cached: f64,
     pub config: Json,
     pub is_default: bool,
     pub enabled: bool,
@@ -122,6 +126,12 @@ pub struct CreateModelReq {
     pub supports_vision: bool,
     #[serde(default)]
     pub context_window: Option<i32>,
+    #[serde(default)]
+    pub price_input: f64,
+    #[serde(default)]
+    pub price_output: f64,
+    #[serde(default)]
+    pub price_cached: f64,
     #[serde(default = "empty_json")]
     pub config: Json,
     #[serde(default)]
@@ -139,6 +149,9 @@ pub struct UpdateModelReq {
     pub supports_tools: Option<bool>,
     pub supports_vision: Option<bool>,
     pub context_window: Option<i32>,
+    pub price_input: Option<f64>,
+    pub price_output: Option<f64>,
+    pub price_cached: Option<f64>,
     pub config: Option<Json>,
     pub is_default: Option<bool>,
     pub enabled: Option<bool>,

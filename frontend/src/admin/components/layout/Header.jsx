@@ -4,8 +4,7 @@ import {
 	SettingOutlined,
 } from "@ant-design/icons";
 import { Link, useNavigate } from "react-router-dom";
-import PiumaSprite from "../../../sprites/PiumaSprite";
-import { PIUMA_SPRITE } from "../../../sprites/piuma";
+import { SPRITE, Sprite } from "../../../sprites";
 import useUiStore, { SCREEN_MODES } from "../../../store/uiStore";
 import AppBreadcrumbs from "./Breadcrumbs";
 import UserMenu from "./UserMenu";
@@ -34,7 +33,7 @@ const HeaderComponent = ({ onSidebarToggle, showSidebarToggle = false }) => {
 					{isPhone ? (
 						<Link to="/notes" style={{ display: "flex", alignItems: "center" }}>
 							<span className="vp-header-logo" role="img" aria-label="Piuma">
-								<PiumaSprite rows={PIUMA_SPRITE} pixelSize={2} />
+								<Sprite rows={SPRITE} pixelSize={2} />
 							</span>
 						</Link>
 					) : (

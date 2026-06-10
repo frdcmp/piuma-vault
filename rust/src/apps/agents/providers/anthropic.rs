@@ -264,8 +264,18 @@ pub async fn call(
             match v.get("type").and_then(|t| t.as_str()) {
                 Some("message_start") => {
                     if let Some(u) = v.get("message").and_then(|m| m.get("usage")) {
+                        // Anthropic's `input_tokens` is already the uncached remainder;
+                        // cache reads/writes are reported separately.
                         out.tokens_in =
                             u.get("input_tokens").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+                        out.tokens_cached = u
+                            .get("cache_read_input_tokens")
+                            .and_then(|x| x.as_i64())
+                            .unwrap_or(0) as i32;
+                        out.tokens_cache_write = u
+                            .get("cache_creation_input_tokens")
+                            .and_then(|x| x.as_i64())
+                            .unwrap_or(0) as i32;
                     }
                 }
                 Some("content_block_start") => {

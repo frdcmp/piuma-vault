@@ -9,8 +9,7 @@ import {
 	Text,
 	View,
 } from "react-native";
-import { PIUMA_SPRITE } from "../sprites/piuma";
-import PiumaSprite from "../sprites/PiumaSprite";
+import { Sprite, SPRITE } from "../sprites";
 import { colors } from "../utils/theme";
 import ComingSoonModal from "./ComingSoonModal";
 import PixelStarfield from "./PixelStarfield";
@@ -252,7 +251,7 @@ export default function PiumaEmptyState({
 						],
 					}}
 				>
-					<PiumaSprite rows={PIUMA_SPRITE} pixelSize={8} />
+					<Sprite rows={SPRITE} pixelSize={8} />
 				</Animated.View>
 			</Pressable>
 			<Text style={styles.text}>

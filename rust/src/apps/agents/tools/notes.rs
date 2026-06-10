@@ -148,7 +148,7 @@ pub async fn search_notes(pool: &DbPool, user_id: &str, args: &Value) -> Result<
 
     // A query embedding unlocks hybrid (vector) search; if it can't be produced
     // (provider down / unconfigured) we fall back to FTS-only, then substring.
-    let emb = embeddings::embed(pool, &q, 1536).await.ok();
+    let emb = embeddings::embed(pool, &q, 1536, "embedding:search").await.ok();
 
     let rows: Vec<(Uuid, String, String, Option<String>)> = if let Some(emb) = emb {
         let vec_str = format!("[{}]", emb.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","));

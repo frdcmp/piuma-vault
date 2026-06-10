@@ -1,11 +1,13 @@
 use actix_web::web;
 
-use super::{chat, handlers, memory_admin};
+use super::{chat, handlers, memory_admin, usage};
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg
         // Agents listing
         .service(web::resource("/agents").route(web::get().to(handlers::list_agents)))
+        // Token-usage analytics (admin dashboard)
+        .service(web::resource("/agents/usage").route(web::get().to(usage::usage)))
         // Memory dashboard (admin) — static segments, registered before the
         // `/agents/{agent}` wildcard further down.
         .service(web::resource("/agents/memory/overview").route(web::get().to(memory_admin::overview)))
