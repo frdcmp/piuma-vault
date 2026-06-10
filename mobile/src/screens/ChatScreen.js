@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	Alert,
+	Animated,
 	Keyboard,
 	Linking,
 	Platform,
@@ -455,6 +456,20 @@ function AssistantBubble({ parts, isStreaming, onNavigate }) {
 	);
 }
 
+// Fades its children in on mount (used to ease the sessions list in after the
+// loader). Re-mounts (and re-animates) whenever its `trigger` prop changes.
+function FadeIn({ children, style }) {
+	const o = useRef(new Animated.Value(0)).current;
+	useEffect(() => {
+		Animated.timing(o, {
+			toValue: 1,
+			duration: 220,
+			useNativeDriver: true,
+		}).start();
+	}, [o]);
+	return <Animated.View style={[style, { opacity: o }]}>{children}</Animated.View>;
+}
+
 export default function ChatScreen({ onClose, notePath, noteId }) {
 	const insets = useSafeAreaInsets();
 	const navigation = useNavigation();
@@ -515,6 +530,10 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	const [pickList, setPickList] = useState([]);
 	const [titleDraft, setTitleDraft] = useState("");
 	const [sessionQuery, setSessionQuery] = useState(""); // sessions search box
+	// Sessions list loading — show the pixel-Piuma loader, held a ~1s floor so the
+	// open doesn't flash "None" → list.
+	const [sessionsLoading, setSessionsLoading] = useState(false);
+	const sessionsMinUntil = useRef(0);
 	// The open note is attached as context by default; tapping the chip toggles
 	// it off for the next send. Mobile keeps it to a single note (no tabs, no
 	// lock state) — the chip just mirrors whatever note opened this chat.
@@ -855,6 +874,8 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				// effect, keyed on the open overlay + query.
 				setPickList([]);
 				setSessionQuery("");
+				setSessionsLoading(true);
+				sessionsMinUntil.current = Date.now() + 1000;
 				setOverlay("sessions");
 			}
 		},
@@ -1415,8 +1436,14 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 								</Pressable>
 							</View>
 						</View>
+					) : overlay === "sessions" && sessionsLoading ? (
+						<View style={styles.overlayLoading}>
+							<PiumaRunning pixelSize={2} />
+							<Text style={styles.overlayLoadingLabel}>loading…</Text>
+						</View>
 					) : (
 						<>
+							<FadeIn>
 							<ScrollView
 								style={styles.overlayList}
 								keyboardShouldPersistTaps="handled"
@@ -1491,6 +1518,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 									))
 								)}
 							</ScrollView>
+							</FadeIn>
 							{overlay === "sessions" ? (
 								<TextInput
 									style={styles.overlaySearch}
@@ -1968,6 +1996,17 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		marginBottom: 6,
+	},
+	overlayLoading: {
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 10,
+		paddingVertical: 28,
+	},
+	overlayLoadingLabel: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 12,
 	},
 	floatTitle: {
 		color: colors.text,
