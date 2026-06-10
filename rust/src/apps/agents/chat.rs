@@ -1,9 +1,9 @@
 //! Streaming chat turn (SSE) with a multi-round tool loop. Resolves the
 //! conversation's agent/identity/model, assembles the system prompt, persists
-//! the user message, then loops: stream a DeepSeek round → if it emits
-//! tool_calls, run them (under the user) and feed results back → repeat until
-//! the model answers. The full turn (thinking / tool_use / tool_result / text
-//! blocks) is persisted. DeepSeek-only for now.
+//! the user message, then loops: stream a model round (via the provider adapter
+//! resolved from `provider.kind`) → if it emits tool_calls, run them (under the
+//! user) and feed results back → repeat until the model answers. The full turn
+//! (thinking / tool_use / tool_result / text blocks) is persisted.
 
 use actix_web::{web, HttpResponse, Responder};
 use bytes::Bytes;
@@ -20,7 +20,7 @@ use crate::db::db::DbPool;
 
 use super::control::TurnControl;
 use super::models::{ApiError, ChatTurnReq, ConversationRow, ModelRow, ProviderRow};
-use super::providers::deepseek;
+use super::providers;
 use super::{identities, registry, tools};
 
 const MAX_ROUNDS: usize = 12;
@@ -205,8 +205,11 @@ pub async fn chat(
         Ok(Some(p)) => p,
         _ => return HttpResponse::BadRequest().json(ApiError::new("provider not found")),
     };
-    if provider.kind != "deepseek" {
-        return HttpResponse::BadRequest().json(ApiError::new("only the deepseek provider is supported for now"));
+    if !providers::supported(&provider.kind) {
+        return HttpResponse::BadRequest().json(ApiError::new(format!(
+            "provider kind '{}' is not supported yet",
+            provider.kind
+        )));
     }
     if provider.api_key.trim().is_empty() {
         return HttpResponse::BadRequest().json(ApiError::new("provider has no API key set"));
@@ -440,7 +443,7 @@ pub async fn chat(
             let round = tokio::select! {
                 biased;
                 _ = cancel.cancelled() => { stopped = true; break 'rounds; }
-                r = deepseek::call(&api_key, base_url.as_deref(), &model, &messages, &tool_schemas, &tx) => r,
+                r = providers::call(&provider_kind, &api_key, base_url.as_deref(), &model, &messages, &tool_schemas, &tx) => r,
             };
             match round {
                 Ok(res) => {
@@ -509,7 +512,7 @@ pub async fn chat(
                     }
                 }
                 Err(e) => {
-                    log::error!("chat: deepseek round failed: {e}");
+                    log::error!("chat: {provider_kind} round failed: {e}");
                     let _ = tx.unbounded_send(Ok(frame(json!({ "type": "error", "error": e }))));
                     errored = true;
                     break;
@@ -531,7 +534,7 @@ pub async fn chat(
             tokio::select! {
                 biased;
                 _ = cancel.cancelled() => { stopped = true; }
-                r = deepseek::call(&api_key, base_url.as_deref(), &model, &messages, &[], &tx) => match r {
+                r = providers::call(&provider_kind, &api_key, base_url.as_deref(), &model, &messages, &[], &tx) => match r {
                     Ok(res) => {
                         tin += res.tokens_in;
                         tout += res.tokens_out;
@@ -544,7 +547,7 @@ pub async fn chat(
                         }
                     }
                     Err(e) => {
-                        log::error!("chat: deepseek final answer failed: {e}");
+                        log::error!("chat: {provider_kind} final answer failed: {e}");
                         let _ = tx.unbounded_send(Ok(frame(json!({ "type": "error", "error": e }))));
                         errored = true;
                     }

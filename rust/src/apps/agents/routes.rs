@@ -45,6 +45,11 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                 .route(web::get().to(handlers::list_models))
                 .route(web::post().to(handlers::create_model)),
         )
+        // Live catalog from the provider API — suggestions for the wire-id field.
+        .service(
+            web::resource("/agents/providers/{id}/available-models")
+                .route(web::get().to(handlers::list_available_models)),
+        )
         // Models
         .service(web::resource("/agents/models").route(web::get().to(handlers::list_all_models)))
         .service(

@@ -27,6 +27,10 @@ export const deleteProvider = async (id) =>
 // ── Models ───────────────────────────────────────────────────────────────────
 export const fetchModels = async (providerId) =>
 	(await axiosInstance.get(`/agents/providers/${providerId}/models`)).data;
+// Live model catalog from the provider's own API — { models: [wireId, …] }.
+export const fetchAvailableModels = async (providerId) =>
+	(await axiosInstance.get(`/agents/providers/${providerId}/available-models`))
+		.data;
 export const createModel = async ({ providerId, ...payload }) =>
 	(await axiosInstance.post(`/agents/providers/${providerId}/models`, payload))
 		.data;
@@ -174,8 +178,21 @@ export async function streamChat({
 			}
 		}
 		if (!resp.ok) {
-			const text = await resp.text();
-			throw new Error(`HTTP ${resp.status}: ${text || "request failed"}`);
+			// A non-2xx response is a real backend rejection (bad provider, no
+			// model, no key, …), NOT a transport drop — the request completed.
+			// Surface its message as a hard error so it shows in the chat; don't
+			// fall into the transport-recovery path below.
+			let msg = `request failed (${resp.status})`;
+			const body = await resp.text();
+			if (body) {
+				try {
+					msg = JSON.parse(body).error || body;
+				} catch {
+					msg = body;
+				}
+			}
+			onError?.(new Error(msg));
+			return;
 		}
 
 		const reader = resp.body.getReader();

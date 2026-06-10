@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::db::db::DbPool;
 
 use super::models::{ModelRow, ProviderRow};
-use super::providers::deepseek;
+use super::providers;
 
 const SYSTEM: &str = "You generate a short title for a chat conversation. \
 Reply with ONLY the title: 3-6 words, no quotes, no trailing punctuation, in \
@@ -68,7 +68,7 @@ async fn run(pool: &DbPool, conv_id: Uuid, force: bool) -> Option<String> {
             .ok()
             .flatten();
     let Some(provider) = provider else { return None };
-    if provider.kind != "deepseek" || provider.api_key.trim().is_empty() {
+    if !providers::supported(&provider.kind) || provider.api_key.trim().is_empty() {
         return None;
     }
 
@@ -105,7 +105,8 @@ async fn run(pool: &DbPool, conv_id: Uuid, force: bool) -> Option<String> {
     // Budget must cover the model's reasoning_content too: the default model is
     // a reasoning model, so a small cap leaves `content` empty (all tokens go to
     // reasoning). 512 comfortably fits the thinking plus a short title.
-    let raw = match deepseek::complete(
+    let raw = match providers::complete(
+        &provider.kind,
         &provider.api_key,
         provider.base_url.as_deref(),
         &model.model_id,

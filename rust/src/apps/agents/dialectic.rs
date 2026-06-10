@@ -19,7 +19,7 @@ use uuid::Uuid;
 use crate::db::db::DbPool;
 
 use super::models::{AgentProfileRow, ModelRow, ProviderRow};
-use super::providers::deepseek;
+use super::providers;
 use super::tools::memory;
 
 /// Fallback cadence when the agent profile has no config.
@@ -152,7 +152,7 @@ async fn run(
         .await
         .map_err(|e| e.to_string())?
         .ok_or("provider not found")?;
-    if provider.kind != "deepseek" || provider.api_key.trim().is_empty() {
+    if !providers::supported(&provider.kind) || provider.api_key.trim().is_empty() {
         return Ok(());
     }
 
@@ -219,7 +219,8 @@ async fn run(
             serde_json::json!({ "role": "user", "content": user_content }),
         ];
 
-        let raw = deepseek::complete(
+        let raw = providers::complete(
+            &provider.kind,
             &provider.api_key,
             provider.base_url.as_deref(),
             &model.model_id,

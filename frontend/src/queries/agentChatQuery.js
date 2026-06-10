@@ -7,6 +7,7 @@ import {
 	deleteModel,
 	deleteProvider,
 	fetchAgents,
+	fetchAvailableModels,
 	fetchConversation,
 	fetchConversations,
 	fetchDefaultAgent,
@@ -26,6 +27,7 @@ export const agentKeys = {
 	agents: ["agents", "list"],
 	providers: ["agents", "providers"],
 	models: (providerId) => ["agents", "models", providerId],
+	availableModels: (providerId) => ["agents", "available-models", providerId],
 	profile: (agent) => ["agents", "profile", agent],
 	personas: (agent) => ["agents", "personas", agent],
 	conversations: (agent) => ["agents", "conversations", agent ?? null],
@@ -69,6 +71,19 @@ export const useModels = (providerId, options = {}) =>
 		queryKey: agentKeys.models(providerId),
 		queryFn: () => fetchModels(providerId),
 		enabled: !!providerId,
+		...options,
+	});
+
+// Lazy by default — pass `enabled: true` (e.g. when the wire-id field is
+// focused) so we only hit the provider API on demand. Cached briefly so
+// re-focusing doesn't refetch every time.
+export const useAvailableModels = (providerId, options = {}) =>
+	useQuery({
+		queryKey: agentKeys.availableModels(providerId),
+		queryFn: () => fetchAvailableModels(providerId),
+		enabled: false,
+		staleTime: 60_000,
+		retry: false,
 		...options,
 	});
 

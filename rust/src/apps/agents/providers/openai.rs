@@ -1,14 +1,15 @@
-//! DeepSeek streaming chat adapter (OpenAI-compatible `/chat/completions`).
-//! One `call` = one model round: streams text/thinking to the client, and also
-//! accumulates any `tool_calls` so the agent loop (chat.rs) can run them and
-//! call again. Thinking arrives on `delta.reasoning_content`.
+//! OpenAI streaming chat adapter — the canonical `/chat/completions` wire
+//! format. One `call` = one model round: streams text to the client and
+//! accumulates any `tool_calls` for the agent loop (chat.rs) to run and call
+//! again. (OpenAI doesn't expose reasoning tokens over the API, so there's no
+//! thinking channel here.)
 
 use futures::StreamExt;
 use serde_json::{json, Value};
 
 use super::{CallResult, SseSender, ToolCall};
 
-pub const DEFAULT_BASE_URL: &str = "https://api.deepseek.com";
+pub const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 
 fn base(b: Option<&str>) -> &str {
     b.map(str::trim).filter(|s| !s.is_empty()).unwrap_or(DEFAULT_BASE_URL)
@@ -22,7 +23,7 @@ fn map_finish(reason: &str) -> &'static str {
     match reason {
         "stop" => "end_turn",
         "length" => "max_tokens",
-        "tool_calls" => "tool_use",
+        "tool_calls" | "function_call" => "tool_use",
         "content_filter" => "refusal",
         _ => "end_turn",
     }
@@ -54,18 +55,18 @@ pub async fn complete(
         .json(&payload)
         .send()
         .await
-        .map_err(|e| format!("deepseek request failed: {e}"))?;
+        .map_err(|e| format!("openai request failed: {e}"))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        return Err(format!("deepseek HTTP {status}: {body}"));
+        return Err(format!("openai HTTP {status}: {body}"));
     }
 
     let v: Value = resp
         .json()
         .await
-        .map_err(|e| format!("deepseek decode failed: {e}"))?;
+        .map_err(|e| format!("openai decode failed: {e}"))?;
     let text = v
         .get("choices")
         .and_then(|c| c.get(0))
@@ -106,12 +107,12 @@ pub async fn call(
         .json(&payload)
         .send()
         .await
-        .map_err(|e| format!("deepseek request failed: {e}"))?;
+        .map_err(|e| format!("openai request failed: {e}"))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        return Err(format!("deepseek HTTP {status}: {body}"));
+        return Err(format!("openai HTTP {status}: {body}"));
     }
 
     let mut out = CallResult::default();
@@ -121,7 +122,7 @@ pub async fn call(
     let mut buf = String::new();
 
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("deepseek stream error: {e}"))?;
+        let chunk = chunk.map_err(|e| format!("openai stream error: {e}"))?;
         buf.push_str(&String::from_utf8_lossy(&chunk));
 
         while let Some(nl) = buf.find('\n') {
@@ -140,12 +141,6 @@ pub async fn call(
 
             if let Some(choice) = v.get("choices").and_then(|c| c.get(0)) {
                 if let Some(delta) = choice.get("delta") {
-                    if let Some(t) = delta.get("reasoning_content").and_then(|x| x.as_str()) {
-                        if !t.is_empty() {
-                            out.thinking.push_str(t);
-                            sse(tx, json!({ "type": "thinking", "delta": t }));
-                        }
-                    }
                     if let Some(t) = delta.get("content").and_then(|x| x.as_str()) {
                         if !t.is_empty() {
                             out.text.push_str(t);

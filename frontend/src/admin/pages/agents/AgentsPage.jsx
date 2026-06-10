@@ -3,6 +3,7 @@ import {
 	useAgentList,
 	useAgentPersonas,
 	useAgentProfile,
+	useAvailableModels,
 	useCreateModel,
 	useCreateProvider,
 	useDefaultAgent,
@@ -15,6 +16,7 @@ import {
 	useUpdateModel,
 	useUpdatePersona,
 } from "../../../queries";
+import { PvModal } from "../../components/ui";
 import "./agents.css";
 
 const PROVIDER_KINDS = ["deepseek", "anthropic", "openai", "gemini", "minimax"];
@@ -33,6 +35,34 @@ function ModelsList({ providerId }) {
 	const [displayName, setDisplayName] = useState("");
 	const [thinking, setThinking] = useState(true);
 	const [error, setError] = useState("");
+	const [pendingDelete, setPendingDelete] = useState(null);
+	const [picker, setPicker] = useState(false);
+	const {
+		data: catalog,
+		isFetching: catalogLoading,
+		isError: catalogError,
+		error: catalogErr,
+		refetch: loadCatalog,
+		isFetched: catalogFetched,
+	} = useAvailableModels(providerId);
+
+	// Models already added so we can flag/grey them in the suggestion list.
+	const existingIds = new Set(models.map((m) => m.model_id));
+	const available = catalog?.models || [];
+	const suggestions = available.filter((id) =>
+		id.toLowerCase().includes(modelId.trim().toLowerCase()),
+	);
+
+	const openPicker = () => {
+		setPicker(true);
+		if (!catalogFetched && !catalogLoading) loadCatalog();
+	};
+
+	const pick = (id) => {
+		setModelId(id);
+		if (!displayName.trim()) setDisplayName(id);
+		setPicker(false);
+	};
 
 	const add = async () => {
 		if (!modelId.trim() || !displayName.trim()) return;
@@ -73,23 +103,62 @@ function ModelsList({ providerId }) {
 						type="button"
 						className="ag-btn--icon ag-btn--danger"
 						title="Delete model"
-						onClick={() => {
-							if (window.confirm("Delete this model?"))
-								deleteModel.mutate(m.id);
-						}}
+						onClick={() => setPendingDelete(m)}
 					>
 						✕
 					</button>
 				</div>
 			))}
 			<div className="ag-row" style={{ marginTop: 8 }}>
-				<input
-					className="ag-input"
-					style={{ maxWidth: 200 }}
-					placeholder="wire id (deepseek-chat)"
-					value={modelId}
-					onChange={(e) => setModelId(e.target.value)}
-				/>
+				<div className="ag-combo" style={{ maxWidth: 200 }}>
+					<input
+						className="ag-input"
+						placeholder="wire id (deepseek-chat)"
+						value={modelId}
+						onChange={(e) => setModelId(e.target.value)}
+						onFocus={openPicker}
+						onBlur={() => setTimeout(() => setPicker(false), 150)}
+					/>
+					{picker && (
+						<div className="ag-combo-menu">
+							{catalogLoading && (
+								<div className="ag-combo-note">Loading models…</div>
+							)}
+							{catalogError && (
+								<div className="ag-combo-note ag-error" style={{ margin: 0 }}>
+									{errMsg(catalogErr, "Couldn't list models")}
+								</div>
+							)}
+							{!catalogLoading &&
+								!catalogError &&
+								(suggestions.length ? (
+									suggestions.map((id) => (
+										<button
+											type="button"
+											key={id}
+											className="ag-combo-item"
+											// mouse-down fires before the input's blur, so the
+											// pick lands before the menu closes.
+											onMouseDown={(e) => {
+												e.preventDefault();
+												pick(id);
+											}}
+											disabled={existingIds.has(id)}
+										>
+											{id}
+											{existingIds.has(id) && (
+												<span className="ag-muted">added</span>
+											)}
+										</button>
+									))
+								) : (
+									<div className="ag-combo-note">
+										{available.length ? "No match" : "No models returned"}
+									</div>
+								))}
+						</div>
+					)}
+				</div>
 				<input
 					className="ag-input"
 					style={{ maxWidth: 200 }}
@@ -110,6 +179,20 @@ function ModelsList({ providerId }) {
 				</button>
 			</div>
 			{error && <div className="ag-error">{error}</div>}
+			<PvModal
+				open={!!pendingDelete}
+				title="Delete model"
+				danger
+				confirmText="Delete"
+				onConfirm={() => {
+					deleteModel.mutate(pendingDelete.id);
+					setPendingDelete(null);
+				}}
+				onCancel={() => setPendingDelete(null)}
+			>
+				Delete <strong>{pendingDelete?.display_name}</strong>? This can't be
+				undone.
+			</PvModal>
 		</div>
 	);
 }
@@ -124,6 +207,7 @@ function ProvidersTab() {
 	const [apiKey, setApiKey] = useState("");
 	const [baseUrl, setBaseUrl] = useState("");
 	const [error, setError] = useState("");
+	const [pendingDelete, setPendingDelete] = useState(null);
 
 	const create = async () => {
 		if (!displayName.trim() || !apiKey.trim()) {
@@ -238,10 +322,7 @@ function ProvidersTab() {
 								type="button"
 								className="ag-btn--icon ag-btn--danger"
 								title="Delete provider"
-								onClick={() => {
-									if (window.confirm("Delete provider and its models?"))
-										deleteProvider.mutate(p.id);
-								}}
+								onClick={() => setPendingDelete(p)}
 							>
 								✕
 							</button>
@@ -252,6 +333,20 @@ function ProvidersTab() {
 					</div>
 				))}
 			</div>
+			<PvModal
+				open={!!pendingDelete}
+				title="Delete provider"
+				danger
+				confirmText="Delete"
+				onConfirm={() => {
+					deleteProvider.mutate(pendingDelete.id);
+					setPendingDelete(null);
+				}}
+				onCancel={() => setPendingDelete(null)}
+			>
+				Delete <strong>{pendingDelete?.display_name}</strong> and all its
+				models? This can't be undone.
+			</PvModal>
 		</div>
 	);
 }

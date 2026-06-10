@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use super::*;
-use crate::apps::agents::providers::deepseek;
+use crate::apps::agents::providers;
 use crate::apps::agents::models::{ModelRow, ProviderRow};
 use crate::apps::embeddings;
 use crate::db::db::DbPool;
@@ -216,7 +216,7 @@ async fn nli_check(pool: &DbPool, new_fact: &str, existing_fact: &str) -> Option
         .fetch_optional(pool)
         .await
         .ok()??;
-    if provider.kind != "deepseek" || provider.api_key.trim().is_empty() {
+    if !providers::supported(&provider.kind) || provider.api_key.trim().is_empty() {
         return None;
     }
     let prompt = format!(
@@ -228,7 +228,8 @@ async fn nli_check(pool: &DbPool, new_fact: &str, existing_fact: &str) -> Option
          Answer with exactly one word: entails | contradicts | neutral",
     );
     let messages = vec![serde_json::json!({ "role": "user", "content": prompt })];
-    let raw = deepseek::complete(
+    let raw = providers::complete(
+        &provider.kind,
         &provider.api_key,
         provider.base_url.as_deref(),
         &model.model_id,

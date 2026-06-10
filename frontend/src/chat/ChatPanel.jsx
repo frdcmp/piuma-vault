@@ -463,6 +463,12 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
 	const inputRef = useRef(null);
+	// Return focus to the composer after any picker/menu operation, so the whole
+	// flow stays keyboard-driven (no click needed to type again). rAF waits for
+	// the picker's unmount to commit before we grab focus back.
+	const focusInput = useCallback(() => {
+		requestAnimationFrame(() => inputRef.current?.focus());
+	}, []);
 	// Stick-to-bottom: only auto-follow new content while parked near the bottom.
 	// Scrolling up releases the lock (so streaming stops yanking you down) and
 	// reveals a jump-to-latest button.
@@ -976,6 +982,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const runTitleAction = useCallback(
 		async (key) => {
 			setTitleMenu(false);
+			focusInput();
 			if (!conversationId) return;
 			if (key === "auto") {
 				try {
@@ -997,19 +1004,27 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				}
 			}
 		},
-		[conversationId],
+		[conversationId, focusInput],
 	);
 
 	const runCommand = useCallback(
 		async (cmd) => {
 			if (cmd.kind === "agent") {
 				setInput(cmd.prompt || "");
-				inputRef.current?.focus();
+				focusInput();
 				return;
 			}
 			setInput("");
-			if (cmd.name === "new") return startNewChat();
-			if (cmd.name === "clear") return clearMessages();
+			// Terminal commands don't open a picker, so hand focus straight back to
+			// the composer (covers running them via a mouse click on the menu).
+			if (cmd.name === "new") {
+				startNewChat();
+				return focusInput();
+			}
+			if (cmd.name === "clear") {
+				clearMessages();
+				return focusInput();
+			}
 			if (cmd.name === "title") {
 				if (!conversationId) return;
 				// Offer auto (LLM) vs manual rename instead of jumping to a prompt.
@@ -1038,12 +1053,13 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				setOverlay("sessions");
 			}
 		},
-		[conversationId, startNewChat, clearMessages],
+		[conversationId, startNewChat, clearMessages, focusInput],
 	);
 
 	const pickModel = useCallback(
 		async (m) => {
 			setOverlay(null);
+			focusInput();
 			setModelId(m.id);
 			pvMessage.success(`Model switched to ${m.display_name}`);
 			if (conversationId) {
@@ -1054,7 +1070,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				}
 			}
 		},
-		[conversationId],
+		[conversationId, focusInput],
 	);
 
 	// Shared picker (sessions/models) keyboard nav. Used by both the composer
@@ -1065,6 +1081,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		if (e.key === "Escape") {
 			e.preventDefault();
 			setOverlay(null);
+			focusInput();
 			return true;
 		}
 		const n = pickList.length;
@@ -1108,6 +1125,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			if (e.key === "Escape") {
 				e.preventDefault();
 				setTitleMenu(false);
+				focusInput();
 				return;
 			}
 			if (e.key === "Enter") {
@@ -1133,6 +1151,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			if (e.key === "Escape") {
 				e.preventDefault();
 				setInput("");
+				focusInput();
 				return;
 			}
 			if (e.key === "Enter" || e.key === "Tab") {
@@ -1328,6 +1347,11 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 						{overlay ? (
 							<div className="picker-overlay">
 								<div className="picker-head">
+									<span className="picker-dots" aria-hidden="true">
+										<span />
+										<span />
+										<span />
+									</span>
 									<strong className="picker-title">
 										{overlay === "models"
 											? "Pick a model"
@@ -1336,7 +1360,10 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 									<button
 										type="button"
 										className="picker-close"
-										onClick={() => setOverlay(null)}
+										onClick={() => {
+											setOverlay(null);
+											focusInput();
+										}}
 									>
 										×
 									</button>
