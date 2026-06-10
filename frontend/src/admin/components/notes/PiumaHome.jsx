@@ -73,13 +73,9 @@ export default function PiumaHome({ onBack }) {
 	return (
 		<div className="piuma-home-container">
 			<PiumaStarfield />
-			{/* On desktop the user menu lives in the notes sidebar header; only the
-			    mobile empty state (which hides that sidebar) carries its own. */}
-			{onBack ? (
-				<div className="piuma-home-usermenu">
-					<UserMenu />
-				</div>
-			) : null}
+			<div className="piuma-home-usermenu">
+				<UserMenu />
+			</div>
 			{onBack ? (
 				<button
 					type="button"
@@ -157,6 +153,16 @@ export default function PiumaHome({ onBack }) {
 						▤
 					</span>
 					<span>calendar</span>
+				</button>
+				<button
+					type="button"
+					className="piuma-menu-item"
+					onClick={() => navigate("/admin")}
+				>
+					<span className="piuma-menu-glyph" aria-hidden="true">
+						⚙
+					</span>
+					<span>admin</span>
 				</button>
 				<button
 					type="button"

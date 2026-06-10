@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PvModal } from "@/admin/components/ui";
-import UserMenu from "../../../components/UserMenu";
 import {
 	notesKeys,
 	useBrowseFolder,
@@ -390,6 +389,9 @@ export default function NotesListSidebar({
 	const [renameTarget, setRenameTarget] = useState(null);
 	// New-folder dialog target: { parent, value }
 	const [createFolderTarget, setCreateFolderTarget] = useState(null);
+	// "+ New" dropdown (choose note vs folder, like the explorer's context menu).
+	const [newMenuOpen, setNewMenuOpen] = useState(false);
+	const newMenuRef = useRef(null);
 
 	// Drag-and-drop move state. `dragItem` is the note/folder being dragged,
 	// `dragOverPath` is the folder row currently hovered as a drop target.
@@ -533,6 +535,18 @@ export default function NotesListSidebar({
 			if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
 		};
 	}, []);
+
+	// Dismiss the "+ New" dropdown when clicking outside it.
+	useEffect(() => {
+		if (!newMenuOpen) return;
+		const onDown = (e) => {
+			if (newMenuRef.current && !newMenuRef.current.contains(e.target)) {
+				setNewMenuOpen(false);
+			}
+		};
+		document.addEventListener("mousedown", onDown);
+		return () => document.removeEventListener("mousedown", onDown);
+	}, [newMenuOpen]);
 
 	const handleDelete = useCallback(
 		(noteId) => {
@@ -717,14 +731,11 @@ export default function NotesListSidebar({
 			{/* Header */}
 			<div className="notes-sidebar-header">
 				<div className="notes-sidebar-header-row">
-					<div className="notes-sidebar-title-group">
-						<UserMenu size={30} align="left" />
-						<h3 className="notes-sidebar-title">Notes</h3>
-					</div>
+					<h3 className="notes-sidebar-title">Notes</h3>
 					<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
 						<button
 							type="button"
-							className="pixel-btn notes-sidebar-refresh"
+							className="notes-sidebar-refresh"
 							onClick={handleRefresh}
 							disabled={refreshing}
 							title="Refresh notes"
@@ -737,12 +748,42 @@ export default function NotesListSidebar({
 								⟳
 							</span>
 						</button>
-						<button
-							className="pixel-btn primary"
-							onClick={() => handleCreateNote(newNoteFolder)}
-						>
-							+ New
-						</button>
+						<span className="notes-new-anchor" ref={newMenuRef}>
+							<button
+								type="button"
+								className="pixel-btn primary"
+								onClick={() => setNewMenuOpen((o) => !o)}
+								aria-haspopup="menu"
+								aria-expanded={newMenuOpen}
+							>
+								+ New
+							</button>
+							{newMenuOpen && (
+								<div className="pixel-context-menu notes-new-menu" role="menu">
+									<div
+										className="pixel-context-item"
+										onClick={() => {
+											handleCreateNote(newNoteFolder);
+											setNewMenuOpen(false);
+										}}
+									>
+										New Note
+									</div>
+									<div
+										className="pixel-context-item"
+										onClick={() => {
+											setCreateFolderTarget({
+												parent: newNoteFolder,
+												value: "",
+											});
+											setNewMenuOpen(false);
+										}}
+									>
+										New Folder
+									</div>
+								</div>
+							)}
+						</span>
 						{onClose ? (
 							<button
 								type="button"

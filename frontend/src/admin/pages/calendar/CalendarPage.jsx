@@ -11,6 +11,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import WorkspaceShell from "../../../chat/WorkspaceShell";
 import BucketTagFilter from "../../../components/BucketTagFilter";
 import ManageBucketsModal from "../../../components/ManageBucketsModal";
+import UserMenu from "../../../components/UserMenu";
 import {
 	useCalendarEvent,
 	useCalendarEvents,
@@ -316,6 +317,7 @@ export default function CalendarPage() {
 						>
 							+ event
 						</PvButton>
+						<UserMenu size={34} />
 					</div>
 				</header>
 

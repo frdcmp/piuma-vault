@@ -46,6 +46,7 @@ export default function NotesLayout() {
 	const tabs = useNotesWorkspaceStore((s) => s.tabs);
 	const closeTab = useNotesWorkspaceStore((s) => s.closeTab);
 	const pinTab = useNotesWorkspaceStore((s) => s.pinTab);
+	const reorderTabs = useNotesWorkspaceStore((s) => s.reorderTabs);
 	const controlsPresent = useNoteControlsStore((s) => s.present);
 
 	// Chat dock chrome lives in the shared store; the layout only needs `open`
@@ -249,6 +250,7 @@ export default function NotesLayout() {
 									onSelect={handleSelectNote}
 									onClose={handleCloseTab}
 									onPin={pinTab}
+									onReorder={reorderTabs}
 								/>
 								{controlsPresent && (
 									<NoteControls

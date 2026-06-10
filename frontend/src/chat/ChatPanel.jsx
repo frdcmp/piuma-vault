@@ -950,6 +950,10 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			/* ignore */
 		} finally {
 			setLoadingConv(false);
+			// Picking from the overlay moved focus into (now-unmounted) list; once
+			// the conversation has loaded, hand focus back to the composer so the
+			// user can type straight away. rAF waits for the re-render to commit.
+			requestAnimationFrame(() => inputRef.current?.focus());
 		}
 	}, []);
 

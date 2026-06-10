@@ -128,6 +128,21 @@ const useNotesWorkspaceStore = create((set) => ({
 			return { tabs };
 		}),
 
+	// Drag-to-sort: move the dragged tab so it lands at the target tab's slot,
+	// shifting the rest along. No-op if either id is gone or they're the same.
+	reorderTabs: (fromId, toId) =>
+		set((state) => {
+			if (!fromId || !toId || fromId === toId) return state;
+			const from = state.tabs.findIndex((t) => t.id === fromId);
+			const to = state.tabs.findIndex((t) => t.id === toId);
+			if (from === -1 || to === -1) return state;
+			const tabs = [...state.tabs];
+			const [moved] = tabs.splice(from, 1);
+			tabs.splice(to, 0, moved);
+			persist(TABS_KEY, tabs);
+			return { tabs };
+		}),
+
 	// Pin an open tab's note so it stays in chat context even after tab close.
 	lockContext: (id) =>
 		set((state) => {
