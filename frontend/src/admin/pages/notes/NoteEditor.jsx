@@ -713,7 +713,6 @@ export default function NoteEditor() {
 				>
 					{uploadAttachment.isPending ? "⏳" : "📎"}
 				</button>
-				<span style={{ fontSize: 12, color: "var(--muted)" }}>🏷️ Tags:</span>
 				{tags.map((t) => (
 					<span key={t} className="pixel-tag">
 						{t}{" "}
@@ -739,8 +738,19 @@ export default function NoteEditor() {
 					/>
 				) : (
 					<button
-						className="pixel-btn icon-only"
+						type="button"
 						onClick={() => setTagPopoverOpen(true)}
+						title="Add tag"
+						aria-label="Add tag"
+						style={{
+							background: "none",
+							border: "none",
+							color: "var(--muted)",
+							cursor: "pointer",
+							fontSize: 16,
+							lineHeight: 1,
+							padding: "0 4px",
+						}}
 					>
 						+
 					</button>

@@ -25,6 +25,7 @@ import WorkspaceShell from "../../../chat/WorkspaceShell";
 import BucketTagFilter from "../../../components/BucketTagFilter";
 import ManageBucketsModal from "../../../components/ManageBucketsModal";
 import TimeAgo from "../../../components/TimeAgo";
+import UserMenu from "../../../components/UserMenu";
 import {
 	useBuckets,
 	useDeleteRecurringTask,
@@ -362,6 +363,7 @@ export default function TasksPage() {
 						>
 							+ task
 						</PvButton>
+						<UserMenu size={34} />
 					</div>
 				</header>
 

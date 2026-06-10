@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import UserMenu from "../../../components/UserMenu";
 import useChatDockStore from "../../../store/chatDockStore";
 import useNoteControlsStore from "../../../store/noteControlsStore";
 import SharePopover from "../../components/notes/SharePopover";
@@ -220,6 +221,7 @@ export default function NoteControls({ onClose, compact }) {
 						</button>
 					</div>
 				)}
+				<UserMenu size={30} />
 			</div>
 		);
 	}
@@ -262,6 +264,7 @@ export default function NoteControls({ onClose, compact }) {
 			>
 				×
 			</button>
+			<UserMenu size={30} />
 		</div>
 	);
 }

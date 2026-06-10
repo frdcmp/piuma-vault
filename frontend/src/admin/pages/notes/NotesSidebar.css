@@ -96,7 +96,14 @@
 	align-items: flex-end;
 	gap: 8px;
 	padding-right: 10px;
-	background: var(--bg);
+	/* Signature 8px scanline-grid texture behind the tabs + controls, matching
+	   the vault backdrop. Sticky bar stays opaque (solid --bg under the grid)
+	   so scrolled note content doesn't bleed through. */
+	background-color: var(--bg);
+	background-image:
+		linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+	background-size: 8px 8px;
 	border-bottom: 2px dashed var(--border-strong);
 }
 .note-tabs {
@@ -350,13 +357,6 @@
 	justify-content: space-between;
 	align-items: center;
 	margin-bottom: 12px;
-}
-
-.notes-sidebar-title-group {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	min-width: 0;
 }
 
 .notes-sidebar-title {
@@ -828,6 +828,17 @@
 	flex-direction: column;
 }
 
+/* "+ New" dropdown: anchored under the button rather than at mouse coords. */
+.notes-new-anchor {
+	position: relative;
+	display: inline-flex;
+}
+.notes-new-menu {
+	position: absolute;
+	top: calc(100% + 4px);
+	right: 0;
+}
+
 .pixel-context-item {
 	padding: 8px 12px;
 	cursor: pointer;
@@ -958,15 +969,25 @@
 	background: rgba(255, 107, 107, 0.18);
 }
 
+/* Bare icon — no button box, just the glyph. */
 .notes-sidebar-refresh {
 	padding: 4px;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	align-self: stretch; /* match the height of the + New button beside it */
-	aspect-ratio: 1 / 1; /* keep it a square */
+	background: none;
+	border: none;
+	box-shadow: none;
+	color: var(--muted);
+	cursor: pointer;
 	font-size: 12pt;
 	line-height: 1;
+}
+.notes-sidebar-refresh:hover:not(:disabled) {
+	color: var(--accent-2);
+}
+.notes-sidebar-refresh:disabled {
+	cursor: default;
 }
 
 .notes-refresh-icon {
