@@ -1,0 +1,44 @@
+/* Pixel landscape pinned to the bottom of the sidebar, always behind the
+   tree (lower z-index). Absolute so it stays put as the tree scrolls. */
+.ftree-scene {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 0;
+	pointer-events: none;
+	user-select: none;
+	opacity: 0.65;
+}
+
+.ftree-scene svg {
+	display: block;
+	width: 100%;
+	height: auto;
+	image-rendering: pixelated;
+}
+
+.ftree-star {
+	animation: ftree-twinkle 3.2s ease-in-out infinite;
+}
+
+.ftree-moon {
+	filter: drop-shadow(0 0 1px rgba(154, 131, 64, 0.4));
+}
+
+@keyframes ftree-twinkle {
+	0%,
+	100% {
+		opacity: 0.2;
+	}
+	50% {
+		opacity: 0.7;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ftree-star {
+		animation: none;
+		opacity: 0.7;
+	}
+}

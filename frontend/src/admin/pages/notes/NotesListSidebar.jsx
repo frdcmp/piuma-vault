@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
+import FtreeScene from "@/admin/components/notes/FtreeScene";
 import { PvModal } from "@/admin/components/ui";
 import {
 	notesKeys,
@@ -991,6 +992,8 @@ export default function NotesListSidebar({
 					</div>
 				)}
 			</div>
+
+			{!isRootLoading && !debouncedSearch && <FtreeScene />}
 
 			{contextTarget && (
 				<div
