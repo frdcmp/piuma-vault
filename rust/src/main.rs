@@ -114,6 +114,7 @@ async fn main() -> io::Result<()> {
             .configure(apps::settings::routes::configure_routes)
             .configure(apps::sprites::routes::configure_routes)
             .configure(apps::db_dump::routes::configure_routes)
+            .configure(apps::widgets::routes::configure_routes)
     })
     .workers(num_cpus::get() * 2)  // 2 workers per CPU core for high concurrency
     .backlog(2048)  // Increased backlog for handling burst traffic

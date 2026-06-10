@@ -18,3 +18,4 @@ pub mod settings;
 pub mod sprites;
 pub mod web_search;
 pub mod db_dump;
+pub mod widgets;
