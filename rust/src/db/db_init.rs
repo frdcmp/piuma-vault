@@ -272,6 +272,7 @@ const TABLES: &[TableDefinition] = &[
                 access_level TEXT NOT NULL DEFAULT 'view'
                     CHECK (access_level IN ('view', 'edit')),
                 password_hash TEXT,
+                password_enc TEXT,
                 is_active BOOLEAN DEFAULT TRUE,
                 expires_at TIMESTAMPTZ,
                 created_by TEXT NOT NULL REFERENCES db_users(id) ON DELETE CASCADE,

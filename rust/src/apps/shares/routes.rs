@@ -13,10 +13,20 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             web::resource("/admin/notes/{id}/shares")
                 .route(web::get().to(handlers::list_shares)),
         )
+        // Central admin Shares page — every note share across all notes.
+        // Top-level path avoids colliding with notes' `/admin/notes/{id}`.
+        .service(
+            web::resource("/admin/shares")
+                .route(web::get().to(handlers::list_all_shares)),
+        )
         .service(
             web::resource("/admin/notes/shares/{shareId}")
                 .route(web::put().to(handlers::update_share))
                 .route(web::delete().to(handlers::delete_share)),
+        )
+        .service(
+            web::resource("/admin/notes/shares/{shareId}/renew")
+                .route(web::post().to(handlers::renew_share)),
         )
         // Public endpoints
         .service(

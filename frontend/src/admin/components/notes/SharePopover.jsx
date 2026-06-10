@@ -16,9 +16,9 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 
 	const [accessLevel, setAccessLevel] = useState("view");
 	const [password, setPassword] = useState("");
-	const [expiresIn, setExpiresIn] = useState("");
+	const [expiresIn, setExpiresIn] = useState("1");
 	const [passwordEnabled, setPasswordEnabled] = useState(false);
-	const [expireEnabled, setExpireEnabled] = useState(false);
+	const [expireEnabled, setExpireEnabled] = useState(true);
 
 	const popoverRef = useRef(null);
 
@@ -39,9 +39,9 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 			setCopiedAiSlug(null);
 			setAccessLevel("view");
 			setPassword("");
-			setExpiresIn("");
+			setExpiresIn("1");
 			setPasswordEnabled(false);
-			setExpireEnabled(false);
+			setExpireEnabled(true);
 			loadShares();
 		}
 	}, [open, noteId]);
@@ -68,14 +68,13 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 				expiresInHours: effectiveExpiry,
 			});
 
-			const pwd = effectivePassword;
-			setLastPassword(pwd);
+			setLastPassword(effectivePassword);
 			await loadShares();
 
+			// Human-facing link stays bare — the share page prompts for the
+			// password. (The LLM/API URL embeds ?pwd= since it can't be prompted.)
 			const url = created?.slug
-				? `${window.location.origin}/share/v/${created.slug}${
-						created.has_password && pwd ? `?pwd=${encodeURIComponent(pwd)}` : ""
-					}`
+				? `${window.location.origin}/share/v/${created.slug}`
 				: "";
 
 			let copied = false;
@@ -104,18 +103,22 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 		}
 	};
 
-	const buildShareUrl = (share) => {
-		if (!share?.slug) return "";
-		const base = `${window.location.origin}/share/v/${share.slug}`;
-		const pwd = share.has_password && lastPassword ? lastPassword : null;
-		return pwd ? `${base}?pwd=${encodeURIComponent(pwd)}` : base;
-	};
+	// Resolve the share's password: the server returns the decrypted value
+	// (owner-only) so the LLM URL works even for shares made in another session;
+	// fall back to the just-generated password if the list hasn't reloaded yet.
+	const sharePassword = (share) =>
+		share?.has_password ? share.password || lastPassword || null : null;
+
+	// Human-facing link is always bare — the public share page prompts the
+	// visitor for the password, so we never leak it in the URL/history.
+	const buildShareUrl = (share) =>
+		share?.slug ? `${window.location.origin}/share/v/${share.slug}` : "";
 
 	const buildLlmUrl = (share) => {
 		if (!share?.slug) return "";
 		const apiBase = `${import.meta.env.BASE_URL || "/"}api/v1`;
 		const base = `${window.location.origin}${apiBase}/share/v/${share.slug}`;
-		const pwd = share.has_password && lastPassword ? lastPassword : null;
+		const pwd = sharePassword(share);
 		return pwd ? `${base}?pwd=${encodeURIComponent(pwd)}` : base;
 	};
 
@@ -138,6 +141,17 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 			setCopiedAiSlug(share.slug);
 			setTimeout(() => setCopiedAiSlug(null), 2000);
 			pvMessage.success("LLM URL copied");
+		} catch {
+			pvMessage.error("Failed to copy");
+		}
+	};
+
+	const handleCopyPwd = async (share) => {
+		const pwd = sharePassword(share);
+		if (!pwd) return;
+		try {
+			await navigator.clipboard.writeText(pwd);
+			pvMessage.success("Password copied");
 		} catch {
 			pvMessage.error("Failed to copy");
 		}
@@ -249,14 +263,14 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 									const next = !expireEnabled;
 									setExpireEnabled(next);
 									if (!next) setExpiresIn("");
-									else if (!expiresIn) setExpiresIn("24");
+									else if (!expiresIn) setExpiresIn("1");
 								}}
 							/>
 						</div>
 						{expireEnabled && (
 							<select
 								className="pixel-input"
-								value={expiresIn || "24"}
+								value={expiresIn || "1"}
 								onChange={(e) => setExpiresIn(e.target.value)}
 							>
 								<option value="1">1 hour</option>
@@ -315,9 +329,28 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 										>
 											{share.slug}
 										</code>
-										<span style={{ fontSize: 12 }}>
-											{share.has_password ? "🔒" : "🔓"}
-										</span>
+										{share.has_password ? (
+											<button
+												type="button"
+												onClick={() => handleCopyPwd(share)}
+												title={
+													sharePassword(share)
+														? `Password: ${sharePassword(share)} — click to copy`
+														: "Password-protected"
+												}
+												style={{
+													background: "none",
+													border: 0,
+													padding: 0,
+													fontSize: 12,
+													cursor: "pointer",
+												}}
+											>
+												🔒
+											</button>
+										) : (
+											<span style={{ fontSize: 12 }}>🔓</span>
+										)}
 										<span
 											style={{
 												fontSize: 10,

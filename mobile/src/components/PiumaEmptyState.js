@@ -9,6 +9,8 @@ import {
 	Text,
 	View,
 } from "react-native";
+import { PIUMA_SPRITE } from "../sprites/piuma";
+import PiumaSprite from "../sprites/PiumaSprite";
 import { colors } from "../utils/theme";
 import ComingSoonModal from "./ComingSoonModal";
 import PixelStarfield from "./PixelStarfield";
@@ -19,56 +21,6 @@ const MONO = Platform.select({
 	android: "monospace",
 	default: "monospace",
 });
-
-const SPRITE = [
-	"................",
-	".....EEBB.......",
-	"....EBBBBB......",
-	"...BBBBBBBB.....",
-	"...BBYBBYBB.BBB.",
-	"...BMMNMMBBBBBB.",
-	"...BBMTMBBBBBBB.",
-	"...CCCCCCCCCCC..",
-	"...BWWWWWWWWBB..",
-	"...BWWWWWWWWBB..",
-	"...B.B....B.B...",
-	"...B.B....B.B...",
-];
-
-const PALETTE = {
-	B: "#ad7549",
-	W: "#f5f5f5",
-	M: "#f5f5f5",
-	E: "#0d0d0d",
-	N: "#000000",
-	Y: "#090909",
-	T: "#ff7a9a",
-	C: "#c0392b",
-};
-
-function PiumaPixelArt({ pixelSize = 8 }) {
-	const cols = SPRITE[0].length;
-	return (
-		<View style={{ width: cols * pixelSize }}>
-			{SPRITE.map((row, r) => (
-				// biome-ignore lint/suspicious/noArrayIndexKey: static pixel grid, rows never reorder
-				<View key={`row-${r}`} style={{ flexDirection: "row" }}>
-					{row.split("").map((code, c) => (
-						<View
-							// biome-ignore lint/suspicious/noArrayIndexKey: static pixel grid, cells never reorder
-							key={`px-${r}-${c}`}
-							style={{
-								width: pixelSize,
-								height: pixelSize,
-								backgroundColor: PALETTE[code] || "transparent",
-							}}
-						/>
-					))}
-				</View>
-			))}
-		</View>
-	);
-}
 
 const QUIPS = [
 	"Pick a note, or Piuma keeps floating...",
@@ -300,7 +252,7 @@ export default function PiumaEmptyState({
 						],
 					}}
 				>
-					<PiumaPixelArt pixelSize={8} />
+					<PiumaSprite rows={PIUMA_SPRITE} pixelSize={8} />
 				</Animated.View>
 			</Pressable>
 			<Text style={styles.text}>

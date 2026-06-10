@@ -50,6 +50,30 @@ pub struct UpdateServiceConfig {
     pub github_token: Option<String>,
 }
 
+/// Screen-lock config returned to the client. The PIN itself is never returned —
+/// only `pin_set` indicates whether one is stored.
+#[derive(Debug, Serialize)]
+pub struct ScreenLockConfig {
+    pub enabled: bool,
+    pub timeout_seconds: i64,
+    pub pin_set: bool,
+}
+
+/// Partial screen-lock update. Omitted fields are left unchanged. A non-empty
+/// `pin` (6 digits) replaces the stored hash.
+#[derive(Debug, Deserialize)]
+pub struct UpdateScreenLock {
+    pub enabled: Option<bool>,
+    pub timeout_seconds: Option<i64>,
+    pub pin: Option<String>,
+}
+
+/// Unlock request — the PIN to verify against the stored hash.
+#[derive(Debug, Deserialize)]
+pub struct VerifyPinRequest {
+    pub pin: String,
+}
+
 /// Optional GitHub overrides for a "try now" check. Blank fields fall back to
 /// saved config.
 #[derive(Debug, Default, Deserialize)]

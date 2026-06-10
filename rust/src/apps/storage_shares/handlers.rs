@@ -4,7 +4,7 @@ use argon2::{
     Argon2, Params,
 };
 use aws_sdk_s3::primitives::ByteStream;
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use rand::Rng;
 use uuid::Uuid;
 
@@ -785,6 +785,48 @@ pub async fn update_share(
         Err(e) => {
             log::error!("update folder share: {e}");
             ise("Failed to update share")
+        }
+    }
+}
+
+// POST /admin/storage/shares/{id}/renew — reset created_at to now and push
+// expires_at forward by its original lifespan (expires_at − created_at).
+pub async fn renew_share(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    if let Some(r) = require_perm(&user) {
+        return r;
+    }
+    let id = path.into_inner();
+    let existing: Option<(Option<DateTime<Utc>>, Option<DateTime<Utc>>)> =
+        sqlx::query_as("SELECT created_at, expires_at FROM db_folder_shares WHERE id = $1")
+            .bind(id)
+            .fetch_optional(pool.get_ref())
+            .await
+            .ok()
+            .flatten();
+    let (created_at, expires_at) = match existing {
+        Some(v) => v,
+        None => return err(actix_web::http::StatusCode::NOT_FOUND, "Share not found"),
+    };
+    let now = Utc::now();
+    let new_expires = match (created_at, expires_at) {
+        (Some(c), Some(e)) => Some(now + (e - c)),
+        _ => expires_at,
+    };
+    match sqlx::query("UPDATE db_folder_shares SET created_at = $1, expires_at = $2 WHERE id = $3")
+        .bind(now)
+        .bind(new_expires)
+        .bind(id)
+        .execute(pool.get_ref())
+        .await
+    {
+        Ok(_) => HttpResponse::Ok().json(OkResponse { ok: true }),
+        Err(e) => {
+            log::error!("renew folder share: {e}");
+            ise("Failed to renew share")
         }
     }
 }

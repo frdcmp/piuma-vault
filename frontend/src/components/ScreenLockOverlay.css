@@ -1,0 +1,136 @@
+.vp-lock-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	background: var(--vp-bg, #1b1b1f);
+	/* Opaque + blurred so the vault content underneath isn't readable. */
+	backdrop-filter: blur(14px);
+	-webkit-backdrop-filter: blur(14px);
+}
+
+.vp-lock-card {
+	width: 100%;
+	max-width: 360px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 18px;
+	text-align: center;
+}
+
+/* Pixel-art title to match the Piuma sprite. */
+.vp-lock-title {
+	margin: 0;
+	font-family: "Press Start 2P", var(--vp-font);
+	font-size: 18px;
+	line-height: 1.5;
+	font-weight: 400;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: var(--vp-accent, #f7c948);
+	text-shadow: 3px 3px 0 #000;
+}
+
+/* Segmented PIN: the real input sits invisibly on top of six pixel cells. */
+.vp-lock-pin {
+	position: relative;
+	display: flex;
+	gap: 10px;
+	margin: 2px 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	cursor: text;
+}
+
+.vp-lock-pin-field {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: transparent;
+	caret-color: transparent; /* the active cell shows our own pixel caret */
+	outline: none;
+	cursor: text;
+}
+
+.vp-lock-cell {
+	width: 38px;
+	height: 48px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--vp-bg-soft, #15171c);
+	border: 2px solid var(--vp-border, #3a4150);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+	transition: border-color 0.1s;
+}
+
+.vp-lock-cell.is-active {
+	border-color: var(--vp-accent, #f7c948);
+}
+
+/* Filled digit — a hard-edged pixel block instead of a font glyph. */
+.vp-lock-dot {
+	width: 12px;
+	height: 12px;
+	background: var(--vp-text, #d6dbe5);
+	image-rendering: pixelated;
+}
+
+/* Blinking pixel caret in the active (next) cell. */
+.vp-lock-cell.is-active::after {
+	content: "";
+	width: 12px;
+	height: 12px;
+	background: var(--vp-accent, #f7c948);
+	animation: vp-lock-caret 1s steps(1, end) infinite;
+}
+
+@keyframes vp-lock-caret {
+	0%,
+	50% {
+		opacity: 1;
+	}
+	50.01%,
+	100% {
+		opacity: 0;
+	}
+}
+
+.vp-lock-error {
+	color: var(--vp-accent-3, #ff6b6b);
+	margin: 0;
+}
+
+.vp-lock-shake {
+	animation: vp-lock-shake 0.4s ease;
+}
+
+@keyframes vp-lock-shake {
+	10%,
+	90% {
+		transform: translateX(-2px);
+	}
+	20%,
+	80% {
+		transform: translateX(4px);
+	}
+	30%,
+	50%,
+	70% {
+		transform: translateX(-8px);
+	}
+	40%,
+	60% {
+		transform: translateX(8px);
+	}
+}

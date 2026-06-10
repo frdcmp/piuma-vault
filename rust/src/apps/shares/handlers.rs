@@ -12,10 +12,11 @@ use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::notes::events::{NoteAction, NotesEventBus};
 use crate::db::db::DbPool;
 
+use super::crypto;
 use super::models::{
-    CreateShareRequest, CreateShareResponse, NoteShare, PublicNoteData, PublicShareInfo,
-    PublicShareQuery, PublicShareResponse, ShareListItem, SharesApiError, UpdateShareRequest,
-    NoteFrontmatter,
+    CreateShareRequest, CreateShareResponse, NoteShare, NoteShareAdminItem, PublicNoteData,
+    PublicShareInfo, PublicShareQuery, PublicShareResponse, ShareListItem, SharesApiError,
+    UpdateShareRequest, NoteFrontmatter,
 };
 
 // ── Helpers ──
@@ -146,16 +147,29 @@ pub async fn create_share(
         return HttpResponse::BadRequest().json(err("access_level must be 'view' or 'edit'"));
     }
 
-    // Hash password if provided
-    let password_hash = match &body.password {
-        Some(pwd) if !pwd.is_empty() => match hash_password(pwd) {
-            Ok(h) => Some(h),
-            Err(e) => {
-                log::error!("Password hash failed: {e}");
-                return HttpResponse::InternalServerError().json(err("Failed to process password"));
-            }
-        },
-        _ => None,
+    // Hash password for verification + store a reversible ciphertext so the owner
+    // can rebuild a `?pwd=` link later.
+    let (password_hash, password_enc) = match &body.password {
+        Some(pwd) if !pwd.is_empty() => {
+            let hash = match hash_password(pwd) {
+                Ok(h) => h,
+                Err(e) => {
+                    log::error!("Password hash failed: {e}");
+                    return HttpResponse::InternalServerError()
+                        .json(err("Failed to process password"));
+                }
+            };
+            let enc = match crypto::encrypt(pool.get_ref(), pwd).await {
+                Ok(e) => e,
+                Err(e) => {
+                    log::error!("Password encrypt failed: {e}");
+                    return HttpResponse::InternalServerError()
+                        .json(err("Failed to process password"));
+                }
+            };
+            (Some(hash), Some(enc))
+        }
+        _ => (None, None),
     };
 
     // Calculate expiry
@@ -189,14 +203,15 @@ pub async fn create_share(
 
     // Insert share
     let share: NoteShare = match sqlx::query_as::<_, NoteShare>(
-        "INSERT INTO note_shares (note_id, slug, access_level, password_hash, expires_at, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, note_id, slug, access_level, password_hash, is_active, expires_at, created_by, created_at, last_accessed_at"
+        "INSERT INTO note_shares (note_id, slug, access_level, password_hash, password_enc, expires_at, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, note_id, slug, access_level, password_hash, password_enc, is_active, expires_at, created_by, created_at, last_accessed_at"
     )
     .bind(note_id)
     .bind(&slug)
     .bind(&access_level)
     .bind(password_hash)
+    .bind(&password_enc)
     .bind(expires_at)
     .bind(&user.user_id)
     .fetch_one(pool.get_ref())
@@ -235,7 +250,7 @@ pub async fn list_shares(
     let note_id = path.into_inner();
 
     let shares: Vec<NoteShare> = match sqlx::query_as::<_, NoteShare>(
-        "SELECT id, note_id, slug, access_level, password_hash, is_active, expires_at, created_by, created_at, last_accessed_at
+        "SELECT id, note_id, slug, access_level, password_hash, password_enc, is_active, expires_at, created_by, created_at, last_accessed_at
          FROM note_shares WHERE note_id = $1 ORDER BY created_at DESC"
     )
     .bind(note_id)
@@ -248,19 +263,90 @@ pub async fn list_shares(
         }
     };
 
-    let items: Vec<ShareListItem> = shares
-        .into_iter()
-        .map(|s| ShareListItem {
+    let mut items: Vec<ShareListItem> = Vec::with_capacity(shares.len());
+    for s in shares {
+        let password = match &s.password_enc {
+            Some(enc) => crypto::decrypt(pool.get_ref(), enc).await,
+            None => None,
+        };
+        items.push(ShareListItem {
             id: s.id,
             slug: s.slug,
             access_level: s.access_level,
             has_password: s.password_hash.is_some(),
+            password,
             is_active: s.is_active,
             expires_at: s.expires_at,
             created_at: s.created_at,
             last_accessed_at: s.last_accessed_at,
-        })
-        .collect();
+        });
+    }
+
+    HttpResponse::Ok().json(items)
+}
+
+/// GET /admin/shares — List every note share (across all notes) for the
+/// central admin Shares page. Joins the note title and decrypts the password.
+pub async fn list_all_shares(user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
+    if let Some(r) = require_write(&user) {
+        return r;
+    }
+
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        id: Uuid,
+        note_id: Uuid,
+        note_title: String,
+        slug: String,
+        access_level: String,
+        password_hash: Option<String>,
+        password_enc: Option<String>,
+        is_active: bool,
+        expires_at: Option<DateTime<Utc>>,
+        created_at: Option<DateTime<Utc>>,
+        last_accessed_at: Option<DateTime<Utc>>,
+    }
+
+    let rows: Vec<Row> = match sqlx::query_as::<_, Row>(
+        "SELECT s.id, s.note_id, n.title AS note_title, s.slug, s.access_level,
+                s.password_hash, s.password_enc, s.is_active, s.expires_at,
+                s.created_at, s.last_accessed_at
+         FROM note_shares s
+         JOIN notes n ON n.id = s.note_id
+         WHERE s.created_by = $1 AND n.deleted_at IS NULL
+         ORDER BY s.created_at DESC",
+    )
+    .bind(&user.user_id)
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("Failed to list all shares: {e}");
+            return HttpResponse::InternalServerError().json(err("Failed to list shares"));
+        }
+    };
+
+    let mut items: Vec<NoteShareAdminItem> = Vec::with_capacity(rows.len());
+    for r in rows {
+        let password = match &r.password_enc {
+            Some(enc) => crypto::decrypt(pool.get_ref(), enc).await,
+            None => None,
+        };
+        items.push(NoteShareAdminItem {
+            id: r.id,
+            note_id: r.note_id,
+            note_title: r.note_title,
+            slug: r.slug,
+            access_level: r.access_level,
+            has_password: r.password_hash.is_some(),
+            password,
+            is_active: r.is_active,
+            expires_at: r.expires_at,
+            created_at: r.created_at,
+            last_accessed_at: r.last_accessed_at,
+        });
+    }
 
     HttpResponse::Ok().json(items)
 }
@@ -280,7 +366,7 @@ pub async fn update_share(
 
     // Fetch existing share
     let existing: Option<NoteShare> = sqlx::query_as::<_, NoteShare>(
-        "SELECT id, note_id, slug, access_level, password_hash, is_active, expires_at, created_by, created_at, last_accessed_at
+        "SELECT id, note_id, slug, access_level, password_hash, password_enc, is_active, expires_at, created_by, created_at, last_accessed_at
          FROM note_shares WHERE id = $1"
     )
     .bind(share_id)
@@ -303,6 +389,7 @@ pub async fn update_share(
     // Build dynamic update
     let mut access_level = existing.access_level.clone();
     let mut password_hash = existing.password_hash.clone();
+    let mut password_enc = existing.password_enc.clone();
     let mut is_active = existing.is_active;
     let mut expires_at = existing.expires_at;
 
@@ -316,11 +403,19 @@ pub async fn update_share(
     if let Some(ref pwd) = body.password {
         if pwd.is_empty() {
             password_hash = None;
+            password_enc = None;
         } else {
             match hash_password(pwd) {
                 Ok(h) => password_hash = Some(h),
                 Err(e) => {
                     log::error!("Password hash failed: {e}");
+                    return HttpResponse::InternalServerError().json(err("Failed to process password"));
+                }
+            }
+            match crypto::encrypt(pool.get_ref(), pwd).await {
+                Ok(e) => password_enc = Some(e),
+                Err(e) => {
+                    log::error!("Password encrypt failed: {e}");
                     return HttpResponse::InternalServerError().json(err("Failed to process password"));
                 }
             }
@@ -337,12 +432,13 @@ pub async fn update_share(
 
     let updated: NoteShare = match sqlx::query_as::<_, NoteShare>(
         "UPDATE note_shares
-         SET access_level = $1, password_hash = $2, is_active = $3, expires_at = $4
-         WHERE id = $5
-         RETURNING id, note_id, slug, access_level, password_hash, is_active, expires_at, created_by, created_at, last_accessed_at"
+         SET access_level = $1, password_hash = $2, password_enc = $3, is_active = $4, expires_at = $5
+         WHERE id = $6
+         RETURNING id, note_id, slug, access_level, password_hash, password_enc, is_active, expires_at, created_by, created_at, last_accessed_at"
     )
     .bind(&access_level)
     .bind(password_hash)
+    .bind(&password_enc)
     .bind(is_active)
     .bind(expires_at)
     .bind(share_id)
@@ -355,16 +451,75 @@ pub async fn update_share(
         }
     };
 
+    let password = match &updated.password_enc {
+        Some(enc) => crypto::decrypt(pool.get_ref(), enc).await,
+        None => None,
+    };
     HttpResponse::Ok().json(ShareListItem {
         id: updated.id,
         slug: updated.slug,
         access_level: updated.access_level,
         has_password: updated.password_hash.is_some(),
+        password,
         is_active: updated.is_active,
         expires_at: updated.expires_at,
         created_at: updated.created_at,
         last_accessed_at: updated.last_accessed_at,
     })
+}
+
+/// POST /admin/notes/shares/:shareId/renew — Reset the share's clock: set
+/// created_at to now and push expires_at forward by its original lifespan
+/// (expires_at − created_at). A never-expiring share just gets a fresh
+/// created_at. Useful to "rehydrate" a link that's about to lapse.
+pub async fn renew_share(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    if let Some(r) = require_write(&user) {
+        return r;
+    }
+    let share_id = path.into_inner();
+
+    let existing: Option<(Option<DateTime<Utc>>, Option<DateTime<Utc>>)> = sqlx::query_as(
+        "SELECT created_at, expires_at FROM note_shares WHERE id = $1 AND created_by = $2",
+    )
+    .bind(share_id)
+    .bind(&user.user_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .ok()
+    .flatten();
+
+    let (created_at, expires_at) = match existing {
+        Some(v) => v,
+        None => return HttpResponse::NotFound().json(err("Share not found")),
+    };
+
+    let now = Utc::now();
+    // Original lifespan = expires_at − created_at, re-applied from now.
+    let new_expires = match (created_at, expires_at) {
+        (Some(c), Some(e)) => Some(now + (e - c)),
+        _ => expires_at, // never-expiring stays never
+    };
+
+    match sqlx::query(
+        "UPDATE note_shares SET created_at = $1, expires_at = $2 WHERE id = $3 AND created_by = $4",
+    )
+    .bind(now)
+    .bind(new_expires)
+    .bind(share_id)
+    .bind(&user.user_id)
+    .execute(pool.get_ref())
+    .await
+    {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+        Err(e) => {
+            log::error!("Failed to renew share: {e}");
+            HttpResponse::InternalServerError().json(err("Failed to renew share"))
+        }
+    }
 }
 
 /// DELETE /admin/notes/shares/:shareId — Revoke a share link
@@ -410,7 +565,7 @@ pub async fn get_shared_note(
 
     // Fetch share
     let share: Option<NoteShare> = sqlx::query_as::<_, NoteShare>(
-        "SELECT id, note_id, slug, access_level, password_hash, is_active, expires_at, created_by, created_at, last_accessed_at
+        "SELECT id, note_id, slug, access_level, password_hash, password_enc, is_active, expires_at, created_by, created_at, last_accessed_at
          FROM note_shares WHERE slug = $1"
     )
     .bind(&slug)
@@ -575,7 +730,7 @@ pub async fn update_shared_note(
 
     // Fetch share
     let share: Option<NoteShare> = sqlx::query_as::<_, NoteShare>(
-        "SELECT id, note_id, slug, access_level, password_hash, is_active, expires_at, created_by, created_at, last_accessed_at
+        "SELECT id, note_id, slug, access_level, password_hash, password_enc, is_active, expires_at, created_by, created_at, last_accessed_at
          FROM note_shares WHERE slug = $1"
     )
     .bind(&slug)

@@ -30,9 +30,12 @@ function getRole(user) {
 /**
  * Pixel/terminal avatar + dropdown. The component is position-neutral — it
  * flows inline wherever the parent renders it, and the parent owns placement.
- * `size` sets the avatar's pixel dimension (font scales with it).
+ * `size` sets the avatar's pixel dimension (font scales with it). `align`
+ * controls which edge the dropdown anchors to: "right" (default) opens it
+ * leftward, "left" opens it rightward — use "left" when the avatar sits near
+ * the left edge of a narrow container (e.g. the notes sidebar).
  */
-export default function UserMenu({ size = 42 }) {
+export default function UserMenu({ size = 42, align = "right" }) {
 	const { data: me } = useUserMe();
 	const logout = useLogout();
 	const [open, setOpen] = useState(false);
@@ -85,7 +88,9 @@ export default function UserMenu({ size = 42 }) {
 			</button>
 
 			{open && (
-				<div className="user-menu-dropdown">
+				<div
+					className={`user-menu-dropdown ${align === "left" ? "user-menu-dropdown--left" : ""}`}
+				>
 					<div className="user-menu-info">
 						<div className="user-menu-name">{getDisplayName(me)}</div>
 						{me.email && <div className="user-menu-email">{me.email}</div>}
@@ -100,17 +105,10 @@ export default function UserMenu({ size = 42 }) {
 						<>
 							<Link
 								className="user-menu-item"
-								to="/admin"
-								onClick={() => setOpen(false)}
-							>
-								&gt; admin panel
-							</Link>
-							<Link
-								className="user-menu-item"
 								to="/notes"
 								onClick={() => setOpen(false)}
 							>
-								&gt; vault
+								&gt; notes
 							</Link>
 							<Link
 								className="user-menu-item"
@@ -118,6 +116,27 @@ export default function UserMenu({ size = 42 }) {
 								onClick={() => setOpen(false)}
 							>
 								&gt; storage
+							</Link>
+							<Link
+								className="user-menu-item"
+								to="/tasks"
+								onClick={() => setOpen(false)}
+							>
+								&gt; tasks
+							</Link>
+							<Link
+								className="user-menu-item"
+								to="/admin/calendar"
+								onClick={() => setOpen(false)}
+							>
+								&gt; calendar
+							</Link>
+							<Link
+								className="user-menu-item"
+								to="/admin"
+								onClick={() => setOpen(false)}
+							>
+								&gt; admin
 							</Link>
 							<div className="user-menu-divider" />
 						</>

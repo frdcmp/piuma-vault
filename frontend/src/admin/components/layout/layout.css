@@ -71,10 +71,12 @@
 	gap: 10px;
 }
 .vp-sidebar-logo {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	height: 32px;
 	width: 32px;
-	object-fit: contain;
-	image-rendering: auto;
+	image-rendering: pixelated;
 }
 .vp-sidebar-wordmark {
 	font-family: var(--vp-font);
@@ -258,11 +260,10 @@
 	gap: 10px;
 }
 .vp-header-logo {
-	height: 28px;
-	width: 28px;
-	object-fit: contain;
-	display: block;
-	image-rendering: auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	image-rendering: pixelated;
 }
 
 /* ---- Breadcrumbs ----------------------------------------------------------- */

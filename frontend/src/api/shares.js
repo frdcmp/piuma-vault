@@ -26,6 +26,15 @@ export async function listShareLinks(noteId) {
 }
 
 /**
+ * List every note share across all notes (central admin Shares page).
+ * GET /admin/shares
+ */
+export async function listAllShareLinks() {
+	const res = await axiosInstance.get("/admin/shares");
+	return res.data;
+}
+
+/**
  * Update share settings.
  * PUT /admin/notes/shares/:shareId
  */
@@ -43,6 +52,15 @@ export async function updateShareLink(shareId, updates) {
  */
 export async function revokeShareLink(shareId) {
 	const res = await axiosInstance.delete(`/admin/notes/shares/${shareId}`);
+	return res.data;
+}
+
+/**
+ * Renew a share: reset created_at to now and push expiry forward by its
+ * original lifespan. POST /admin/notes/shares/:shareId/renew
+ */
+export async function renewShareLink(shareId) {
+	const res = await axiosInstance.post(`/admin/notes/shares/${shareId}/renew`);
 	return res.data;
 }
 

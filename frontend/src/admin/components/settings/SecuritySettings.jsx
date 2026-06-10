@@ -13,6 +13,7 @@ import PvButton from "../ui/PvButton";
 import pvMessage from "../ui/PvMessage";
 import PvModal from "../ui/PvModal";
 import PvPanel from "../ui/PvPanel";
+import ScreenLockSettings from "./ScreenLockSettings";
 
 // Security settings tab.
 //
@@ -261,6 +262,8 @@ const SecuritySettings = () => {
 					</div>
 				)}
 			</PvPanel>
+
+			<ScreenLockSettings />
 
 			{phase === "enabled" && (
 				<PvPanel title="Trusted devices">

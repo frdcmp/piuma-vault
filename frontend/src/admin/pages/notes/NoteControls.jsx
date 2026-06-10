@@ -142,6 +142,22 @@ export default function NoteControls({ onClose, compact }) {
 		return () => document.removeEventListener("mousedown", onDown);
 	}, [searchOpen, closeSearch]);
 
+	// Ctrl/Cmd+F opens the in-page search (overriding the browser's native
+	// find) and the popover auto-focuses its input; Escape closes it. Active
+	// only while the controls are mounted, i.e. a note is open.
+	useEffect(() => {
+		const onKey = (e) => {
+			if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "F")) {
+				e.preventDefault();
+				if (!searchOpen) openSearch();
+			} else if (e.key === "Escape" && searchOpen) {
+				closeSearch();
+			}
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [searchOpen, openSearch, closeSearch]);
+
 	// Close the menu after firing an action.
 	const run = (fn) => () => {
 		setMenuOpen(false);
