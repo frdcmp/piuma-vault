@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import BucketSelect from "../../../components/BucketSelect";
-import TagPicker from "../../../components/TagPicker";
+import { BucketSelect, TagPicker } from "../../../components/buckets";
 import {
 	useBuckets,
 	useCreateTask,

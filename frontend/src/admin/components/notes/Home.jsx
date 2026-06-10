@@ -2,26 +2,29 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import UserMenu from "../../../components/UserMenu";
 import { useLogout } from "../../../queries";
+import { useSprite } from "../../../sprites";
 import useChatDockStore from "../../../store/chatDockStore";
 import { PvModal } from "../ui";
 import ComingSoonModal from "./ComingSoonModal";
-import PiumaPixelArt from "./PiumaPixelArt";
-import PiumaStarfield from "./PiumaStarfield";
-import "./PiumaHome.css";
+import SpriteStage from "./SpriteStage";
+import Starfield from "./Starfield";
+import "./Home.css";
 
-// Rotating quips — same set as the mobile empty state.
-const QUIPS = [
-	"Pick a note, or Piuma keeps floating...",
-	"Nothing selected. Piuma is judging you.",
-	"Empty. Piuma fetched a whole lot of nothing.",
-	"No note open — Piuma's getting dizzy up here.",
-	"Go on, click something. Piuma dares you.",
-	"404: note not selected. Piuma shrugs.",
+// Rotating quips — same set as the mobile empty state; reference the active
+// mascot by name.
+const makeQuips = (name) => [
+	`Pick a note, or ${name} keeps floating...`,
+	`Nothing selected. ${name} is judging you.`,
+	`Empty. ${name} fetched a whole lot of nothing.`,
+	`No note open — ${name}'s getting dizzy up here.`,
+	`Go on, click something. ${name} dares you.`,
+	`404: note not selected. ${name} shrugs.`,
 ];
 
-export default function PiumaHome({ onBack }) {
+export default function Home({ onBack }) {
 	const navigate = useNavigate();
 	const logout = useLogout();
+	const { name } = useSprite();
 	const onOpenChat = useChatDockStore((s) => s.openChat);
 	const [typed, setTyped] = useState("");
 	// Holds the tapped feature ({ label, quip }) while the placeholder modal is
@@ -33,6 +36,7 @@ export default function PiumaHome({ onBack }) {
 	// it, then move to the next one. A single recursive timeout chain drives the
 	// whole cycle so the speeds stay independent of React's render cadence.
 	useEffect(() => {
+		const QUIPS = makeQuips(name);
 		const TYPE_MS = 55; // per character typed
 		const DELETE_MS = 25; // per character erased
 		const HOLD_MS = 2400; // pause on the full line
@@ -68,11 +72,11 @@ export default function PiumaHome({ onBack }) {
 
 		timeout = setTimeout(tick, GAP_MS);
 		return () => clearTimeout(timeout);
-	}, []);
+	}, [name]);
 
 	return (
 		<div className="piuma-home-container">
-			<PiumaStarfield />
+			<Starfield />
 			<div className="piuma-home-usermenu">
 				<UserMenu />
 			</div>
@@ -87,7 +91,7 @@ export default function PiumaHome({ onBack }) {
 					☰
 				</button>
 			) : null}
-			<PiumaPixelArt pixelSize={8} />
+			<SpriteStage pixelSize={8} />
 			<div className="piuma-home-text">
 				<span className="piuma-home-typed">
 					{typed}
@@ -195,7 +199,7 @@ export default function PiumaHome({ onBack }) {
 				}}
 				onCancel={() => setConfirmLogout(false)}
 			>
-				Piuma will miss you. You'll need to sign back in.
+				{name} will miss you. You'll need to sign back in.
 			</PvModal>
 		</div>
 	);

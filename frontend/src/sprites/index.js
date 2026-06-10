@@ -5,7 +5,7 @@
 //  page — no code change needed to switch or add characters. Components read it
 //  via `useSprite()` (provided by <SpriteProvider>, near the app root).
 //
-//  `./piuma` remains as the baked-in default used for first paint / offline /
+//  `./fallback-sprite` is the baked-in default used for first paint / offline /
 //  pre-provider fallback (see SpriteProvider).
 // ============================================================================
 

@@ -6,7 +6,7 @@ import useChatDockStore from "../../../store/chatDockStore";
 import useNoteControlsStore from "../../../store/noteControlsStore";
 import useNotesWorkspaceStore from "../../../store/notesWorkspaceStore";
 import useUiStore from "../../../store/uiStore";
-import PiumaHome from "../../components/notes/PiumaHome";
+import Home from "../../components/notes/Home";
 import NoteControls from "./NoteControls";
 import NotesListSidebar from "./NotesListSidebar";
 import NoteTabs from "./NoteTabs";
@@ -204,7 +204,7 @@ export default function NotesLayout() {
 
 				{mobileEmptyInline && (
 					<div className="notes-pixel-sidebar mobile">
-						<PiumaHome onBack={() => setMobileShowEmpty(false)} />
+						<Home onBack={() => setMobileShowEmpty(false)} />
 					</div>
 				)}
 
@@ -260,7 +260,7 @@ export default function NotesLayout() {
 								)}
 							</div>
 						)}
-						{!isRoot ? <Outlet /> : <PiumaHome />}
+						{!isRoot ? <Outlet /> : <Home />}
 					</div>
 				)}
 			</div>

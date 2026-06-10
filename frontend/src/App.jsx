@@ -31,7 +31,7 @@ import TokenUsage from "./admin/pages/token-usage/TokenUsage";
 import TrashPage from "./admin/pages/trash";
 import { queryClient } from "./api/queryClient";
 import PixelLoader from "./components/PixelLoader";
-import ScreenLockGate from "./components/ScreenLockGate";
+import { ScreenLockGate } from "./components/screenLock";
 import SharedFolderPage from "./share/SharedFolderPage";
 import SharedNotePage from "./share/SharedNotePage";
 import { SpriteProvider } from "./sprites";

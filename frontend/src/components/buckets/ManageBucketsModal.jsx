@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PvModal } from "../admin/components/ui";
+import { PvModal } from "../../admin/components/ui";
 import {
 	useBuckets,
 	useCreateBucket,
@@ -8,8 +8,8 @@ import {
 	useTagRegistry,
 	useUpdateBucket,
 	useUpdateTag,
-} from "../queries";
-import { tagColor } from "../utils/tagColor";
+} from "../../queries";
+import { tagColor } from "../../utils/tagColor";
 import "./BucketTags.css";
 
 // Commit an inline edit on blur or Enter, without letting Enter bubble up to the

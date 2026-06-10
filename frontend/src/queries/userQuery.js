@@ -8,8 +8,7 @@ export const useUserMe = () => {
 		retry: false,
 		staleTime: 1000 * 60 * 5,
 		enabled:
-			!!localStorage.getItem("token") ||
-			!!localStorage.getItem("refreshToken"),
+			!!localStorage.getItem("token") || !!localStorage.getItem("refreshToken"),
 	});
 };
 

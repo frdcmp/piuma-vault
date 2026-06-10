@@ -1,4 +1,4 @@
-import PiumaPixelArt from "../admin/components/notes/PiumaPixelArt";
+import SpriteStage from "../../admin/components/notes/SpriteStage";
 import "./PixelLoader.css";
 
 /**
@@ -15,7 +15,7 @@ export default function PixelLoader({ message = "Loading", fadeOut = false }) {
 			className={`vault-pixel vp-scanlines vp-pixloader${fadeOut ? " is-out" : ""}`}
 		>
 			<div className="vp-pixloader-inner">
-				<PiumaPixelArt pixelSize={8} />
+				<SpriteStage pixelSize={8} />
 				<p className="vp-pixloader-text">
 					{message}
 					<span className="vp-pixloader-dots" />

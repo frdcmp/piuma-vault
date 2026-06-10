@@ -2,7 +2,7 @@ import { Sprite, useSprite, useSpriteCycle } from "../sprites";
 
 // The mascot galloping — the chat "thinking" loader. Body stays fixed; only the
 // legs swap through the active mascot's gallop cycle.
-export default function PiumaRunning({ pixelSize = 6 }) {
+export default function SpriteRunner({ pixelSize = 6 }) {
 	const { body, gallopLegs, gallopFrameMs } = useSprite();
 	const frame = useSpriteCycle(gallopLegs.length, gallopFrameMs);
 	const rows = [...body, ...gallopLegs[frame]];

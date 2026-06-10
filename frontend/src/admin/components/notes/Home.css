@@ -18,8 +18,8 @@
    disturbing the absolutely-positioned corner controls (user menu / back). */
 .piuma-home-container
 > *:not(.piuma-starfield):not(.piuma-home-usermenu):not(.piuma-home-back):not(
-		.piuma-home-version
-	) {
+	.piuma-home-version
+) {
 	position: relative;
 	z-index: 1;
 }

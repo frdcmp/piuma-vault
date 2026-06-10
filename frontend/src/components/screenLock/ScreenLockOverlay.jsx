@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import PiumaPixelArt from "../admin/components/notes/PiumaPixelArt";
-import { PvButton } from "../admin/components/ui";
-import { verifyScreenLockPin } from "../api/screenLock";
-import useScreenLockStore from "../store/screenLockStore";
-import PixelLoader from "./PixelLoader";
+import SpriteStage from "../../admin/components/notes/SpriteStage";
+import { PvButton } from "../../admin/components/ui";
+import { verifyScreenLockPin } from "../../api/screenLock";
+import useScreenLockStore from "../../store/screenLockStore";
+import PixelLoader from "../PixelLoader";
 import "./ScreenLockOverlay.css";
 
 // Stable keys for the six fixed PIN slots (index-as-key trips the linter).
@@ -83,7 +83,7 @@ export default function ScreenLockOverlay() {
 	return (
 		<div className="vp-lock-overlay">
 			<div className={`vp-lock-card${shake ? " vp-lock-shake" : ""}`}>
-				<PiumaPixelArt pixelSize={8} />
+				<SpriteStage pixelSize={8} />
 				<h2 className="vp-lock-title">Vault locked</h2>
 				<p className="vp-text vp-muted">Enter your 6-digit PIN to unlock.</p>
 

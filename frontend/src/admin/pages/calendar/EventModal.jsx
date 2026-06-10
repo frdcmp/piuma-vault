@@ -1,6 +1,6 @@
 import dayjs from "dayjs";
 import { useState } from "react";
-import TagPicker from "../../../components/TagPicker";
+import { TagPicker } from "../../../components/buckets";
 import {
 	useCreateEvent,
 	useDeleteEvent,

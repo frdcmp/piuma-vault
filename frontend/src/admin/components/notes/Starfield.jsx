@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import "./PiumaStarfield.css";
+import "./Starfield.css";
 
 // Seconds for a star of each size to travel one full screen height. Smaller
 // (distant) stars drift slower than bigger (closer) ones → parallax depth.
@@ -20,7 +20,7 @@ const MOON = [
 // Animated pixel starfield drawn on a canvas (one rAF loop, no per-star DOM
 // nodes). Sizes itself to its container and drifts the stars downward, wrapping
 // seamlessly. Purely decorative — sits behind the empty-state content.
-export default function PiumaStarfield() {
+export default function Starfield() {
 	const canvasRef = useRef(null);
 
 	useEffect(() => {

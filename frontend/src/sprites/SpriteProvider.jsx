@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo } from "react";
 import { useActiveSprite } from "../queries/spritesQuery";
-import DEFAULT_CHARACTER from "./piuma";
+import DEFAULT_CHARACTER from "./fallback-sprite";
 
 // Provides the active mascot (fetched from the DB) to the whole tree. Until the
 // query resolves — and on error / offline / pre-provider — it falls back to a

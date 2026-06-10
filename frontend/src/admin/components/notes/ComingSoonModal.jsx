@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import PiumaPixelArt from "./PiumaPixelArt";
+import SpriteStage from "./SpriteStage";
 import "./ComingSoonModal.css";
 
 // Piuma-flavoured "not built yet" copy, picked by feature so each placeholder
@@ -41,7 +41,7 @@ export default function ComingSoonModal({ open, feature, quip = 0, onClose }) {
 				aria-label="Coming soon"
 			>
 				<div className="coming-soon-dog">
-					<PiumaPixelArt pixelSize={6} />
+					<SpriteStage pixelSize={6} />
 				</div>
 				<div className="coming-soon-title">Coming soon</div>
 				<div className="coming-soon-quip">

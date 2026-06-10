@@ -285,7 +285,7 @@ export default function SpriteEditor({
 						<SpritePreview
 							rows={[...def.body, ...def.idleLegs]}
 							palette={def.palette}
-							pixelSize={5}
+							pixelSize={12}
 						/>
 						<span>idle</span>
 					</div>
@@ -295,7 +295,7 @@ export default function SpriteEditor({
 							frames={def.walkLegs}
 							frameMs={def.walkFrameMs}
 							palette={def.palette}
-							pixelSize={5}
+							pixelSize={12}
 						/>
 						<span>walk</span>
 					</div>
@@ -305,7 +305,7 @@ export default function SpriteEditor({
 							frames={def.gallopLegs}
 							frameMs={def.gallopFrameMs}
 							palette={def.palette}
-							pixelSize={5}
+							pixelSize={12}
 						/>
 						<span>gallop</span>
 					</div>

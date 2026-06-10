@@ -1,6 +1,6 @@
 import dayjs from "dayjs";
 import { useState } from "react";
-import BucketSelect from "../../../components/BucketSelect";
+import { BucketSelect } from "../../../components/buckets";
 import {
 	useBuckets,
 	useCreateRecurringTask,
