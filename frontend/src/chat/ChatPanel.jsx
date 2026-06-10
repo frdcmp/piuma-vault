@@ -119,6 +119,10 @@ const blocksToParts = (content) => {
 				const out = b.output;
 				const isErr = out && typeof out === "object" && "error" in out;
 				t.status = isErr ? "error" : "done";
+				// Show the entity's name (e.g. note/task title) on the chip instead
+				// of the raw UUID args.
+				if (out && typeof out === "object" && typeof out.title === "string")
+					t.label = out.title;
 			}
 		} else if (b.type === "injected") {
 			// A mid-turn user injection, rendered inline where it landed.
@@ -232,7 +236,8 @@ function ToolList({ tools, isStreaming }) {
 	const list = (
 		<div className="chat-tools">
 			{tools.map((t) => {
-				const summary = toolArgsSummary(t.args);
+				// Prefer a resolved entity name (note/task title) over raw UUID args.
+				const summary = t.label || toolArgsSummary(t.args);
 				return (
 					<div key={t.id} className={`chat-tool chat-tool--${t.status}`}>
 						<span className="chat-tool-icon" aria-hidden="true">
@@ -804,6 +809,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 									const tools = [...parts[i].tools];
 									tools[idx] = {
 										...tools[idx],
+										label: t.label || tools[idx].label,
 										status: t.ok ? "done" : "error",
 									};
 									parts[i] = { ...parts[i], tools };

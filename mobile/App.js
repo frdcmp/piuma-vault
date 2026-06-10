@@ -14,6 +14,7 @@ import {
 import { registerExpoToken } from "./src/api/notificationsApi";
 import AlarmModal from "./src/components/AlarmModal";
 import SystemBars from "./src/components/SystemBars";
+import ToastHost from "./src/components/Toast";
 import AppNavigator from "./src/navigation/AppNavigator";
 import { useAlarmStore } from "./src/stores/alarmStore";
 import { useAuthStore } from "./src/stores/authStore";
@@ -129,6 +130,7 @@ export default function App() {
 						<SystemBars />
 						<StatusBar style="light" />
 						<AlarmModal />
+						<ToastHost />
 					</KeyboardProvider>
 				</SafeAreaProvider>
 			</PersistQueryClientProvider>

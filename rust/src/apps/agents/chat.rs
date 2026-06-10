@@ -497,8 +497,11 @@ pub async fn chat(
                         if ok {
                             publish_tool_event(&tc.name, &result, &notes_bus, &tasks_bus, &calendar_bus);
                         }
+                        // A human label for the tool chip (e.g. a note/task title from
+                        // the result) so the client shows the name, not a raw UUID.
+                        let label = result.get("title").and_then(|t| t.as_str());
                         let _ = tx.unbounded_send(Ok(frame(
-                            json!({ "type": "tool", "id": tc.id, "done": true, "ok": ok }),
+                            json!({ "type": "tool", "id": tc.id, "done": true, "ok": ok, "label": label }),
                         )));
                         display.push(json!({ "type": "tool_result", "name": tc.name, "output": result.clone() }));
                         let content_str = serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string());

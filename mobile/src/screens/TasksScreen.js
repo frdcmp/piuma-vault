@@ -101,11 +101,22 @@ export default function TasksScreen({ navigation, route }) {
 	useEffect(() => {
 		if (!deepTaskId) return;
 		const task = tasks.find((t) => t.id === deepTaskId);
-		if (task) {
-			setTaskSheet({ task });
-			navigation.setParams({ taskId: undefined });
+		if (!task) return;
+		setTaskSheet({ task });
+		// Pre-filter the list to the task's bucket so it opens in context (to-do
+		// view, tag cleared, so the task is guaranteed visible).
+		setShowRecurring(false);
+		setTags([]);
+		if (task.bucket_id) {
+			const b = buckets.find((x) => x.id === task.bucket_id);
+			setBucketSel(
+				b ? { key: `bucket:${b.id}`, bucketId: b.id, label: b.name } : ALL,
+			);
+		} else {
+			setBucketSel({ key: "nobucket", label: "no bucket" });
 		}
-	}, [deepTaskId, tasks, navigation]);
+		navigation.setParams({ taskId: undefined });
+	}, [deepTaskId, tasks, buckets, navigation]);
 	// Bucket + tag filter independently and combine (AND). `bucketSel` is the
 	// bucket constraint (all / nobucket / a specific bucket); `tags` is the active
 	// tag (single, kept as an array so it composes with the bucket). "all" resets

@@ -36,6 +36,8 @@ import {
 } from "../api/agentChatApi";
 import BottomSheet from "../components/BottomSheet";
 import MarkdownView from "../components/MarkdownView";
+import PiumaRunning from "../components/PiumaRunning";
+import { toast } from "../components/Toast";
 import PiumaAvatar from "../components/PiumaAvatar";
 import StreamingCursor from "../components/StreamingCursor";
 import { TOP_EXTRA } from "../components/SystemBars";
@@ -119,7 +121,11 @@ const applyToolEventToParts = (parts = [], evt) => {
 			const idx = next[i].tools.findIndex((t) => t.id === id);
 			if (idx >= 0) {
 				const tools = [...next[i].tools];
-				tools[idx] = { ...tools[idx], status: evt.ok ? "done" : "error" };
+				tools[idx] = {
+					...tools[idx],
+					label: evt.label || tools[idx].label,
+					status: evt.ok ? "done" : "error",
+				};
 				next[i] = { ...next[i], tools };
 				break;
 			}
@@ -195,6 +201,9 @@ const blocksToParts = (content) => {
 				const out = b.output;
 				const isErr = out && typeof out === "object" && "error" in out;
 				t.status = isErr ? "error" : "done";
+				// Show the entity's name (note/task title) on the chip, not the UUID.
+				if (out && typeof out === "object" && typeof out.title === "string")
+					t.label = out.title;
 			}
 		} else if (b.type === "injected") {
 			if (b.text)
@@ -310,9 +319,9 @@ function ToolActivity({ tools, isStreaming }) {
 						{TOOL_GLYPH[t.status] || "⛏"}
 					</Text>
 					<Text style={styles.toolName}>{t.name}</Text>
-					{t.args ? (
+					{t.label || t.args ? (
 						<Text style={styles.toolArgs} numberOfLines={1}>
-							{t.args}
+							{t.label || t.args}
 						</Text>
 					) : null}
 				</View>
@@ -492,15 +501,11 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	// it off for the next send. Mobile keeps it to a single note (no tabs, no
 	// lock state) — the chip just mirrors whatever note opened this chat.
 	const [contextAttached, setContextAttached] = useState(true);
-	// Transient confirmation banner (e.g. "Model switched to …"). Auto-clears.
-	const [toast, setToast] = useState("");
-	const toastTimer = useRef(null);
-	const flashToast = useCallback((msg) => {
-		setToast(msg);
-		if (toastTimer.current) clearTimeout(toastTimer.current);
-		toastTimer.current = setTimeout(() => setToast(""), 2000);
-	}, []);
-	useEffect(() => () => clearTimeout(toastTimer.current), []);
+	// True while a conversation's history is being fetched (restore on mount or a
+	// /sessions switch) — drives the pixel-Piuma loader so the panel doesn't read
+	// as "empty/ready" mid-load and then pop. Seeded true; the restore effect
+	// flips it off immediately on a fresh open (no stored conversation).
+	const [loadingConv, setLoadingConv] = useState(true);
 	// Mirror of the shown conversation so async writers (a detached stream, the
 	// recover poller) can bail if the user switched away rather than clobber the
 	// conversation now on screen.
@@ -558,6 +563,17 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	useEffect(() => {
 		let cancelled = false;
 		(async () => {
+			// Decide up front whether we're restoring a conversation, so the loader
+			// shows immediately for a restore and never flashes on a fresh open.
+			let stored = null;
+			try {
+				stored = await AsyncStorage.getItem(CONV_STORAGE_KEY);
+			} catch {
+				/* treat as no stored conversation */
+			}
+			if (cancelled) return;
+			setLoadingConv(!!stored);
+
 			// Pick up the admin default agent for new chats, and resolve its
 			// display name for the header.
 			let kind = "vault_agent";
@@ -577,9 +593,8 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			} catch {
 				/* keep the default label */
 			}
+			if (!stored) return;
 			try {
-				const stored = await AsyncStorage.getItem(CONV_STORAGE_KEY);
-				if (cancelled || !stored) return;
 				const data = await fetchConversation(stored);
 				if (cancelled) return;
 				setConversationId(stored);
@@ -596,6 +611,8 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				);
 			} catch {
 				await AsyncStorage.removeItem(CONV_STORAGE_KEY);
+			} finally {
+				if (!cancelled) setLoadingConv(false);
 			}
 		})();
 		return () => {
@@ -609,6 +626,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		abortRef.current?.abort();
 		abortRef.current = null;
 		setIsStreaming(false);
+		setLoadingConv(false);
 		setOverlay(null);
 		setMessages([]);
 		setConversationId(null);
@@ -669,6 +687,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		setIsStreaming(false);
 		setConversationId(id);
 		setMessages([]);
+		setLoadingConv(true);
 		try {
 			await AsyncStorage.setItem(CONV_STORAGE_KEY, id);
 			const d = await fetchConversation(id);
@@ -685,6 +704,8 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			);
 		} catch {
 			/* ignore */
+		} finally {
+			setLoadingConv(false);
 		}
 	}, []);
 
@@ -692,16 +713,16 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		async (m) => {
 			setOverlay(null);
 			setModelId(m.id); // optimistic; also carried into a not-yet-created convo
-			flashToast(`Model switched to ${m.display_name}`);
+			toast.success(`Model switched to ${m.display_name}`);
 			if (conversationId) {
 				try {
 					await updateConversation({ id: conversationId, model_id: m.id });
 				} catch {
-					flashToast("Couldn't save the model change");
+					toast.error("Couldn't save the model change");
 				}
 			}
 		},
-		[conversationId, flashToast],
+		[conversationId],
 	);
 
 	const saveTitle = useCallback(async () => {
@@ -1089,12 +1110,6 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 						) : null}
 					</View>
 
-					{toast ? (
-						<View style={styles.toast}>
-							<Text style={styles.toastText}>{toast}</Text>
-						</View>
-					) : null}
-
 					<View style={styles.messagesWrap}>
 						<ScrollView
 							ref={scrollRef}
@@ -1111,7 +1126,14 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 							}}
 							keyboardShouldPersistTaps="handled"
 						>
-							{messages.length === 0 ? (
+							{loadingConv && messages.length === 0 ? (
+								<View style={styles.empty}>
+									<View style={styles.emptyAvatar}>
+										<PiumaRunning pixelSize={3} />
+									</View>
+									<Text style={styles.emptySub}>loading conversation…</Text>
+								</View>
+							) : messages.length === 0 ? (
 								<View style={styles.empty}>
 									<View style={styles.emptyAvatar}>
 										<PiumaAvatar pixelSize={3} />
@@ -1634,22 +1656,6 @@ const styles = StyleSheet.create({
 	},
 	navActionIcon: { color: colors.accent, fontFamily: MONO, fontSize: 14 },
 	navActionLabel: { color: colors.text, fontFamily: MONO, fontSize: 13 },
-	toast: {
-		marginHorizontal: 12,
-		marginTop: 6,
-		paddingVertical: 6,
-		paddingHorizontal: 10,
-		borderWidth: 1,
-		borderColor: colors.accent2,
-		borderRadius: 4,
-		backgroundColor: colors.bgSoft,
-	},
-	toastText: {
-		color: colors.accent2,
-		fontFamily: MONO,
-		fontSize: 12,
-		textAlign: "center",
-	},
 
 	// ── TOOL ACTIVITY (which plugins the agent ran this turn) ─
 	tools: { gap: 4, marginBottom: 10 },
