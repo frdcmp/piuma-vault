@@ -38,6 +38,7 @@ import { notesKeys } from "../queries/notesQuery";
 import { formatDate } from "../utils/dateTime";
 import { colors } from "../utils/theme";
 import BottomSheet, { BottomSheetItem } from "./BottomSheet";
+import ExplorerBackdrop from "./ExplorerBackdrop";
 import SpriteRunner from "./SpriteRunner";
 import { BottomBar, useTopInset } from "./SystemBars";
 
@@ -616,6 +617,7 @@ export default function NotesListPanel({
 
 	return (
 		<View style={[styles.container, { paddingTop: topInset }]}>
+			<ExplorerBackdrop />
 			<View style={styles.header}>
 				<Text style={styles.headerTitle}>Notes</Text>
 				<View style={styles.headerActions}>

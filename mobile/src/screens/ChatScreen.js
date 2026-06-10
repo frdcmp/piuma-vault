@@ -2,10 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-	Alert,
 	Animated,
 	Keyboard,
 	Linking,
+	Modal,
 	Platform,
 	Pressable,
 	ScrollView,
@@ -567,6 +567,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	// stop yanking the view down) and reveals a "jump to latest" button.
 	const atBottomRef = useRef(true);
 	const [showJump, setShowJump] = useState(false);
+	const [confirmNewChat, setConfirmNewChat] = useState(false);
 
 	const handleScroll = useCallback((e) => {
 		const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
@@ -717,10 +718,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			}
 			return;
 		}
-		Alert.alert("Start a new conversation?", message, [
-			{ text: "Cancel", style: "cancel" },
-			{ text: "New chat", style: "destructive", onPress: startNewChat },
-		]);
+		setConfirmNewChat(true);
 	}, [startNewChat]);
 
 	// Open a stored conversation (from the /sessions picker).
@@ -1282,7 +1280,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					</View>
 
 					{slashMatches.length > 0 ? (
-						<View style={[styles.slashMenu, { bottom: composerH + 6 }]}>
+						<View style={[styles.slashMenu, { bottom: composerH - 6 }]}>
 							{slashMatches.map((c) => (
 								<Pressable
 									key={`${c.kind}-${c.name}`}
@@ -1388,7 +1386,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				</View>
 
 				{overlay ? (
-					<View style={[styles.floatPicker, { bottom: composerH + 6 }]}>
+					<View style={[styles.floatPicker, { bottom: composerH - 6 }]}>
 						<View style={styles.floatHead}>
 							<Text style={styles.floatTitle}>
 								{overlay === "models"
@@ -1544,6 +1542,46 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					)}
 					</View>
 				) : null}
+				<Modal
+					visible={confirmNewChat}
+					transparent
+					animationType="fade"
+					onRequestClose={() => setConfirmNewChat(false)}
+				>
+					<Pressable
+						style={styles.confirmOverlay}
+						onPress={() => setConfirmNewChat(false)}
+					>
+						<Pressable style={styles.confirmCard} onPress={() => {}}>
+							<Text style={styles.confirmTitle}>Start a new conversation?</Text>
+							<Text style={styles.confirmHint}>
+								This starts a fresh chat. The current conversation stays saved
+								but won't be shown here anymore.
+							</Text>
+							<View style={styles.confirmActions}>
+								<Pressable
+									style={styles.confirmBtn}
+									onPress={() => setConfirmNewChat(false)}
+								>
+									<Text style={styles.confirmBtnText}>Cancel</Text>
+								</Pressable>
+								<Pressable
+									style={[styles.confirmBtn, styles.confirmBtnDanger]}
+									onPress={() => {
+										setConfirmNewChat(false);
+										startNewChat();
+									}}
+								>
+									<Text
+										style={[styles.confirmBtnText, styles.confirmBtnTextDanger]}
+									>
+										New chat
+									</Text>
+								</Pressable>
+							</View>
+						</Pressable>
+					</Pressable>
+				</Modal>
 			</SafeAreaView>
 		</KeyboardAvoidingView>
 	);
@@ -1975,8 +2013,10 @@ const styles = StyleSheet.create({
 
 	// ── SLASH COMMAND MENU ───────────────────────────────────
 	// Floating pickers (slash list + sessions/models/rename) — anchored just above
-	// the composer (bottom set inline from the measured composer height), so they
-	// overlay the chat instead of pushing the input down. Mirrors the web chat.
+	// the input row (bottom set inline as composerH − 6, which lands ~6px above
+	// the input's top edge; composerH includes the composer's top padding + border
+	// and bottom safe-area inset, which we don't want in the gap). They overlay the
+	// chat instead of pushing the input down. Mirrors the web chat.
 	slashMenu: {
 		position: "absolute",
 		left: 12,
@@ -2181,4 +2221,54 @@ const styles = StyleSheet.create({
 		borderWidth: 2,
 		borderColor: colors.accent2,
 	},
+	// Themed confirm dialog (replaces the native Android Alert) — mirrors the
+	// modal pattern used in NoteEditor / NotesListPanel.
+	confirmOverlay: {
+		flex: 1,
+		backgroundColor: "rgba(0,0,0,0.6)",
+		alignItems: "center",
+		justifyContent: "center",
+		paddingHorizontal: 28,
+	},
+	confirmCard: {
+		width: "100%",
+		backgroundColor: colors.panel,
+		borderWidth: 2,
+		borderColor: colors.borderStrong,
+		padding: 18,
+	},
+	confirmTitle: {
+		color: colors.accent,
+		fontFamily: MONO,
+		fontSize: 16,
+		fontWeight: "700",
+	},
+	confirmHint: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 11,
+		marginTop: 4,
+		marginBottom: 12,
+	},
+	confirmActions: {
+		flexDirection: "row",
+		justifyContent: "flex-end",
+		gap: 8,
+		marginTop: 16,
+	},
+	confirmBtn: {
+		paddingHorizontal: 14,
+		paddingVertical: 8,
+		borderWidth: 2,
+		borderColor: colors.borderStrong,
+		backgroundColor: colors.bgSoft,
+	},
+	confirmBtnDanger: { borderColor: colors.accent3 },
+	confirmBtnText: {
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 12,
+		fontWeight: "700",
+	},
+	confirmBtnTextDanger: { color: colors.accent3 },
 });

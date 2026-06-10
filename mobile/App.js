@@ -13,6 +13,7 @@ import {
 } from "react-native-safe-area-context";
 import { registerExpoToken } from "./src/api/notificationsApi";
 import AlarmModal from "./src/components/AlarmModal";
+import ScreenLockGate from "./src/components/ScreenLockGate";
 import SystemBars from "./src/components/SystemBars";
 import ToastHost from "./src/components/Toast";
 import AppNavigator from "./src/navigation/AppNavigator";
@@ -95,8 +96,8 @@ export default function App() {
 		const received = Notifications.addNotificationReceivedListener((n) =>
 			present(alarmFromNotification(n)),
 		);
-		const response = Notifications.addNotificationResponseReceivedListener((r) =>
-			present(alarmFromNotification(r.notification)),
+		const response = Notifications.addNotificationResponseReceivedListener(
+			(r) => present(alarmFromNotification(r.notification)),
 		);
 
 		const unsubNotifee = notifee.onForegroundEvent(({ type, detail }) => {
@@ -107,7 +108,8 @@ export default function App() {
 
 		// App was cold-launched by tapping / a full-screen alarm intent.
 		notifee.getInitialNotification().then((initial) => {
-			if (initial?.notification) present(alarmFromNotifee(initial.notification));
+			if (initial?.notification)
+				present(alarmFromNotifee(initial.notification));
 		});
 
 		return () => {
@@ -125,18 +127,20 @@ export default function App() {
 			>
 				<SpriteProvider>
 					<SafeAreaProvider initialMetrics={initialWindowMetrics}>
-					<KeyboardProvider statusBarTranslucent>
-						<View style={{ flex: 1, backgroundColor: colors.bg }}>
-							<AppNavigator />
-						</View>
-						<SystemBars />
-						<StatusBar style="light" />
-						<AlarmModal />
-						<ToastHost />
-					</KeyboardProvider>
-				</SafeAreaProvider>
-			</SpriteProvider>
-				</PersistQueryClientProvider>
+						<KeyboardProvider statusBarTranslucent>
+							<View style={{ flex: 1, backgroundColor: colors.bg }}>
+								<ScreenLockGate>
+									<AppNavigator />
+								</ScreenLockGate>
+							</View>
+							<SystemBars />
+							<StatusBar style="light" />
+							<AlarmModal />
+							<ToastHost />
+						</KeyboardProvider>
+					</SafeAreaProvider>
+				</SpriteProvider>
+			</PersistQueryClientProvider>
 		</GestureHandlerRootView>
 	);
 }

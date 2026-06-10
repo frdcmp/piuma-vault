@@ -918,27 +918,34 @@ const s = StyleSheet.create({
 		paddingVertical: 8,
 	},
 	filterRowSub: { paddingTop: 0 },
-	// Segmented control for month / week / 3 days — one connected pill so it
-	// reads as a mode switch, not another filter chip.
+	// Segmented control for month / week / 3 days — one connected, full-width bar
+	// split into three equal segments so it reads as a mode switch, not another
+	// filter chip.
 	viewSeg: {
 		flexDirection: "row",
-		alignSelf: "flex-start",
 		marginHorizontal: 12,
 		marginTop: 8,
-		marginBottom: 2,
-		borderWidth: 1,
+		marginBottom: 6,
+		borderWidth: 2,
 		borderColor: colors.borderStrong,
 		backgroundColor: colors.bgSoft,
 	},
 	viewSegItem: {
-		paddingHorizontal: 16,
-		paddingVertical: 7,
-		borderLeftWidth: 1,
-		borderLeftColor: colors.border,
+		flex: 1,
+		paddingVertical: 10,
+		alignItems: "center",
+		justifyContent: "center",
+		borderLeftWidth: 2,
+		borderLeftColor: colors.borderStrong,
 	},
 	viewSegItemFirst: { borderLeftWidth: 0 },
 	viewSegItemOn: { backgroundColor: colors.accent2 },
-	viewSegText: { color: colors.muted, fontSize: 12, fontWeight: "700" },
+	viewSegText: {
+		color: colors.muted,
+		fontSize: 13,
+		fontWeight: "700",
+		letterSpacing: 0.3,
+	},
 	viewSegTextOn: { color: colors.bg, fontWeight: "800" },
 	agendaNav: {
 		flexDirection: "row",
