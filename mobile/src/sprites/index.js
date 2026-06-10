@@ -8,12 +8,12 @@
 //      import character from './piuma';
 //   // import character from './bubu';
 // ============================================================================
-import character from './lizard';
+import character from "./piuma";
 
 // --- Identity / colors -------------------------------------------------------
 export const SPRITE_NAME = character.name;
 export const PALETTE = character.palette;
-export const spriteColor = (code) => character.palette[code] || 'transparent';
+export const spriteColor = (code) => character.palette[code] || "transparent";
 
 // --- Poses -------------------------------------------------------------------
 // Shared top rows; only the legs change between poses.
@@ -35,7 +35,7 @@ export const ROWS = SPRITE.length;
 // Which frame of a `frameCount`-long cycle is showing at `elapsedMs`. Pure, so
 // it works equally for interval- and requestAnimationFrame-driven animations.
 export const legFrameAt = (elapsedMs, frameCount, frameMs) =>
-  Math.floor(elapsedMs / frameMs) % frameCount;
+	Math.floor(elapsedMs / frameMs) % frameCount;
 
 // --- Shared renderer ---------------------------------------------------------
-export { default as Sprite } from './Sprite';
+export { default as Sprite } from "./Sprite";
