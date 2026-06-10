@@ -211,8 +211,21 @@ export default function TasksPage() {
 		);
 	}, [setSearchParams]);
 	useEffect(() => {
-		if (deepTaskId && deepTask) setTaskModal({ task: deepTask });
-	}, [deepTaskId, deepTask]);
+		if (!(deepTaskId && deepTask)) return;
+		setTaskModal({ task: deepTask });
+		// Pre-filter the list to the task's bucket so it opens in context (the
+		// to-do view, tag filter cleared, so the task is guaranteed visible).
+		setShowRecurring(false);
+		setTags([]);
+		if (deepTask.bucket_id) {
+			const b = buckets.find((x) => x.id === deepTask.bucket_id);
+			setBucketSel(
+				b ? { key: `bucket:${b.id}`, bucketId: b.id, label: b.name } : ALL,
+			);
+		} else {
+			setBucketSel({ key: "nobucket", label: "no bucket" });
+		}
+	}, [deepTaskId, deepTask, buckets]);
 	useEffect(() => {
 		if (deepTaskId && taskErr) {
 			pvMessage.error("That task couldn't be found.");
