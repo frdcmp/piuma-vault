@@ -1,193 +1,45 @@
-# Agent Memory System
+# Agent Memory
 
-The vault agent has a layered, persistent memory so it can get to know User
-across conversations — preferences, patterns, ongoing work — instead of starting
-cold every chat. It's built entirely on the existing stack (PostgreSQL +
-pgvector + Azure OpenAI embeddings); no extra services.
+How the vault agent remembers things across conversations — the three layers,
+how a turn uses them, how a fact earns trust, and how to read every number on the
+Memory dashboard.
 
-There are four conceptual layers, numbered L1 through L4. **They are a logical
-model, not four separate tables** — L2 and L4 share a single table, and the
-distinction between them is explained in detail further down.
+## 1. Overview
 
-## The four layers at a glance
+The agent has a layered, persistent memory so it gets to know the user over time
+— their preferences, patterns, and ongoing work — instead of starting cold every
+chat. It runs entirely on the existing stack (PostgreSQL + pgvector + Azure
+OpenAI embeddings); no extra services.
 
-| Layer | What it is | Where it lives | Auto-injected each turn? |
-|-------|------------|----------------|--------------------------|
-| **L1** | Always-in-context scratchpad | `db_agent_profiles.memory` / `.user_context` (text columns) | Yes — always in the prompt |
-| **L2** | Semantic long-term memory (vector-searchable facts) | `db_memory_entries` rows | Yes — top-K by relevance |
-| **L3** | Conversation full-text search | `db_chat_messages` (FTS over chat history) | No — on-demand tool |
-| **L4** | Dialectic reasoning (auto-derived insights) | writes rows into `db_memory_entries` | Indirectly — via L2 |
+## 2. The mental model
 
-## Each layer, in plain terms
+Memory comes in **three layers — L1, L2, L3** — split by *where it lives* and
+*when it's used*:
 
-### L1 — always-in-context scratchpad
+| Layer | Role | Where it lives | In every prompt? |
+|-------|------|----------------|------------------|
+| **L1** | Always-in-context scratchpad | `db_agent_profiles.memory` / `.user_context` | **Yes** — injected verbatim |
+| **L2** | Semantic long-term memory | `db_memory_entries` | Yes — top-K by relevance |
+| **L3** | Conversation full-text search | `db_chat_messages` (FTS over transcript) | **No** — on-demand tool |
 
-Two text columns on `db_agent_profiles`: `memory` (a short working scratchpad)
-and `user_context` (standing profile/preferences). These are concatenated into
-the system prompt on **every** turn, so they're reserved for things the agent
-genuinely needs in front of it constantly. There are hard caps (`memory` 2,200
-chars, `user_context` 1,375) and a normalized-match dedup.
+The thing to internalize is what happens *inside* **L2**. A fact there isn't
+just "stored" — it carries two columns that decide how much it's trusted and
+where it came from:
 
-Because L1 is small and always-on, it's almost always near-empty by design —
-most things go to L2 via `memory_save` and only the most essential bits
-graduate up.
+- **`status`** — `confirmed` (trusted, retrieved freely), `pending` (low-trust,
+  surfaced only when strongly on-topic), or `rejected`.
+- **`source`** — `user_stated`, `agent_observed`, `dialectic_derived`, `imported`.
 
-### L2 — semantic long-term memory
+Most `pending` facts are written by **L2's own dialectic pass** — a background
+reasoner that reads recent chats and derives implicit facts as low-trust guesses.
+Those guesses live in the **same table** as confirmed facts and graduate to
+`confirmed` once corroborated or confirmed (see §5). There is no separate store
+for guesses; they're just L2 facts that haven't earned trust yet.
 
-The agent's recall. A table of discrete facts (`db_memory_entries`), each one a
-self-contained statement like *"User prefers Rust for backend work"*. Every
-row has a 1536-dim `embedding` (Azure OpenAI `text-embedding-3-large`, HNSW
-cosine) so the agent can find relevant facts by semantic similarity rather than
-keyword match.
+## 3. How a single turn works
 
-On each turn, the user message is pre-embedded (cached on `db_chat_messages`)
-and the top-K facts are injected into the prompt behind a graded relevance
-floor. Confirmed facts use a looser floor (~0.65); pending facts a tighter
-floor (~0.5) so unverified guesses only surface when strongly on-topic. Each
-injected fact carries a `[provenance]` tag (`[user-stated]`, `[observed]`,
-`[derived]`, …) so the agent can weight them appropriately.
-
-A fact's lifecycle in L2 is governed by two columns: `source` (where it came
-from) and `status` (how trusted it is). See *Status, source & confidence*
-below.
-
-### L3 — conversation full-text search
-
-L2 is lossy on purpose: it stores *distilled* facts and discards the rest. L3
-fills that gap by making the **verbatim chat transcript** keyword-searchable
-via Postgres FTS over `db_chat_messages` (`content_text` + a `GENERATED`
-`content_tsv` tsvector + a partial GIN index).
-
-Unlike L1 and L2, L3 is **never auto-injected**. The agent calls the
-`search_conversations` tool when you reference a past discussion ("what did we
-decide about X?", "remember when…"). Results are full-text-ranked, aggregated
-to the conversation level, and returned with a `ts_headline` excerpt around the
-matched terms. The admin **Conversation search (L3)** tab runs the same query
-the tool uses, so you can see what the agent would find.
-
-### L4 — dialectic reasoning
-
-The *thinking* layer. Every N assistant turns (configurable per agent, default
-3), an async job reads the recent transcript and runs a multi-pass reasoning
-sweep to extract implicit facts the user never stated explicitly — patterns,
-preferences, recurring themes. Pass 1 extracts raw observations; pass 2
-synthesizes patterns; pass 3 connects meta-patterns. Depth is configurable
-(1–3) per agent, and the model can be overridden via the
-`db_agent_profiles.dialectic_*` columns.
-
-The output of L4 is **not** a separate store — see the next section.
-
-## L2 vs L4 — the key distinction
-
-**This is the most common point of confusion: L2 and L4 are not separate
-stores.** They are the same table, `db_memory_entries`. The difference is
-*logical*, expressed through two columns:
-
-- **L2** is the store itself — discrete facts the agent can recall by semantic
-  similarity. A fact is "L2" when its `status = 'confirmed'`.
-- **L4** is a *process*, not a place. The dialectic pass runs in the background
-  and **writes new rows into the same `db_memory_entries` table**, tagged
-  `source = 'dialectic_derived'` and `status = 'pending'`. Those pending rows are
-  "L4 output."
-
-So a row is "L4" while it's a pending guess, and effectively becomes "L2" once
-it's confirmed (`status` flips to `confirmed`). Same table, different lifecycle
-stage. The admin Memory page shows them together in the **Entries (L2 / L4)** tab
-and just filters by status.
-
-Pending facts graduate to `confirmed` through three paths: explicit
-confirmation (you click ✓ or the agent calls `memory_confirm`), corroboration
-(Stage-B NLI re-derives the same fact — see *L4 dialectic* below), or an
-opportunistic ask during normal chat when the pending fact surfaces as
-strongly relevant.
-
-## Chat to Memory Flow
-
-This flowchart illustrates the complete lifecycle of how conversations and direct commands flow from active chat interactions into the agent's memory layers, and how pending insights graduate into confirmed long-term memory:
-
-```mermaid
-flowchart TD
-    Chat([User & Agent Chat]) -->|context_add| L1[(L1 Scratchpad<br/>db_agent_profiles)]
-    
-    %% Direct Stating & Observation Paths (Left Side)
-    Chat -->|Direct User Request| US[User Stated Fact]
-    Chat -->|Agent Inference| AO[Agent Observed Fact]
-    
-    US -->|memory_save| L2C[(L2 Confirmed Facts<br/>db_memory_entries)]
-    AO -->|memory_save| L2C
-
-    %% Passive Logging & Dialectic Paths (Right Side)
-    Chat -->|Passive Write| L3[(L3 Conversation Search<br/>db_chat_messages)]
-    L3 -->|Every N Turns| L4[L4 Dialectic Job]
-    L4 -->|Multi-Pass GPT Sweep| L4P[(L4 Pending Facts<br/>db_memory_entries)]
-
-    %% Graduation Funnel (Clean direct routing without subgraph boundary box)
-    L4P -->|Explicit UI ✓ Click| L2C
-    L4P -->|Stage-B NLI Corroboration| L2C
-    L4P -->|Opportunistic Ask in Chat| L2C
-
-    %% Prompt Injection (Bottom)
-    L2C -->|Distance < 0.65| Injected([Injected into Next Prompt])
-    L4P -->|Distance < 0.5| Injected
-
-    %% Styles and Classes for gorgeous, readable theme integration
-    classDef store fill:#1b1e25,stroke:#3a4150,stroke-width:2px;
-    classDef action fill:#15171c,stroke:#3a4150,stroke-width:2px;
-    class L1,L2C,L3,L4P store;
-```
-
-## Tables
-
-- **`db_agent_profiles`** — one row per agent. `memory` and `user_context` are
-  the **L1** text fields; `instructions` is the system-prompt preamble.
-- **`db_memory_entries`** — **L2 + L4**. One row per fact. Key columns:
-  - `content` — the fact, one self-contained statement.
-  - `embedding vector(1536)` — HNSW cosine index for semantic search.
-  - `source` — `user_stated` · `agent_observed` · `dialectic_derived` · `imported`.
-  - `status` — `confirmed` · `pending` · `rejected`.
-  - `confidence` — `high` · `medium` · `low`.
-  - `category`, `tags[]` — free-form topical labels.
-  - `expires_at` — TTL (pending/derived facts expire after 60 days if never confirmed).
-   - `contradicts_id`, `related_ids[]` — links between entries (populated by Stage-B NLI
-     entailment/contradiction/neutral judgment on dialectic re-derivation).
-  - `is_active` — soft-delete flag.
-- **`db_memory_embedding_jobs`** — embedding queue. The same `embedding-worker`
-  binary that embeds notes also drains this, calling Azure OpenAI
-  (`text-embedding-3-large`, 1536-dim) and writing the vector back.
-- **`db_chat_messages`** — **L3** + pre-embed cache. The chat transcript. Now
-  stores a precomputed `embedding vector(1536)` on write so L2 retrieval skips
-  the synchronous embed call. Two more columns back the full-text search:
-  `content_text` (the flattened plain text of a message's text blocks, written
-  by the chat loop) and `content_tsv` (a `GENERATED` tsvector derived from it).
-  A partial GIN index covers user + assistant turns.
-- **`db_agent_turn_logs`** — observability (the **Turn inspector**): one row per
-  completed turn recording which memories were retrieved (+ scores) and how full
-  L1 was.
-
-## Statuses, sources & confidence
-
-**Status** — trust + retrieval behaviour:
-
-- `confirmed` — trusted; retrieved into context whenever relevant.
-- `pending` — low-trust (usually an L4 guess); retrieved only when *very* strongly
-  relevant (a tighter floor), and auto-expires after 60 days if never confirmed.
-- `rejected` — discarded; kept for the record but never retrieved.
-
-**Source** — where the fact came from:
-
-- `user_stated` — User said it directly / asked the agent to remember it.
-  Saved as **high** confidence by default.
-- `agent_observed` — the agent inferred it during a conversation (`memory_save`).
-  Defaults to **medium** confidence.
-- `dialectic_derived` — produced by the L4 pass. Always starts `pending`,
-  `medium`.
-- `imported` — bulk-loaded from elsewhere.
-
-**Confidence** (`high`/`medium`/`low`) defaults from source when the agent
-doesn't set it (`user_stated → high`, otherwise `medium`). It bumps to `high`
-when a pending fact is confirmed.
-
-## The per-turn flow
+Everything below is a detail of this one flow. Read it top to bottom and the
+layers click into place.
 
 ```mermaid
 flowchart TD
@@ -197,7 +49,7 @@ flowchart TD
     SP --> SP3["L1: db_agent_profiles.memory + user_context<br/>(always in)"]
     SP --> SP4["L2: embed user message → pgvector search<br/>→ top-K facts, tagged with provenance"]
     SP4 --> SP4a{Distance &lt; floor?}
-    SP4a -->|yes| SP4b[Inject fact with [provenance] tag]
+    SP4a -->|yes| SP4b["Inject fact with [provenance] tag"]
     SP4a -->|no| SP4c[Skip]
     SP3 --> Loop
     SP4b --> Loop
@@ -212,110 +64,236 @@ flowchart TD
     Persist --> Log[Write db_agent_turn_logs row<br/>retrieved memories + L1 usage]
 
     Log --> Cadence{Every Nth<br/>assistant turn?}
-    Cadence -->|yes| L4["4. L4 dialectic (async)<br/>multi-pass depth 1-3<br/>→ source=dialectic_derived, status=pending"]
+    Cadence -->|yes| Dia["4. L2 dialectic pass (async)<br/>multi-pass depth 1-3<br/>→ writes pending L2 facts"]
     Cadence -->|no| Done([Done])
-    L4 --> Done
+    Dia --> Done
 ```
 
-### L2 retrieval (step 1)
+1. **Prompt assembly.** Time/model blocks, the agent's instructions + persona,
+   then **L1** (both text fields, verbatim) and **L2** (the user's message is
+   embedded and matched against stored facts; whatever clears the relevance
+   floor is injected with a `[provenance]` tag).
+2. **Tool loop.** The model streams its answer and may call memory tools along
+   the way — `memory_*` (L2), `context_*` (L1), `search_conversations` (L3).
+3. **Persist + log.** The assistant turn is saved, and a `db_agent_turn_logs`
+   row records exactly which memories were retrieved (with scores) and how full
+   L1 was — this is what the **Turn inspector** shows.
+4. **Dialectic pass (async).** Every *N* assistant turns, L2's background
+   dialectic reads the recent transcript and writes new `pending` facts. Fire-
+   and-forget; it never blocks the reply.
 
-The user message is **pre-embedded on write** (`db_chat_messages.embedding`) so
-retrieval reads the cached vector instead of calling the embedding API
-synchronously. Compared by **cosine distance** (`<=>`, where distance = 1 −
-similarity). A **graded floor** decides what's relevant enough to inject:
+> **Relevance floor** — a fact is only injected if it's close enough to the
+> message (see §6). **Cadence** — the dialectic runs every *N* turns *within one
+> conversation* (default 3), so short chats never trigger it.
 
-- `confirmed` facts: distance < **0.65** (similarity > 0.35).
-- `pending`/derived facts: the tighter distance < **0.5** — so guesses surface
-  only when strongly on-topic.
+## 4. The three layers, in depth
 
-Confirmed facts are ranked above pending, top 5 are injected, and each carries a
-`[provenance]` tag so the agent treats `[derived]` entries as claims to verify,
-not established fact. If nothing clears the floor, nothing is injected (better
-empty than noisy). Thresholds are tuned by watching the **Turn inspector**.
+### L1 — always-in-context scratchpad
 
-If any pending facts clear the floor, an additional **"Pending facts"** block
-instructs the agent to casually verify them conversationally ("I've had the
-impression you prefer X — is that right?") — **opportunistic ask** in the
-confirmation funnel.
+Two text columns on `db_agent_profiles`, both concatenated into the system prompt
+on **every** turn:
 
-### L4 dialectic (step 4)
+- **`memory`** — the agent's own running notes (cap **2,200** chars).
+- **`user_context`** — the user's standing profile / preferences (cap **1,375**).
 
-Every N assistant turns (configurable per agent, default 3), an async job:
+Because it costs tokens on every single turn, it's hard-capped and reserved for
+the handful of always-relevant essentials (identity, active projects, standing
+preferences, hard constraints). The agent fills it via `context_add` and, when it
+nears a cap, **consolidates** with `context_replace` rather than stopping — the
+cap is the backpressure, not a wall. Anything that's only needed when a topic
+comes up goes to L2 instead. Dedup here is normalized-string matching (it's free
+text, not rows).
 
-1. Reads the last several turns and the agent's dialectic config from
-   `db_agent_profiles` (cadence, depth, optional model override).
-2. Runs **multi-pass** (depth 1-3): pass 1 extracts raw observations from the
-   transcript; pass 2 synthesizes patterns; pass 3 connects meta-patterns.
-3. Saves each insight as `source=dialectic_derived`, `status=pending`,
-   `confidence=medium`, `expires_at = now + 60 days`.
+### L2 — semantic long-term memory
 
-Pending facts auto-inject (at the tighter floor) but are clearly low-trust. They
-**graduate** to `confirmed` through three paths:
+The agent's recall: a table of discrete, self-contained facts (e.g. *"User
+prefers Rust for backend work"*). Each row carries a 1536-dim `embedding` (Azure
+OpenAI `text-embedding-3-large`, HNSW cosine index) so facts are found by meaning,
+not keywords. Each turn the user's message is matched against these embeddings
+and the top-K relevant facts are injected, **confirmed ranked above pending**,
+each tagged with its `[provenance]` so the agent treats guesses as claims to
+verify. Trust and origin are tracked by `status` and `source` — see §5.
 
-1. **Explicit confirmation** — User clicks ✓ or the agent calls `memory_confirm`.
-2. **Corroboration** — the dialectic re-derives the same fact. A **Stage-B NLI**
-   check (entailment/contradiction/neutral) runs on re-derivation against
-   confirmed entries; `entails` means duplicate (skip), `contradicts` populates
-   `contradicts_id` and deactivates the old entry, `neutral` links both via
-   `related_ids`. Pending entries skip NLI and promote directly on cosine
-   match (< 0.15).
-3. **Opportunistic ask** — when pending facts clear the retrieval floor, the
-   agent is instructed to casually verify them conversationally.
+**How facts get into L2 — two ways:**
 
-> Note: expired pending entries (>60 days, never confirmed) are automatically
-> rejected by a periodic worker sweep every 10 minutes.
+1. **Explicitly**, when the agent calls `memory_save` (from something the user
+   said, or that it inferred during the chat).
+2. **The dialectic pass** — L2's background reasoner. Every *N* assistant turns
+   it reads the recent transcript and extracts implicit facts the user never said
+   outright, running **multi-pass** (depth 1–3: raw observations → patterns →
+   meta-patterns) and writing each as `source=dialectic_derived`,
+   `status=pending`, `confidence=medium`. Cadence, depth, and model are per-agent
+   config on `db_agent_profiles`. These are exactly the low-trust guesses that
+   then live the lifecycle in §5 — they're L2 facts, just unconfirmed ones.
 
-## L3 — conversation retrieval
+### L3 — conversation full-text search
 
-L2 is lossy on purpose: it keeps *distilled* facts and throws away the rest. L3
-fills that gap — it makes the **verbatim chat transcript** keyword-searchable so
-the agent can recover what was actually said.
+L2 is lossy on purpose: it keeps *distilled* facts and discards the rest. L3
+fills that gap by making the **verbatim transcript** keyword-searchable.
 
-- **Write side (passive).** Every message already gets saved; L3 also stores a
-  plain-text `content_text` mirror of its text blocks. Postgres derives the
-  `content_tsv` FTS vector automatically. No embeddings, no LLM, no extra latency
-  — just full-text indexing. Assistant prose is indexed too (the thinking and
-  tool-call blocks are stripped out, so only the actual answer is searchable).
+- **Write side (passive).** Every message also stores a plain-text `content_text`
+  mirror; Postgres derives a `content_tsv` FTS vector automatically. No
+  embeddings, no LLM, no added latency. Assistant prose is indexed too (thinking
+  and tool-call blocks stripped, so only the actual answer is searchable).
 - **Read side (on-demand).** Unlike L1/L2, L3 is **never auto-injected**. The
-  agent calls the `search_conversations` tool when you reference a past
-  discussion ("what did we decide about X?", "remember when…"). Results are
-  full-text-ranked, **aggregated to the conversation level** (best snippet +
-  match count per thread), and returned with a `ts_headline` excerpt around the
-  matched terms.
+  agent calls `search_conversations` when the user references a past discussion
+  ("what did we decide about X?"). Results are full-text-ranked, aggregated to
+  the conversation level, and returned with a highlighted excerpt.
 
-The admin **Conversation search (L3)** tab runs the exact same query, so you can
-see what the agent would find.
+## 5. The life of an L2 fact
 
-## L1 — why it's usually empty
+Every row in `db_memory_entries` carries three descriptors:
 
-L1 (`db_agent_profiles.memory`) is the handful of facts the agent wants in front
-of it on *every* turn. It is **not** filled automatically — only when the agent
-calls `context_add`, which it's instructed to do rarely (almost everything goes
-to L2 via `memory_save`). So L1 staying near-empty is expected; the bulk of
-memory lives in L2. `user_context` is the other L1 field and holds the standing
-profile/preferences.
+**`source`** — where it came from:
+- `user_stated` — the user said it directly / asked to remember it (saved **high**).
+- `agent_observed` — the agent inferred it in chat via `memory_save` (**medium**).
+- `dialectic_derived` — produced by L2's dialectic pass; always starts `pending`, `medium`.
+- `imported` — bulk-loaded from elsewhere.
 
-## Tools the agent uses
+**`status`** — trust + retrieval behaviour:
+- `confirmed` — trusted; retrieved whenever relevant.
+- `pending` — low-trust (usually a dialectic guess); retrieved only when *very*
+  strongly relevant, and auto-expires after 60 days if never confirmed.
+- `rejected` — discarded; kept for the record but never retrieved.
 
-**L2 (semantic store):**
-`memory_search(query)`, `memory_save(content, source?, category?, confidence?, tags?)`,
-`memory_update(id, content)`, `memory_delete(id)`, `memory_list(category?)`,
-`memory_confirm(id)`, `memory_reject(id)`, `memory_related(id)`
-(graph traversal via `related_ids`).
+**`confidence`** (`high`/`medium`/`low`) — defaults from source, and bumps to
+`high` when a pending fact is confirmed.
 
-**L1 (always-in-context):**
-`context_add(text)`, `context_replace(old, new)`, `context_remove(text)`,
-`context_list` — with hard caps (memory 2,200 chars, user_context 1,375) and
-normalized-match dedup.
+### How a pending fact graduates to confirmed
 
-**L3 (conversation search):**
-`search_conversations(query, limit?)` — full-text search over past chat history,
-returned aggregated by conversation.
+A `pending` guess becomes a trusted `confirmed` fact through any of three paths:
 
-## Embeddings
+1. **Explicit confirmation** — the user clicks ✓ (or the agent calls
+   `memory_confirm`).
+2. **Corroboration** — the dialectic independently re-derives the same fact. When
+   a new derivation lands within `CORROBORATE_DISTANCE` (**0.40** cosine) of an
+   existing entry, a **Stage-B NLI** check judges the pair:
+   - `entails` (same fact) → if the neighbour is **pending**, it's **promoted to
+     confirmed**; if already confirmed, the new one is skipped as a duplicate.
+   - `contradicts` → the new fact supersedes the old (`contradicts_id` set, old
+     deactivated).
+   - `neutral` (different but related) → both kept, linked via `related_ids`.
 
-Saving a fact embeds it inline (so it's dedup-checked and searchable
-immediately); if the provider is down, the row is inserted without a vector and a
-`db_memory_embedding_jobs` row is queued for the worker to backfill. Same model
-and pipeline as note embeddings: Azure OpenAI `text-embedding-3-large`, 1536-dim,
-HNSW cosine index.
+   *Why NLI and not just distance:* real re-derivations paraphrase heavily
+   ("User is working toward X" vs "User prefers X") and land anywhere up to ~0.40
+   — too far for the strict `DUP_DISTANCE` (0.15) used on direct saves. Cosine
+   alone can't tell a reword from a sibling fact in that band, so NLI decides. If
+   NLI is unavailable it falls back to cosine-only, trusting a match **only**
+   below 0.15.
+3. **Opportunistic ask** — when a pending fact clears the retrieval floor, the
+   prompt nudges the agent to verify it conversationally ("I've had the
+   impression you prefer X — is that right?").
+
+**Expiry.** Pending entries carry `expires_at = created_at + 60 days`; a worker
+sweep flips expired ones to `rejected`. Confirmed facts never expire.
+
+## 6. The numbers, explained
+
+Every figure on the dashboard is derived from one comparison — cosine distance —
+so none of it is a mystery dial.
+
+### Vocabulary
+
+| Term | What it means |
+|------|---------------|
+| **Embedding** | A 1536-dim vector from `text-embedding-3-large`. Similar meanings land near each other. Every fact and chat message gets one. |
+| **Cosine distance** (`<=>`) | How far apart two embeddings are. **`distance = 1 − similarity`** → **0 = identical**, ~**1 = unrelated**. Every metric below is built on this. |
+| **Similarity %** | The friendly form: **`(1 − distance) × 100`**. Distance `0.20` → 80% similar. |
+| **Nearest entry** | The other active, embedded memory with the smallest distance to a given fact — its closest neighbour in meaning. |
+| **NLI verdict** | A one-word LLM judgment on a pair: `entails` (same fact), `contradicts`, `neutral`. Used where distance alone can't tell a reword from a sibling fact. |
+
+### The four thresholds (all cosine distances — smaller = stricter)
+
+| Constant | Value | Used in | Meaning |
+|----------|-------|---------|---------|
+| `DUP_DISTANCE` | **0.15** | `memory_save` dedup | This close = duplicate on save (no NLI — strict, no backstop). |
+| `CORROBORATE_DISTANCE` | **0.40** | corroboration / dedup | A *candidate* for "same fact" → handed to NLI to decide. A loose pre-filter, not the verdict. |
+| `FLOOR_CONFIRMED` | **0.65** | per-turn retrieval | A **confirmed** fact is injected only if `distance < 0.65`. |
+| `FLOOR_PENDING` | **0.50** | per-turn retrieval | A **pending** fact uses the tighter `< 0.50` — guesses surface only when strongly on-topic. |
+
+### Per-row corroboration metrics (the entry expander)
+
+Expanding a row on the **Entries** tab calls `GET /agents/memory/entries/{id}/stats`,
+computed against the entry's nearest active neighbour:
+
+| Field | Formula / rule | Reading it |
+|-------|----------------|------------|
+| **distance** | `entry.embedding <=> nearest.embedding` | The "corroboration value" — how close this is to a fact already held. |
+| **similarity %** | `(1 − distance) × 100` | Same thing, friendlier. |
+| **corroborate band** | `distance < 0.40` | Inside = checked as the same fact; outside = treated as distinct. |
+| **headroom %** | `(0.40 − distance) / 0.40 × 100` | **Positive** = how far *inside* the band; **negative** = how far *beyond* it. (`0.30` → `+25%`; `0.50` → `−25%`.) |
+| **NLI verdict** | `nli_check(entry, nearest)` — only if in-band | `entails`/`contradicts`/`neutral`, or `n/a` when out-of-band. |
+| **would promote on re-derive** | in-band **AND** `nli == entails` | Whether a fresh re-derivation would auto-promote it `pending → confirmed`. |
+
+The track visual maps these onto a line from **0 (identical)** to **0.7
+(unrelated)**: the shaded zone is `0 → 0.40` and the ◆ pin sits at the nearest
+neighbour's distance.
+
+### L1 capacity gauges
+
+Pure character count against the hard caps:
+
+- **`memory_pct` = `memory.chars / 2200 × 100`** (scratchpad).
+- **`user_context_pct` = `user_context.chars / 1375 × 100`** (profile).
+- **L1 card headline** = combined, since both are always injected:
+  **`(memory.chars + user_context.chars) / (2200 + 1375) × 100`**.
+
+### Retrieval & lifecycle numbers
+
+- **top-K = 5** — at most 5 memories injected per turn, confirmed ranked first,
+  after the floor filters by distance.
+- **TTL = 60 days** — `expires_at = created_at + 60 days` for pending; the sweep
+  rejects expired ones. Confirmed = `expires_at NULL` (never expires).
+
+## 7. Reading the Memory dashboard
+
+The `/admin/memory` page maps directly onto everything above.
+
+- **Cards (top).** **L1** shows combined capacity (`scratchpad % · profile %`);
+  **L2** the confirmed-fact count; **L3** indexed conversations/messages;
+  **Pending** the count awaiting confirmation (L2 facts with `status=pending`);
+  **∑** total active. Clicking a card filters the Entries tab to that slice.
+- **Entries (L2).** The fact browser — filter by status/source/category/text.
+  Expand a row (the ＋ toggle) for its **corroboration metrics** (§6) and a dump
+  of every raw field. Row buttons confirm / reject / delete; the two collapsible
+  legends explain the tags and the metrics.
+- **Conversation search (L3).** Lists recent conversations by default; type to run
+  the same full-text search the agent's `search_conversations` tool uses.
+- **Turn inspector.** One row per completed turn — which memories were retrieved
+  (expand for similarity %) and how full L1 was. This is the feedback loop for
+  tuning the retrieval floors.
+
+## 8. Reference
+
+### Tables
+
+- **`db_agent_profiles`** — one row per agent. `memory` + `user_context` are the
+  **L1** fields; `instructions` is the system-prompt preamble; `dialectic_*`
+  columns configure L2's dialectic pass (cadence / depth / model).
+- **`db_memory_entries`** — **L2**. One row per fact: `content`,
+  `embedding vector(1536)` (HNSW cosine), `source`, `status`, `confidence`,
+  `category`, `tags[]`, `expires_at` (60-day TTL for pending), `contradicts_id` /
+  `related_ids[]` (populated by Stage-B NLI), `is_active` (soft-delete).
+- **`db_memory_embedding_jobs`** — embedding queue; the same `embedding-worker`
+  that embeds notes drains it and writes vectors back.
+- **`db_chat_messages`** — **L3** + pre-embed cache. Stores the transcript, a
+  precomputed `embedding` (so L2 retrieval skips a synchronous embed), plus
+  `content_text` + a `GENERATED content_tsv` with a partial GIN index for FTS.
+- **`db_agent_turn_logs`** — observability behind the Turn inspector.
+
+### Tools the agent uses
+
+- **L1:** `context_add(text)`, `context_replace(old, new)`, `context_remove(text)`,
+  `context_list` — hard caps (2,200 / 1,375), normalized-match dedup.
+- **L2:** `memory_search(query)`,
+  `memory_save(content, source?, category?, confidence?, tags?)`,
+  `memory_update(id, content)`, `memory_delete(id)`, `memory_list(category?)`,
+  `memory_confirm(id)`, `memory_reject(id)`, `memory_related(id)`.
+- **L3:** `search_conversations(query, limit?)`.
+
+### Embeddings
+
+Saving a fact embeds it inline (so it's dedup-checked and searchable at once); if
+the provider is down the row is inserted vectorless and a
+`db_memory_embedding_jobs` row is queued for backfill. Same pipeline as notes:
+Azure OpenAI `text-embedding-3-large`, 1536-dim, HNSW cosine.

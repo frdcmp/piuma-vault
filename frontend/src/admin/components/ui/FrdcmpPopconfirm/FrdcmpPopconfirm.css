@@ -1,0 +1,37 @@
+/* Confirm bubble — layout inside the shared .pv-popover shell. */
+.pv-popconfirm-anchor {
+	display: inline-flex;
+}
+.pv-popover.pv-popconfirm {
+	min-width: 0;
+	padding: 12px;
+}
+.pv-popconfirm-head {
+	display: flex;
+	gap: 8px;
+	align-items: flex-start;
+	margin-bottom: 12px;
+}
+.pv-popconfirm-icon {
+	flex: none;
+	margin-top: 1px;
+	font-size: 15px;
+	color: #e8b339;
+}
+.pv-popconfirm-title {
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 1.4;
+	color: #d6dbe5;
+}
+.pv-popconfirm-desc {
+	margin-top: 3px;
+	font-size: 12px;
+	line-height: 1.4;
+	color: #9aa3b2;
+}
+.pv-popconfirm-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}

@@ -23,11 +23,10 @@
 ## ✨ Features
 
 ### 🧠 1. Agentic AI Workspace & Layered Memory
-Connect your favorite LLM models (DeepSeek, Anthropic, Gemini, OpenAI, etc.) and chat with an assistant that actually remembers your context. Features a unique **4-layer persistent memory system**:
+Connect your favorite LLM models (DeepSeek, Anthropic, Gemini, OpenAI, etc.) and chat with an assistant that actually remembers your context. Features a **3-layer persistent memory system**:
 *   **L1 (Scratchpad):** An active, always-in-context scratchpad of immediate preferences.
-*   **L2 (Semantic Facts):** High-trust, vector-searchable statements recalled via cosine similarity.
+*   **L2 (Semantic Facts):** Vector-searchable statements recalled via cosine similarity, each carrying a trust `status` and `source`. A built-in **dialectic pass** analyzes recent chats and auto-derives implicit facts as low-trust `pending` guesses, which graduate to `confirmed` once corroborated.
 *   **L3 (Conversational Index):** High-performance Postgres Full-Text Search (FTS) to look up historical messages.
-*   **L4 (Dialectic Reasoning):** An background process that analyzes your chats to automatically extract long-term preferences, habits, and facts.
 
 ### 📝 2. Modern Knowledge Base & Notes Vault
 *   **Dual Editors:** Swap between block-based editor (`BlockNote`) and markdown-rendered editor (`Milkdown`).
@@ -98,22 +97,22 @@ flowchart TD
 
     %% Passive Logging & Dialectic Paths (Right Side)
     Chat -->|Passive Write| L3[(L3 Conversation Search<br/>db_chat_messages)]
-    L3 -->|Every N Turns| L4[L4 Dialectic Job]
-    L4 -->|Multi-Pass GPT Sweep| L4P[(L4 Pending Facts<br/>db_memory_entries)]
+    L3 -->|Every N Turns| Dialectic[L2 Dialectic Pass]
+    Dialectic -->|Multi-Pass Sweep| L2P[(L2 Pending Facts<br/>db_memory_entries)]
 
-    %% Graduation Funnel
-    L4P -->|Explicit UI ✓ Click| L2C
-    L4P -->|Stage-B NLI Corroboration| L2C
-    L4P -->|Opportunistic Ask in Chat| L2C
+    %% Graduation Funnel — pending L2 facts become confirmed (same table)
+    L2P -->|Explicit UI ✓ Click| L2C
+    L2P -->|Re-derived + Stage-B NLI entails| L2C
+    L2P -->|Opportunistic Ask in Chat| L2C
 
     %% Prompt Injection (Bottom)
     L2C -->|Distance < 0.65| Injected([Injected into Next Prompt])
-    L4P -->|Distance < 0.5| Injected
+    L2P -->|Distance < 0.5| Injected
 
     %% Styles and Classes for gorgeous, readable theme integration
     classDef store fill:#1b1e25,stroke:#3a4150,stroke-width:2px;
     classDef action fill:#15171c,stroke:#3a4150,stroke-width:2px;
-    class L1,L2C,L3,L4P store;
+    class L1,L2C,L3,L2P store;
 ```
 
 ---

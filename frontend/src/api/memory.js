@@ -39,6 +39,16 @@ export const searchConversations = async (filters = {}) => {
 	return res.data;
 };
 
+/**
+ * Computed corroboration metrics for one entry: nearest active neighbour by
+ * cosine distance, how it sits against the dedup/corroboration thresholds, and
+ * the Stage-B NLI verdict on the pair.
+ */
+export const getEntryStats = async (id) => {
+	const res = await axiosInstance.get(`/agents/memory/entries/${id}/stats`);
+	return res.data;
+};
+
 export const confirmMemoryEntry = async (id) => {
 	const res = await axiosInstance.post(`/agents/memory/entries/${id}/confirm`);
 	return res.data;

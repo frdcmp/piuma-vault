@@ -23,8 +23,22 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                 .route(web::post().to(memory_admin::reject_entry)),
         )
         .service(
+            web::resource("/agents/memory/entries/{id}/stats")
+                .route(web::get().to(memory_admin::entry_stats)),
+        )
+        .service(
             web::resource("/agents/memory/entries/{id}")
                 .route(web::delete().to(memory_admin::delete_entry)),
+        )
+        // Testing utility: feed a fact through the dialectic save_derived pipeline.
+        .service(
+            web::resource("/agents/memory/test-derive")
+                .route(web::post().to(memory_admin::test_derive)),
+        )
+        // One-shot cleanup: NLI-merge near-duplicate pending entries.
+        .service(
+            web::resource("/agents/memory/dedup-pending")
+                .route(web::post().to(memory_admin::dedup_pending)),
         )
         .service(
             web::resource("/agents/default-agent")

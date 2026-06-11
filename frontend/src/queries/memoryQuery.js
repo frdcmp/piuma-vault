@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	confirmMemoryEntry,
 	deleteMemoryEntry,
+	getEntryStats,
 	getMemoryOverview,
 	listMemoryEntries,
 	listTurnLogs,
@@ -13,6 +14,7 @@ export const memoryKeys = {
 	all: ["memory"],
 	overview: (agent) => [...memoryKeys.all, "overview", agent],
 	entries: (filters) => [...memoryKeys.all, "entries", filters],
+	entryStats: (id) => [...memoryKeys.all, "entryStats", id],
 	turnLogs: (filters) => [...memoryKeys.all, "turnLogs", filters],
 	conversations: (filters) => [...memoryKeys.all, "conversations", filters],
 };
@@ -29,6 +31,15 @@ export const useMemoryEntries = (filters = {}, options = {}) =>
 	useQuery({
 		queryKey: memoryKeys.entries(filters),
 		queryFn: () => listMemoryEntries(filters),
+		staleTime: 30 * 1000,
+		...options,
+	});
+
+/** Per-entry corroboration metrics. Lazy — only fetched when a row expands. */
+export const useEntryStats = (id, options = {}) =>
+	useQuery({
+		queryKey: memoryKeys.entryStats(id),
+		queryFn: () => getEntryStats(id),
 		staleTime: 30 * 1000,
 		...options,
 	});

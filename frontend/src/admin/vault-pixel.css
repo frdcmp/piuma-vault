@@ -449,3 +449,56 @@ a.vp-card:hover {
 		transform: translateY(-6px);
 	}
 }
+
+/* ---- Expander (pixel-art +/− toggle) -------------------------------------- */
+/* Tiny bordered square with a chunky pixel "+" (10×2 horizontal + 2×10 vertical
+   bar) — matching the visual weight of the modal/panel titlebar. Loses its
+   vertical bar (→ "−") when the row is open, same language as a classic
+   "disclose" toggle. */
+.vp-expander {
+	position: relative;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	margin: 0;
+	border: 2px solid var(--vp-border);
+	background: var(--vp-bg-soft);
+	cursor: pointer;
+	vertical-align: middle;
+	font-family: var(--vp-font);
+	image-rendering: pixelated;
+	transition: border-color 0.1s;
+}
+.vp-expander:hover {
+	border-color: var(--vp-accent);
+}
+.vp-expander::before,
+.vp-expander::after {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	background: var(--vp-text);
+	transform: translate(-50%, -50%);
+}
+.vp-expander::before {
+	width: 10px;
+	height: 2px;
+}
+.vp-expander::after {
+	width: 2px;
+	height: 10px;
+	transition:
+		opacity 0.1s steps(2, end),
+		background 0.1s;
+}
+.vp-expander--open {
+	border-color: var(--vp-accent);
+}
+.vp-expander--open::before,
+.vp-expander--open::after {
+	background: var(--vp-accent);
+}
+.vp-expander--open::after {
+	opacity: 0;
+}
