@@ -330,7 +330,6 @@
 	color: var(--vp-text);
 }
 
-
 .mem-kv {
 	display: grid;
 	grid-template-columns: max-content 1fr;
@@ -568,20 +567,32 @@
 	font-family: var(--vp-font);
 }
 
-/* ---- Legend --------------------------------------------------------------- */
+/* ---- Legend (pixel expander) ---------------------------------------------- */
 .mem-legend {
-	border: 1px solid var(--vp-border);
-	border-radius: 10px;
+	border: 2px solid var(--vp-border);
+	border-radius: 0;
 	background: var(--vp-panel);
+	box-shadow: var(--vp-shadow);
 	margin-bottom: 18px;
 	overflow: hidden;
+	image-rendering: pixelated;
+	transition: border-color 0.1s steps(2, end);
+}
+.mem-legend:hover,
+.mem-legend[open] {
+	border-color: var(--vp-accent);
 }
 .mem-legend > summary {
+	display: flex;
+	align-items: center;
+	gap: 10px;
 	cursor: pointer;
-	padding: 11px 14px;
+	padding: 10px 12px;
+	background: var(--vp-bg-soft);
 	font-family: var(--vp-font);
 	font-size: 13px;
 	font-weight: 600;
+	letter-spacing: 0.02em;
 	color: var(--vp-text);
 	list-style: none;
 	user-select: none;
@@ -589,15 +600,34 @@
 .mem-legend > summary::-webkit-details-marker {
 	display: none;
 }
+/* Chunky bordered toggle box: a "+" that loses its vertical bar (→ "−") when
+   open — same pixel language as the table-row .vp-expander toggle. */
 .mem-legend > summary::before {
-	content: "▸ ";
-	color: var(--vp-muted);
+	content: "";
+	flex: 0 0 16px;
+	width: 16px;
+	height: 16px;
+	border: 2px solid var(--vp-border);
+	image-rendering: pixelated;
+	background:
+		linear-gradient(var(--vp-text), var(--vp-text)) center / 8px 2px no-repeat,
+		linear-gradient(var(--vp-text), var(--vp-text)) center / 2px 8px no-repeat
+		var(--vp-bg);
+	transition:
+		border-color 0.1s,
+		background-size 0.1s steps(2, end);
 }
 .mem-legend[open] > summary::before {
-	content: "▾ ";
+	border-color: var(--vp-accent);
+	background:
+		linear-gradient(var(--vp-accent), var(--vp-accent)) center / 8px 2px
+		no-repeat,
+		linear-gradient(var(--vp-accent), var(--vp-accent)) center / 2px 0 no-repeat
+		var(--vp-bg);
 }
 .mem-legend[open] > summary {
-	border-bottom: 1px solid var(--vp-border-soft);
+	border-bottom: 2px solid var(--vp-border);
+	color: var(--vp-accent);
 }
 .mem-legend-grid {
 	display: grid;
