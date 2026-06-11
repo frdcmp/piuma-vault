@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import SpriteStage from "../../admin/components/notes/SpriteStage";
+import Starfield from "../../admin/components/notes/Starfield";
 import { PvButton } from "../../admin/components/ui";
 import { verifyScreenLockPin } from "../../api/screenLock";
 import useScreenLockStore from "../../store/screenLockStore";
@@ -82,6 +83,8 @@ export default function ScreenLockOverlay() {
 
 	return (
 		<div className="vp-lock-overlay">
+			{/* Animated pixel starfield, same as the empty-state background. */}
+			<Starfield />
 			<div className={`vp-lock-card${shake ? " vp-lock-shake" : ""}`}>
 				<SpriteStage pixelSize={8} />
 				<h2 className="vp-lock-title">Vault locked</h2>

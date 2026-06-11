@@ -22,13 +22,29 @@ const EMBED_DIMS: u32 = 1536;
 /// Stage-A cosine-distance gate: a neighbour closer than this is "about the same
 /// topic" and is treated as a duplicate on save. (Stage-B NLI — distinguishing
 /// duplicate / contradiction / extension — lands with L4.)
-const DUP_DISTANCE: f64 = 0.15;
+pub const DUP_DISTANCE: f64 = 0.15;
+/// Cosine pre-filter for corroboration: a new dialectic derivation within this
+/// distance of an existing entry is a *candidate* same-fact rewording and is
+/// handed to Stage-B NLI for the actual keep/merge decision. Real cross-session
+/// re-derivations of one fact paraphrase heavily (subject + framing shift, e.g.
+/// "User aims to maintain an NBA calendar" vs "User prefers NBA games added
+/// to their calendar") and drift as far as ~0.40 — so this gate is deliberately
+/// loose. It is only a cheap pre-filter to bound NLI calls, NOT the decision:
+/// NLI separates true rewordings (`entails`) from mere topical siblings
+/// (`neutral`, e.g. Monday vs Tuesday workout at ~0.21). DUP_DISTANCE stays
+/// strict for direct save-dedup, where there's no NLI backstop.
+///
+/// Tuned to 0.40 after a 0.45 sweep: even with the same-fact NLI prompt, pairs
+/// at 0.40–0.45 produced a tail of over-merges (distinct facts the prompt
+/// stretched to "same"); every clean merge sat at ≤0.37, so 0.40 keeps the wins
+/// and drops the questionable tail.
+pub const CORROBORATE_DISTANCE: f64 = 0.40;
 /// Per-turn retrieval floors (cosine distance = 1 − similarity). Tuned loose so
 /// related-but-not-identical facts actually surface (text-embedding-3-large puts
 /// topical matches around 0.4–0.65 distance); tighten from the turn inspector if
 /// retrieval gets noisy. Pending/derived facts use the stricter floor.
-const FLOOR_CONFIRMED: f64 = 0.65;
-const FLOOR_PENDING: f64 = 0.5;
+pub const FLOOR_CONFIRMED: f64 = 0.65;
+pub const FLOOR_PENDING: f64 = 0.5;
 
 pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
     vec![
@@ -52,7 +68,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                 "properties": {
                     "content": { "type": "string", "description": "the fact, one self-contained statement" },
                     "category": { "type": "string", "description": "health | preferences | personal | work | convention | derived" },
-                    "source": { "type": "string", "description": "user_stated = User told you directly or asked you to remember it; agent_observed = you inferred it. Set user_stated for things he says about himself — it's saved as high confidence. Default agent_observed." },
+                    "source": { "type": "string", "description": "user_stated = the user told you directly or asked you to remember it; agent_observed = you inferred it. Set user_stated for things they say about themselves — it's saved as high confidence. Default agent_observed." },
                     "confidence": { "type": "string", "description": "high | medium | low. Omit to let it default from source (user_stated→high, else medium)." },
                     "tags": { "type": "array", "items": { "type": "string" } }
                 },
@@ -93,7 +109,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
         ),
         (
             "memory_confirm",
-            "Confirm a derived/pending memory entry (User affirmed it): promotes it to a normal fact (confidence high, no expiry).",
+            "Confirm a derived/pending memory entry (the user affirmed it): promotes it to a normal fact (confidence high, no expiry).",
             json!({
                 "type": "object",
                 "properties": { "id": { "type": "string" } },
@@ -102,7 +118,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
         ),
         (
             "memory_reject",
-            "Reject a derived/pending memory entry (User disagreed): it stops being retrieved.",
+            "Reject a derived/pending memory entry (the user disagreed): it stops being retrieved.",
             json!({
                 "type": "object",
                 "properties": { "id": { "type": "string" } },
@@ -199,12 +215,12 @@ pub fn format_block(entries: &[Retrieved]) -> String {
     s
 }
 
-/// Stage-B NLI: send (new_fact, existing_fact) to a small model to judge the
-/// semantic relationship. Returns `entails` (duplicate — existing already covers
-/// the new), `contradicts`, or `neutral` (different but compatible). Uses the
-/// default LLM provider/model; best-effort — falls back to cosine-only on any
-/// failure.
-async fn nli_check(pool: &DbPool, new_fact: &str, existing_fact: &str) -> Option<&'static str> {
+/// Stage-B NLI: send (new_fact, existing_fact) to the default model to judge the
+/// relationship. Framed as **same-underlying-fact** detection (not strict
+/// logical entailment): returns `entails` when both capture the same fact even
+/// if reworded, `contradicts` when they conflict, or `neutral` when they're
+/// genuinely different facts. Best-effort — falls back to cosine-only on failure.
+pub async fn nli_check(pool: &DbPool, new_fact: &str, existing_fact: &str) -> Option<&'static str> {
     let model: ModelRow = sqlx::query_as(
         "SELECT * FROM db_llm_models WHERE is_default AND enabled LIMIT 1",
     )
@@ -220,25 +236,46 @@ async fn nli_check(pool: &DbPool, new_fact: &str, existing_fact: &str) -> Option
         return None;
     }
     let prompt = format!(
-        "You are a semantic comparison engine. Compare two facts and determine their relationship.\n\
-         \nNEW FACT: {new_fact}\n\
-         EXISTING FACT: {existing_fact}\n\
-         \nDoes the NEW fact CONTRADICT, DUPLICATE (entail/say the same thing), or EXTEND \
-         (different but compatible) the EXISTING fact?\n\
-         Answer with exactly one word: entails | contradicts | neutral",
+        "You compare two memory entries about the same user and decide whether they \
+         capture the SAME underlying fact.\n\
+         \nENTRY A: {existing_fact}\n\
+         ENTRY B: {new_fact}\n\
+         \nReply with EXACTLY one word:\n\
+         - entails — A and B are the SAME underlying fact, preference, goal, or habit, \
+         even if worded very differently, written about \"the user\" vs a name, framed as \
+         a preference vs a goal, or one is slightly more specific. \
+         (e.g. \"User aims to keep an accurate NBA calendar\" and \"User prefers NBA \
+         games auto-added to their calendar\" → entails.)\n\
+         - contradicts — they make conflicting claims (one negates, reverses, or updates the other).\n\
+         - neutral — they are DIFFERENT facts, even if on the same topic. \
+         (e.g. \"trains chest on Monday\" vs \"trains back on Tuesday\" → neutral.)\n\
+         \nAnswer with exactly one word: entails | contradicts | neutral",
     );
     let messages = vec![serde_json::json!({ "role": "user", "content": prompt })];
+    // Generous budget: the default model may be a reasoning model whose
+    // thinking eats the budget before the one-word answer (see dialectic.rs).
     let raw = providers::complete(
         &provider.kind,
         &provider.api_key,
         provider.base_url.as_deref(),
         &model.model_id,
         &messages,
-        32,
+        4000,
     )
     .await
     .ok()?;
     let trimmed = raw.trim().to_lowercase();
+    log::info!(
+        "nli: new '{}' vs existing '{}' -> '{}'",
+        new_fact,
+        existing_fact,
+        raw.trim()
+    );
+    if trimmed.is_empty() {
+        // Reasoning exhausted the budget / provider returned nothing — treat
+        // as NLI-unavailable, not as a neutral judgment.
+        return None;
+    }
     if trimmed.contains("entails") {
         Some("entails")
     } else if trimmed.contains("contradicts") || trimmed.contains("contradict") {
@@ -266,12 +303,54 @@ async fn link_related(pool: &DbPool, entry_id: Uuid, new_id: Uuid) {
     .await;
 }
 
+/// Insert a dialectic-derived row (`status=pending`, 60-day TTL), optionally
+/// recording which entry it supersedes via `contradicts_id`.
+async fn insert_pending(
+    pool: &DbPool,
+    agent: &str,
+    content: &str,
+    vec: &pgvector::Vector,
+    category: Option<&str>,
+    conversation_id: Option<Uuid>,
+    contradicts_id: Option<Uuid>,
+) -> Result<Uuid, String> {
+    sqlx::query_scalar(
+        "INSERT INTO db_memory_entries \
+           (agent, content, embedding, category, confidence, source, status, source_conversation_id, contradicts_id, expires_at) \
+         VALUES ($1, $2, $3, $4, 'medium', 'dialectic_derived', 'pending', $5, $6, NOW() + INTERVAL '60 days') \
+         RETURNING id",
+    )
+    .bind(agent)
+    .bind(content)
+    .bind(vec)
+    .bind(category)
+    .bind(conversation_id)
+    .bind(contradicts_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Corroboration promotion: an independent re-derivation confirmed a pending
+/// fact — graduate it (confidence high, no expiry).
+async fn promote_pending(pool: &DbPool, id: Uuid) {
+    let _ = sqlx::query(
+        "UPDATE db_memory_entries \
+         SET confidence = 'high', status = 'confirmed', expires_at = NULL, updated_at = NOW() \
+         WHERE id = $1",
+    )
+    .bind(id)
+    .execute(pool)
+    .await;
+}
+
 /// Save a dialectic-derived fact as a low-trust pending entry (60-day TTL),
 /// `source=dialectic_derived`, `confidence=medium`. Dedups against the agent's
-/// active entries; if the nearest neighbour is a close match that is itself
-/// pending, treat the re-derivation as corroboration and promote it to confirmed
-/// instead of inserting a duplicate. If the nearest neighbour is confirmed and
-/// close, runs Stage-B NLI to judge entail/contradict/neutral.
+/// active entries: any neighbour within CORROBORATE_DISTANCE is judged by
+/// Stage-B NLI — `entails` corroborates a pending neighbour (promotes it to
+/// confirmed) or skips a confirmed one as duplicate, `contradicts` supersedes
+/// the neighbour, `neutral` saves both linked via `related_ids`. With NLI
+/// unavailable, cosine alone is trusted only below DUP_DISTANCE.
 /// Returns the outcome label.
 pub async fn save_derived(
     pool: &DbPool,
@@ -314,21 +393,7 @@ pub async fn save_derived(
     .await
     .map_err(|e| e.to_string())?;
     if let Some((existing_id, dist, status)) = nearest {
-        if dist < DUP_DISTANCE {
-            if status == "pending" {
-                // Corroboration: re-derivation confirms a pending fact.
-                let _ = sqlx::query(
-                    "UPDATE db_memory_entries \
-                     SET confidence = 'high', status = 'confirmed', expires_at = NULL, updated_at = NOW() \
-                     WHERE id = $1",
-                )
-                .bind(existing_id)
-                .execute(pool)
-                .await;
-                return Ok("corroborated");
-            }
-            // Close match against a confirmed entry — run Stage-B NLI to
-            // judge entail/contradict/neutral.
+        if dist < CORROBORATE_DISTANCE {
             let existing_content: Option<String> = sqlx::query_scalar(
                 "SELECT content FROM db_memory_entries WHERE id = $1",
             )
@@ -337,82 +402,65 @@ pub async fn save_derived(
             .await
             .ok()
             .flatten();
-            if let Some(ref existing_content) = existing_content {
-                if let Some(judgment) = nli_check(pool, content, existing_content).await {
-                    match judgment {
-                        "entails" => {
-                            return Ok("duplicate");
-                        }
-                        "contradicts" => {
-                            let new_id: Uuid = sqlx::query_scalar(
-                                "INSERT INTO db_memory_entries \
-                                   (agent, content, embedding, category, confidence, source, status, source_conversation_id, contradicts_id, expires_at) \
-                                 VALUES ($1, $2, $3, $4, 'medium', 'dialectic_derived', 'pending', $5, $6, NOW() + INTERVAL '60 days') \
-                                 RETURNING id",
-                            )
-                            .bind(agent)
-                            .bind(content)
-                            .bind(&vec)
-                            .bind(category)
-                            .bind(conversation_id)
-                            .bind(existing_id)
-                            .fetch_one(pool)
-                            .await
-                            .map_err(|e| e.to_string())?;
-                            let _ = sqlx::query(
-                                "UPDATE db_memory_entries SET is_active = FALSE, updated_at = NOW() WHERE id = $1",
-                            )
-                            .bind(existing_id)
-                            .execute(pool)
-                            .await;
-                            log::warn!(
-                                "dialectic contradiction: new '{}' contradicts existing {} — \
-                                 old deactivated, new saved as {}",
-                                content, existing_id, new_id
-                            );
-                            return Ok("inserted");
-                        }
-                        _ => {
-                            // neutral — save both, link via related_ids.
-                            let new_id: Uuid = sqlx::query_scalar(
-                                "INSERT INTO db_memory_entries \
-                                   (agent, content, embedding, category, confidence, source, status, source_conversation_id, expires_at) \
-                                 VALUES ($1, $2, $3, $4, 'medium', 'dialectic_derived', 'pending', $5, NOW() + INTERVAL '60 days') \
-                                 RETURNING id",
-                            )
-                            .bind(agent)
-                            .bind(content)
-                            .bind(&vec)
-                            .bind(category)
-                            .bind(conversation_id)
-                            .fetch_one(pool)
-                            .await
-                            .map_err(|e| e.to_string())?;
-                            link_related(pool, existing_id, new_id).await;
-                            link_related(pool, new_id, existing_id).await;
-                            return Ok("inserted");
-                        }
+            let judgment = match existing_content {
+                Some(ref existing_content) => nli_check(pool, content, existing_content).await,
+                None => None,
+            };
+            match judgment {
+                Some("entails") => {
+                    if status == "pending" {
+                        // Corroboration: re-derivation confirms a pending fact.
+                        promote_pending(pool, existing_id).await;
+                        log::info!(
+                            "dialectic corroboration: '{}' (dist {:.3}) confirms pending {}",
+                            content, dist, existing_id
+                        );
+                        return Ok("corroborated");
                     }
+                    return Ok("duplicate");
+                }
+                Some("contradicts") => {
+                    let new_id =
+                        insert_pending(pool, agent, content, &vec, category, conversation_id, Some(existing_id))
+                            .await?;
+                    let _ = sqlx::query(
+                        "UPDATE db_memory_entries SET is_active = FALSE, updated_at = NOW() WHERE id = $1",
+                    )
+                    .bind(existing_id)
+                    .execute(pool)
+                    .await;
+                    log::warn!(
+                        "dialectic contradiction: new '{}' contradicts existing {} — \
+                         old deactivated, new saved as {}",
+                        content, existing_id, new_id
+                    );
+                    return Ok("inserted");
+                }
+                Some(_) => {
+                    // neutral — save both, link via related_ids.
+                    let new_id =
+                        insert_pending(pool, agent, content, &vec, category, conversation_id, None).await?;
+                    link_related(pool, existing_id, new_id).await;
+                    link_related(pool, new_id, existing_id).await;
+                    return Ok("inserted");
+                }
+                None if dist < DUP_DISTANCE => {
+                    // NLI unavailable — near-verbatim cosine alone is trustworthy.
+                    if status == "pending" {
+                        promote_pending(pool, existing_id).await;
+                        return Ok("corroborated");
+                    }
+                    return Ok("duplicate");
+                }
+                None => {
+                    // NLI unavailable in the wide band — could be a sibling
+                    // fact, don't guess: fall through to a plain insert.
                 }
             }
-            // Fallback: no NLI available or couldn't fetch existing content.
-            return Ok("duplicate");
         }
     }
 
-    sqlx::query(
-        "INSERT INTO db_memory_entries \
-           (agent, content, embedding, category, confidence, source, status, source_conversation_id, expires_at) \
-         VALUES ($1, $2, $3, $4, 'medium', 'dialectic_derived', 'pending', $5, NOW() + INTERVAL '60 days')",
-    )
-    .bind(agent)
-    .bind(content)
-    .bind(&vec)
-    .bind(category)
-    .bind(conversation_id)
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    insert_pending(pool, agent, content, &vec, category, conversation_id, None).await?;
     Ok("inserted")
 }
 
@@ -422,7 +470,7 @@ pub async fn memory_save(pool: &DbPool, agent: &str, args: &Value) -> Result<Val
     let content = req_str(args, "content")?;
     let category = opt_string(args, "category");
     let source = opt_string(args, "source").unwrap_or_else(|| "agent_observed".into());
-    // Default confidence from source: a fact User stated directly is high;
+    // Default confidence from source: a fact the user stated directly is high;
     // something the agent merely inferred is medium.
     let confidence = opt_string(args, "confidence").unwrap_or_else(|| {
         if source == "user_stated" {

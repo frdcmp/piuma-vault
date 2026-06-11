@@ -6,13 +6,23 @@
 	align-items: center;
 	justify-content: center;
 	padding: 24px;
-	background: var(--vp-bg, #1b1b1f);
-	/* Opaque + blurred so the vault content underneath isn't readable. */
+	overflow: hidden;
+	/* Opaque + blurred so the vault content underneath isn't readable. A soft
+	   accent glow behind the sprite sits over the flat base colour; the
+	   animated starfield canvas provides the rest of the texture. */
+	background-color: var(--vp-bg, #14171c);
+	background-image: radial-gradient(
+		60% 50% at 50% 40%,
+		rgba(247, 201, 72, 0.06),
+		transparent 70%
+	);
 	backdrop-filter: blur(14px);
 	-webkit-backdrop-filter: blur(14px);
 }
 
 .vp-lock-card {
+	position: relative;
+	z-index: 1; /* sit above the starfield canvas */
 	width: 100%;
 	max-width: 360px;
 	display: flex;

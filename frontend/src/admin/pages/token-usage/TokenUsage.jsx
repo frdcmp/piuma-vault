@@ -31,7 +31,15 @@ const SOURCE_OPTIONS = [
 
 const num = new Intl.NumberFormat("en-US");
 const fmtTokens = (n) => num.format(n || 0);
-const fmtUsd = (n) => `$${(n || 0).toFixed(4)}`;
+// Costs ≥ $0.0001 read as plain dollars; tiny spend (e.g. embeddings, a few
+// hundred tokens at $0.13/M) would round to $0.0000, so show it in exponential
+// form (e.g. $5.23e-5) instead of hiding it.
+const fmtUsd = (n) => {
+	const v = n || 0;
+	if (v === 0) return "$0.0000";
+	if (v >= 0.0001) return `$${v.toFixed(4)}`;
+	return `$${v.toExponential(2)}`;
+};
 
 // Chart series colors — mapped to the vault-pixel accent tokens. (SVG `stroke`
 // / `fill` attributes can't resolve CSS vars, so these mirror the hex values.)

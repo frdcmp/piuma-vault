@@ -63,7 +63,7 @@ function EmptyHeader({ onMenu, onChat }) {
 	);
 }
 
-export default function VaultHomeScreen({ navigation }) {
+export default function VaultHomeScreen({ navigation, route }) {
 	const logout = useAuthStore((s) => s.logout);
 
 	// selection.id: null = empty, 'new' = creating, uuid = existing.
@@ -138,6 +138,18 @@ export default function VaultHomeScreen({ navigation }) {
 		animate(rightX, RIGHT_CLOSED).start();
 		setOpen(null);
 	};
+
+	// Deep-link: a `noteId` route param (set by a chat note link / navigate Go)
+	// opens that note and closes the chat drawer so it's visible, then clears the
+	// param so it doesn't reopen on the next focus.
+	const deepNoteId = route?.params?.noteId;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: open once per deep-link id
+	useEffect(() => {
+		if (!deepNoteId || !UUID_RE.test(deepNoteId)) return;
+		setSelection((s) => ({ id: deepNoteId, session: s.session + 1 }));
+		closeDrawers();
+		navigation.setParams({ noteId: undefined });
+	}, [deepNoteId]);
 
 	// Android back: close the open drawer first, then let the system handle it
 	// (which exits the screen / app at the root).

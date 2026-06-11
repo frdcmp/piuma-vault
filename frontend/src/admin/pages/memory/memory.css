@@ -240,6 +240,125 @@
 	min-width: 42px;
 }
 
+/* ---- Entry detail expander (metrics + all field values) ------------------- */
+.mem-detail {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding: 4px 2px;
+}
+.mem-detail-head {
+	margin: 0 0 8px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-accent-2);
+}
+.mem-stats {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+/* Distance number line: 0 (identical) → 0.7 (unrelated). A shaded zone marks
+   "close enough to merge" (0 → threshold); a ◆ pin marks the nearest neighbour.
+   Top margin leaves room for the pin's floating value label. */
+.mem-track {
+	position: relative;
+	height: 12px;
+	background: var(--vp-bg);
+	border: 2px solid var(--vp-border);
+	margin: 22px 0 2px;
+}
+/* Shaded "merge zone" from 0 to the corroboration threshold. */
+.mem-track-zone {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	background: color-mix(in srgb, var(--vp-accent-2) 26%, transparent);
+	border-right: 2px solid var(--vp-accent-2);
+}
+/* Threshold tick line. */
+.mem-track-tick {
+	position: absolute;
+	top: -4px;
+	bottom: -4px;
+	width: 2px;
+	background: var(--vp-accent-2);
+	transform: translateX(-1px);
+}
+/* The ◆ pin marking where the nearest neighbour sits, with a value label. */
+.mem-track-pin {
+	position: absolute;
+	top: 50%;
+	width: 12px;
+	height: 12px;
+	background: var(--vp-muted);
+	border: 2px solid var(--vp-bg);
+	transform: translate(-50%, -50%) rotate(45deg);
+}
+.mem-track-pin--in {
+	background: var(--vp-accent-2);
+}
+.mem-track-pin-label {
+	position: absolute;
+	bottom: 150%;
+	left: 50%;
+	transform: translateX(-50%) rotate(-45deg);
+	font-size: 11px;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	color: var(--vp-text);
+	white-space: nowrap;
+}
+.mem-track-axis {
+	display: flex;
+	justify-content: space-between;
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+	color: var(--vp-muted);
+}
+.mem-track-axis-corr {
+	color: var(--vp-accent-2);
+	font-weight: 700;
+}
+.mem-track-caption {
+	margin: 8px 0 0;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--vp-text);
+}
+
+
+.mem-kv {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: 6px 16px;
+	padding: 6px 2px;
+	font-size: 13px;
+}
+.mem-kv-row {
+	display: contents;
+}
+.mem-kv-key {
+	color: var(--vp-muted);
+	font-weight: 700;
+	font-size: 11px;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	white-space: nowrap;
+	padding-top: 2px;
+}
+.mem-kv-val {
+	color: var(--vp-text);
+	word-break: break-word;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	align-items: center;
+}
+
 /* =============================================================================
    Restyle kept antd components to the pixel language.
    ============================================================================= */

@@ -100,6 +100,41 @@ pub async fn search(
         .map_err(|e| e.to_string())
 }
 
+/// Browse mode (admin dashboard, empty query): the agent's recent conversations,
+/// one row each, with the latest message as a plain preview and the total
+/// user/assistant message count as `matches`. Same shape as `search` so the
+/// dashboard table can render either without branching.
+pub async fn recent(
+    pool: &DbPool,
+    agent: &str,
+    limit: i64,
+) -> Result<Vec<ConversationHit>, String> {
+    sqlx::query_as::<_, ConversationHit>(
+        r#"
+        WITH msgs AS (
+            SELECT c.id AS conversation_id, c.title, m.role, m.content_text, m.created_at,
+                   ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY m.created_at DESC) AS rn,
+                   COUNT(*) OVER (PARTITION BY c.id) AS cnt
+            FROM db_chat_messages m
+            JOIN db_chat_conversations c ON c.id = m.conversation_id
+            WHERE c.agent = $1 AND m.role IN ('user', 'assistant')
+        )
+        SELECT conversation_id, title, role,
+               left(content_text, 160) AS snippet,
+               cnt AS matches, created_at
+        FROM msgs
+        WHERE rn = 1
+        ORDER BY created_at DESC
+        LIMIT $2
+        "#,
+    )
+    .bind(agent)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())
+}
+
 pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
     vec![(
         "search_conversations",

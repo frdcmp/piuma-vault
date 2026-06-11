@@ -1,10 +1,12 @@
 export { default as PvAlarm } from "./PvAlarm";
 export { default as PvButton } from "./PvButton";
 export { default as PvDateTimePicker } from "./PvDateTimePicker";
+export { default as PvExpander } from "./PvExpander";
 export { default as PvMenu } from "./PvMenu";
 export { default as pvMessage } from "./PvMessage";
 export { default as PvModal } from "./PvModal";
 export { default as PvPanel } from "./PvPanel";
+export { default as PvPopconfirm } from "./PvPopconfirm";
 export { default as PvPopover } from "./PvPopover";
 export { default as PvTable } from "./PvTable";
 export { default as PvTag } from "./PvTag";
