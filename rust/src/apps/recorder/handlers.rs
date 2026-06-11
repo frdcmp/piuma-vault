@@ -96,6 +96,45 @@ pub async fn get_session(
     }
 }
 
+/// GET /recorder/usage — transcription seconds per month + provider, so the UI
+/// can show usage against a provider's free-tier cap (e.g. Speechmatics 40h/mo).
+pub async fn usage(user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden();
+    }
+    let rows: Vec<(String, String, i64, i64)> = sqlx::query_as(
+        "SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month, \
+                provider, \
+                COUNT(*)::bigint AS sessions, \
+                COALESCE(SUM(duration_secs), 0)::bigint AS seconds \
+         FROM db_recording_sessions \
+         WHERE user_id = $1 AND status <> 'failed' \
+         GROUP BY 1, 2 ORDER BY 1 DESC, 2",
+    )
+    .bind(&user.user_id)
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default();
+
+    let months: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(month, provider, sessions, seconds)| {
+            serde_json::json!({
+                "month": month,
+                "provider": provider,
+                "sessions": sessions,
+                "seconds": seconds,
+            })
+        })
+        .collect();
+
+    // Known monthly free-tier caps (hours), surfaced so the UI can draw a gauge.
+    HttpResponse::Ok().json(serde_json::json!({
+        "months": months,
+        "free_hours": { "speechmatics": 40 },
+    }))
+}
+
 /// GET /recorder/sessions/{id}/transcript — fetch the JSONL transcript from S3
 /// and return its normalized segments + joined plain text. Empty until the
 /// session has been flushed.

@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useRecording, useRecordingTranscript } from "../../../queries";
 import { formatDateTime } from "../../../utils/dateTime";
+import Starfield from "../../components/notes/Starfield";
 import { PvButton, PvPanel } from "../../components/ui";
 import "../../vault-pixel.css";
 import "./recorder.css";
@@ -69,80 +70,85 @@ export default function RecordingDetailPage() {
 	);
 
 	return (
-		<div className="recorder-page">
-			<div className="vp-page-head">
-				<div>
-					<PvButton
-						size="sm"
-						variant="ghost"
-						onClick={() => navigate("/recorder/sessions")}
-					>
-						← Sessions
-					</PvButton>
-					<h1 className="vp-page-title" style={{ marginTop: 10 }}>
-						{rec?.title || (isLoading ? "Loading…" : "Untitled recording")}
-					</h1>
-					{rec && (
-						<div className="recorder-item-meta" style={{ marginTop: 8 }}>
-							<span className={`vp-tag ${STATUS_TAG[rec.status] || ""}`}>
-								{rec.status}
-							</span>
-							<span>{formatDateTime(rec.created_at).date}</span>
-							{rec.duration_secs > 0 && (
-								<span>{Math.round(rec.duration_secs / 60)} min</span>
-							)}
-							{rec.word_count > 0 && <span>{rec.word_count} words</span>}
-							{rec.provider && <span>{rec.provider}</span>}
-						</div>
+		<div className="recorder-scene recorder-scene--page">
+			<Starfield />
+			<div className="recorder-page recorder-page--over">
+				<div className="vp-page-head">
+					<div>
+						<PvButton
+							size="sm"
+							variant="ghost"
+							onClick={() => navigate("/recorder/sessions")}
+						>
+							← Sessions
+						</PvButton>
+						<h1 className="vp-page-title" style={{ marginTop: 10 }}>
+							{rec?.title || (isLoading ? "Loading…" : "Untitled recording")}
+						</h1>
+						{rec && (
+							<div className="recorder-item-meta" style={{ marginTop: 8 }}>
+								<span className={`vp-tag ${STATUS_TAG[rec.status] || ""}`}>
+									{rec.status}
+								</span>
+								<span>{formatDateTime(rec.created_at).date}</span>
+								{rec.duration_secs > 0 && (
+									<span>{Math.round(rec.duration_secs / 60)} min</span>
+								)}
+								{rec.word_count > 0 && <span>{rec.word_count} words</span>}
+								{rec.provider && <span>{rec.provider}</span>}
+							</div>
+						)}
+					</div>
+					{rec?.final_note_id && (
+						<PvButton
+							onClick={() => navigate(`/notes/${rec.final_note_id}`)}
+						>
+							Open summary note
+						</PvButton>
 					)}
 				</div>
-				{rec?.final_note_id && (
-					<PvButton onClick={() => navigate(`/notes/${rec.final_note_id}`)}>
-						Open summary note
-					</PvButton>
+
+				{rec?.status === "failed" && rec.error && (
+					<PvPanel title="error">
+						<p className="recorder-item-error" style={{ margin: 0 }}>
+							{rec.error}
+						</p>
+					</PvPanel>
 				)}
+
+				{rec?.running_summary && (
+					<PvPanel title="summary">
+						<p className="recorder-detail-summary">{rec.running_summary}</p>
+					</PvPanel>
+				)}
+
+				<PvPanel title="transcript">
+					{trLoading ? (
+						<p className="vp-muted vp-text">Loading transcript…</p>
+					) : segments.length === 0 ? (
+						<p className="vp-muted vp-text">
+							{transcript?.ready === false
+								? "Transcript not available yet — it's saved when the recording finishes."
+								: "No transcript text."}
+						</p>
+					) : (
+						<div className="recorder-transcript">
+							{segments.map((seg) => (
+								<div
+									key={`${seg.t}-${seg.end}-${seg.text}`}
+									className="recorder-seg"
+								>
+									<span className="recorder-seg-time">{fmtClock(seg.t)}</span>
+									{seg.speaker && (
+										<span className="recorder-seg-speaker">{seg.speaker}</span>
+									)}
+									<span className="recorder-seg-text">{seg.text}</span>
+								</div>
+							))}
+						</div>
+					)}
+				</PvPanel>
 			</div>
-
-			{rec?.status === "failed" && rec.error && (
-				<PvPanel title="error">
-					<p className="recorder-item-error" style={{ margin: 0 }}>
-						{rec.error}
-					</p>
-				</PvPanel>
-			)}
-
-			{rec?.running_summary && (
-				<PvPanel title="summary">
-					<p className="recorder-detail-summary">{rec.running_summary}</p>
-				</PvPanel>
-			)}
-
-			<PvPanel title="transcript">
-				{trLoading ? (
-					<p className="vp-muted vp-text">Loading transcript…</p>
-				) : segments.length === 0 ? (
-					<p className="vp-muted vp-text">
-						{transcript?.ready === false
-							? "Transcript not available yet — it's saved when the recording finishes."
-							: "No transcript text."}
-					</p>
-				) : (
-					<div className="recorder-transcript">
-						{segments.map((seg) => (
-							<div
-								key={`${seg.t}-${seg.end}-${seg.text}`}
-								className="recorder-seg"
-							>
-								<span className="recorder-seg-time">{fmtClock(seg.t)}</span>
-								{seg.speaker && (
-									<span className="recorder-seg-speaker">{seg.speaker}</span>
-								)}
-								<span className="recorder-seg-text">{seg.text}</span>
-							</div>
-						))}
-					</div>
-				)}
-			</PvPanel>
 		</div>
 	);
 }

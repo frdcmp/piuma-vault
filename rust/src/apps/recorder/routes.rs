@@ -3,11 +3,12 @@ use actix_web::web;
 use super::{handlers, ws};
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::resource("/recorder/sessions")
-            .route(web::get().to(handlers::list_sessions))
-            .route(web::post().to(handlers::create_session)),
-    )
+    cfg.service(web::resource("/recorder/usage").route(web::get().to(handlers::usage)))
+        .service(
+            web::resource("/recorder/sessions")
+                .route(web::get().to(handlers::list_sessions))
+                .route(web::post().to(handlers::create_session)),
+        )
     // WS upgrade — registered before `/sessions/{id}` so "ws" isn't read as part
     // of the id path.
     .service(

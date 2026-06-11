@@ -1,8 +1,12 @@
 import { useNavigate } from "react-router-dom";
-import { useDeleteRecording, useRecordings } from "../../../queries";
+import {
+	useDeleteRecording,
+	useRecorderUsage,
+	useRecordings,
+} from "../../../queries";
 import { formatDateTime } from "../../../utils/dateTime";
 import Starfield from "../../components/notes/Starfield";
-import { PvButton } from "../../components/ui";
+import { PvButton, PvPanel } from "../../components/ui";
 import "../../vault-pixel.css";
 import "./recorder.css";
 
@@ -15,6 +19,57 @@ const STATUS_TAG = {
 	done: "vp-tag--green",
 	failed: "vp-tag--red",
 };
+
+const fmtDur = (sec) => {
+	const m = Math.round(sec / 60);
+	const h = Math.floor(m / 60);
+	return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
+};
+
+// This-month transcription usage per provider, with a gauge against the
+// provider's free-tier cap (Speechmatics 40h/mo).
+function UsagePanel() {
+	const { data } = useRecorderUsage();
+	const months = data?.months || [];
+	const freeHours = data?.free_hours || {};
+	if (months.length === 0) return null;
+
+	// Months come newest-first; show the most recent one present.
+	const latest = months[0].month;
+	const current = months.filter((m) => m.month === latest);
+
+	return (
+		<PvPanel title={`usage · ${latest}`}>
+			<div className="recorder-usage">
+				{current.map((row) => {
+					const hours = row.seconds / 3600;
+					const cap = freeHours[row.provider];
+					const pct = cap ? Math.min(100, (hours / cap) * 100) : 0;
+					const over = cap && hours > cap;
+					return (
+						<div key={row.provider} className="recorder-usage-row">
+							<div className="recorder-usage-head">
+								<span className="recorder-usage-name">{row.provider}</span>
+								<span className="recorder-usage-val">
+									{fmtDur(row.seconds)}
+									{cap ? ` / ${cap}h free` : ""} · {row.sessions} rec
+								</span>
+							</div>
+							{cap > 0 && (
+								<div className="recorder-usage-bar">
+									<div
+										className={`recorder-usage-fill${over ? " is-over" : ""}`}
+										style={{ width: `${pct}%` }}
+									/>
+								</div>
+							)}
+						</div>
+					);
+				})}
+			</div>
+		</PvPanel>
+	);
+}
 
 export default function RecorderSessionsPage() {
 	const navigate = useNavigate();
@@ -43,6 +98,8 @@ export default function RecorderSessionsPage() {
 					</div>
 				</div>
 
+				<UsagePanel />
+
 				{isLoading ? (
 					<p className="vp-muted vp-text">Loading…</p>
 				) : recordings.length === 0 ? (
@@ -60,7 +117,7 @@ export default function RecorderSessionsPage() {
 											<button
 												type="button"
 												className="recorder-item-link"
-												onClick={() => navigate(`/recorder/${r.id}`)}
+												onClick={() => navigate(`/recorder/sessions/${r.id}`)}
 											>
 												{r.title || "Untitled recording"}
 											</button>

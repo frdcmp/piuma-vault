@@ -64,6 +64,44 @@ pub async fn complete(
     }
 }
 
+/// Like `complete`, but also returns `(tokens_in, tokens_out)` so callers can
+/// log to the token-usage ledger. Exact for the OpenAI-compatible providers
+/// (counts from the response `usage` block); for Anthropic/Gemini it falls back
+/// to a rough char/4 estimate (their `complete` doesn't surface usage here).
+pub async fn complete_usage(
+    kind: &str,
+    api_key: &str,
+    base_url: Option<&str>,
+    model: &str,
+    messages: &[Value],
+    max_tokens: u32,
+) -> Result<(String, i32, i32), String> {
+    match kind {
+        "openai" => openai::complete_usage(api_key, base_url, model, messages, max_tokens).await,
+        "minimax" => minimax::complete_usage(api_key, base_url, model, messages, max_tokens).await,
+        "anthropic" | "gemini" => {
+            let text = complete(kind, api_key, base_url, model, messages, max_tokens).await?;
+            let (tin, tout) = (estimate_tokens(messages), estimate_str(&text));
+            Ok((text, tin, tout))
+        }
+        _ => deepseek::complete_usage(api_key, base_url, model, messages, max_tokens).await,
+    }
+}
+
+/// Rough token estimate (~4 chars/token) over a message array's string content.
+fn estimate_tokens(messages: &[Value]) -> i32 {
+    let chars: usize = messages
+        .iter()
+        .filter_map(|m| m.get("content").and_then(|c| c.as_str()))
+        .map(|s| s.chars().count())
+        .sum();
+    (chars / 4) as i32
+}
+
+fn estimate_str(s: &str) -> i32 {
+    (s.chars().count() / 4) as i32
+}
+
 /// One streaming model round. `messages`/`tools` are OpenAI-shaped JSON; the
 /// Anthropic and Gemini adapters translate them internally.
 pub async fn call(

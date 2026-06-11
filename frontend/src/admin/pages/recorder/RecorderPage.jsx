@@ -164,6 +164,8 @@ export default function RecorderPage() {
 	// `session` must carry { ws_path, sample_rate }.
 	const beginCapture = useCallback(
 		async (session) => {
+			// Hand the mic over from the idle monitor to the capture graph.
+			stopMonitor();
 			let stream;
 			try {
 				stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -265,7 +267,7 @@ export default function RecorderPage() {
 				if (phaseRef.current !== "summarising") cleanupAfterStop();
 			};
 		},
-		[navigate, teardownAudio, cleanupAfterStop],
+		[navigate, teardownAudio, cleanupAfterStop, stopMonitor],
 	);
 
 	// New recording: create a session, then capture into it.
@@ -336,18 +338,18 @@ export default function RecorderPage() {
 
 				{phase !== "idle" && lines.length > 0 && (
 					<div className="recorder-term">
-						{lines.map((ln, i) => (
-							<div
-								key={ln.id}
-								className="recorder-term-line"
-								style={{ "--term-i": lines.length - 1 - i }}
-							>
-								<span className="recorder-term-caret">›</span> {ln.text}
-								{i === lines.length - 1 && (
-									<span className="recorder-term-cursor">▋</span>
-								)}
-							</div>
-						))}
+						{lines.map((ln, i) => {
+							const latest = i === lines.length - 1;
+							return (
+								<div
+									key={ln.id}
+									className={`recorder-term-line${latest ? " is-latest" : ""}`}
+								>
+									<span className="recorder-term-caret">›</span> {ln.text}
+									{latest && <span className="recorder-term-cursor">▋</span>}
+								</div>
+							);
+						})}
 					</div>
 				)}
 			</div>

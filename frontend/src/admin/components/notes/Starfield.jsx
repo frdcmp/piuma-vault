@@ -23,6 +23,12 @@ const DRIFT_SEC = { 1: 95, 2: 62, 3: 40 };
 // Deep-sky objects sit "furthest away" → drift slowest of all.
 const DEEP_DRIFT_SEC = 140;
 
+// Comets streak across occasionally. Tunables:
+const COMET_MAX = 2; // most comets on screen at once
+const COMET_SPEED = { min: 280, max: 460 }; // px/sec along their path
+const COMET_TAIL = { min: 8, max: 16 }; // tail length in head-steps
+const COMET_GAP_SEC = { min: 6, max: 16 }; // delay between spawns
+
 // Tiny pixel-art moon (mirrors the mobile starfield).
 const MOON = [
 	"..####..",
@@ -92,6 +98,8 @@ export default function Starfield() {
 
 		let stars = [];
 		let objects = [];
+		let comets = [];
+		let cometTimer = 0;
 		let width = 0;
 		let height = 0;
 		let moonX = 0;
@@ -99,6 +107,27 @@ export default function Starfield() {
 		let raf = 0;
 		let last = performance.now();
 		let elapsed = 0;
+
+		const rangeRand = (lo, hi) => lo + Math.random() * (hi - lo);
+
+		// Spawn a comet entering from a random point along the top/left edges,
+		// heading down-right at a shallow angle. Head is a bright block trailing
+		// a tapering pixel tail.
+		const spawnComet = () => {
+			const fromLeft = Math.random() < 0.5;
+			const x = fromLeft ? -20 : Math.random() * width * 0.7;
+			const y = fromLeft ? Math.random() * height * 0.5 : -20;
+			const angle = rangeRand(Math.PI * 0.18, Math.PI * 0.32); // down-right
+			const speed = rangeRand(COMET_SPEED.min, COMET_SPEED.max);
+			comets.push({
+				x,
+				y,
+				vx: Math.cos(angle) * speed,
+				vy: Math.sin(angle) * speed,
+				tail: Math.round(rangeRand(COMET_TAIL.min, COMET_TAIL.max)),
+				size: Math.random() > 0.6 ? 2 : 1,
+			});
+		};
 
 		const build = () => {
 			const rect = canvas.getBoundingClientRect();
@@ -149,6 +178,9 @@ export default function Starfield() {
 				}
 			}
 
+			comets = [];
+			cometTimer = rangeRand(COMET_GAP_SEC.min, COMET_GAP_SEC.max);
+
 			moonX = Math.floor(width * 0.78);
 			moonY = Math.floor(height * 0.18);
 		};
@@ -166,6 +198,28 @@ export default function Starfield() {
 					ctx.fillRect(px + c * scale, py + r * scale, scale, scale);
 				}
 			}
+		};
+
+		// A comet: bright head plus a tail of squares fading along its wake.
+		const drawComet = (cm) => {
+			const len = Math.hypot(cm.vx, cm.vy) || 1;
+			const ux = cm.vx / len;
+			const uy = cm.vy / len;
+			const step = cm.size + 1;
+			for (let i = cm.tail; i >= 1; i--) {
+				const a = (1 - i / (cm.tail + 1)) * 0.55;
+				if (a <= 0) continue;
+				ctx.globalAlpha = a;
+				ctx.fillStyle = textColor;
+				const tx = cm.x - ux * i * step;
+				const ty = cm.y - uy * i * step;
+				ctx.fillRect(Math.floor(tx), Math.floor(ty), cm.size, cm.size);
+			}
+			// Bright head sits on top.
+			ctx.globalAlpha = 1;
+			ctx.fillStyle = accent;
+			const hs = cm.size + 1;
+			ctx.fillRect(Math.floor(cm.x), Math.floor(cm.y), hs, hs);
 		};
 
 		const drawMoon = () => {
@@ -212,6 +266,24 @@ export default function Starfield() {
 				ctx.globalAlpha = st.bright ? 0.9 : 0.5;
 				ctx.fillStyle = st.bright ? accent : textColor;
 				ctx.fillRect(Math.floor(st.x), Math.floor(st.y), st.size, st.size);
+			}
+
+			// Comets: spawn on a timer, fly across, drop once fully off-screen.
+			cometTimer -= dt;
+			if (cometTimer <= 0 && comets.length < COMET_MAX) {
+				spawnComet();
+				cometTimer = rangeRand(COMET_GAP_SEC.min, COMET_GAP_SEC.max);
+			}
+			for (let i = comets.length - 1; i >= 0; i--) {
+				const cm = comets[i];
+				cm.x += cm.vx * dt;
+				cm.y += cm.vy * dt;
+				const margin = (cm.tail + 2) * (cm.size + 1);
+				if (cm.x - margin > width || cm.y - margin > height) {
+					comets.splice(i, 1);
+					continue;
+				}
+				drawComet(cm);
 			}
 
 			if (SHOW_MOON) drawMoon();
