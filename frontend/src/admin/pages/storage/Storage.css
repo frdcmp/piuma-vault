@@ -6,6 +6,63 @@
  * preview) live here.
  */
 
+/* ── Tasks-style page chrome (StorageExplorer) ─────────────────── */
+/* Storage reuses the Tasks page header/sidebar/panel framing (.tasks-page,
+   .tasks-header, .tasks-sidebar, .tasks-panel) but keeps a full-height,
+   internally-scrolling body the way a file browser should. */
+.storage-page {
+	/* The tree + grid manage their own scroll; the page itself doesn't scroll. */
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+.storage-cols {
+	flex: 1;
+	min-height: 0;
+	grid-template-columns: 280px 1fr;
+	align-items: stretch;
+}
+
+@media (max-width: 720px) {
+	.storage-cols {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* Framed tree sidebar: the head stays put, the tree scrolls within it. */
+.storage-tree-sidebar {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.storage-tree-scroll {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	margin-top: 8px;
+}
+
+/* Neutralize the notes sidebar's own height/scroll/background so the tree flows
+   inside the framed panel instead. */
+.storage-tree-scroll .notes-sidebar-container,
+.storage-tree-scroll .notes-sidebar-tree {
+	height: auto;
+	overflow: visible;
+	background: none;
+}
+
+/* The contents panel holds StorageGrid, which owns its padding + scroll. */
+.storage-panel {
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	overflow: hidden;
+}
+
 .storage-main {
 	flex: 1;
 	min-width: 0;

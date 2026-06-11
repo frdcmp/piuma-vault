@@ -92,6 +92,7 @@ export default function StorageGrid({ prefix, onNavigate }) {
 	const selectOne = useStorageWorkspace((s) => s.selectOne);
 	const toggleOne = useStorageWorkspace((s) => s.toggle);
 	const clearSelection = useStorageWorkspace((s) => s.clearSelection);
+	const setActions = useStorageWorkspace((s) => s.setActions);
 	const [dragOver, setDragOver] = useState(false);
 	// Folder key currently being hovered with a drag, so its tile can highlight.
 	const [dragFolder, setDragFolder] = useState(null);
@@ -503,6 +504,16 @@ export default function StorageGrid({ prefix, onNavigate }) {
 
 	// ── Empty-space (background) context menu ────────────────────
 	const openFilePicker = () => fileInputRef.current?.click();
+
+	// Expose the new-folder + upload flows to the page header (StorageExplorer)
+	// via the shared store. The setter and ref are stable, so register once.
+	useEffect(() => {
+		setActions({
+			newFolder: () => setNewFolderOpen(true),
+			upload: () => fileInputRef.current?.click(),
+		});
+		return () => setActions(null);
+	}, [setActions]);
 
 	const selectAll = () =>
 		setSelection([...folders, ...files.map((f) => f.key)]);
