@@ -34,13 +34,15 @@
 	color: var(--vp-accent);
 }
 
-/* Nav sits just after the brand; actions are pushed to the far right. */
+/* Nav fills remaining space and centres its content. */
 .ws-header-nav {
+	flex: 1;
+	display: flex;
+	justify-content: center;
 	gap: 14px;
 }
 
 .ws-header-actions {
-	margin-left: auto;
 	display: flex;
 	align-items: center;
 	gap: 8px;
