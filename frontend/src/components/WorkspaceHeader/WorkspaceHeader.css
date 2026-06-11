@@ -36,7 +36,7 @@
 
 /* Nav sits just after the brand; actions are pushed to the far right. */
 .ws-header-nav {
-	gap: 2px;
+	gap: 14px;
 }
 
 .ws-header-actions {

@@ -15,10 +15,11 @@
 	--accent-3: #ff6b6b;
 	--accent-4: #6cb6ff;
 
-	/* Fills the flex row beside the chat dock and scrolls internally. */
+	/* Fills the flex row beside the chat dock (already sized to the viewport
+	   minus the WorkspaceHeader) and scrolls internally. */
 	flex: 1;
 	min-width: 0;
-	height: 100vh;
+	height: 100%;
 	overflow-y: auto;
 	background: var(--bg);
 	color: var(--text);

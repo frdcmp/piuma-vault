@@ -30,6 +30,7 @@ import TasksPage from "./admin/pages/tasks/TasksPage";
 import TokenUsage from "./admin/pages/token-usage/TokenUsage";
 import TrashPage from "./admin/pages/trash";
 import { queryClient } from "./api/queryClient";
+import WorkspaceLayout from "./chat/WorkspaceLayout";
 import PixelLoader from "./components/PixelLoader";
 import { ScreenLockGate } from "./components/screenLock";
 import SharedFolderPage from "./share/SharedFolderPage";
@@ -47,16 +48,58 @@ function AppContent() {
 			future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
 		>
 			<Routes>
-				{/* Vault (notes) — served at /notes */}
+				{/* Workspace pages (Notes, Storage, Tasks, Calendar) share ONE
+				    persistent shell, so the WorkspaceHeader + ChatDock stay mounted and
+				    the chat (incl. a live stream) survives navigation between them. The
+				    shell is auth-gated; admin-only pages add their own admin_access check. */}
 				<Route
-					path="/notes"
 					element={
-						<ProtectedRoute requiredPermission="admin_access">
-							<NotesLayout />
+						<ProtectedRoute requiredPermission={null}>
+							<WorkspaceLayout />
 						</ProtectedRoute>
 					}
 				>
-					<Route path=":id" element={<NoteEditor />} />
+					{/* Vault (notes) — served at /notes */}
+					<Route
+						path="/notes"
+						element={
+							<ProtectedRoute requiredPermission="admin_access">
+								<NotesLayout />
+							</ProtectedRoute>
+						}
+					>
+						<Route path=":id" element={<NoteEditor />} />
+					</Route>
+
+					{/* Storage explorer */}
+					<Route
+						path="/storage"
+						element={
+							<ProtectedRoute requiredPermission={null}>
+								<StorageExplorer />
+							</ProtectedRoute>
+						}
+					/>
+
+					{/* Tasks */}
+					<Route
+						path="/tasks"
+						element={
+							<ProtectedRoute requiredPermission={null}>
+								<TasksPage />
+							</ProtectedRoute>
+						}
+					/>
+
+					{/* Calendar */}
+					<Route
+						path="/calendar"
+						element={
+							<ProtectedRoute requiredPermission="admin_access">
+								<CalendarPage />
+							</ProtectedRoute>
+						}
+					/>
 				</Route>
 
 				{/* App root redirects to the notes vault */}
@@ -128,40 +171,13 @@ function AppContent() {
 					element={<Navigate to="/notes" replace />}
 				/>
 
-				{/* Storage explorer — top-level, auth-only (standalone pixel layout) */}
-				<Route
-					path="/storage"
-					element={
-						<ProtectedRoute requiredPermission={null}>
-							<StorageExplorer />
-						</ProtectedRoute>
-					}
-				/>
+				{/* Legacy /admin/* aliases for the workspace pages (now served under
+				    the shared WorkspaceLayout above). */}
 				<Route
 					path="/admin/storage"
 					element={<Navigate to="/storage" replace />}
 				/>
-
-				{/* Tasks — top-level, auth-only (standalone pixel layout) */}
-				<Route
-					path="/tasks"
-					element={
-						<ProtectedRoute requiredPermission={null}>
-							<TasksPage />
-						</ProtectedRoute>
-					}
-				/>
 				<Route path="/admin/tasks" element={<Navigate to="/tasks" replace />} />
-
-				{/* Calendar (standalone pixel layout, like Storage) */}
-				<Route
-					path="/calendar"
-					element={
-						<ProtectedRoute requiredPermission="admin_access">
-							<CalendarPage />
-						</ProtectedRoute>
-					}
-				/>
 				<Route
 					path="/admin/calendar"
 					element={<Navigate to="/calendar" replace />}

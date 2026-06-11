@@ -8,7 +8,6 @@ import {
 	useState,
 } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import WorkspaceShell from "../../../chat/WorkspaceShell";
 import {
 	BucketTagFilter,
 	ManageBucketsModal,
@@ -279,137 +278,135 @@ export default function CalendarPage() {
 	};
 
 	return (
-		<WorkspaceShell>
-			<div className="cal-page">
-				<header className="cal-header">
-					<div className="cal-title">
-						<PvButton onClick={() => navigate("/notes")} variant="ghost">
-							‹ home
-						</PvButton>
-						<span className="cal-glyph" aria-hidden="true">
-							▤
-						</span>
-						<h1>{visibleLabel}</h1>
-					</div>
-					<div className="cal-nav">
-						<span ref={tagsBtnRef} className="cal-tags-anchor">
-							{sel.key === "all" ? (
-								<PvButton
-									variant="ghost"
-									onClick={() => setFilterOpen((o) => !o)}
-								>
-									tags ▾
-								</PvButton>
-							) : (
-								<PvTag
-									color={sel.names?.[0] ? tagColorOf(sel.names[0]) : undefined}
-									onClick={() => setFilterOpen((o) => !o)}
-									onRemove={() => setSel(ALL)}
-									removeLabel="Clear filter"
-								>
-									{sel.label}
-								</PvTag>
-							)}
-						</span>
-						<PvButton onClick={scrollToToday}>today</PvButton>
-						<PvButton
-							variant="accent"
-							onClick={() => setModal({ date: dayjs() })}
-						>
-							+ event
-						</PvButton>
-					</div>
-				</header>
+		<div className="cal-page">
+			<header className="cal-header">
+				<div className="cal-title">
+					<PvButton onClick={() => navigate("/notes")} variant="ghost">
+						‹ home
+					</PvButton>
+					<span className="cal-glyph" aria-hidden="true">
+						▤
+					</span>
+					<h1>{visibleLabel}</h1>
+				</div>
+				<div className="cal-nav">
+					<span ref={tagsBtnRef} className="cal-tags-anchor">
+						{sel.key === "all" ? (
+							<PvButton
+								variant="ghost"
+								onClick={() => setFilterOpen((o) => !o)}
+							>
+								tags ▾
+							</PvButton>
+						) : (
+							<PvTag
+								color={sel.names?.[0] ? tagColorOf(sel.names[0]) : undefined}
+								onClick={() => setFilterOpen((o) => !o)}
+								onRemove={() => setSel(ALL)}
+								removeLabel="Clear filter"
+							>
+								{sel.label}
+							</PvTag>
+						)}
+					</span>
+					<PvButton onClick={scrollToToday}>today</PvButton>
+					<PvButton
+						variant="accent"
+						onClick={() => setModal({ date: dayjs() })}
+					>
+						+ event
+					</PvButton>
+				</div>
+			</header>
 
-				<PvPopover
-					open={filterOpen}
-					anchorRef={tagsBtnRef}
-					align="end"
-					width={300}
-					className="cal-filter-popover"
-					onClose={() => setFilterOpen(false)}
-				>
-					<div className="cal-filter-head">
-						<button
-							type="button"
-							className="tasks-manage-btn"
-							onClick={() => {
-								setFilterOpen(false);
-								setManageOpen(true);
-							}}
-						>
-							⚙ manage
-						</button>
-						<button
-							type="button"
-							className="tasks-manage-btn"
-							onClick={() => setFilterOpen(false)}
-						>
-							close ✕
-						</button>
-					</div>
-					<BucketTagFilter
-						scope="calendar"
-						items={[...events, ...tasks, ...recurring]}
-						selectedKey={sel.key}
-						onSelect={(s) => {
-							setSel(s);
+			<PvPopover
+				open={filterOpen}
+				anchorRef={tagsBtnRef}
+				align="end"
+				width={300}
+				className="cal-filter-popover"
+				onClose={() => setFilterOpen(false)}
+			>
+				<div className="cal-filter-head">
+					<button
+						type="button"
+						className="tasks-manage-btn"
+						onClick={() => {
 							setFilterOpen(false);
+							setManageOpen(true);
 						}}
-					/>
-				</PvPopover>
-
-				<div className="cal-weekdays">
-					{WEEKDAYS.map((w) => (
-						<div key={w} className="cal-weekday">
-							{w}
-						</div>
-					))}
+					>
+						⚙ manage
+					</button>
+					<button
+						type="button"
+						className="tasks-manage-btn"
+						onClick={() => setFilterOpen(false)}
+					>
+						close ✕
+					</button>
 				</div>
+				<BucketTagFilter
+					scope="calendar"
+					items={[...events, ...tasks, ...recurring]}
+					selectedKey={sel.key}
+					onSelect={(s) => {
+						setSel(s);
+						setFilterOpen(false);
+					}}
+				/>
+			</PvPopover>
 
-				<div className="cal-scroll" ref={scrollRef} onScroll={onScroll}>
-					{months.map((m) => (
-						<MonthBlock
-							key={m.format("YYYY-MM")}
-							ref={m.isSame(base, "month") ? todayBlockRef : undefined}
-							month={m}
-							byDay={byDay}
-							keyOf={KEY}
-							onEventClick={(ev) => setModal({ event: ev })}
-							onDayClick={(d) => setModal({ date: d })}
-							onDeadlineClick={(t) => setTaskModal({ task: t })}
-							onOccurrenceClick={(occ) =>
-								setRecModal({ recurring: occ.template })
-							}
-							onToggleDeadline={(t) => toggleTask.mutate(t.id)}
-							onToggleOccurrence={onToggleOccurrence}
-						/>
-					))}
-				</div>
-
-				{modal ? (
-					<EventModal
-						event={modal.event}
-						initialDate={modal.date}
-						onClose={() => {
-							setModal(null);
-							clearEventParam();
-						}}
-					/>
-				) : null}
-				{taskModal ? (
-					<TaskModal task={taskModal.task} onClose={() => setTaskModal(null)} />
-				) : null}
-				{recModal ? (
-					<RecurringTaskModal
-						recurring={recModal.recurring}
-						onClose={() => setRecModal(null)}
-					/>
-				) : null}
-				{manageOpen ? (
-					<ManageBucketsModal onClose={() => setManageOpen(false)} />
-				) : null}
+			<div className="cal-weekdays">
+				{WEEKDAYS.map((w) => (
+					<div key={w} className="cal-weekday">
+						{w}
+					</div>
+				))}
 			</div>
-		</WorkspaceShell>
+
+			<div className="cal-scroll" ref={scrollRef} onScroll={onScroll}>
+				{months.map((m) => (
+					<MonthBlock
+						key={m.format("YYYY-MM")}
+						ref={m.isSame(base, "month") ? todayBlockRef : undefined}
+						month={m}
+						byDay={byDay}
+						keyOf={KEY}
+						onEventClick={(ev) => setModal({ event: ev })}
+						onDayClick={(d) => setModal({ date: d })}
+						onDeadlineClick={(t) => setTaskModal({ task: t })}
+						onOccurrenceClick={(occ) =>
+							setRecModal({ recurring: occ.template })
+						}
+						onToggleDeadline={(t) => toggleTask.mutate(t.id)}
+						onToggleOccurrence={onToggleOccurrence}
+					/>
+				))}
+			</div>
+
+			{modal ? (
+				<EventModal
+					event={modal.event}
+					initialDate={modal.date}
+					onClose={() => {
+						setModal(null);
+						clearEventParam();
+					}}
+				/>
+			) : null}
+			{taskModal ? (
+				<TaskModal task={taskModal.task} onClose={() => setTaskModal(null)} />
+			) : null}
+			{recModal ? (
+				<RecurringTaskModal
+					recurring={recModal.recurring}
+					onClose={() => setRecModal(null)}
+				/>
+			) : null}
+			{manageOpen ? (
+				<ManageBucketsModal onClose={() => setManageOpen(false)} />
+			) : null}
+		</div>
 	);
 }

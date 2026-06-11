@@ -129,7 +129,7 @@
 	align-items: center;
 	justify-content: center;
 	width: 28px;
-	height: 28px;
+	height: 30px;
 	font-size: 14px;
 	font-weight: bold;
 }
@@ -752,6 +752,17 @@
 
 .pixel-btn.icon-only {
 	padding: 4px;
+}
+
+/* The share trigger renders as a generic .pixel-btn; pin it to the same
+   30×30 box (and drop its drop-shadow) as the other control buttons so the
+   top-bar controls row aligns vertically. */
+.note-controls .pixel-btn.icon-only {
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	box-shadow: none;
+	justify-content: center;
 }
 
 .pixel-input {

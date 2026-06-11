@@ -15,7 +15,7 @@
 	--accent-3: #ff6b6b;
 	--accent-4: #6cb6ff;
 
-	height: 100vh;
+	height: 100%;
 	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;

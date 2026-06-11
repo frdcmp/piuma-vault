@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import WorkspaceShell from "../../../chat/WorkspaceShell";
 import { useStorageWorkspace } from "../../../store/storageWorkspaceStore";
 import { PvButton } from "../../components/ui";
 import "../tasks/Tasks.css";
@@ -84,61 +83,56 @@ export default function StorageExplorer() {
 	}, [prefix]);
 
 	return (
-		<WorkspaceShell>
-			<div className="tasks-page storage-page">
-				<header className="tasks-header">
-					<div className="tasks-title">
-						<PvButton variant="ghost" onClick={() => navigate("/notes")}>
-							‹ home
-						</PvButton>
-						<span className="tasks-glyph" aria-hidden="true">
-							▦
-						</span>
-						<h1>Storage</h1>
-					</div>
-					<div className="tasks-actions">
-						<PvButton
-							variant="ghost"
-							onClick={() => actions?.newFolder?.()}
-						>
-							+ folder
-						</PvButton>
-						<PvButton variant="accent" onClick={() => actions?.upload?.()}>
-							+ upload
-						</PvButton>
-					</div>
-				</header>
-
-				<div className="tasks-body storage-cols">
-					<aside className="tasks-sidebar storage-tree-sidebar">
-						<div className="tasks-sidebar-head">
-							<h2 className="tasks-panel-title">Files</h2>
-							<button
-								type="button"
-								className="tasks-manage-btn"
-								onClick={() => navigate(-1)}
-							>
-								◀ back
-							</button>
-						</div>
-						<div className="storage-tree-scroll">
-							<StorageTree
-								embedded
-								currentPrefix={prefix}
-								onNavigate={handleNavigate}
-								onSelectFile={handleSelectFile}
-								expanded={expanded}
-								toggleExpand={toggleExpand}
-								onBack={() => navigate(-1)}
-							/>
-						</div>
-					</aside>
-
-					<section className="tasks-panel storage-panel">
-						<StorageGrid prefix={prefix} onNavigate={handleNavigate} />
-					</section>
+		<div className="tasks-page storage-page">
+			<header className="tasks-header">
+				<div className="tasks-title">
+					<PvButton variant="ghost" onClick={() => navigate("/notes")}>
+						‹ home
+					</PvButton>
+					<span className="tasks-glyph" aria-hidden="true">
+						▦
+					</span>
+					<h1>Storage</h1>
 				</div>
+				<div className="tasks-actions">
+					<PvButton variant="ghost" onClick={() => actions?.newFolder?.()}>
+						+ folder
+					</PvButton>
+					<PvButton variant="accent" onClick={() => actions?.upload?.()}>
+						+ upload
+					</PvButton>
+				</div>
+			</header>
+
+			<div className="tasks-body storage-cols">
+				<aside className="tasks-sidebar storage-tree-sidebar">
+					<div className="tasks-sidebar-head">
+						<h2 className="tasks-panel-title">Files</h2>
+						<button
+							type="button"
+							className="tasks-manage-btn"
+							onClick={() => navigate(-1)}
+						>
+							◀ back
+						</button>
+					</div>
+					<div className="storage-tree-scroll">
+						<StorageTree
+							embedded
+							currentPrefix={prefix}
+							onNavigate={handleNavigate}
+							onSelectFile={handleSelectFile}
+							expanded={expanded}
+							toggleExpand={toggleExpand}
+							onBack={() => navigate(-1)}
+						/>
+					</div>
+				</aside>
+
+				<section className="tasks-panel storage-panel">
+					<StorageGrid prefix={prefix} onNavigate={handleNavigate} />
+				</section>
 			</div>
-		</WorkspaceShell>
+		</div>
 	);
 }
