@@ -33,3 +33,12 @@ export const setActiveSprite = async (key) => {
 	const { data } = await axiosInstance.put("/admin/sprites/active", { key });
 	return data;
 };
+
+// AI-generate a sprite definition from a prompt. Returns { definition } —
+// unsaved, for the editor to load so the admin can review/tweak before saving.
+export const generateSprite = async (prompt) => {
+	const { data } = await axiosInstance.post("/admin/sprites/generate", {
+		prompt,
+	});
+	return data;
+};

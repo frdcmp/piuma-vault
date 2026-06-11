@@ -1,6 +1,7 @@
+use super::generate;
 use super::models::{
-    ActiveSpriteResponse, CreateSpriteRequest, ErrorResponse, SetActiveRequest, SpriteResponse,
-    SpriteRow, UpdateSpriteRequest,
+    ActiveSpriteResponse, CreateSpriteRequest, ErrorResponse, GenerateSpriteRequest,
+    GenerateSpriteResponse, SetActiveRequest, SpriteResponse, SpriteRow, UpdateSpriteRequest,
 };
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
@@ -99,6 +100,22 @@ pub async fn list_sprites(user: AuthenticatedUser, pool: web::Data<DbPool>) -> i
             HttpResponse::Ok().json(out)
         }
         Err(e) => server_error(e, "list sprites"),
+    }
+}
+
+// ── Admin: AI generate (returns an unsaved definition for the editor) ──
+
+pub async fn generate_sprite(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    body: web::Json<GenerateSpriteRequest>,
+) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden();
+    }
+    match generate::generate_sprite(pool.get_ref(), &body.prompt).await {
+        Ok(definition) => HttpResponse::Ok().json(GenerateSpriteResponse { definition }),
+        Err(e) => HttpResponse::BadRequest().json(ErrorResponse { error: e }),
     }
 }
 

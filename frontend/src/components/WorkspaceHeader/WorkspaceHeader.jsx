@@ -29,9 +29,9 @@ export default function WorkspaceHeader() {
 				<button
 					type="button"
 					className="vp-icon-btn"
-					title="Settings"
-					aria-label="Settings"
-					onClick={() => navigate("/admin/security")}
+					title="Admin"
+					aria-label="Admin"
+					onClick={() => navigate("/admin")}
 				>
 					<SettingOutlined />
 				</button>

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createSprite,
 	deleteSprite,
+	generateSprite,
 	getActiveSprite,
 	listSprites,
 	setActiveSprite,
@@ -61,3 +62,8 @@ export const useSetActiveSprite = () => {
 		onSuccess: () => invalidateAll(qc),
 	});
 };
+
+// AI generation returns an unsaved definition — no cache invalidation; the
+// caller loads the result into the editor.
+export const useGenerateSprite = () =>
+	useMutation({ mutationFn: generateSprite });

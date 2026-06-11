@@ -91,6 +91,15 @@
 	letter-spacing: 1px;
 	color: var(--vp-muted);
 }
+/* AI-generate bar: prompt input + button, sits between meta and the editor. */
+.vp-sprite-ai {
+	display: flex;
+	gap: 8px;
+	align-items: stretch;
+}
+.vp-sprite-ai .vp-input {
+	flex: 1;
+}
 .vp-sprite-editor-grid {
 	display: grid;
 	grid-template-columns: auto 1fr;

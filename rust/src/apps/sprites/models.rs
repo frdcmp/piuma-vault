@@ -111,6 +111,17 @@ pub struct SetActiveRequest {
     pub key: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GenerateSpriteRequest {
+    pub prompt: String,
+}
+
+/// AI-generated definition, returned for review in the editor (not persisted).
+#[derive(Debug, Serialize)]
+pub struct GenerateSpriteResponse {
+    pub definition: SpriteDefinition,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
     pub error: String,
