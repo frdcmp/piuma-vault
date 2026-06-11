@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
-import WorkspaceShell from "../../../chat/WorkspaceShell";
 import { useNotesLiveUpdates } from "../../../queries/notesQuery";
 import useChatDockStore from "../../../store/chatDockStore";
 import useNoteControlsStore from "../../../store/noteControlsStore";
@@ -50,10 +49,9 @@ export default function NotesLayout() {
 	const controlsPresent = useNoteControlsStore((s) => s.present);
 
 	// Chat dock chrome lives in the shared store; the layout only needs `open`
-	// (mobile single-column gating) and `closeChat` (collapse after opening a
-	// note on mobile). Opening the chat is wired directly in the child controls.
+	// for mobile single-column gating. Opening the chat is wired directly in the
+	// child controls; the shared WorkspaceShell handles open-note-from-chat.
 	const chatOpen = useChatDockStore((s) => s.open);
-	const closeChat = useChatDockStore((s) => s.closeChat);
 
 	// When the content column is narrow (e.g. chat panel open), the top-bar
 	// controls collapse into a ⋯ overflow menu.
@@ -180,90 +178,81 @@ export default function NotesLayout() {
 	const showContent = (!isMobile || !isRoot) && !mobileChatOpen;
 
 	return (
-		<WorkspaceShell
-			onOpenNote={(noteId) => {
-				handleSelectNote(noteId);
-				// On mobile only one column shows at a time, so reveal the editor
-				// by closing the chat after navigating to the note.
-				if (isMobile) closeChat();
-			}}
-		>
-			<div className="notes-pixel-layout">
-				{showSidebar && (
-					<div
-						className={`notes-pixel-sidebar ${isMobile ? "mobile" : ""}`}
-						style={isMobile ? undefined : { width: sidebarWidth }}
-					>
-						<NotesListSidebar
-							selectedNoteId={activeNoteId}
-							onSelectNote={handleSelectNote}
-							onClose={isMobile ? () => setMobileShowEmpty(true) : undefined}
-						/>
-					</div>
-				)}
-
-				{mobileEmptyInline && (
-					<div className="notes-pixel-sidebar mobile">
-						<Home onBack={() => setMobileShowEmpty(false)} />
-					</div>
-				)}
-
-				{showSidebar && !isMobile && (
-					// biome-ignore lint/a11y/useSemanticElements: <hr> is not interactive; this is a draggable resizer
-					<div
-						className={`notes-sidebar-resizer ${isResizingSidebar ? "active" : ""}`}
-						onMouseDown={startSidebarResize}
-						onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
-						onKeyDown={(e) => {
-							const step = e.shiftKey ? 32 : 8;
-							if (e.key === "ArrowLeft")
-								setSidebarWidth((w) =>
-									clampWidth(w - step, SIDEBAR_MIN, SIDEBAR_MAX),
-								);
-							else if (e.key === "ArrowRight")
-								setSidebarWidth((w) =>
-									clampWidth(w + step, SIDEBAR_MIN, SIDEBAR_MAX),
-								);
-							else if (e.key === "Home") setSidebarWidth(SIDEBAR_MIN);
-							else if (e.key === "End") setSidebarWidth(SIDEBAR_MAX);
-							else return;
-							e.preventDefault();
-						}}
-						role="separator"
-						tabIndex={0}
-						aria-orientation="vertical"
-						aria-label="Resize sidebar"
-						aria-valuenow={sidebarWidth}
-						aria-valuemin={SIDEBAR_MIN}
-						aria-valuemax={SIDEBAR_MAX}
-						title="Drag to resize · double-click to reset"
+		<div className="notes-pixel-layout">
+			{showSidebar && (
+				<div
+					className={`notes-pixel-sidebar ${isMobile ? "mobile" : ""}`}
+					style={isMobile ? undefined : { width: sidebarWidth }}
+				>
+					<NotesListSidebar
+						selectedNoteId={activeNoteId}
+						onSelectNote={handleSelectNote}
+						onClose={isMobile ? () => setMobileShowEmpty(true) : undefined}
 					/>
-				)}
+				</div>
+			)}
 
-				{showContent && (
-					<div className="notes-pixel-content" ref={contentRef}>
-						{!isMobile && (tabs.length > 0 || controlsPresent) && (
-							<div className="note-topbar">
-								<NoteTabs
-									tabs={tabs}
-									activeId={activeNoteId}
-									onSelect={handleSelectNote}
-									onClose={handleCloseTab}
-									onPin={pinTab}
-									onReorder={reorderTabs}
+			{mobileEmptyInline && (
+				<div className="notes-pixel-sidebar mobile">
+					<Home onBack={() => setMobileShowEmpty(false)} />
+				</div>
+			)}
+
+			{showSidebar && !isMobile && (
+				// biome-ignore lint/a11y/useSemanticElements: <hr> is not interactive; this is a draggable resizer
+				<div
+					className={`notes-sidebar-resizer ${isResizingSidebar ? "active" : ""}`}
+					onMouseDown={startSidebarResize}
+					onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
+					onKeyDown={(e) => {
+						const step = e.shiftKey ? 32 : 8;
+						if (e.key === "ArrowLeft")
+							setSidebarWidth((w) =>
+								clampWidth(w - step, SIDEBAR_MIN, SIDEBAR_MAX),
+							);
+						else if (e.key === "ArrowRight")
+							setSidebarWidth((w) =>
+								clampWidth(w + step, SIDEBAR_MIN, SIDEBAR_MAX),
+							);
+						else if (e.key === "Home") setSidebarWidth(SIDEBAR_MIN);
+						else if (e.key === "End") setSidebarWidth(SIDEBAR_MAX);
+						else return;
+						e.preventDefault();
+					}}
+					role="separator"
+					tabIndex={0}
+					aria-orientation="vertical"
+					aria-label="Resize sidebar"
+					aria-valuenow={sidebarWidth}
+					aria-valuemin={SIDEBAR_MIN}
+					aria-valuemax={SIDEBAR_MAX}
+					title="Drag to resize · double-click to reset"
+				/>
+			)}
+
+			{showContent && (
+				<div className="notes-pixel-content" ref={contentRef}>
+					{!isMobile && (tabs.length > 0 || controlsPresent) && (
+						<div className="note-topbar">
+							<NoteTabs
+								tabs={tabs}
+								activeId={activeNoteId}
+								onSelect={handleSelectNote}
+								onClose={handleCloseTab}
+								onPin={pinTab}
+								onReorder={reorderTabs}
+							/>
+							{controlsPresent && (
+								<NoteControls
+									onClose={() => navigate("/notes")}
+									compact={contentNarrow}
 								/>
-								{controlsPresent && (
-									<NoteControls
-										onClose={() => navigate("/notes")}
-										compact={contentNarrow}
-									/>
-								)}
-							</div>
-						)}
-						{!isRoot ? <Outlet /> : <Home />}
-					</div>
-				)}
-			</div>
-		</WorkspaceShell>
+							)}
+						</div>
+					)}
+					{!isRoot ? <Outlet /> : <Home />}
+				</div>
+			)}
+		</div>
 	);
 }

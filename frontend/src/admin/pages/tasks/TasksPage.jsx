@@ -21,7 +21,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import WorkspaceShell from "../../../chat/WorkspaceShell";
 import {
 	BucketTagFilter,
 	ManageBucketsModal,
@@ -332,254 +331,243 @@ export default function TasksPage() {
 		.join(" + ");
 
 	return (
-		<WorkspaceShell>
-			<div className="tasks-page">
-				<header className="tasks-header">
-					<div className="tasks-title">
-						<PvButton variant="ghost" onClick={() => navigate("/notes")}>
-							‹ home
-						</PvButton>
-						<span className="tasks-glyph" aria-hidden="true">
-							☑
-						</span>
-						<h1>Tasks</h1>
-					</div>
-					<div className="tasks-actions">
-						<PvButton variant="ghost" onClick={() => navigate("/calendar")}>
-							calendar ▤
-						</PvButton>
-						<PvButton
-							variant="accent"
-							onClick={() =>
-								setTaskModal({
-									defaultTags,
-									defaultBucket,
-									// New tasks land at the top of the list.
-									newRank: rankBefore(pending[0]?.rank),
-								})
-							}
-						>
-							+ task
-						</PvButton>
-					</div>
-				</header>
+		<div className="tasks-page">
+			<header className="tasks-header">
+				<div className="tasks-title">
+					<PvButton variant="ghost" onClick={() => navigate("/notes")}>
+						‹ home
+					</PvButton>
+					<span className="tasks-glyph" aria-hidden="true">
+						☑
+					</span>
+					<h1>Tasks</h1>
+				</div>
+				<div className="tasks-actions">
+					<PvButton variant="ghost" onClick={() => navigate("/calendar")}>
+						calendar ▤
+					</PvButton>
+					<PvButton
+						variant="accent"
+						onClick={() =>
+							setTaskModal({
+								defaultTags,
+								defaultBucket,
+								// New tasks land at the top of the list.
+								newRank: rankBefore(pending[0]?.rank),
+							})
+						}
+					>
+						+ task
+					</PvButton>
+				</div>
+			</header>
 
-				<div className="tasks-body">
-					{/* ── Bucket + tag filter ── */}
-					<aside className="tasks-sidebar">
-						<div className="tasks-sidebar-head">
-							<h2 className="tasks-panel-title">Filter</h2>
+			<div className="tasks-body">
+				{/* ── Bucket + tag filter ── */}
+				<aside className="tasks-sidebar">
+					<div className="tasks-sidebar-head">
+						<h2 className="tasks-panel-title">Filter</h2>
+						<button
+							type="button"
+							className="tasks-manage-btn"
+							onClick={() => setManageOpen(true)}
+						>
+							⚙ manage
+						</button>
+					</div>
+					<BucketTagFilter
+						scope="tasks"
+						items={oneOff}
+						tagItems={tagScope}
+						buckets={buckets}
+						selectedKey={showRecurring ? null : bucketSel.key}
+						activeTags={showRecurring ? [] : tags}
+						onSelect={(s) => {
+							setShowRecurring(false);
+							if (s.key === "all") {
+								// Master reset — clear both the bucket and tag filters.
+								setBucketSel(ALL);
+								setTags([]);
+							} else if (s.key === "nobucket" || s.key.startsWith("bucket:")) {
+								// Switching bucket resets tags — the tag list is scoped to the
+								// bucket, so stale tags may not exist in the new one.
+								setBucketSel(s);
+								setTags([]);
+							} else if (s.names) {
+								toggleTag(s.names[0]); // keep the bucket
+							}
+						}}
+						totalCount={oneOff.length}
+					/>
+
+					<div className="tag-nav-divider" aria-hidden="true" />
+
+					<ul className="tag-nav">
+						<li>
 							<button
 								type="button"
-								className="tasks-manage-btn"
-								onClick={() => setManageOpen(true)}
+								className={`tag-nav-btn${showRecurring ? " is-active" : ""}`}
+								onClick={() => setShowRecurring(true)}
 							>
-								⚙ manage
+								<span className="tag-nav-name">⟳ recurring</span>
+								<span className="tag-nav-count">{recurring.length}</span>
 							</button>
-						</div>
-						<BucketTagFilter
-							scope="tasks"
-							items={oneOff}
-							tagItems={tagScope}
-							buckets={buckets}
-							selectedKey={showRecurring ? null : bucketSel.key}
-							activeTags={showRecurring ? [] : tags}
-							onSelect={(s) => {
-								setShowRecurring(false);
-								if (s.key === "all") {
-									// Master reset — clear both the bucket and tag filters.
-									setBucketSel(ALL);
-									setTags([]);
-								} else if (
-									s.key === "nobucket" ||
-									s.key.startsWith("bucket:")
-								) {
-									// Switching bucket resets tags — the tag list is scoped to the
-									// bucket, so stale tags may not exist in the new one.
-									setBucketSel(s);
-									setTags([]);
-								} else if (s.names) {
-									toggleTag(s.names[0]); // keep the bucket
-								}
-							}}
-							totalCount={oneOff.length}
-						/>
+						</li>
+					</ul>
+				</aside>
 
-						<div className="tag-nav-divider" aria-hidden="true" />
-
-						<ul className="tag-nav">
-							<li>
-								<button
-									type="button"
-									className={`tag-nav-btn${showRecurring ? " is-active" : ""}`}
-									onClick={() => setShowRecurring(true)}
-								>
-									<span className="tag-nav-name">⟳ recurring</span>
-									<span className="tag-nav-count">{recurring.length}</span>
-								</button>
-							</li>
-						</ul>
-					</aside>
-
-					<div className="tasks-cols">
-						{!showRecurring ? (
-							<>
-								{/* ── To-do ── */}
-								<section className="tasks-panel">
-									<h2 className="tasks-panel-title">
-										{filterLabel ? `${filterLabel} · ` : "To do · "}
-										{pending.length}
-									</h2>
-									<DndContext
-										sensors={sensors}
-										collisionDetection={closestCenter}
-										modifiers={[
-											restrictToVerticalAxis,
-											restrictToParentElement,
-										]}
-										onDragEnd={onDragEnd}
-									>
-										<SortableContext
-											items={pendingIds}
-											strategy={verticalListSortingStrategy}
-										>
-											<ul className="tasks-list">
-												{pending.map((t) => (
-													<SortableTaskRow
-														key={t.id}
-														t={t}
-														bucket={bucketById.get(t.bucket_id)}
-														toggling={togglingId === t.id}
-														onToggle={(id) => toggleTask.mutate(id)}
-														onOpen={(task) => setTaskModal({ task })}
-														onSelectTag={selectTag}
-														tagColorOf={tagColorOf}
-													/>
-												))}
-												{pending.length === 0 ? (
-													<li className="tasks-empty">
-														Nothing to do. Piuma approves.
-													</li>
-												) : null}
-											</ul>
-										</SortableContext>
-									</DndContext>
-
-									{done.length ? (
-										<details className="tasks-done">
-											<summary>Done · {done.length}</summary>
-											<ul className="tasks-list">
-												{done.map((t) => (
-													<li key={t.id} className="task-row is-done">
-														<button
-															type="button"
-															className="task-check"
-															onClick={() => toggleTask.mutate(t.id)}
-															disabled={togglingId === t.id}
-															aria-label="Reopen task"
-														>
-															{togglingId === t.id ? (
-																<span
-																	className="task-spin"
-																	aria-hidden="true"
-																/>
-															) : (
-																"☑"
-															)}
-														</button>
-														<button
-															type="button"
-															className="task-main"
-															onClick={() => setTaskModal({ task: t })}
-														>
-															<span className="task-title">{t.title}</span>
-														</button>
-													</li>
-												))}
-											</ul>
-										</details>
-									) : null}
-								</section>
-							</>
-						) : (
-							/* ── Recurring ── */
+				<div className="tasks-cols">
+					{!showRecurring ? (
+						<>
+							{/* ── To-do ── */}
 							<section className="tasks-panel">
-								<div className="tasks-panel-head">
-									<h2 className="tasks-panel-title">
-										Recurring · {recurring.length}
-									</h2>
-									<PvButton onClick={() => setRecModal({})}>
-										+ recurring
-									</PvButton>
-								</div>
-								<ul className="tasks-list">
-									{recurring.map((r) => (
-										<li
-											key={r.id}
-											className={`task-row${r.active ? "" : " is-paused"}`}
-										>
-											<span className="task-check" aria-hidden="true">
-												⟳
-											</span>
-											<button
-												type="button"
-												className="task-main"
-												onClick={() => setRecModal({ recurring: r })}
-											>
-												<span className="task-title">{r.title}</span>
-												<span className="task-meta">
-													<span className="task-rrule">{r.rrule}</span>
-													<span className="task-due">
-														from {formatDate(r.dtstart)}
-													</span>
-													{!r.active ? (
-														<span className="task-tag">paused</span>
-													) : null}
-												</span>
-											</button>
-											<button
-												type="button"
-												className="task-del"
-												onClick={() => deleteRecurring.mutate(r.id)}
-												aria-label="Delete recurring task"
-											>
-												✕
-											</button>
-										</li>
-									))}
-									{recurring.length === 0 ? (
-										<li className="tasks-empty">
-											No recurring tasks. Add a workout plan?
-										</li>
-									) : null}
-								</ul>
-							</section>
-						)}
-					</div>
-				</div>
+								<h2 className="tasks-panel-title">
+									{filterLabel ? `${filterLabel} · ` : "To do · "}
+									{pending.length}
+								</h2>
+								<DndContext
+									sensors={sensors}
+									collisionDetection={closestCenter}
+									modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+									onDragEnd={onDragEnd}
+								>
+									<SortableContext
+										items={pendingIds}
+										strategy={verticalListSortingStrategy}
+									>
+										<ul className="tasks-list">
+											{pending.map((t) => (
+												<SortableTaskRow
+													key={t.id}
+													t={t}
+													bucket={bucketById.get(t.bucket_id)}
+													toggling={togglingId === t.id}
+													onToggle={(id) => toggleTask.mutate(id)}
+													onOpen={(task) => setTaskModal({ task })}
+													onSelectTag={selectTag}
+													tagColorOf={tagColorOf}
+												/>
+											))}
+											{pending.length === 0 ? (
+												<li className="tasks-empty">
+													Nothing to do. Piuma approves.
+												</li>
+											) : null}
+										</ul>
+									</SortableContext>
+								</DndContext>
 
-				{taskModal ? (
-					<TaskModal
-						task={taskModal.task}
-						defaultTags={taskModal.defaultTags}
-						defaultBucket={taskModal.defaultBucket}
-						newRank={taskModal.newRank}
-						onClose={() => {
-							setTaskModal(null);
-							clearTaskParam();
-						}}
-					/>
-				) : null}
-				{recModal ? (
-					<RecurringTaskModal
-						recurring={recModal.recurring}
-						onClose={() => setRecModal(null)}
-					/>
-				) : null}
-				{manageOpen ? (
-					<ManageBucketsModal onClose={() => setManageOpen(false)} />
-				) : null}
+								{done.length ? (
+									<details className="tasks-done">
+										<summary>Done · {done.length}</summary>
+										<ul className="tasks-list">
+											{done.map((t) => (
+												<li key={t.id} className="task-row is-done">
+													<button
+														type="button"
+														className="task-check"
+														onClick={() => toggleTask.mutate(t.id)}
+														disabled={togglingId === t.id}
+														aria-label="Reopen task"
+													>
+														{togglingId === t.id ? (
+															<span className="task-spin" aria-hidden="true" />
+														) : (
+															"☑"
+														)}
+													</button>
+													<button
+														type="button"
+														className="task-main"
+														onClick={() => setTaskModal({ task: t })}
+													>
+														<span className="task-title">{t.title}</span>
+													</button>
+												</li>
+											))}
+										</ul>
+									</details>
+								) : null}
+							</section>
+						</>
+					) : (
+						/* ── Recurring ── */
+						<section className="tasks-panel">
+							<div className="tasks-panel-head">
+								<h2 className="tasks-panel-title">
+									Recurring · {recurring.length}
+								</h2>
+								<PvButton onClick={() => setRecModal({})}>
+									+ recurring
+								</PvButton>
+							</div>
+							<ul className="tasks-list">
+								{recurring.map((r) => (
+									<li
+										key={r.id}
+										className={`task-row${r.active ? "" : " is-paused"}`}
+									>
+										<span className="task-check" aria-hidden="true">
+											⟳
+										</span>
+										<button
+											type="button"
+											className="task-main"
+											onClick={() => setRecModal({ recurring: r })}
+										>
+											<span className="task-title">{r.title}</span>
+											<span className="task-meta">
+												<span className="task-rrule">{r.rrule}</span>
+												<span className="task-due">
+													from {formatDate(r.dtstart)}
+												</span>
+												{!r.active ? (
+													<span className="task-tag">paused</span>
+												) : null}
+											</span>
+										</button>
+										<button
+											type="button"
+											className="task-del"
+											onClick={() => deleteRecurring.mutate(r.id)}
+											aria-label="Delete recurring task"
+										>
+											✕
+										</button>
+									</li>
+								))}
+								{recurring.length === 0 ? (
+									<li className="tasks-empty">
+										No recurring tasks. Add a workout plan?
+									</li>
+								) : null}
+							</ul>
+						</section>
+					)}
+				</div>
 			</div>
-		</WorkspaceShell>
+
+			{taskModal ? (
+				<TaskModal
+					task={taskModal.task}
+					defaultTags={taskModal.defaultTags}
+					defaultBucket={taskModal.defaultBucket}
+					newRank={taskModal.newRank}
+					onClose={() => {
+						setTaskModal(null);
+						clearTaskParam();
+					}}
+				/>
+			) : null}
+			{recModal ? (
+				<RecurringTaskModal
+					recurring={recModal.recurring}
+					onClose={() => setRecModal(null)}
+				/>
+			) : null}
+			{manageOpen ? (
+				<ManageBucketsModal onClose={() => setManageOpen(false)} />
+			) : null}
+		</div>
 	);
 }
