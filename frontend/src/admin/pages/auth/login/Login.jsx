@@ -165,7 +165,7 @@ const Login = () => {
 	};
 
 	if (landing) {
-		return <PixelLoader message="Entering vault" />;
+		return <PixelLoader message="Entering vault" starfield />;
 	}
 
 	return (

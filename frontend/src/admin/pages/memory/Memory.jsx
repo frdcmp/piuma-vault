@@ -216,9 +216,7 @@ const Legend = () => (
 /** Collapsible explainer for the per-row corroboration metrics (the expander). */
 const MetricsLegend = () => (
 	<details className="mem-legend">
-		<summary>
-			How corroboration works — the metrics inside each row (expand ＋)
-		</summary>
+		<summary>How corroboration works — the metrics inside each row</summary>
 		<div className="mem-legend-grid">
 			<div>
 				<h4>Nearest entry &amp; distance</h4>

@@ -78,7 +78,7 @@ export default function ScreenLockOverlay() {
 	};
 
 	if (unlocking) {
-		return <PixelLoader message="Unlocking" />;
+		return <PixelLoader message="Unlocking" starfield />;
 	}
 
 	return (

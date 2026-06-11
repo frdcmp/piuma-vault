@@ -258,6 +258,18 @@ export default function CalendarScreen({ navigation, route }) {
 	useTagsLiveUpdates("calendar");
 	const toggleTask = useToggleTask();
 	const completeOccurrence = useCompleteOccurrence();
+	// Keys of the task/occurrence currently being toggled in the agenda views
+	// (`t<id>` for tasks, `o<recurrenceId>-<date>` for occurrences). Lets each row
+	// show its own spinner while the mutation is in flight, and re-enable its
+	// checkbox the moment the cache reflects the new state.
+	const [pendingKey, setPendingKey] = useState(null);
+	const wrapToggle = (key, fn) => {
+		setPendingKey(key);
+		const done = {
+			onSettled: () => setPendingKey((cur) => (cur === key ? null : cur)),
+		};
+		fn(done);
+	};
 
 	// Calendar filters by flat tags only (events have no bucket). Tag list is the
 	// union of tags across the loaded events/tasks/recurring.
@@ -540,15 +552,25 @@ export default function CalendarScreen({ navigation, route }) {
 						byDay={byDay}
 						todayKey={todayKey}
 						bottomPad={insets.bottom + 24}
+						pendingKey={pendingKey}
 						onOpenEvent={(ev) => setEventSheet({ event: ev })}
 						onAddEvent={(day) => setEventSheet({ date: day })}
-						onToggleTask={(id) => toggleTask.mutate(id)}
+						onToggleTask={(id) =>
+							wrapToggle(`t${id}`, (extra) =>
+								toggleTask.mutate(id, extra),
+							)
+						}
 						onToggleOccurrence={(occ) =>
-							completeOccurrence.mutate({
-								recurrenceId: occ.template.id,
-								date: occ.date,
-								done: !occ.done,
-							})
+							wrapToggle(`o${occ.template.id}-${occ.date}`, (extra) =>
+								completeOccurrence.mutate(
+									{
+										recurrenceId: occ.template.id,
+										date: occ.date,
+										done: !occ.done,
+									},
+									extra,
+								),
+							)
 						}
 					/>
 				</>
@@ -784,6 +806,7 @@ function AgendaView({
 	byDay,
 	todayKey,
 	bottomPad,
+	pendingKey,
 	onOpenEvent,
 	onAddEvent,
 	onToggleTask,
@@ -834,36 +857,67 @@ function AgendaView({
 										</Text>
 									</Pressable>
 								))}
-								{data.occurrences.map((occ) => (
-									<Pressable
-										key={`${occ.template.id}-${occ.date}`}
-										style={[s.item, s.itemTask]}
-										onPress={() => onToggleOccurrence(occ)}
-									>
-										<Text style={s.check}>{occ.done ? "☑" : "☐"}</Text>
-										<Text
-											style={[s.itemTitle, occ.done && s.strike]}
-											numberOfLines={1}
+								{data.occurrences.map((occ) => {
+									const key = `o${occ.template.id}-${occ.date}`;
+									const busy = pendingKey === key;
+									return (
+										<View
+											key={key}
+											style={[s.item, s.itemTask]}
 										>
-											{occ.template.title}
-										</Text>
-									</Pressable>
-								))}
-								{data.deadlines.map((t) => (
-									<Pressable
-										key={t.id}
-										style={[s.item, s.itemTask]}
-										onPress={() => onToggleTask(t.id)}
-									>
-										<Text style={s.check}>{t.done ? "☑" : "☐"}</Text>
-										<Text
-											style={[s.itemTitle, t.done && s.strike]}
-											numberOfLines={1}
-										>
-											{t.title}
-										</Text>
-									</Pressable>
-								))}
+											<Pressable
+												hitSlop={8}
+												disabled={busy}
+												onPress={() => onToggleOccurrence(occ)}
+												style={s.checkHit}
+											>
+												{busy ? (
+													<ActivityIndicator
+														size="small"
+														color={colors.accent2}
+													/>
+												) : (
+													<Text style={s.check}>{occ.done ? "☑" : "☐"}</Text>
+												)}
+											</Pressable>
+											<Text
+												style={[s.itemTitle, occ.done && s.strike]}
+												numberOfLines={1}
+											>
+												{occ.template.title}
+											</Text>
+										</View>
+									);
+								})}
+								{data.deadlines.map((t) => {
+									const key = `t${t.id}`;
+									const busy = pendingKey === key;
+									return (
+										<View key={key} style={[s.item, s.itemTask]}>
+											<Pressable
+												hitSlop={8}
+												disabled={busy}
+												onPress={() => onToggleTask(t.id)}
+												style={s.checkHit}
+											>
+												{busy ? (
+													<ActivityIndicator
+														size="small"
+														color={colors.accent2}
+													/>
+												) : (
+													<Text style={s.check}>{t.done ? "☑" : "☐"}</Text>
+												)}
+											</Pressable>
+											<Text
+												style={[s.itemTitle, t.done && s.strike]}
+												numberOfLines={1}
+											>
+												{t.title}
+											</Text>
+										</View>
+									);
+								})}
 							</>
 						)}
 					</View>
@@ -1042,6 +1096,9 @@ const s = StyleSheet.create({
 	itemTitle: { color: colors.text, fontSize: 14, flex: 1 },
 	itemTime: { color: colors.muted, fontSize: 12 },
 	check: { color: colors.accent2, fontSize: 16 },
+	// Fixed-size slot for the checkbox / spinner so toggling state doesn't
+	// shift the row's baseline while a mutation is in flight.
+	checkHit: { minWidth: 18, alignItems: "center", justifyContent: "center" },
 	strike: { textDecorationLine: "line-through", color: colors.muted },
 	// form
 	form: { paddingHorizontal: 16, paddingTop: 4, gap: 6 },
