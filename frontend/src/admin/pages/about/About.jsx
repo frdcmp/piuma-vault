@@ -100,7 +100,7 @@ cd frontend && bunx biome check --write src`,
 
 const About = () => {
 	return (
-		<PageContent variant="narrow">
+		<PageContent>
 			{/* Intro */}
 			<div className="vp-page-head">
 				<div>

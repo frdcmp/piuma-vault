@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import piumaLogo from "../img/dogs/piuma.png";
+import NavMenu from "../components/NavMenu/NavMenu";
+import { FallbackSprite } from "../sprites";
 import { DOC_GROUPS } from "./docsManifest";
 import "../admin/vault-pixel.css";
 import "../admin/components/layout/layout.css";
@@ -48,7 +49,9 @@ export default function DocsLayout() {
 					☰
 				</button>
 				<Link to="/" className="vp-docs-topbar-brand">
-					<img src={piumaLogo} alt="Piuma" className="vp-docs-topbar-logo" />
+					<span className="vp-docs-topbar-logo" role="img" aria-label="Piuma">
+						<FallbackSprite pixelSize={2} />
+					</span>
 					<span className="vp-sidebar-wordmark">vault</span>
 					<span className="vp-docs-badge">docs</span>
 				</Link>
@@ -66,7 +69,9 @@ export default function DocsLayout() {
 			>
 				<div className="vp-sidebar-brand">
 					<Link to="/" className="vp-sidebar-brand-left vp-docs-brandlink">
-						<img src={piumaLogo} alt="Piuma" className="vp-sidebar-logo" />
+						<span className="vp-sidebar-logo" role="img" aria-label="Piuma">
+							<FallbackSprite pixelSize={2} />
+						</span>
 						<span className="vp-sidebar-wordmark">vault</span>
 					</Link>
 					<span className="vp-docs-badge">docs</span>
@@ -109,6 +114,10 @@ export default function DocsLayout() {
 			</aside>
 
 			<main className="vp-docs-main">
+				{/* Cross-app nav (Notes/Tasks/Calendar/Storage/Docs), docs-styled. */}
+				<header className="vp-docs-appbar">
+					<NavMenu />
+				</header>
 				<Outlet />
 			</main>
 		</div>

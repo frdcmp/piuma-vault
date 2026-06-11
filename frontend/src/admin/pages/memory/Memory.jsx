@@ -705,10 +705,10 @@ const Memory = () => {
 	return (
 		<PageContent>
 			<div className="mem-root">
-				<div className="mem-header">
+				<div className="vp-page-head">
 					<div>
-						<h2 className="mem-title">Memory</h2>
-						<p className="mem-subtitle">
+						<h1 className="vp-page-title">Memory</h1>
+						<p className="vp-page-subtitle">
 							Scout and curate the agent's layered memory — L1
 							always-in-context, L2 semantic store (incl. dialectic-derived
 							guesses), L3 conversation search.

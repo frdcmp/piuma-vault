@@ -61,23 +61,13 @@
 }
 
 /* ---- Page scaffold --------------------------------------------------------- */
+/* Width is owned by the layout (`.vp-shell-content-inner` in layout.css). Pages
+   should not set their own max-width — use `.vp-page` only for the page header
+   block + vertical padding. */
 .vp-page {
-	width: 100%;
-	max-width: 1200px;
-	margin: 0 auto;
-	padding: 24px 20px 64px;
 	color: var(--vp-text);
 	font-family: var(--vp-font);
 	text-align: left;
-	box-sizing: border-box;
-}
-
-.vp-page--wide {
-	max-width: 1480px;
-}
-
-.vp-page--narrow {
-	max-width: 760px;
 }
 
 /* Page header block (title + optional subtitle/actions) */

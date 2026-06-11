@@ -22,8 +22,8 @@ import NoteEditor from "./admin/pages/notes/NoteEditor";
 import NotesLayout from "./admin/pages/notes/NotesLayout";
 import Profile from "./admin/pages/profile";
 import Projects from "./admin/pages/projects";
+import Security from "./admin/pages/security";
 import Services from "./admin/pages/services";
-import Settings from "./admin/pages/settings";
 import SharesPage from "./admin/pages/shares";
 import StorageExplorer from "./admin/pages/storage/StorageExplorer";
 import TasksPage from "./admin/pages/tasks/TasksPage";
@@ -112,8 +112,7 @@ function AppContent() {
 					<Route path="api-keys" element={<ApiKeysPage />} />
 					<Route path="health" element={<Health />} />
 					<Route path="profile" element={<Profile />} />
-					<Route path="settings" element={<Settings />} />
-					<Route path="settings/:tab" element={<Settings />} />
+					<Route path="security" element={<Security />} />
 					<Route path="services" element={<Services />} />
 					<Route path="token-usage" element={<TokenUsage />} />
 					<Route path="shares" element={<SharesPage />} />

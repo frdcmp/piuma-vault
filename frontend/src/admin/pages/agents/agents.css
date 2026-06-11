@@ -1,22 +1,8 @@
 /* Agents page — CSS only, matching the vault pixel palette (--vp-* vars). */
 
 .ag-page {
-	padding: 20px;
-	max-width: 1100px;
-	margin: 0 auto;
 	color: var(--vp-text, #d6dbe5);
 	font-family: var(--vp-font, inherit);
-}
-.ag-title {
-	font-size: 22px;
-	font-weight: 700;
-	color: var(--vp-text, #d6dbe5);
-	margin: 0 0 4px;
-}
-.ag-sub {
-	color: var(--vp-muted, #8a93a3);
-	margin: 0 0 16px;
-	font-size: 13px;
 }
 
 /* Tabs */

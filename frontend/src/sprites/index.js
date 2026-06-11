@@ -9,6 +9,7 @@
 //  pre-provider fallback (see SpriteProvider).
 // ============================================================================
 
+export { default as FallbackSprite } from "./FallbackSprite";
 export { default as Sprite } from "./Sprite";
 export { SpriteProvider, useSprite } from "./SpriteProvider";
 export { default as useSpriteCycle } from "./useSpriteCycle";

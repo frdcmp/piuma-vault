@@ -75,7 +75,7 @@ const Profile = () => {
 
 	return (
 		<PageContent>
-			<div className="vp-page vp-page--narrow vp-profile">
+			<div className="vp-page vp-profile">
 				<div className="vp-page-head">
 					<div>
 						<h1 className="vp-page-title">Profile Settings</h1>

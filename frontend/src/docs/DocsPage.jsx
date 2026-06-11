@@ -4,6 +4,7 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import PvPanel from "../admin/components/ui/PvPanel/PvPanel";
+import piumaIcon from "../img/piuma-icon.png";
 import { DOC_BY_SLUG, FIRST_SLUG } from "./docsManifest";
 import Mermaid from "./Mermaid";
 
@@ -109,6 +110,36 @@ export default function DocsPage() {
 			</div>
 			<PvPanel title={doc.title}>
 				<div className="vp-docs-body">
+					{slug === "overview" && (
+						<div className="vp-docs-hero">
+							<img
+								src={piumaIcon}
+								width={80}
+								height={80}
+								alt="Piuma Vault Logo"
+								className="vp-docs-hero-logo"
+							/>
+							<h1 className="vp-docs-hero-title">Piuma Vault</h1>
+							<p className="vp-docs-hero-tagline">
+								A Personal Second-Brain, Agentic LLM Workspace &amp; Private
+								Media Vault
+							</p>
+							<p className="vp-docs-hero-desc">
+								A highly secure, privacy-first, self-hosted digital workspace
+								integrating rich notes, an AI agent with long-term memory, file
+								hosting, tasks, and scheduling.
+							</p>
+							<div className="vp-docs-hero-badges">
+								<span className="vp-docs-hero-badge">MIT License</span>
+								<span className="vp-docs-hero-badge">Rust + Actix-web</span>
+								<span className="vp-docs-hero-badge">React 19 / Vite 7</span>
+								<span className="vp-docs-hero-badge">
+									PostgreSQL + pgvector
+								</span>
+								<span className="vp-docs-hero-badge">Nginx</span>
+							</div>
+						</div>
+					)}
 					<ReactMarkdown
 						components={markdownComponents}
 						remarkPlugins={[remarkGfm]}

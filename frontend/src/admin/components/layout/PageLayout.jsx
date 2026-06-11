@@ -8,22 +8,12 @@ import HeaderComponent from "./Header";
 import Sidebar from "./Sidebar";
 
 /**
- * Simple content wrapper for maxWidth centering, in the vault pixel language.
- * Pages render their content inside this (it provides the `.vp-page` scaffold).
+ * Pass-through wrapper kept for backwards compatibility with existing page
+ * imports. Width is owned by the layout (`.vp-shell-content-inner`), so this
+ * no longer adds any constraints of its own.
  */
-export const PageContent = ({ children, maxWidth, variant }) => {
-	const cls = [
-		"vp-page",
-		variant === "wide" && "vp-page--wide",
-		variant === "narrow" && "vp-page--narrow",
-	]
-		.filter(Boolean)
-		.join(" ");
-	return (
-		<div className={cls} style={maxWidth ? { maxWidth } : undefined}>
-			{children}
-		</div>
-	);
+export const PageContent = ({ children }) => {
+	return <>{children}</>;
 };
 
 /**

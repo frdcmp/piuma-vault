@@ -36,9 +36,78 @@
 	min-width: 0;
 }
 
+/* Docs-only top bar: holds the cross-app NavMenu, sitting in the content
+   column (right of the sidebar) so it never overlaps the sidebar brand. */
+.vp-docs-appbar {
+	position: sticky;
+	top: 0;
+	z-index: 30;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	padding: 8px 24px;
+	background: var(--vp-panel);
+	border-bottom: 2px solid var(--vp-border);
+}
+
+/* Centered, readable article column with breathing room on both sides. */
 .vp-docs-page {
-	padding-top: 28px;
-	max-width: 1500px;
+	max-width: 1200px;
+	margin: 0 auto;
+	padding: 36px 48px 80px;
+}
+
+/* ---- Overview hero section ------------------------------------------------ */
+.vp-docs-hero {
+	text-align: center;
+	padding: 32px 0 24px;
+}
+
+.vp-docs-hero-logo {
+	display: block;
+	margin: 0 auto 16px;
+}
+
+.vp-docs-hero-title {
+	font-family: var(--vp-font);
+	font-size: 28px;
+	font-weight: 800;
+	margin: 0 0 6px;
+	color: var(--vp-text);
+}
+
+.vp-docs-hero-tagline {
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--vp-accent);
+	margin: 0 0 10px;
+}
+
+.vp-docs-hero-desc {
+	font-size: 14px;
+	color: var(--vp-muted);
+	max-width: 600px;
+	margin: 0 auto 18px;
+	line-height: 1.55;
+}
+
+.vp-docs-hero-badges {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 8px;
+}
+
+.vp-docs-hero-badge {
+	font-family: var(--vp-font);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-bg);
+	background: var(--vp-accent);
+	padding: 3px 10px;
+	border-radius: 0;
 }
 
 /* ---- Mobile top bar (hidden on desktop) ----------------------------------- */
@@ -63,9 +132,10 @@
 }
 
 .vp-docs-topbar-logo {
-	width: 28px;
-	height: 28px;
-	object-fit: contain;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	image-rendering: pixelated;
 }
 
 .vp-docs-scrim {
@@ -287,6 +357,15 @@
 
 	.vp-docs-main {
 		margin-left: 0;
+	}
+
+	/* The mobile drawer topbar handles nav here; the cross-app bar is hidden. */
+	.vp-docs-appbar {
+		display: none;
+	}
+
+	.vp-docs-page {
+		padding: 24px 18px 64px;
 	}
 
 	.vp-docs-sidebar {

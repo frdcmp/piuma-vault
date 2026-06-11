@@ -6,29 +6,6 @@
 	color: var(--vp-text);
 }
 
-/* ---- Header --------------------------------------------------------------- */
-.mem-header {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: 16px;
-	margin-bottom: 24px;
-}
-.mem-title {
-	margin: 0;
-	font-size: 22px;
-	font-weight: 900;
-	letter-spacing: 0.5px;
-	color: var(--vp-text);
-	text-shadow: 2px 2px 0 #000;
-}
-.mem-subtitle {
-	margin: 6px 0 0;
-	font-size: 12px;
-	color: var(--vp-muted);
-	max-width: 720px;
-}
-
 /* ---- Layer map (stat cards) ----------------------------------------------- */
 .mem-layers {
 	display: grid;

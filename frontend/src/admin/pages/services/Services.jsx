@@ -346,7 +346,7 @@ const Services = () => {
 	);
 
 	return (
-		<PageContent variant="narrow">
+		<PageContent>
 			<div className="vp-page-head">
 				<div>
 					<h1 className="vp-page-title">Services</h1>
