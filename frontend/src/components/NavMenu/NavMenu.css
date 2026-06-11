@@ -1,6 +1,6 @@
 /* Cross-app navigation menu (NavMenu.jsx). Pixel/terminal aesthetic to match
-   .vp-header in admin/components/layout/layout.css. Used inline in the admin
-   header and inside the standalone workspace/docs top bars (.app-bar below). */
+   .vp-header in admin/components/layout/layout.css. Rendered inline in the
+   admin header. */
 
 .nav-menu {
 	display: flex;
@@ -46,67 +46,16 @@
 	display: inline-flex;
 }
 
-/* ---- Standalone top bar (workspace + docs pages) --------------------------- */
-/* Notes/Tasks/Calendar/Storage and /docs aren't inside the admin shell, so they
-   wrap NavMenu in their own sticky bar with the Vault brand on the left. */
-
-.app-bar {
-	position: sticky;
-	top: 0;
-	z-index: 20;
-	background: var(--vp-panel);
-	border-bottom: 2px solid var(--vp-border);
-	padding: 8px 16px;
-	flex: 0 0 auto;
-}
-
-.app-bar-inner {
-	display: flex;
-	align-items: center;
-	gap: 16px;
-}
-
-.app-bar-brand {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	text-decoration: none;
-	color: var(--vp-text);
-	font-family: var(--vp-font);
-	font-weight: 700;
-	letter-spacing: 1px;
-}
-
-.app-bar-logo {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	image-rendering: pixelated;
-}
-
-.app-bar-wordmark {
-	font-size: 14px;
-	color: var(--vp-accent);
-}
-
-/* Push the nav to the right edge of the bar. */
-.app-bar .nav-menu {
-	margin-left: auto;
-}
-
 @media (max-width: 640px) {
-	.app-bar {
-		padding: 6px 10px;
-	}
-	.app-bar .nav-menu-link {
+	.nav-menu-link {
 		padding: 5px 8px;
 		font-size: 11px;
 		letter-spacing: 0.3px;
 	}
-	.app-bar .nav-menu-link-label {
+	.nav-menu-link-label {
 		display: none;
 	}
-	.app-bar .nav-menu-link-icon {
+	.nav-menu-link-icon {
 		font-size: 16px;
 	}
 }

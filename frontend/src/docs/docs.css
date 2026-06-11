@@ -36,20 +36,6 @@
 	min-width: 0;
 }
 
-/* Docs-only top bar: holds the cross-app NavMenu, sitting in the content
-   column (right of the sidebar) so it never overlaps the sidebar brand. */
-.vp-docs-appbar {
-	position: sticky;
-	top: 0;
-	z-index: 30;
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	padding: 8px 24px;
-	background: var(--vp-panel);
-	border-bottom: 2px solid var(--vp-border);
-}
-
 /* Centered, readable article column with breathing room on both sides. */
 .vp-docs-page {
 	max-width: 1200px;
@@ -357,11 +343,6 @@
 
 	.vp-docs-main {
 		margin-left: 0;
-	}
-
-	/* The mobile drawer topbar handles nav here; the cross-app bar is hidden. */
-	.vp-docs-appbar {
-		display: none;
 	}
 
 	.vp-docs-page {

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import NavMenu from "../components/NavMenu/NavMenu";
 import { FallbackSprite } from "../sprites";
 import { DOC_GROUPS } from "./docsManifest";
 import "../admin/vault-pixel.css";
@@ -114,10 +113,6 @@ export default function DocsLayout() {
 			</aside>
 
 			<main className="vp-docs-main">
-				{/* Cross-app nav (Notes/Tasks/Calendar/Storage/Docs), docs-styled. */}
-				<header className="vp-docs-appbar">
-					<NavMenu />
-				</header>
 				<Outlet />
 			</main>
 		</div>
