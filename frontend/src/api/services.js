@@ -46,3 +46,11 @@ export const testGithub = async (payload) => {
 	);
 	return data;
 };
+
+export const testTranscription = async (payload) => {
+	const { data } = await axiosInstance.post(
+		"/admin/settings/services/test/transcription",
+		payload,
+	);
+	return data;
+};

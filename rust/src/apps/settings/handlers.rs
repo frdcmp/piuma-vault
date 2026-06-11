@@ -2,7 +2,7 @@ use actix_web::{web, HttpResponse, Responder};
 
 use super::models::{
     ServiceConfigResponse, TestEmbeddingRequest, TestGithubRequest, TestStorageRequest,
-    TestWebsearchRequest, UpdateServiceConfig,
+    TestTranscriptionRequest, TestWebsearchRequest, UpdateServiceConfig,
 };
 use super::store;
 use crate::apps::auth::middleware::check_permission;
@@ -41,6 +41,12 @@ async fn current_config(pool: &DbPool) -> ServiceConfigResponse {
         websearch_tavily_api_key_set: store::get(pool, store::WEBSEARCH_TAVILY_API_KEY).await.is_some(),
         websearch_serpapi_api_key_set: store::get(pool, store::WEBSEARCH_SERPAPI_API_KEY).await.is_some(),
         websearch_exa_api_key_set: store::get(pool, store::WEBSEARCH_EXA_API_KEY).await.is_some(),
+        transcription_provider: store::get(pool, store::TRANSCRIPTION_PROVIDER)
+            .await
+            .unwrap_or_else(|| "speechmatics".to_string()),
+        transcription_speechmatics_api_key_set: store::get(pool, store::TRANSCRIPTION_SPEECHMATICS_API_KEY).await.is_some(),
+        transcription_assemblyai_api_key_set: store::get(pool, store::TRANSCRIPTION_ASSEMBLYAI_API_KEY).await.is_some(),
+        transcription_deepgram_api_key_set: store::get(pool, store::TRANSCRIPTION_DEEPGRAM_API_KEY).await.is_some(),
         github_api_base: store::get(pool, store::GITHUB_API_BASE).await.unwrap_or_default(),
         github_token_set: store::get(pool, store::GITHUB_TOKEN).await.is_some(),
     }
@@ -84,6 +90,10 @@ pub async fn update_services(
         (store::WEBSEARCH_TAVILY_API_KEY, body.websearch_tavily_api_key),
         (store::WEBSEARCH_SERPAPI_API_KEY, body.websearch_serpapi_api_key),
         (store::WEBSEARCH_EXA_API_KEY, body.websearch_exa_api_key),
+        (store::TRANSCRIPTION_PROVIDER, body.transcription_provider),
+        (store::TRANSCRIPTION_SPEECHMATICS_API_KEY, body.transcription_speechmatics_api_key),
+        (store::TRANSCRIPTION_ASSEMBLYAI_API_KEY, body.transcription_assemblyai_api_key),
+        (store::TRANSCRIPTION_DEEPGRAM_API_KEY, body.transcription_deepgram_api_key),
         (store::GITHUB_API_BASE, body.github_api_base),
         (store::GITHUB_TOKEN, body.github_token),
     ];
@@ -162,6 +172,37 @@ pub async fn test_websearch(
     };
     match crate::apps::web_search::run(&provider, &key, "piuma vault test query", 3).await {
         Ok(hits) => test_result(true, format!("OK — {provider} returned {} results", hits.len())),
+        Err(e) => test_result(false, e),
+    }
+}
+
+/// POST /admin/settings/services/test/transcription — verify the provider key
+/// by minting a session token (no stream opened). An optional body lets the
+/// dashboard test an unsaved provider/key; blank fields fall back to saved config.
+pub async fn test_transcription(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    body: Option<web::Json<TestTranscriptionRequest>>,
+) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden();
+    }
+    let req = body.map(|b| b.into_inner()).unwrap_or_default();
+    let pool = pool.get_ref();
+    let provider = req
+        .provider
+        .filter(|p| !p.trim().is_empty())
+        .or(store::get(pool, store::TRANSCRIPTION_PROVIDER).await)
+        .unwrap_or_else(|| "speechmatics".to_string());
+    let key = match req.api_key.filter(|k| !k.trim().is_empty()) {
+        Some(k) => k,
+        None => match crate::apps::transcription::key_for(pool, &provider).await {
+            Ok(k) => k,
+            Err(e) => return test_result(false, e),
+        },
+    };
+    match crate::apps::transcription::test(&provider, &key).await {
+        Ok(msg) => test_result(true, msg),
         Err(e) => test_result(false, e),
     }
 }

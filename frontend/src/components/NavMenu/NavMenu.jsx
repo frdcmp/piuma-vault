@@ -1,4 +1,5 @@
 import {
+	AudioOutlined,
 	BookOutlined,
 	CalendarOutlined,
 	CheckSquareOutlined,
@@ -16,6 +17,7 @@ const ITEMS = [
 	{ key: "/notes", label: "Notes", icon: <BookOutlined /> },
 	{ key: "/tasks", label: "Tasks", icon: <CheckSquareOutlined /> },
 	{ key: "/calendar", label: "Calendar", icon: <CalendarOutlined /> },
+	{ key: "/recorder", label: "Recorder", icon: <AudioOutlined /> },
 	{ key: "/storage", label: "Storage", icon: <FolderOpenOutlined /> },
 	{ key: "/docs", label: "Docs", icon: <FileTextOutlined /> },
 ];

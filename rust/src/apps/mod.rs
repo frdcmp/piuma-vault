@@ -16,6 +16,8 @@ pub mod storage;
 pub mod storage_shares;
 pub mod settings;
 pub mod sprites;
+pub mod transcription;
+pub mod recorder;
 pub mod web_search;
 pub mod db_dump;
 pub mod widgets;

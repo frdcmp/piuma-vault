@@ -22,6 +22,13 @@ pub const WEBSEARCH_BRAVE_API_KEY: &str = "websearch_brave_api_key";
 pub const WEBSEARCH_TAVILY_API_KEY: &str = "websearch_tavily_api_key";
 pub const WEBSEARCH_SERPAPI_API_KEY: &str = "websearch_serpapi_api_key";
 pub const WEBSEARCH_EXA_API_KEY: &str = "websearch_exa_api_key";
+// Transcription — pick a provider, set its key. See `apps::transcription`. The
+// active provider is `transcription_provider`; each provider's key is its own
+// `transcription_<provider>_api_key` setting.
+pub const TRANSCRIPTION_PROVIDER: &str = "transcription_provider";
+pub const TRANSCRIPTION_SPEECHMATICS_API_KEY: &str = "transcription_speechmatics_api_key";
+pub const TRANSCRIPTION_ASSEMBLYAI_API_KEY: &str = "transcription_assemblyai_api_key";
+pub const TRANSCRIPTION_DEEPGRAM_API_KEY: &str = "transcription_deepgram_api_key";
 // GitHub — a personal access token used by the agent's `github_*` tools. An
 // optional API base lets the same tools target a GitHub Enterprise host.
 pub const GITHUB_TOKEN: &str = "github_token";

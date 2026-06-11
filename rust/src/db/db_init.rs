@@ -805,6 +805,34 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_turn_logs_conv ON db_agent_turn_logs USING btree (conversation_id, created_at)",
         ],
     },
+    // Recorder → Transcriber → Summarizer sessions. The DB row is the queryable
+    // index (metadata + a pointer); the full transcript lives in S3 as
+    // `transcripts/{id}.jsonl` (see apps::recorder). Audio is never stored.
+    TableDefinition {
+        name: "db_recording_sessions",
+        sql: r#"
+            CREATE TABLE db_recording_sessions (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL REFERENCES db_users(id) ON DELETE CASCADE,
+                title TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'recording'
+                    CHECK (status IN ('recording', 'summarising', 'done', 'failed')),
+                provider TEXT NOT NULL DEFAULT 'speechmatics',
+                duration_secs INTEGER NOT NULL DEFAULT 0,
+                transcript_storage_key TEXT,
+                word_count INTEGER NOT NULL DEFAULT 0,
+                preview TEXT NOT NULL DEFAULT '',
+                running_summary TEXT,
+                final_note_id UUID REFERENCES notes(id) ON DELETE SET NULL,
+                error TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_recording_sessions_user ON db_recording_sessions USING btree (user_id, created_at DESC)",
+        ],
+    },
 ];
 
 pub async fn init_db(pool: &DbPool) -> Result<InitResult, sqlx::Error> {

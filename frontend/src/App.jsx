@@ -22,6 +22,9 @@ import NoteEditor from "./admin/pages/notes/NoteEditor";
 import NotesLayout from "./admin/pages/notes/NotesLayout";
 import Profile from "./admin/pages/profile";
 import Projects from "./admin/pages/projects";
+import RecorderPage from "./admin/pages/recorder/RecorderPage";
+import RecorderSessionsPage from "./admin/pages/recorder/RecorderSessionsPage";
+import RecordingDetailPage from "./admin/pages/recorder/RecordingDetailPage";
 import Security from "./admin/pages/security";
 import Services from "./admin/pages/services";
 import SharesPage from "./admin/pages/shares";
@@ -97,6 +100,32 @@ function AppContent() {
 						element={
 							<ProtectedRoute requiredPermission="admin_access">
 								<CalendarPage />
+							</ProtectedRoute>
+						}
+					/>
+
+					{/* Recorder → Transcriber → Summarizer */}
+					<Route
+						path="/recorder"
+						element={
+							<ProtectedRoute requiredPermission="admin_access">
+								<RecorderPage />
+							</ProtectedRoute>
+						}
+					/>
+					<Route
+						path="/recorder/sessions"
+						element={
+							<ProtectedRoute requiredPermission="admin_access">
+								<RecorderSessionsPage />
+							</ProtectedRoute>
+						}
+					/>
+					<Route
+						path="/recorder/:id"
+						element={
+							<ProtectedRoute requiredPermission="admin_access">
+								<RecordingDetailPage />
 							</ProtectedRoute>
 						}
 					/>

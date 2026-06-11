@@ -4,6 +4,7 @@ import {
 	testEmbedding,
 	testGithub,
 	testStorage,
+	testTranscription,
 	testWebsearch,
 	updateServices,
 } from "../api/services";
@@ -36,3 +37,6 @@ export const useTestWebsearch = () =>
 	useMutation({ mutationFn: testWebsearch });
 
 export const useTestGithub = () => useMutation({ mutationFn: testGithub });
+
+export const useTestTranscription = () =>
+	useMutation({ mutationFn: testTranscription });

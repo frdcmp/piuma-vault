@@ -21,6 +21,7 @@ pub mod github;
 mod navigation;
 pub mod memory;
 mod notes;
+mod recordings;
 mod self_config;
 mod shares;
 mod storage;
@@ -43,6 +44,7 @@ fn all_defs() -> Vec<(&'static str, &'static str, Value)> {
     defs.extend(web::defs());
     defs.extend(github::defs());
     defs.extend(navigation::defs());
+    defs.extend(recordings::defs());
     defs
 }
 
@@ -159,6 +161,10 @@ pub async fn dispatch(
         "github_create_pull_request" => github::create_pull_request(pool, args).await,
         // ── Navigation (client renders a one-click "Go" action) ──
         "navigate" => navigation::navigate(args).await,
+        // ── Recordings (transcript corpus: read + initiate) ──
+        "list_recordings" => recordings::list_recordings(pool, user_id, args).await,
+        "get_recording" => recordings::get_recording(pool, user_id, args).await,
+        "start_recording" => recordings::start_recording(pool, user_id, args).await,
         other => Err(format!("unknown tool: {other}")),
     }
 }

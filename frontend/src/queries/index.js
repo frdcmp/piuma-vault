@@ -20,6 +20,7 @@ export * from "./healthQuery";
 export * from "./memoryQuery";
 export * from "./notesQuery";
 export * from "./notificationsQuery";
+export * from "./recorderQuery";
 export * from "./screenLockQuery";
 export * from "./servicesQuery";
 export * from "./sharesQuery";

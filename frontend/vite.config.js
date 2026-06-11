@@ -32,6 +32,8 @@ export default defineConfig(({ mode }) => {
 					target: `http://localhost:${env.NGINX_PORT}`,
 					changeOrigin: true,
 					secure: false,
+					// Forward WebSocket upgrades too (recorder streaming relay).
+					ws: true,
 				},
 			},
 		},

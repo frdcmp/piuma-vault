@@ -40,6 +40,27 @@ server {
         try_files $uri $uri/ ${BASE_URL}index.html;
     }
 
+    # Recorder streaming relay — a real WebSocket upgrade (browser ↔ rust). Must
+    # come before the generic /api/v1/ block and carry the Upgrade/Connection
+    # headers + a long read timeout so a recording isn't cut off. The REST
+    # recorder endpoints also match here; a stray Connection header on those is
+    # harmless. proxy_pass keeps the /recorder/... path the backend registers.
+    location ${BASE_URL}api/v1/recorder/ {
+        proxy_pass http://${COMPOSE_NAME}-rust:8080/recorder/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        proxy_set_header X-Real-IP $http_cf_connecting_ip;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        client_max_body_size 600M;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
+    }
+
     # Rust API Backend API Proxy
     location ${BASE_URL}api/v1/ {
         add_header x-backend-server "${SERVER_NAME}" always;
