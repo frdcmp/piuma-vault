@@ -355,28 +355,19 @@
 .fshare-form {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 4px;
 	margin-bottom: 14px;
 }
 
-.fshare-label {
-	font-size: 10px;
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 1px;
-	color: var(--accent-2);
-	margin-top: 6px;
+.fshare-form .vp-field {
+	margin-bottom: 6px;
 }
 
 .fshare-hint {
-	color: var(--muted);
+	color: var(--vp-faint);
 	font-weight: 400;
 	text-transform: none;
 	letter-spacing: 0;
-}
-
-.fshare-form .pixel-btn {
-	margin-top: 12px;
 }
 
 .fshare-section-label {
@@ -384,10 +375,21 @@
 	font-weight: 900;
 	letter-spacing: 1.4px;
 	text-transform: uppercase;
-	color: var(--accent-2);
+	color: var(--vp-accent-2);
 	padding: 8px 0 6px;
-	border-bottom: 1px dashed var(--border);
+	border-bottom: 2px dashed var(--vp-border);
 	margin-bottom: 8px;
+}
+
+.fshare-status {
+	padding: 12px 8px;
+	color: var(--vp-muted);
+	font-size: 11px;
+	text-align: center;
+}
+
+.fshare-status-empty {
+	color: var(--vp-faint);
 }
 
 .fshare-list {
@@ -401,14 +403,15 @@
 .fshare-row {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	padding: 8px 10px;
-	border: 1px solid var(--border-strong);
-	background: var(--bg);
+	gap: 6px;
+	padding: 10px 10px 8px;
+	border: 2px solid var(--vp-border);
+	background: var(--vp-bg-soft);
+	box-shadow: 2px 2px 0 0 #000;
 }
 
-.fshare-row.inactive {
-	opacity: 0.55;
+.fshare-row--inactive {
+	opacity: 0.5;
 }
 
 .fshare-row-main {
@@ -426,7 +429,7 @@
 	white-space: nowrap;
 	background: transparent;
 	border: 0;
-	color: var(--accent-4);
+	color: var(--vp-accent-4);
 	font: inherit;
 	font-size: 9pt;
 	text-align: left;
@@ -434,51 +437,54 @@
 }
 
 .fshare-url:hover {
-	color: var(--accent);
+	color: var(--vp-accent);
 }
 
 .fshare-row-meta {
 	display: flex;
 	gap: 10px;
-	color: var(--muted);
+	color: var(--vp-muted);
 	font-size: 9px;
 }
 
 .fshare-off {
-	color: var(--accent-3);
+	color: var(--vp-accent-3);
 }
 
 .fshare-row-actions {
 	display: flex;
 	gap: 4px;
 	flex-wrap: wrap;
+	margin-top: 4px;
+	padding-top: 6px;
+	border-top: 1px dashed var(--vp-border);
 }
 
 .fshare-badge {
 	display: inline-flex;
 	align-items: center;
-	padding: 1px 6px;
-	border: 1px solid var(--border-strong);
+	padding: 2px 6px;
+	border: 2px solid var(--vp-border);
 	font-size: 9px;
 	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.6px;
-	color: var(--muted);
+	color: var(--vp-muted);
 	flex: none;
 }
 
-.fshare-badge.edit {
-	color: var(--accent);
-	border-color: var(--accent);
+.fshare-badge--edit {
+	color: var(--vp-accent);
+	border-color: var(--vp-accent);
 }
 
-.fshare-badge.view {
-	color: var(--accent-2);
-	border-color: var(--accent-2);
+.fshare-badge--view {
+	color: var(--vp-accent-2);
+	border-color: var(--vp-accent-2);
 }
 
-.fshare-badge.pwd {
-	border-color: var(--accent-4);
+.fshare-badge--pwd {
+	border-color: var(--vp-accent-4);
 }
 
 /* ── Compact storage tree header ───────────────────────────────── */

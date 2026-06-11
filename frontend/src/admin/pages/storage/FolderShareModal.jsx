@@ -82,56 +82,62 @@ export default function FolderShareModal({ open, prefix, onClose }) {
 		>
 			{/* Create form */}
 			<div className="fshare-form">
-				<label className="fshare-label" htmlFor="fshare-access">
-					Access
-				</label>
-				<select
-					id="fshare-access"
-					className="pixel-input"
-					value={accessLevel}
-					onChange={(e) => setAccessLevel(e.target.value)}
-				>
-					<option value="view">View only (browse + download)</option>
-					<option value="edit">Edit (upload, delete, create folders)</option>
-				</select>
+				<div className="vp-field">
+					<label className="vp-label" htmlFor="fshare-access">
+						Access
+					</label>
+					<select
+						id="fshare-access"
+						className="vp-select"
+						value={accessLevel}
+						onChange={(e) => setAccessLevel(e.target.value)}
+					>
+						<option value="view">View only (browse + download)</option>
+						<option value="edit">Edit (upload, delete, create folders)</option>
+					</select>
+				</div>
 
-				<label className="fshare-label" htmlFor="fshare-pwd">
-					Password{" "}
-					<span className="fshare-hint">
-						{accessLevel === "edit"
-							? "(recommended for edit links)"
-							: "(optional)"}
-					</span>
-				</label>
-				<input
-					id="fshare-pwd"
-					className="pixel-input"
-					type="text"
-					autoComplete="off"
-					placeholder="leave empty for no password"
-					value={password}
-					onChange={(e) => setPassword(e.target.value)}
-				/>
+				<div className="vp-field">
+					<label className="vp-label" htmlFor="fshare-pwd">
+						Password{" "}
+						<span className="fshare-hint">
+							{accessLevel === "edit"
+								? "(recommended for edit links)"
+								: "(optional)"}
+						</span>
+					</label>
+					<input
+						id="fshare-pwd"
+						className="vp-input"
+						type="text"
+						autoComplete="off"
+						placeholder="leave empty for no password"
+						value={password}
+						onChange={(e) => setPassword(e.target.value)}
+					/>
+				</div>
 
-				<label className="fshare-label" htmlFor="fshare-expiry">
-					Expires
-				</label>
-				<select
-					id="fshare-expiry"
-					className="pixel-input"
-					value={expiryIdx}
-					onChange={(e) => setExpiryIdx(Number(e.target.value))}
-				>
-					{EXPIRY_OPTIONS.map((o, i) => (
-						<option key={o.label} value={i}>
-							{o.label}
-						</option>
-					))}
-				</select>
+				<div className="vp-field">
+					<label className="vp-label" htmlFor="fshare-expiry">
+						Expires
+					</label>
+					<select
+						id="fshare-expiry"
+						className="vp-select"
+						value={expiryIdx}
+						onChange={(e) => setExpiryIdx(Number(e.target.value))}
+					>
+						{EXPIRY_OPTIONS.map((o, i) => (
+							<option key={o.label} value={i}>
+								{o.label}
+							</option>
+						))}
+					</select>
+				</div>
 
 				<button
 					type="button"
-					className="pixel-btn primary"
+					className="vp-btn vp-btn--primary"
 					onClick={handleCreate}
 					disabled={createShare.isPending}
 				>
@@ -142,9 +148,9 @@ export default function FolderShareModal({ open, prefix, onClose }) {
 			{/* Existing shares */}
 			<div className="fshare-section-label">Existing links ({list.length})</div>
 			{shares.isLoading ? (
-				<div className="notes-sidebar-status">loading…</div>
+				<div className="fshare-status">loading…</div>
 			) : list.length === 0 ? (
-				<div className="notes-sidebar-status notes-sidebar-status-empty">
+				<div className="fshare-status fshare-status-empty">
 					No share links for this folder yet.
 				</div>
 			) : (
@@ -152,13 +158,17 @@ export default function FolderShareModal({ open, prefix, onClose }) {
 					{list.map((s) => (
 						<div
 							key={s.id}
-							className={`fshare-row ${s.is_active ? "" : "inactive"}`}
+							className={`fshare-row ${s.is_active ? "" : "fshare-row--inactive"}`}
 						>
 							<div className="fshare-row-main">
-								<span className={`fshare-badge ${s.access_level}`}>
+								<span
+									className={`fshare-badge fshare-badge--${s.access_level}`}
+								>
 									{s.access_level}
 								</span>
-								{s.has_password && <span className="fshare-badge pwd">🔒</span>}
+								{s.has_password && (
+									<span className="fshare-badge fshare-badge--pwd">🔒</span>
+								)}
 								<button
 									type="button"
 									className="fshare-url"
@@ -179,21 +189,21 @@ export default function FolderShareModal({ open, prefix, onClose }) {
 							<div className="fshare-row-actions">
 								<button
 									type="button"
-									className="pixel-btn"
+									className="vp-btn vp-btn--sm"
 									onClick={() => copyUrl(s.url)}
 								>
 									Copy
 								</button>
 								<button
 									type="button"
-									className="pixel-btn"
+									className="vp-btn vp-btn--sm"
 									onClick={() => toggleActive(s)}
 								>
 									{s.is_active ? "Disable" : "Enable"}
 								</button>
 								<button
 									type="button"
-									className="pixel-btn danger"
+									className="vp-btn vp-btn--sm vp-btn--danger"
 									onClick={() => revoke(s)}
 								>
 									Revoke
