@@ -380,13 +380,23 @@ export default function CalendarScreen({ navigation, route }) {
 
 	const span = VIEWS.find((v) => v.id === view)?.span ?? 0;
 
-	// Days rendered by an agenda page `offset` periods away from `periodStart`
-	// (-1 = previous, 0 = current, +1 = next). The carousel renders three pages
-	// using this so a swipe slides the neighbouring period into view.
-	const daysForOffset = useCallback(
-		(offset) => {
+	// The agenda carousel is an "infinite" strip of pages addressed by an absolute
+	// integer index relative to `periodStart` (index 0 = the anchored period).
+	// `pageIndex` (React state) drives which three pages render and the header
+	// labels; `indexSV`/`drag` (shared values) drive the on-screen position.
+	// Crucially the visible position depends ONLY on shared values updated
+	// atomically on the UI thread — so a settled swipe never flashes the old page
+	// while React catches up, because page content for a given absolute index is
+	// deterministic and its on-screen slot is invariant across the re-render.
+	const [pageIndex, setPageIndex] = useState(0);
+	const indexSV = useSharedValue(0);
+	const drag = useSharedValue(0);
+
+	// Days for the page at absolute `index` (week pages snap to their Monday).
+	const daysForIndex = useCallback(
+		(index) => {
 			if (!span) return [];
-			const anchor = periodStart.add(offset * span, "day");
+			const anchor = periodStart.add(index * span, "day");
 			const start = view === "week" ? startOfWeekMonday(anchor) : anchor;
 			return Array.from({ length: span }, (_, i) => start.add(i, "day"));
 		},
@@ -394,54 +404,68 @@ export default function CalendarScreen({ navigation, route }) {
 	);
 
 	// Current (centre) page days — also drives the header / nav labels.
-	const agendaDays = useMemo(() => daysForOffset(0), [daysForOffset]);
+	const agendaDays = useMemo(
+		() => daysForIndex(pageIndex),
+		[daysForIndex, pageIndex],
+	);
 
 	const agendaLabel = agendaDays.length
 		? `${agendaDays[0].format("DD MMM")} – ${agendaDays[agendaDays.length - 1].format("DD MMM")}`
 		: "";
 
-	// Horizontal offset of the three-page agenda carousel. The centre page sits
-	// at -SCREEN_W; `drag` follows the finger and animates to a neighbour on
-	// release before the period is committed.
-	const drag = useSharedValue(0);
+	// Each page sits at `index * SCREEN_W`; the strip is shifted left by the
+	// centre index so that page lands at screen 0, plus the live finger drag.
 	const pagerStyle = useAnimatedStyle(() => ({
-		transform: [{ translateX: -SCREEN_W + drag.value }],
+		transform: [{ translateX: -indexSV.value * SCREEN_W + drag.value }],
 	}));
 
-	// Commit a settled swipe (dir: -1 previous, +1 next): advance the period and
-	// recentre the carousel. Runs on the JS thread (state lives here).
-	const commitSwipe = useCallback(
-		(dir) => {
-			if (span) setPeriodStart((p) => p.add(dir * span, "day"));
-			drag.value = 0;
-		},
-		[span, drag],
-	);
+	// Catch React's page window up to a swipe that already settled on the UI
+	// thread. By the time this runs `indexSV`/`drag` are already at their final
+	// values, so this only re-renders content into slots that don't move.
+	const commitIndex = useCallback((dir) => {
+		setPageIndex((p) => p + dir);
+	}, []);
 
-	// Animate the carousel one period in `dir`, then commit. Shared by the swipe
-	// gesture and the prev/next chevrons so both feel identical.
+	// Animate the strip one period in `dir`, then recentre on the UI thread and
+	// hand the new index to React. Shared by the swipe gesture and the chevrons.
 	const slidePeriod = useCallback(
 		(dir) => {
 			drag.value = withTiming(
 				dir > 0 ? -SCREEN_W : SCREEN_W,
 				{ duration: 220 },
 				(finished) => {
-					if (finished) runOnJS(commitSwipe)(dir);
+					if (finished) {
+						// Atomic on the UI thread: advancing the centre index while
+						// zeroing the drag leaves translateX unchanged, so nothing jumps.
+						indexSV.value += dir;
+						drag.value = 0;
+						runOnJS(commitIndex)(dir);
+					}
 				},
 			);
 		},
-		[drag, commitSwipe],
+		[drag, indexSV, commitIndex],
+	);
+
+	// Hard-reset the carousel to the anchored "today" page (no animation).
+	const resetAgenda = useCallback(
+		(anchor) => {
+			setPeriodStart(anchor);
+			setPageIndex(0);
+			indexSV.value = 0;
+			drag.value = 0;
+		},
+		[indexSV, drag],
 	);
 
 	// Switching layout re-anchors to today so the user always lands on "now".
 	const selectView = useCallback(
 		(id) => {
 			setView(id);
-			setPeriodStart(dayjs().startOf("day"));
-			drag.value = 0;
+			resetAgenda(dayjs().startOf("day"));
 			setFilterOpen(false);
 		},
-		[setView, drag],
+		[setView, resetAgenda],
 	);
 
 	// Horizontal swipe across the week / 3-day agenda. The finger drags the pages
@@ -472,11 +496,8 @@ export default function CalendarScreen({ navigation, route }) {
 
 	const goToday = useCallback(() => {
 		if (view === "month") scrollToToday();
-		else {
-			setPeriodStart(dayjs().startOf("day"));
-			drag.value = 0;
-		}
-	}, [view, scrollToToday, drag]);
+		else resetAgenda(dayjs().startOf("day"));
+	}, [view, scrollToToday, resetAgenda]);
 
 	const headerTitle =
 		view === "month"
@@ -620,10 +641,13 @@ export default function CalendarScreen({ navigation, route }) {
 					</View>
 					<GestureDetector gesture={swipeAgenda}>
 						<Animated.View style={[s.pager, pagerStyle]}>
-							{[-1, 0, 1].map((offset) => (
-								<View key={offset} style={s.page}>
+							{[pageIndex - 1, pageIndex, pageIndex + 1].map((index) => (
+								<View
+									key={index}
+									style={[s.page, { transform: [{ translateX: index * SCREEN_W }] }]}
+								>
 									<AgendaView
-										days={daysForOffset(offset)}
+										days={daysForIndex(index)}
 										byDay={byDay}
 										todayKey={todayKey}
 										bottomPad={insets.bottom + 24}
@@ -1085,10 +1109,12 @@ const s = StyleSheet.create({
 	},
 	viewSegTextOn: { color: colors.bg, fontWeight: "800" },
 	agendaBody: { flex: 1, overflow: "hidden" },
-	// Three full-width pages laid side by side; the middle one is centred via the
-	// animated translateX so swiping reveals the adjacent period.
-	pager: { flex: 1, flexDirection: "row", width: SCREEN_W * 3 },
-	page: { width: SCREEN_W },
+	// Pages are absolutely positioned at `index * SCREEN_W` (via an inline
+	// transform) inside this strip; the animated strip offset brings the centre
+	// page to screen 0. Addressing pages by absolute index keeps the visible slot
+	// stable across a re-render, so settling a swipe never flashes the old page.
+	pager: { flex: 1 },
+	page: { position: "absolute", top: 0, bottom: 0, left: 0, width: SCREEN_W },
 	agendaNav: {
 		flexDirection: "row",
 		alignItems: "center",
