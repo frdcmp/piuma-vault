@@ -12,7 +12,11 @@
 	--accent-4: #6cb6ff;
 
 	display: flex;
-	height: 100vh;
+	/* Fill the workspace row (which sits below the WorkspaceHeader top bar),
+	   not the whole viewport — 100vh here would overflow past the header and
+	   push the empty-state content off the bottom of the screen. */
+	height: 100%;
+	min-height: 0;
 	width: 100%;
 	background: var(--bg);
 	background-image:

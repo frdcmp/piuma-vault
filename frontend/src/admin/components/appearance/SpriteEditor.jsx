@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useGenerateSprite } from "@/queries";
 import { PvButton } from "../ui";
 import PixelCanvas from "./PixelCanvas";
 import { AnimatedPreview, SpritePreview } from "./pixelRender";
@@ -54,8 +55,30 @@ export default function SpriteEditor({
 	const [walkIdx, setWalkIdx] = useState(0);
 	const [gallopIdx, setGallopIdx] = useState(0);
 	const [error, setError] = useState("");
+	const [aiPrompt, setAiPrompt] = useState("");
+	const [aiError, setAiError] = useState("");
+	const generate = useGenerateSprite();
 
 	const patch = (p) => setDef((d) => ({ ...d, ...p }));
+
+	// Ask the LLM for a fresh definition and load it into the editor for review.
+	// Leaves name/key untouched — the admin keeps naming control.
+	const handleGenerate = () => {
+		const prompt = aiPrompt.trim();
+		if (!prompt || generate.isPending) return;
+		setAiError("");
+		generate.mutate(prompt, {
+			onSuccess: ({ definition }) => {
+				setDef(definition);
+				setPaint(Object.keys(definition.palette)[0] || ".");
+				setTab("standing");
+				setWalkIdx(0);
+				setGallopIdx(0);
+			},
+			onError: (e) =>
+				setAiError(e?.response?.data?.error || "Generation failed"),
+		});
+	};
 
 	// The 2 leg rows the bottom of the canvas currently binds to.
 	const legsIdx = tab === "walk" ? walkIdx : tab === "gallop" ? gallopIdx : 0;
@@ -165,6 +188,28 @@ export default function SpriteEditor({
 					/>
 				</label>
 			</div>
+
+			{/* AI generate — produces a definition to review/tweak before saving */}
+			<div className="vp-sprite-ai">
+				<input
+					className="vp-input"
+					value={aiPrompt}
+					onChange={(e) => setAiPrompt(e.target.value)}
+					onKeyDown={(e) => {
+						if (e.key === "Enter") handleGenerate();
+					}}
+					placeholder="Describe a creature — e.g. a small purple owl"
+					disabled={generate.isPending}
+				/>
+				<PvButton
+					size="sm"
+					onClick={handleGenerate}
+					disabled={generate.isPending || !aiPrompt.trim()}
+				>
+					{generate.isPending ? "Generating…" : "✨ AI generate"}
+				</PvButton>
+			</div>
+			{aiError && <p className="vp-text vp-sprite-error">{aiError}</p>}
 
 			<div className="vp-sprite-editor-grid">
 				{/* ── Canvas ── */}

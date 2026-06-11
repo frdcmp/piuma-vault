@@ -10,6 +10,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/admin/sprites")
             .route("", web::get().to(handlers::list_sprites))
             .route("", web::post().to(handlers::create_sprite))
+            .route("/generate", web::post().to(handlers::generate_sprite))
             .route("/active", web::put().to(handlers::set_active))
             .route("/{key}", web::put().to(handlers::update_sprite))
             .route("/{key}", web::delete().to(handlers::delete_sprite)),
