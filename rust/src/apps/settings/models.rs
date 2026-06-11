@@ -23,6 +23,11 @@ pub struct ServiceConfigResponse {
     pub websearch_tavily_api_key_set: bool,
     pub websearch_serpapi_api_key_set: bool,
     pub websearch_exa_api_key_set: bool,
+    // Transcription: the active provider (plain) + a `*_set` flag per provider key.
+    pub transcription_provider: String,
+    pub transcription_speechmatics_api_key_set: bool,
+    pub transcription_assemblyai_api_key_set: bool,
+    pub transcription_deepgram_api_key_set: bool,
     // GitHub: the API base (plain) + a `*_set` flag for the secret token.
     pub github_api_base: String,
     pub github_token_set: bool,
@@ -46,6 +51,10 @@ pub struct UpdateServiceConfig {
     pub websearch_tavily_api_key: Option<String>,
     pub websearch_serpapi_api_key: Option<String>,
     pub websearch_exa_api_key: Option<String>,
+    pub transcription_provider: Option<String>,
+    pub transcription_speechmatics_api_key: Option<String>,
+    pub transcription_assemblyai_api_key: Option<String>,
+    pub transcription_deepgram_api_key: Option<String>,
     pub github_api_base: Option<String>,
     pub github_token: Option<String>,
 }
@@ -86,6 +95,14 @@ pub struct TestGithubRequest {
 /// to saved config.
 #[derive(Debug, Default, Deserialize)]
 pub struct TestWebsearchRequest {
+    pub provider: Option<String>,
+    pub api_key: Option<String>,
+}
+
+/// Optional transcription overrides for a "try now" check. Blank fields fall
+/// back to saved config.
+#[derive(Debug, Default, Deserialize)]
+pub struct TestTranscriptionRequest {
     pub provider: Option<String>,
     pub api_key: Option<String>,
 }

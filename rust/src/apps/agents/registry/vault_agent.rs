@@ -26,6 +26,9 @@ pub static DEF: AgentDef = AgentDef {
         "get_task",
         "list_recurring",
         "list_buckets",
+        "list_recordings",
+        "get_recording",
+        "start_recording",
         // Tier 2 — create/edit
         "create_bucket",
         "rename_bucket",

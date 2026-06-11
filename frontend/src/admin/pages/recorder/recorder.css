@@ -1,0 +1,348 @@
+/* ════════ Recorder scene (the black hole page) ═══════════════════════════ */
+
+.recorder-scene {
+	position: relative;
+	flex: 1 1 0%;
+	min-height: 0;
+	height: 100%;
+	overflow: hidden;
+	background: #0b0c10;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	/* Vars the shared Starfield canvas reads for its star colors. */
+	--accent: var(--vp-accent);
+	--text: var(--vp-text);
+}
+
+.recorder-scene-inner {
+	position: relative;
+	z-index: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 18px;
+}
+
+/* ---- The black hole button -------------------------------------------------- */
+.recorder-hole {
+	background: none;
+	border: 0;
+	padding: 0;
+	margin: 0;
+	cursor: pointer;
+	line-height: 0;
+	transition: transform 0.15s steps(3);
+}
+.recorder-hole:hover {
+	transform: scale(1.05);
+}
+.recorder-hole:active {
+	transform: scale(0.97);
+}
+.recorder-hole-canvas {
+	image-rendering: pixelated;
+	display: block;
+}
+
+.recorder-hole-label {
+	font-family: var(--vp-font);
+	font-size: 13px;
+	font-weight: 800;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: var(--vp-muted);
+	text-shadow: 2px 2px 0 #000;
+	animation: recorder-label-blink 2.4s steps(2) infinite;
+}
+.recorder-hole-label--recording {
+	color: var(--vp-accent-3);
+	animation: recorder-label-blink 1s steps(2) infinite;
+}
+.recorder-hole-label--summarising {
+	color: var(--vp-accent);
+	animation: recorder-label-blink 0.8s steps(2) infinite;
+}
+
+@keyframes recorder-label-blink {
+	0%,
+	60% {
+		opacity: 1;
+	}
+	61%,
+	100% {
+		opacity: 0.45;
+	}
+}
+
+/* ---- Pixel waveform + mascot ------------------------------------------------ */
+.recorder-meter {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 12px 16px;
+	border: 2px solid var(--vp-border);
+	background: rgba(11, 12, 16, 0.72);
+	box-shadow: var(--vp-shadow);
+}
+
+.recorder-meter-canvas {
+	image-rendering: pixelated;
+	display: block;
+}
+
+.recorder-meter-sprite {
+	line-height: 0;
+	filter: drop-shadow(2px 2px 0 #000);
+}
+.recorder-meter-sprite.is-walking {
+	animation: recorder-sprite-bob 0.5s steps(2) infinite;
+}
+
+@keyframes recorder-sprite-bob {
+	0%,
+	100% {
+		transform: translateY(0);
+	}
+	50% {
+		transform: translateY(-3px);
+	}
+}
+
+/* ---- Live transcript terminal ----------------------------------------------- */
+/* A bottom-anchored scroll: new lines push up and dissolve via the top mask
+   before they reach the sessions button. */
+.recorder-term {
+	width: 560px;
+	max-width: 86vw;
+	height: 168px;
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
+	gap: 3px;
+	overflow: hidden;
+	font-family: var(--vp-font, monospace);
+	font-size: 12.5px;
+	line-height: 1.5;
+	color: var(--vp-accent-2);
+	text-align: left;
+	text-shadow: 1px 1px 0 #000;
+	-webkit-mask-image: linear-gradient(
+		to top,
+		#000 0%,
+		#000 42%,
+		transparent 100%
+	);
+	mask-image: linear-gradient(to top, #000 0%, #000 42%, transparent 100%);
+	pointer-events: none;
+}
+
+.recorder-term-line {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	/* Older lines (higher --term-i) sit dimmer, reinforcing the dissolve. */
+	opacity: calc(1 - var(--term-i, 0) * 0.06);
+	animation: recorder-term-in 0.18s steps(2);
+}
+
+.recorder-term-caret {
+	color: var(--vp-faint);
+}
+
+.recorder-term-cursor {
+	color: var(--vp-accent-2);
+	animation: recorder-term-blink 0.9s steps(2) infinite;
+}
+
+@keyframes recorder-term-in {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+}
+
+@keyframes recorder-term-blink {
+	0%,
+	55% {
+		opacity: 1;
+	}
+	56%,
+	100% {
+		opacity: 0;
+	}
+}
+
+/* ---- Bottom link to the archive --------------------------------------------- */
+.recorder-sessions-link {
+	position: absolute;
+	bottom: 22px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 1;
+	font-family: var(--vp-font);
+	font-size: 12px;
+	font-weight: 800;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	text-decoration: none;
+	color: var(--vp-accent-4);
+	border: 2px solid var(--vp-border);
+	background: rgba(11, 12, 16, 0.72);
+	box-shadow: var(--vp-shadow);
+	padding: 8px 16px;
+}
+.recorder-sessions-link:hover {
+	color: var(--vp-accent);
+	border-color: var(--vp-accent);
+}
+
+/* ════════ Sessions archive + detail pages ════════════════════════════════ */
+
+.recorder-scene--page {
+	align-items: stretch;
+	justify-content: flex-start;
+	overflow-y: auto;
+}
+
+.recorder-page {
+	max-width: 820px;
+	margin: 0 auto;
+	padding: 24px 16px 64px;
+	width: 100%;
+}
+
+/* Content floats above the starfield on the archive page. */
+.recorder-page--over {
+	position: relative;
+	z-index: 1;
+}
+
+/* ---- Recordings list -------------------------------------------------------- */
+.recorder-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.recorder-item {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+	border: 2px solid var(--vp-border);
+	background: rgba(21, 23, 28, 0.88);
+	box-shadow: var(--vp-shadow);
+	padding: 12px 14px;
+}
+
+.recorder-item-main {
+	min-width: 0;
+	flex: 1;
+}
+
+.recorder-item-title {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	font-size: 14px;
+	font-weight: 700;
+	color: var(--vp-text);
+}
+
+.recorder-item-link {
+	background: none;
+	border: 0;
+	padding: 0;
+	margin: 0;
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+	text-align: left;
+}
+.recorder-item-link:hover {
+	color: var(--vp-accent);
+}
+
+.recorder-item-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 16px;
+	margin-top: 6px;
+	font-size: 12px;
+	color: var(--vp-muted);
+}
+
+.recorder-item-preview {
+	margin: 8px 0 0;
+	font-size: 12px;
+	color: var(--vp-muted);
+	line-height: 1.6;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.recorder-item-error {
+	margin: 8px 0 0;
+	font-size: 12px;
+	color: var(--vp-accent-3);
+}
+
+.recorder-item-actions {
+	display: flex;
+	gap: 8px;
+	flex-shrink: 0;
+}
+
+/* ---- Detail page: summary + transcript -------------------------------------- */
+.recorder-detail-summary {
+	margin: 0;
+	font-size: 13px;
+	line-height: 1.7;
+	color: var(--vp-text);
+	white-space: pre-wrap;
+}
+
+.recorder-transcript {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-height: 60vh;
+	overflow-y: auto;
+}
+
+.recorder-seg {
+	display: flex;
+	gap: 10px;
+	align-items: baseline;
+	font-size: 13px;
+	line-height: 1.6;
+}
+
+.recorder-seg-time {
+	flex-shrink: 0;
+	font-family: var(--vp-font, monospace);
+	font-size: 11px;
+	color: var(--vp-muted);
+	min-width: 42px;
+}
+
+.recorder-seg-speaker {
+	flex-shrink: 0;
+	font-size: 11px;
+	font-weight: 700;
+	color: var(--vp-accent-4, var(--vp-accent));
+	text-transform: uppercase;
+}
+
+.recorder-seg-text {
+	color: var(--vp-text);
+}

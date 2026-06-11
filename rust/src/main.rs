@@ -81,6 +81,9 @@ async fn main() -> io::Result<()> {
     let calendar_bus = apps::calendar::events::CalendarEventBus::new();
     // Control plane for in-flight chat turns: STOP (cancel) + INJECT (mailbox).
     let turn_control = apps::agents::control::TurnControl::new();
+    // Live recording sessions: shared between the recorder WS relay and the
+    // stop/status REST endpoints.
+    let recorder_registry = apps::recorder::session::SessionRegistry::new();
 
     // CORS policy is read from the environment once (see cors.rs) and used to
     // build a fresh middleware per worker.
@@ -98,6 +101,7 @@ async fn main() -> io::Result<()> {
             .app_data(web::Data::new(tasks_bus.clone()))
             .app_data(web::Data::new(calendar_bus.clone()))
             .app_data(web::Data::new(turn_control.clone()))
+            .app_data(web::Data::new(recorder_registry.clone()))
             .configure(apps::health::routes::configure_routes)
             .configure(apps::auth::routes::configure_routes)
             .configure(apps::agents::routes::configure_routes)
@@ -112,6 +116,7 @@ async fn main() -> io::Result<()> {
             .configure(apps::storage::routes::configure_routes)
             .configure(apps::storage_shares::routes::configure_routes)
             .configure(apps::settings::routes::configure_routes)
+            .configure(apps::recorder::routes::configure_routes)
             .configure(apps::sprites::routes::configure_routes)
             .configure(apps::db_dump::routes::configure_routes)
             .configure(apps::widgets::routes::configure_routes)

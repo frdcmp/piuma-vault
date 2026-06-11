@@ -122,10 +122,60 @@ pub async fn generate_sprite(pool: &DbPool, prompt: &str) -> Result<SpriteDefini
 
     let json_str = extract_json(&raw)
         .ok_or("the model did not return a JSON object")?;
-    let def: SpriteDefinition = serde_json::from_str(json_str)
+    let mut def: SpriteDefinition = serde_json::from_str(json_str)
         .map_err(|e| format!("the model returned malformed sprite JSON: {e}"))?;
+    // Models drift off the grid contract (a row a char too long, 9 body rows
+    // instead of 10). Repair to the canonical shape rather than reject a sprite
+    // the admin can fix in two clicks; validate() is the remaining safety net.
+    normalize(&mut def);
     def.validate()?;
     Ok(def)
+}
+
+const GRID_WIDTH: usize = 16;
+const BODY_ROWS: usize = 10;
+const LEG_ROWS: usize = 2;
+
+/// Coerce a parsed definition onto the fixed grid: every row exactly
+/// `GRID_WIDTH` chars (pad with '.', truncate overflow), `body` exactly
+/// `BODY_ROWS`, every leg frame exactly `LEG_ROWS`, and non-zero frame timings.
+fn normalize(def: &mut SpriteDefinition) {
+    def.body = fit_rows(std::mem::take(&mut def.body), BODY_ROWS);
+    def.idle_legs = fit_rows(std::mem::take(&mut def.idle_legs), LEG_ROWS);
+    if def.walk_legs.is_empty() {
+        def.walk_legs.push(Vec::new());
+    }
+    if def.gallop_legs.is_empty() {
+        def.gallop_legs.push(Vec::new());
+    }
+    for frame in def.walk_legs.iter_mut().chain(def.gallop_legs.iter_mut()) {
+        *frame = fit_rows(std::mem::take(frame), LEG_ROWS);
+    }
+    if def.walk_frame_ms == 0 {
+        def.walk_frame_ms = 120;
+    }
+    if def.gallop_frame_ms == 0 {
+        def.gallop_frame_ms = 140;
+    }
+}
+
+/// Force a single row to exactly `GRID_WIDTH` characters.
+fn fit_row(row: &str) -> String {
+    let mut r: String = row.chars().take(GRID_WIDTH).collect();
+    while r.chars().count() < GRID_WIDTH {
+        r.push('.');
+    }
+    r
+}
+
+/// Force a list of rows to exactly `n` rows of `GRID_WIDTH` chars each.
+fn fit_rows(rows: Vec<String>, n: usize) -> Vec<String> {
+    let mut out: Vec<String> = rows.iter().map(|r| fit_row(r)).collect();
+    out.truncate(n);
+    while out.len() < n {
+        out.push(".".repeat(GRID_WIDTH));
+    }
+    out
 }
 
 /// Pull the first balanced `{...}` object out of the model's reply, tolerating

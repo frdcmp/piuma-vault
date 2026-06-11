@@ -30,6 +30,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .route(web::post().to(handlers::test_websearch)),
     )
     .service(
+        web::resource("/admin/settings/services/test/transcription")
+            .route(web::post().to(handlers::test_transcription)),
+    )
+    .service(
         web::resource("/admin/settings/services/test/github")
             .route(web::post().to(handlers::test_github)),
     );

@@ -4,6 +4,7 @@ import {
 	useTestEmbedding,
 	useTestGithub,
 	useTestStorage,
+	useTestTranscription,
 	useTestWebsearch,
 	useUpdateServices,
 } from "../../../queries";
@@ -32,6 +33,10 @@ const EMPTY = {
 	websearch_tavily_api_key: "",
 	websearch_serpapi_api_key: "",
 	websearch_exa_api_key: "",
+	transcription_provider: "speechmatics",
+	transcription_speechmatics_api_key: "",
+	transcription_assemblyai_api_key: "",
+	transcription_deepgram_api_key: "",
 	github_api_base: "",
 	github_token: "",
 };
@@ -41,8 +46,32 @@ const EMPTY = {
 const TABS = [
 	{ id: "embeddings", label: "Embeddings" },
 	{ id: "search", label: "Search" },
+	{ id: "transcription", label: "Transcription" },
 	{ id: "storage", label: "Storage" },
 	{ id: "github", label: "GitHub" },
+];
+
+// Streaming-transcription providers we ship adapters for (see apps::transcription).
+// Each has its own key setting. Only Speechmatics is implemented in v1.
+const TRANSCRIPTION_PROVIDERS = [
+	{
+		id: "speechmatics",
+		label: "Speechmatics",
+		key: "transcription_speechmatics_api_key",
+		hint: "speechmatics.com — real-time streaming, 40 free hours/mo",
+	},
+	{
+		id: "assemblyai",
+		label: "AssemblyAI",
+		key: "transcription_assemblyai_api_key",
+		hint: "assemblyai.com — Universal-Streaming (adapter not yet implemented)",
+	},
+	{
+		id: "deepgram",
+		label: "Deepgram",
+		key: "transcription_deepgram_api_key",
+		hint: "deepgram.com — Nova (adapter not yet implemented)",
+	},
 ];
 
 // Web-search providers we ship adapters for. Each has its own key setting.
@@ -116,11 +145,13 @@ const Services = () => {
 	const testEmb = useTestEmbedding();
 	const testS3 = useTestStorage();
 	const testWs = useTestWebsearch();
+	const testTr = useTestTranscription();
 	const testGh = useTestGithub();
 	const [form, setForm] = useState(EMPTY);
 	const [embResult, setEmbResult] = useState(null);
 	const [s3Result, setS3Result] = useState(null);
 	const [wsResult, setWsResult] = useState(null);
+	const [trResult, setTrResult] = useState(null);
 	const [ghResult, setGhResult] = useState(null);
 	const [vendor, setVendor] = useState("aws");
 	const [activeTab, setActiveTab] = useState("embeddings");
@@ -154,6 +185,7 @@ const Services = () => {
 				s3_access_key_id: data.s3_access_key_id || "",
 				s3_cdn_url: data.s3_cdn_url || "",
 				websearch_provider: data.websearch_provider || "brave",
+				transcription_provider: data.transcription_provider || "speechmatics",
 				github_api_base: data.github_api_base || "",
 			}));
 		}
@@ -181,6 +213,7 @@ const Services = () => {
 			s3_access_key_id: form.s3_access_key_id.trim(),
 			s3_cdn_url: form.s3_cdn_url.trim(),
 			websearch_provider: form.websearch_provider || "brave",
+			transcription_provider: form.transcription_provider || "speechmatics",
 			github_api_base: form.github_api_base.trim(),
 		};
 		if (form.github_token.trim())
@@ -195,6 +228,10 @@ const Services = () => {
 		for (const p of WEBSEARCH_PROVIDERS) {
 			if (form[p.key].trim()) payload[p.key] = form[p.key].trim();
 		}
+		// Any transcription key the admin typed (for any provider).
+		for (const p of TRANSCRIPTION_PROVIDERS) {
+			if (form[p.key].trim()) payload[p.key] = form[p.key].trim();
+		}
 
 		try {
 			await update.mutateAsync(payload);
@@ -207,6 +244,9 @@ const Services = () => {
 				websearch_tavily_api_key: "",
 				websearch_serpapi_api_key: "",
 				websearch_exa_api_key: "",
+				transcription_speechmatics_api_key: "",
+				transcription_assemblyai_api_key: "",
+				transcription_deepgram_api_key: "",
 				github_token: "",
 			}));
 			pvMessage.success("Services saved");
@@ -312,6 +352,19 @@ const Services = () => {
 		return p;
 	};
 
+	// Active transcription provider + its key field/flag.
+	const trProvider = form.transcription_provider || "speechmatics";
+	const trMeta =
+		TRANSCRIPTION_PROVIDERS.find((p) => p.id === trProvider) ||
+		TRANSCRIPTION_PROVIDERS[0];
+	const trKeySet = data?.[`${trMeta.key}_set`];
+
+	const trTestPayload = () => {
+		const p = { provider: trProvider };
+		if (form[trMeta.key].trim()) p.api_key = form[trMeta.key].trim();
+		return p;
+	};
+
 	const ghTestPayload = () => {
 		const p = { github_api_base: form.github_api_base.trim() };
 		if (form.github_token.trim()) p.github_token = form.github_token.trim();
@@ -370,9 +423,13 @@ const Services = () => {
 					const wsAnySet = WEBSEARCH_PROVIDERS.some(
 						(p) => data[`${p.key}_set`],
 					);
+					const trAnySet = TRANSCRIPTION_PROVIDERS.some(
+						(p) => data[`${p.key}_set`],
+					);
 					const configured = {
 						embeddings: !!data.azure_embedding_api_key_set,
 						search: wsAnySet,
+						transcription: trAnySet,
 						storage: !!data.s3_secret_access_key_set,
 						github: !!data.github_token_set,
 					};
@@ -510,6 +567,69 @@ const Services = () => {
 											)
 										}
 										result={wsResult}
+									/>
+								</PvPanel>
+							)}
+
+							{/* Transcription (recorder streaming ASR) — pick a provider + key. */}
+							{activeTab === "transcription" && (
+								<PvPanel title="transcription · streaming asr">
+									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
+										Powers the <code>Recorder</code> — streams audio to a
+										speech-to-text provider in real time. Pick a provider and
+										set its API key. Swap providers anytime without touching the
+										recorder.
+									</p>
+									<div className="vp-field">
+										<span className="vp-label">Provider</span>
+										<select
+											className="vp-input"
+											value={trProvider}
+											onChange={set("transcription_provider")}
+										>
+											{TRANSCRIPTION_PROVIDERS.map((p) => (
+												<option key={p.id} value={p.id}>
+													{p.label}
+												</option>
+											))}
+										</select>
+									</div>
+									<div className="vp-field" style={{ marginBottom: 0 }}>
+										<span className="vp-label">
+											{trMeta.label} API Key{" "}
+											{trKeySet ? (
+												<span className="vp-tag vp-tag--green vp-svc-chip">
+													set
+												</span>
+											) : (
+												<span className="vp-tag vp-tag--red vp-svc-chip">
+													unset
+												</span>
+											)}
+										</span>
+										<input
+											className="vp-input"
+											type="password"
+											autoComplete="new-password"
+											placeholder={secretPlaceholder(trKeySet)}
+											value={form[trMeta.key]}
+											onChange={set(trMeta.key)}
+										/>
+										<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
+											{trMeta.hint}
+										</span>
+									</div>
+									<TestRow
+										pending={testTr.isPending}
+										onTest={() => runTest(testTr, setTrResult, trTestPayload())}
+										onClear={() =>
+											requestClear(
+												[trMeta.key],
+												setTrResult,
+												`${trMeta.label} transcription`,
+											)
+										}
+										result={trResult}
 									/>
 								</PvPanel>
 							)}
