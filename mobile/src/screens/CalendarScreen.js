@@ -1,6 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+	runOnJS,
+	useAnimatedStyle,
+	useSharedValue,
+	withTiming,
+} from "react-native-reanimated";
 import {
 	ActivityIndicator,
 	Dimensions,
@@ -371,41 +378,105 @@ export default function CalendarScreen({ navigation, route }) {
 		listRef.current?.scrollToIndex({ index: PAST_MONTHS, animated: true });
 	}, []);
 
-	// Days rendered by the week / 3-day agenda (empty in month view).
-	const agendaDays = useMemo(() => {
-		const span = VIEWS.find((v) => v.id === view)?.span ?? 0;
-		if (!span) return [];
-		const start =
-			view === "week" ? startOfWeekMonday(periodStart) : periodStart;
-		return Array.from({ length: span }, (_, i) => start.add(i, "day"));
-	}, [view, periodStart]);
+	const span = VIEWS.find((v) => v.id === view)?.span ?? 0;
+
+	// Days rendered by an agenda page `offset` periods away from `periodStart`
+	// (-1 = previous, 0 = current, +1 = next). The carousel renders three pages
+	// using this so a swipe slides the neighbouring period into view.
+	const daysForOffset = useCallback(
+		(offset) => {
+			if (!span) return [];
+			const anchor = periodStart.add(offset * span, "day");
+			const start = view === "week" ? startOfWeekMonday(anchor) : anchor;
+			return Array.from({ length: span }, (_, i) => start.add(i, "day"));
+		},
+		[span, view, periodStart],
+	);
+
+	// Current (centre) page days — also drives the header / nav labels.
+	const agendaDays = useMemo(() => daysForOffset(0), [daysForOffset]);
 
 	const agendaLabel = agendaDays.length
 		? `${agendaDays[0].format("DD MMM")} – ${agendaDays[agendaDays.length - 1].format("DD MMM")}`
 		: "";
+
+	// Horizontal offset of the three-page agenda carousel. The centre page sits
+	// at -SCREEN_W; `drag` follows the finger and animates to a neighbour on
+	// release before the period is committed.
+	const drag = useSharedValue(0);
+	const pagerStyle = useAnimatedStyle(() => ({
+		transform: [{ translateX: -SCREEN_W + drag.value }],
+	}));
+
+	// Commit a settled swipe (dir: -1 previous, +1 next): advance the period and
+	// recentre the carousel. Runs on the JS thread (state lives here).
+	const commitSwipe = useCallback(
+		(dir) => {
+			if (span) setPeriodStart((p) => p.add(dir * span, "day"));
+			drag.value = 0;
+		},
+		[span, drag],
+	);
+
+	// Animate the carousel one period in `dir`, then commit. Shared by the swipe
+	// gesture and the prev/next chevrons so both feel identical.
+	const slidePeriod = useCallback(
+		(dir) => {
+			drag.value = withTiming(
+				dir > 0 ? -SCREEN_W : SCREEN_W,
+				{ duration: 220 },
+				(finished) => {
+					if (finished) runOnJS(commitSwipe)(dir);
+				},
+			);
+		},
+		[drag, commitSwipe],
+	);
 
 	// Switching layout re-anchors to today so the user always lands on "now".
 	const selectView = useCallback(
 		(id) => {
 			setView(id);
 			setPeriodStart(dayjs().startOf("day"));
+			drag.value = 0;
 			setFilterOpen(false);
 		},
-		[setView],
+		[setView, drag],
 	);
 
-	const stepPeriod = useCallback(
-		(dir) => {
-			const span = VIEWS.find((v) => v.id === view)?.span ?? 0;
-			if (span) setPeriodStart((p) => p.add(dir * span, "day"));
-		},
-		[view],
+	// Horizontal swipe across the week / 3-day agenda. The finger drags the pages
+	// live; on release a meaningful travel OR flick velocity slides to the next /
+	// previous period, otherwise the page snaps back. Only activates on clearly
+	// horizontal motion so the inner ScrollView keeps owning vertical scrolls and
+	// taps. The gesture callbacks run on the UI thread as worklets, so React state
+	// changes hop back via runOnJS.
+	const swipeAgenda = useMemo(
+		() =>
+			Gesture.Pan()
+				.activeOffsetX([-15, 15])
+				.failOffsetY([-12, 12])
+				.onUpdate((e) => {
+					"worklet";
+					drag.value = e.translationX;
+				})
+				.onEnd((e) => {
+					"worklet";
+					if (e.translationX < -60 || e.velocityX < -500)
+						runOnJS(slidePeriod)(1);
+					else if (e.translationX > 60 || e.velocityX > 500)
+						runOnJS(slidePeriod)(-1);
+					else drag.value = withTiming(0, { duration: 150 });
+				}),
+		[drag, slidePeriod],
 	);
 
 	const goToday = useCallback(() => {
 		if (view === "month") scrollToToday();
-		else setPeriodStart(dayjs().startOf("day"));
-	}, [view, scrollToToday]);
+		else {
+			setPeriodStart(dayjs().startOf("day"));
+			drag.value = 0;
+		}
+	}, [view, scrollToToday, drag]);
 
 	const headerTitle =
 		view === "month"
@@ -537,43 +608,51 @@ export default function CalendarScreen({ navigation, route }) {
 					/>
 				</>
 			) : (
-				<>
+				<View style={s.agendaBody}>
 					<View style={s.agendaNav}>
-						<Pressable onPress={() => stepPeriod(-1)} hitSlop={10}>
+						<Pressable onPress={() => slidePeriod(-1)} hitSlop={10}>
 							<Ionicons name="chevron-back" size={20} color={colors.text} />
 						</Pressable>
 						<Text style={s.agendaNavLabel}>{agendaLabel}</Text>
-						<Pressable onPress={() => stepPeriod(1)} hitSlop={10}>
+						<Pressable onPress={() => slidePeriod(1)} hitSlop={10}>
 							<Ionicons name="chevron-forward" size={20} color={colors.text} />
 						</Pressable>
 					</View>
-					<AgendaView
-						days={agendaDays}
-						byDay={byDay}
-						todayKey={todayKey}
-						bottomPad={insets.bottom + 24}
-						pendingKey={pendingKey}
-						onOpenEvent={(ev) => setEventSheet({ event: ev })}
-						onAddEvent={(day) => setEventSheet({ date: day })}
-						onToggleTask={(id) =>
-							wrapToggle(`t${id}`, (extra) =>
-								toggleTask.mutate(id, extra),
-							)
-						}
-						onToggleOccurrence={(occ) =>
-							wrapToggle(`o${occ.template.id}-${occ.date}`, (extra) =>
-								completeOccurrence.mutate(
-									{
-										recurrenceId: occ.template.id,
-										date: occ.date,
-										done: !occ.done,
-									},
-									extra,
-								),
-							)
-						}
-					/>
-				</>
+					<GestureDetector gesture={swipeAgenda}>
+						<Animated.View style={[s.pager, pagerStyle]}>
+							{[-1, 0, 1].map((offset) => (
+								<View key={offset} style={s.page}>
+									<AgendaView
+										days={daysForOffset(offset)}
+										byDay={byDay}
+										todayKey={todayKey}
+										bottomPad={insets.bottom + 24}
+										pendingKey={pendingKey}
+										onOpenEvent={(ev) => setEventSheet({ event: ev })}
+										onAddEvent={(day) => setEventSheet({ date: day })}
+										onToggleTask={(id) =>
+											wrapToggle(`t${id}`, (extra) =>
+												toggleTask.mutate(id, extra),
+											)
+										}
+										onToggleOccurrence={(occ) =>
+											wrapToggle(`o${occ.template.id}-${occ.date}`, (extra) =>
+												completeOccurrence.mutate(
+													{
+														recurrenceId: occ.template.id,
+														date: occ.date,
+														done: !occ.done,
+													},
+													extra,
+												),
+											)
+										}
+									/>
+								</View>
+							))}
+						</Animated.View>
+					</GestureDetector>
+				</View>
 			)}
 
 			{daySheet ? (
@@ -1005,6 +1084,11 @@ const s = StyleSheet.create({
 		letterSpacing: 0.3,
 	},
 	viewSegTextOn: { color: colors.bg, fontWeight: "800" },
+	agendaBody: { flex: 1, overflow: "hidden" },
+	// Three full-width pages laid side by side; the middle one is centred via the
+	// animated translateX so swiping reveals the adjacent period.
+	pager: { flex: 1, flexDirection: "row", width: SCREEN_W * 3 },
+	page: { width: SCREEN_W },
 	agendaNav: {
 		flexDirection: "row",
 		alignItems: "center",
