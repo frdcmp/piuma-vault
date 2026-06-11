@@ -151,12 +151,12 @@ const navTargetToPath = ({ target, id, route, url } = {}) => {
 		case "note":
 			return id ? `/notes/${id}` : null;
 		case "event":
-			return id ? `/admin/calendar?event=${id}` : null;
+			return id ? `/calendar?event=${id}` : null;
 		case "task":
 			return id ? `/tasks?task=${id}` : null;
 		case "view": {
 			const r = (route || "").toLowerCase();
-			if (r.includes("calendar")) return "/admin/calendar";
+			if (r.includes("calendar")) return "/calendar";
 			if (r.includes("task")) return "/tasks";
 			if (r.includes("storage") || r.includes("file")) return "/storage";
 			if (r.includes("note")) return "/notes";

@@ -155,12 +155,16 @@ function AppContent() {
 
 				{/* Calendar (standalone pixel layout, like Storage) */}
 				<Route
-					path="/admin/calendar"
+					path="/calendar"
 					element={
 						<ProtectedRoute requiredPermission="admin_access">
 							<CalendarPage />
 						</ProtectedRoute>
 					}
+				/>
+				<Route
+					path="/admin/calendar"
+					element={<Navigate to="/calendar" replace />}
 				/>
 			</Routes>
 			{/* Loud, must-dismiss in-app alarm — rings when an alert fires while

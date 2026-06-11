@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import UserMenu from "../../../components/UserMenu";
 import { useLogout } from "../../../queries";
 import { useSprite } from "../../../sprites";
 import useChatDockStore from "../../../store/chatDockStore";
@@ -77,9 +76,7 @@ export default function Home({ onBack }) {
 	return (
 		<div className="piuma-home-container">
 			<Starfield />
-			<div className="piuma-home-usermenu">
-				<UserMenu />
-			</div>
+
 			{onBack ? (
 				<button
 					type="button"
@@ -151,7 +148,7 @@ export default function Home({ onBack }) {
 				<button
 					type="button"
 					className="piuma-menu-item"
-					onClick={() => navigate("/admin/calendar")}
+					onClick={() => navigate("/calendar")}
 				>
 					<span className="piuma-menu-glyph" aria-hidden="true">
 						▤

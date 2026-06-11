@@ -5,7 +5,6 @@ import {
 	pvMessage,
 	pvToast,
 } from "@/admin/components/ui";
-import UserMenu from "../../../components/UserMenu";
 import {
 	useStorageBulkDelete,
 	useStorageDeleteFolder,
@@ -560,9 +559,7 @@ export default function StorageGrid({ prefix, onNavigate }) {
 						</span>
 					))}
 				</div>
-				<div className="storage-topbar-actions">
-					<UserMenu size={34} />
-				</div>
+				<div className="storage-topbar-actions"></div>
 			</div>
 
 			{/* Scrollable body */}

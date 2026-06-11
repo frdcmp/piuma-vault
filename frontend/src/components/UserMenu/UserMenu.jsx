@@ -126,7 +126,7 @@ export default function UserMenu({ size = 42, align = "right" }) {
 							</Link>
 							<Link
 								className="user-menu-item"
-								to="/admin/calendar"
+								to="/calendar"
 								onClick={() => setOpen(false)}
 							>
 								&gt; calendar
