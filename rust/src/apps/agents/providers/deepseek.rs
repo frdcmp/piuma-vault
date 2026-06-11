@@ -38,6 +38,20 @@ pub async fn complete(
     messages: &[Value],
     max_tokens: u32,
 ) -> Result<String, String> {
+    complete_usage(api_key, base_url, model, messages, max_tokens)
+        .await
+        .map(|(t, _, _)| t)
+}
+
+/// Like `complete`, but also returns `(tokens_in, tokens_out)` from the
+/// response `usage` block — for callers that log to the token-usage ledger.
+pub async fn complete_usage(
+    api_key: &str,
+    base_url: Option<&str>,
+    model: &str,
+    messages: &[Value],
+    max_tokens: u32,
+) -> Result<(String, i32, i32), String> {
     let url = format!("{}/chat/completions", base(base_url).trim_end_matches('/'));
 
     let payload = json!({
@@ -74,7 +88,22 @@ pub async fn complete(
         .and_then(|t| t.as_str())
         .unwrap_or("")
         .to_string();
-    Ok(text)
+    let (tin, tout) = openai_usage(&v);
+    Ok((text, tin, tout))
+}
+
+/// Extract `(prompt_tokens, completion_tokens)` from an OpenAI-shaped response.
+pub(super) fn openai_usage(v: &Value) -> (i32, i32) {
+    let u = v.get("usage");
+    let tin = u
+        .and_then(|u| u.get("prompt_tokens"))
+        .and_then(|x| x.as_i64())
+        .unwrap_or(0) as i32;
+    let tout = u
+        .and_then(|u| u.get("completion_tokens"))
+        .and_then(|x| x.as_i64())
+        .unwrap_or(0) as i32;
+    (tin, tout)
 }
 
 /// One streaming model round. `messages`/`tools` are raw OpenAI-shaped JSON.

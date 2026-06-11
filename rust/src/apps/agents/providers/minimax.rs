@@ -163,6 +163,19 @@ pub async fn complete(
     messages: &[Value],
     max_tokens: u32,
 ) -> Result<String, String> {
+    complete_usage(api_key, base_url, model, messages, max_tokens)
+        .await
+        .map(|(t, _, _)| t)
+}
+
+/// Like `complete`, but also returns `(tokens_in, tokens_out)` from `usage`.
+pub async fn complete_usage(
+    api_key: &str,
+    base_url: Option<&str>,
+    model: &str,
+    messages: &[Value],
+    max_tokens: u32,
+) -> Result<(String, i32, i32), String> {
     let url = format!("{}/chat/completions", base(base_url).trim_end_matches('/'));
 
     let payload = json!({
@@ -198,7 +211,8 @@ pub async fn complete(
         .and_then(|m| m.get("content"))
         .and_then(|t| t.as_str())
         .unwrap_or("");
-    Ok(strip_think(text))
+    let (tin, tout) = super::deepseek::openai_usage(&v);
+    Ok((strip_think(text), tin, tout))
 }
 
 /// One streaming model round. `messages`/`tools` are raw OpenAI-shaped JSON.

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	createRecording,
 	deleteRecording,
+	getRecorderUsage,
 	getRecording,
 	getRecordingTranscript,
 	listRecordings,
@@ -29,6 +30,12 @@ export const useRecordingTranscript = (id) =>
 		queryKey: [...RECORDINGS_KEY, id, "transcript"],
 		queryFn: () => getRecordingTranscript(id),
 		enabled: !!id,
+	});
+
+export const useRecorderUsage = () =>
+	useQuery({
+		queryKey: [...RECORDINGS_KEY, "usage"],
+		queryFn: getRecorderUsage,
 	});
 
 export const useCreateRecording = () => {

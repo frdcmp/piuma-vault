@@ -31,6 +31,15 @@ const SOURCE_OPTIONS = [
 
 const num = new Intl.NumberFormat("en-US");
 const fmtTokens = (n) => num.format(n || 0);
+// Compact form for the big stat cards so large counts don't overflow the card
+// (e.g. 1,187,685 → 1.19M, 393,704 → 394k). Tables still use the exact format.
+const fmtCompact = (n) => {
+	const v = n || 0;
+	if (v < 1000) return String(v);
+	if (v < 1_000_000) return `${(v / 1000).toFixed(v < 10_000 ? 1 : 0)}k`;
+	if (v < 1_000_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
+	return `${(v / 1_000_000_000).toFixed(2)}B`;
+};
 // Costs ≥ $0.0001 read as plain dollars; tiny spend (e.g. embeddings, a few
 // hundred tokens at $0.13/M) would round to $0.0000, so show it in exponential
 // form (e.g. $5.23e-5) instead of hiding it.
@@ -52,12 +61,14 @@ const SERIES = {
 const AXIS = "#8a93a3"; // --vp-muted
 const GRID = "#2a2f39"; // --vp-border-soft
 
-const StatCard = ({ label, value, accent, suffix }) => (
+const StatCard = ({ label, value, accent, suffix, title }) => (
 	<section className="vp-panel tu-stat">
 		<div className="vp-panel-body">
 			<span className="vp-label">{label}</span>
 			<div className="tu-stat-value">
-				<span className={accent || "vp-accent"}>{value}</span>
+				<span className={accent || "vp-accent"} title={title}>
+					{value}
+				</span>
 				{suffix ? (
 					<span className="vp-muted tu-stat-suffix">{suffix}</span>
 				) : null}
@@ -144,27 +155,32 @@ const TokenUsage = () => {
 						/>
 						<StatCard
 							label="Total tokens"
-							value={fmtTokens(summary.total_tokens)}
+							value={fmtCompact(summary.total_tokens)}
+							title={`${fmtTokens(summary.total_tokens)} tokens`}
 							suffix="tokens"
 						/>
 						<StatCard
 							label="Input"
-							value={fmtTokens(summary.tokens_input)}
+							value={fmtCompact(summary.tokens_input)}
+							title={`${fmtTokens(summary.tokens_input)} tokens`}
 							suffix="tokens"
 						/>
 						<StatCard
 							label="Output"
-							value={fmtTokens(summary.tokens_output)}
+							value={fmtCompact(summary.tokens_output)}
+							title={`${fmtTokens(summary.tokens_output)} tokens`}
 							suffix="tokens"
 						/>
 						<StatCard
 							label="Cached (read)"
-							value={fmtTokens(summary.tokens_cached)}
+							value={fmtCompact(summary.tokens_cached)}
+							title={`${fmtTokens(summary.tokens_cached)} tokens`}
 							suffix="tokens"
 						/>
 						<StatCard
 							label="Calls"
-							value={fmtTokens(summary.calls)}
+							value={fmtCompact(summary.calls)}
+							title={`${fmtTokens(summary.calls)} requests`}
 							suffix="requests"
 						/>
 					</div>

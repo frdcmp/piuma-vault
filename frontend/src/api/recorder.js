@@ -20,6 +20,11 @@ export const getRecordingTranscript = async (id) => {
 	return data;
 };
 
+export const getRecorderUsage = async () => {
+	const { data } = await axiosInstance.get("/recorder/usage");
+	return data;
+};
+
 export const createRecording = async (payload) => {
 	const { data } = await axiosInstance.post(
 		"/recorder/sessions",

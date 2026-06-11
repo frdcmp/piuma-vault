@@ -10,7 +10,8 @@
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	justify-content: center;
+	/* Sit the hole + waveform up near the top rather than dead-center. */
+	justify-content: flex-start;
 	/* Vars the shared Starfield canvas reads for its star colors. */
 	--accent: var(--vp-accent);
 	--text: var(--vp-text);
@@ -22,7 +23,11 @@
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 18px;
+	gap: 14px;
+	/* Sit a bit below the top — not dead-center, not flush. */
+	margin-top: 6vh;
+	/* Shared width so the meter box and the transcript line up on the left. */
+	--recorder-w: 380px;
 }
 
 /* ---- The black hole button -------------------------------------------------- */
@@ -78,6 +83,9 @@
 
 /* ---- Pixel waveform + mascot ------------------------------------------------ */
 .recorder-meter {
+	width: var(--recorder-w);
+	max-width: 86vw;
+	box-sizing: border-box;
 	display: flex;
 	align-items: center;
 	gap: 14px;
@@ -114,8 +122,11 @@
 /* A bottom-anchored scroll: new lines push up and dissolve via the top mask
    before they reach the sessions button. */
 .recorder-term {
-	width: 560px;
+	width: var(--recorder-w);
 	max-width: 86vw;
+	box-sizing: border-box;
+	/* Match the meter's inner padding so the text lines up with the waveform. */
+	padding: 0 16px;
 	height: 168px;
 	display: flex;
 	flex-direction: column;
@@ -125,7 +136,8 @@
 	font-family: var(--vp-font, monospace);
 	font-size: 12.5px;
 	line-height: 1.5;
-	color: var(--vp-accent-2);
+	/* Past lines: plain grey mono. The latest line gets accent color below. */
+	color: var(--vp-muted);
 	text-align: left;
 	text-shadow: 1px 1px 0 #000;
 	-webkit-mask-image: linear-gradient(
@@ -142,9 +154,12 @@
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	/* Older lines (higher --term-i) sit dimmer, reinforcing the dissolve. */
-	opacity: calc(1 - var(--term-i, 0) * 0.06);
 	animation: recorder-term-in 0.18s steps(2);
+}
+
+/* The just-recorded (newest) line is highlighted; everything above is grey. */
+.recorder-term-line.is-latest {
+	color: var(--vp-accent-2);
 }
 
 .recorder-term-caret {
@@ -217,6 +232,49 @@
 .recorder-page--over {
 	position: relative;
 	z-index: 1;
+}
+
+/* ---- Usage gauge ------------------------------------------------------------ */
+.recorder-usage {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.recorder-usage-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 12px;
+	margin-bottom: 5px;
+}
+
+.recorder-usage-name {
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--vp-text);
+	text-transform: capitalize;
+}
+
+.recorder-usage-val {
+	font-size: 12px;
+	color: var(--vp-muted);
+}
+
+.recorder-usage-bar {
+	height: 12px;
+	border: 2px solid var(--vp-border);
+	background: var(--vp-bg-soft);
+	overflow: hidden;
+}
+
+.recorder-usage-fill {
+	height: 100%;
+	background: var(--vp-accent-2);
+	transition: width 0.4s steps(8);
+}
+.recorder-usage-fill.is-over {
+	background: var(--vp-accent-3);
 }
 
 /* ---- Recordings list -------------------------------------------------------- */

@@ -132,7 +132,7 @@ async fn summarise(pool: &DbPool, transcript: &str) -> Result<String, String> {
         serde_json::json!({ "role": "user", "content": format!("Transcript:\n\n{transcript}") }),
     ];
 
-    let raw = providers::complete(
+    let (raw, tokens_in, tokens_out) = providers::complete_usage(
         &provider.kind,
         &provider.api_key,
         provider.base_url.as_deref(),
@@ -141,6 +141,23 @@ async fn summarise(pool: &DbPool, transcript: &str) -> Result<String, String> {
         MAX_TOKENS,
     )
     .await?;
+
+    // Log the spend to the same ledger the chat path uses (admin → Token Usage),
+    // tagged source='recorder:summary' (mirrors the `embedding:*` namespacing).
+    // Best-effort.
+    if tokens_in + tokens_out > 0 {
+        let _ = sqlx::query(
+            "INSERT INTO db_token_usage \
+               (kind, source, provider_kind, model, tokens_input, tokens_output) \
+             VALUES ('summary', 'recorder:summary', $1, $2, $3, $4)",
+        )
+        .bind(&provider.kind)
+        .bind(&model.model_id)
+        .bind(tokens_in)
+        .bind(tokens_out)
+        .execute(pool)
+        .await;
+    }
 
     let summary = raw.trim().to_string();
     if summary.is_empty() {

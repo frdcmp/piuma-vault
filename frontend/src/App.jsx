@@ -122,7 +122,7 @@ function AppContent() {
 						}
 					/>
 					<Route
-						path="/recorder/:id"
+						path="/recorder/sessions/:id"
 						element={
 							<ProtectedRoute requiredPermission="admin_access">
 								<RecordingDetailPage />

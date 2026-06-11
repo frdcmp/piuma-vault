@@ -1,38 +1,39 @@
 import { useEffect, useRef } from "react";
 
-// Gargantua-style pixel black hole (the Interstellar look), drawn on a chunky
-// pixel grid. Anatomy, back to front:
+// Pixel "Gargantua" — the Interstellar look, on a pixel grid. Two coupled
+// structures frame a central black sphere:
 //
-//   1. lower lensed arc  — the disk's far side bent UNDER the shadow (faint,
-//                          heavily compressed secondary image)
-//   2. upper lensed arc  — the far side bent OVER the shadow (the iconic halo)
-//   3. the shadow        — pure black event-horizon silhouette
-//   4. photon ring       — thin white-hot ring hugging the shadow edge
-//   5. front band        — the near side of the thin disk, seen almost edge-on,
-//                          crossing in front of the shadow
+//   • WINGS  — the accretion disk seen almost edge-on: a flat horizontal band
+//              that flares out to the left and right, brightest near the sphere.
+//              Its lower (near) half crosses in FRONT of the sphere; its upper
+//              (far) half passes BEHIND it.
+//   • HALO   — the gravitationally-lensed image of that same disk, bent up over
+//              the TOP and down under the BOTTOM, forming a bright ring that
+//              wraps the sphere vertically. Brightest at top/bottom, fading into
+//              the wings at the sides.
 //
-// Plus Doppler beaming: the side of the disk orbiting toward the camera (left)
-// renders brighter and hotter than the receding side — just like the movie.
+//   + a thin white-hot photon ring hugging the shadow.
 //
-// It IS the record button. While recording it spins faster and flares with the
-// mic level (read from `levelRef`, written by the waveform analyser loop).
+// Everything rotates (Keplerian: inner faster). It IS the record button — while
+// recording it spins faster and flares with the mic level (`levelRef`).
 
-const SIZE = 380; // logical canvas size (px)
-const PX = 4; // pixel-art cell — everything snaps to this grid
+const SIZE = 620;
+const PX = 4;
 const CENTER = SIZE / 2;
-const SHADOW_R = 54; // event-horizon silhouette radius
-const RING_R = SHADOW_R + PX; // photon ring radius
-const DISK_IN = RING_R + 8; // inner edge of the accretion disk
-const DISK_OUT = CENTER - 14; // outer edge
-const TILT = 0.16; // how edge-on the front band is (smaller = flatter)
-const ARC_SPREAD = 1.25; // radians the upper lensed arc spans each side of top
-const PARTICLES = 620;
-const BEAM = 0.55; // Doppler beaming strength (0..1)
+const SHADOW_R = 90; // event-horizon silhouette radius
+const RING_R = SHADOW_R + 5; // photon ring radius
+const WING_IN = RING_R + 10; // inner edge of the edge-on disk
+const WING_OUT = CENTER - 4; // outer edge (flares to the canvas sides)
+const WING_TILT = 0.12; // near edge-on (smaller = flatter)
+const WING_N = 1100;
+const HALO_R = RING_R + 9; // mean radius of the lensed vertical halo
+const HALO_THICK = 20; // halo band thickness
+const HALO_N = 380;
+const BEAM = 0.22; // subtle Doppler brightening on the approaching side
 
-// Heat palette, inner (hottest) → outer. Beaming shifts a step hotter.
+// Heat palette, hottest → coolest.
 const HEAT = ["#ffffff", "#fff3c4", "#f7c948", "#ffa53d", "#ff7a45", "#c4513a"];
 
-// Deterministic PRNG so the disk looks the same every mount.
 const makeRand = (seed) => {
 	let s = seed;
 	return () => {
@@ -45,6 +46,9 @@ export default function BlackHole({ state = "idle", levelRef, onPress }) {
 	const canvasRef = useRef(null);
 	const stateRef = useRef(state);
 	stateRef.current = state;
+	// Hover speeds the idle spin up; read through a ref so the draw loop sees it
+	// without restarting.
+	const hoverRef = useRef(false);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -55,28 +59,38 @@ export default function BlackHole({ state = "idle", levelRef, onPress }) {
 		canvas.height = SIZE * dpr;
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-		// Build the disk. Radius is biased toward the inner edge (denser, hotter
-		// there); each particle keeps a little vertical jitter so the thin band
-		// has body instead of being a 1-px line.
-		const rand = makeRand(1414);
-		const span = DISK_OUT - DISK_IN;
-		const particles = [];
-		for (let i = 0; i < PARTICLES; i++) {
-			const r = DISK_IN + span * rand() ** 2;
-			const n = (r - DISK_IN) / span; // 0 inner → 1 outer
-			particles.push({
+		const rand = makeRand(2025);
+		const wspan = WING_OUT - WING_IN;
+
+		// Edge-on disk particles, density-biased toward the inner (hot) edge.
+		const wings = [];
+		for (let i = 0; i < WING_N; i++) {
+			const r = WING_IN + wspan * rand() ** 1.7;
+			const n = (r - WING_IN) / wspan;
+			wings.push({
 				r,
 				n,
 				angle: rand() * Math.PI * 2,
-				// Keplerian: inner orbits much faster.
-				speed: 0.85 * (DISK_IN / r) ** 1.5,
-				jz: (rand() - 0.5) * (3 + n * 7),
+				speed: 0.8 * (WING_IN / r) ** 1.5, // Keplerian
+				jz: (rand() - 0.5) * (2 + n * 9), // thickens outward into wisps
 				twinkle: rand() * Math.PI * 2,
-				heat: Math.min(HEAT.length - 1, Math.floor(n * HEAT.length)),
+				heat: Math.min(HEAT.length - 1, Math.floor(n * (HEAT.length - 1))),
 			});
 		}
 
-		// The static shadow silhouette, rendered once to an offscreen layer.
+		// Halo particles orbit a near-circle just outside the photon ring.
+		const halo = [];
+		for (let i = 0; i < HALO_N; i++) {
+			halo.push({
+				angle: rand() * Math.PI * 2,
+				rr: (rand() - 0.5) * HALO_THICK, // radial jitter → band thickness
+				speed: 0.6 + rand() * 0.5,
+				twinkle: rand() * Math.PI * 2,
+				heat: rand() < 0.4 ? 0 : 1,
+			});
+		}
+
+		// Pre-render the shadow silhouette once.
 		const shadow = document.createElement("canvas");
 		shadow.width = SIZE * dpr;
 		shadow.height = SIZE * dpr;
@@ -98,7 +112,7 @@ export default function BlackHole({ state = "idle", levelRef, onPress }) {
 
 		const snap = (v) => Math.floor(v / PX) * PX;
 		const cell = (x, y, color, alpha) => {
-			ctx.globalAlpha = Math.min(1, alpha);
+			ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
 			ctx.fillStyle = color;
 			ctx.fillRect(snap(x), snap(y), PX, PX);
 		};
@@ -113,78 +127,63 @@ export default function BlackHole({ state = "idle", levelRef, onPress }) {
 			const st = stateRef.current;
 			const level = Math.min(1, levelRef?.current ?? 0);
 			const speedMul =
-				st === "recording" ? 1.9 + level * 2.5 : st === "summarising" ? 0.4 : 1;
-			const glow = st === "recording" ? 1 + level * 0.8 : 1;
+				st === "recording"
+					? 1.8 + level * 2.4
+					: st === "summarising"
+						? 0.4
+						: hoverRef.current
+							? 0.85
+							: 0.3;
+			const glow = st === "recording" ? 1 + level * 0.7 : 1;
 			t += dt;
 			ctx.clearRect(0, 0, SIZE, SIZE);
 
-			// Collect this frame's cells per layer, then paint in depth order.
-			const lower = [];
-			const upper = [];
+			// 1) Wings — split front/back so the sphere occludes the far half.
 			const front = [];
-
-			for (const p of particles) {
+			for (const p of wings) {
 				p.angle += p.speed * speedMul * dt;
-				const sin = Math.sin(p.angle);
 				const cos = Math.cos(p.angle);
-				const tw = 0.7 + 0.3 * Math.sin(t * 3 + p.twinkle);
-
-				// Doppler beaming: the approaching (left) side is brighter and a
-				// step hotter; the receding (right) side dims and cools.
-				const approach = Math.max(0, -sin);
-				const recede = Math.max(0, sin);
-				const bright =
-					tw * (0.55 + BEAM * approach) * (1 - 0.35 * recede) * glow;
-				const heat = approach > 0.6 ? Math.max(0, p.heat - 1) : p.heat;
-				const color = HEAT[heat];
-
-				if (cos >= 0) {
-					// Near side: the thin band crossing in front of the shadow.
-					front.push({
-						x: CENTER + sin * p.r,
-						y: CENTER + cos * p.r * TILT + p.jz * 0.6,
-						color,
-						alpha: bright,
-					});
-				} else {
-					// Far side: light bent around the hole. Primary image arcs over
-					// the top (radially compressed toward the photon ring)…
-					const psi = -Math.PI / 2 + sin * ARC_SPREAD;
-					const R = RING_R + 4 + (p.r - DISK_IN) * 0.38 + p.jz * 0.4;
-					upper.push({
-						x: CENTER + Math.cos(psi) * R,
-						y: CENTER + Math.sin(psi) * R,
-						color,
-						alpha: bright * 0.9,
-					});
-					// …and a fainter, tighter secondary image mirrors under it.
-					const psi2 = Math.PI / 2 - sin * 1.0;
-					const R2 = RING_R + 2 + (p.r - DISK_IN) * 0.16;
-					lower.push({
-						x: CENTER + Math.cos(psi2) * R2,
-						y: CENTER + Math.sin(psi2) * R2,
-						color,
-						alpha: bright * 0.38,
-					});
-				}
+				const sin = Math.sin(p.angle);
+				const x = CENTER + cos * p.r;
+				const y = CENTER + sin * p.r * WING_TILT + p.jz;
+				const tw = 0.72 + 0.28 * Math.sin(t * 3 + p.twinkle);
+				// Brightest near the sphere and at the edge-on sides; fade outward.
+				const fade = (1 - 0.7 * p.n) * (0.5 + 0.5 * Math.abs(cos));
+				const beam = 0.85 + BEAM * Math.max(0, -cos);
+				const alpha = tw * fade * beam * glow;
+				const e = { x, y, color: HEAT[p.heat], alpha };
+				if (sin > 0)
+					front.push(e); // lower/near half → in front
+				else cell(x, y, e.color, e.alpha * 0.9); // upper/far half → behind
 			}
 
-			for (const c of lower) cell(c.x, c.y, c.color, c.alpha);
-			for (const c of upper) cell(c.x, c.y, c.color, c.alpha);
-
-			// The shadow swallows whatever fell behind it.
+			// 2) Shadow swallows the far half behind it.
 			ctx.globalAlpha = 1;
 			ctx.drawImage(shadow, 0, 0, SIZE, SIZE);
 
-			// Photon ring: thin, white-hot, flaring with state + mic.
+			// 3) Lensed halo ring — brightest at top & bottom, dim at the sides
+			//    (where it blends into the wings). Wraps the sphere vertically.
+			for (const h of halo) {
+				h.angle += h.speed * speedMul * 0.5 * dt;
+				const sin = Math.sin(h.angle);
+				const cos = Math.cos(h.angle);
+				const r = HALO_R + h.rr;
+				const x = CENTER + cos * r;
+				const y = CENTER + sin * r;
+				const tw = 0.7 + 0.3 * Math.sin(t * 3 + h.twinkle);
+				const vert = 0.25 + 0.75 * Math.abs(sin); // peak top/bottom
+				cell(x, y, HEAT[h.heat], tw * vert * (0.9 * glow));
+			}
+
+			// 4) Photon ring — thin, white-hot, flaring with state + mic.
 			const flare =
 				st === "recording"
-					? 0.65 + 0.35 * Math.min(1, level * 2 + 0.2 * Math.sin(t * 6))
+					? 0.7 + 0.3 * Math.min(1, level * 2 + 0.2 * Math.sin(t * 6))
 					: st === "summarising"
 						? 0.4 + 0.25 * Math.sin(t * 2.5)
-						: 0.55 + 0.12 * Math.sin(t * 1.3);
-			const ringColor = st === "recording" ? "#ffb09c" : "#fff3c4";
-			for (let a = 0; a < Math.PI * 2; a += 0.04) {
+						: 0.6 + 0.12 * Math.sin(t * 1.3);
+			const ringColor = st === "recording" ? "#ffd0c0" : "#fff3c4";
+			for (let a = 0; a < Math.PI * 2; a += 0.03) {
 				cell(
 					CENTER + Math.cos(a) * RING_R,
 					CENTER + Math.sin(a) * RING_R,
@@ -193,8 +192,8 @@ export default function BlackHole({ state = "idle", levelRef, onPress }) {
 				);
 			}
 
-			// The near side of the disk passes in front of everything.
-			for (const c of front) cell(c.x, c.y, c.color, c.alpha);
+			// 5) Near half of the wings, in front of everything.
+			for (const e of front) cell(e.x, e.y, e.color, e.alpha);
 
 			ctx.globalAlpha = 1;
 			raf = requestAnimationFrame(draw);
@@ -209,6 +208,12 @@ export default function BlackHole({ state = "idle", levelRef, onPress }) {
 			type="button"
 			className={`recorder-hole recorder-hole--${state}`}
 			onClick={onPress}
+			onPointerEnter={() => {
+				hoverRef.current = true;
+			}}
+			onPointerLeave={() => {
+				hoverRef.current = false;
+			}}
 			aria-label={state === "recording" ? "Stop recording" : "Start recording"}
 		>
 			<canvas

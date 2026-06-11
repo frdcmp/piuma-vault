@@ -18,20 +18,20 @@ const BARS = Math.floor(COLS / (BAR_W + GAP));
 const HALF = ROWS / 2;
 
 // Cell color by distance from the centerline (0 = at center). Recording shows
-// the hot green→amber→red meter; idle monitoring shows a cool blue so it's
+// the hot green→amber→red meter; idle monitoring shows flat grey so it's
 // obvious at a glance whether the mic is actually live or just previewing.
 const rowColor = (d, active) =>
 	active
 		? d < 3
-			? "#5cd0a9"
+			? "#ff6b6b"
 			: d < 6
-				? "#f7c948"
-				: "#ff6b6b"
+				? "#f4453f"
+				: "#c4282a"
 		: d < 3
-			? "#3f6cd0"
+			? "#6b7280"
 			: d < 6
-				? "#5285e0"
-				: "#6ba6f0";
+				? "#8a909c"
+				: "#a7adb8";
 
 export default function PixelWaveform({ analyserRef, active, levelRef }) {
 	const canvasRef = useRef(null);
