@@ -4,6 +4,7 @@ import {
 	SettingOutlined,
 } from "@ant-design/icons";
 import { Link, useNavigate } from "react-router-dom";
+import NavMenu from "../../../components/NavMenu/NavMenu";
 import { Sprite, useSprite } from "../../../sprites";
 import useUiStore, { SCREEN_MODES } from "../../../store/uiStore";
 import AppBreadcrumbs from "./Breadcrumbs";
@@ -41,6 +42,8 @@ const HeaderComponent = ({ onSidebarToggle, showSidebarToggle = false }) => {
 						<AppBreadcrumbs />
 					)}
 				</div>
+
+				{!isPhone && <NavMenu className="vp-header-nav" />}
 
 				<div className="vp-header-right">
 					{!isPhone && (

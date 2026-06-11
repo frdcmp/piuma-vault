@@ -640,7 +640,7 @@ function Chip({ label, count, active, color, swatch, onPress }) {
 
 // ── Create-task sheet ──────────────────────────────────────────────────────
 
-function TaskSheet({
+export function TaskSheet({
 	task,
 	defaultTags = [],
 	defaultBucket = null,

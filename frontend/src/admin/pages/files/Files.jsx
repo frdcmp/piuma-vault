@@ -311,8 +311,8 @@ const Files = () => {
 					: "7 days";
 
 	return (
-		<PageContent maxWidth="100%">
-			<div className="vp-page vp-page--wide">
+		<PageContent>
+			<div className="vp-page">
 				{/* Header */}
 				<div className="vp-page-head">
 					<div>

@@ -24,15 +24,22 @@
 	--accent-4: #6cb6ff;
 
 	display: flex;
+	flex-direction: column;
 	height: 100vh;
 	width: 100%;
 	overflow: hidden;
 	background: #0e0f12;
 }
 
-/* The page's own content wrapper (the first child) fills the space left of the
-   chat column; min-width:0 lets it shrink instead of overflowing the row. */
-.workspace-shell > :first-child {
+/* Inner row: page content + chat dock side-by-side under the topbar. The
+   page's own content wrapper fills the space left of the chat column;
+   min-width:0 lets it shrink instead of overflowing the row. */
+.workspace-shell-row {
+	display: flex;
+	flex: 1 1 0%;
+	min-height: 0;
+}
+.workspace-shell-row > :first-child {
 	flex: 1 1 0%;
 	min-width: 0;
 }

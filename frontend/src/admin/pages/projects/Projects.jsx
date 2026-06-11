@@ -341,7 +341,7 @@ const Projects = () => {
 	];
 
 	return (
-		<PageContent maxWidth="100%">
+		<PageContent>
 			<div className="vp-projects">
 				{/* Header */}
 				<header className="vp-page-head">

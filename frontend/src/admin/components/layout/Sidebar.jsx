@@ -2,22 +2,24 @@ import {
 	ApiOutlined,
 	AppstoreOutlined,
 	BarChartOutlined,
-	BookOutlined,
 	DatabaseOutlined,
 	DeleteOutlined,
 	DownOutlined,
-	FileTextOutlined,
-	FolderOpenOutlined,
+	FileOutlined,
 	GoldOutlined,
+	HeartOutlined,
 	HomeOutlined,
 	KeyOutlined,
+	LockOutlined,
+	ProjectOutlined,
 	QuestionCircleOutlined,
 	RobotOutlined,
 	SearchOutlined,
-	SettingOutlined,
 	ShareAltOutlined,
 	SmileOutlined,
+	ThunderboltOutlined,
 	UpOutlined,
+	UserOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
@@ -29,27 +31,35 @@ import "./layout.css";
 
 const NAVIGATION = [
 	{ key: "/admin", icon: <HomeOutlined />, label: "Home" },
-	{ key: "/admin/notes", icon: <BookOutlined />, label: "Vault" },
-	{ key: "/admin/agents", icon: <RobotOutlined />, label: "Agents" },
-	{ key: "/admin/memory", icon: <GoldOutlined />, label: "Memory" },
+	{ key: "/admin/shares", icon: <ShareAltOutlined />, label: "Shares" },
 	{ key: "/admin/about", icon: <AppstoreOutlined />, label: "About" },
-	{ key: "/docs", icon: <FileTextOutlined />, label: "Docs" },
-	{ key: "/storage", icon: <FolderOpenOutlined />, label: "Storage" },
 ];
 
-const RESOURCES = [
-	{ key: "/admin/appearance", icon: <SmileOutlined />, label: "Appearance" },
-	{ key: "/admin/shares", icon: <ShareAltOutlined />, label: "Shares" },
-	{ key: "/admin/api-keys", icon: <KeyOutlined />, label: "API Keys" },
-	{ key: "/admin/services", icon: <ApiOutlined />, label: "Services" },
+const AI = [
+	{ key: "/admin/agents", icon: <RobotOutlined />, label: "Agents" },
+	{ key: "/admin/memory", icon: <GoldOutlined />, label: "Memory" },
 	{
 		key: "/admin/token-usage",
 		icon: <BarChartOutlined />,
 		label: "Token Usage",
 	},
+];
+
+const PERSONALIZE = [
+	{ key: "/admin/appearance", icon: <SmileOutlined />, label: "Appearance" },
+	{ key: "/admin/profile", icon: <UserOutlined />, label: "Profile" },
+	{ key: "/admin/security", icon: <LockOutlined />, label: "Security" },
+];
+
+const SYSTEM = [
+	{ key: "/admin/services", icon: <ApiOutlined />, label: "Services" },
+	{ key: "/admin/api-keys", icon: <KeyOutlined />, label: "API Keys" },
+	{ key: "/admin/files", icon: <FileOutlined />, label: "Files" },
 	{ key: "/admin/trash", icon: <DeleteOutlined />, label: "Trash" },
 	{ key: "/admin/db-backups", icon: <DatabaseOutlined />, label: "Backups" },
-	{ key: "/admin/settings", icon: <SettingOutlined />, label: "Settings" },
+	{ key: "/admin/health", icon: <HeartOutlined />, label: "Health" },
+	{ key: "/admin/projects", icon: <ProjectOutlined />, label: "Projects" },
+	{ key: "/admin/test", icon: <ThunderboltOutlined />, label: "API Test" },
 ];
 
 const NavItem = ({ item, active, onNavigate }) => (
@@ -73,7 +83,9 @@ const Sidebar = ({ inDrawer = false, onNavigate }) => {
 	const [supportModalOpen, setSupportModalOpen] = useState(false);
 	const [expanded, setExpanded] = useState({
 		navigation: true,
-		resources: true,
+		ai: true,
+		personalize: true,
+		system: true,
 	});
 
 	const toggle = (section) =>
@@ -154,7 +166,9 @@ const Sidebar = ({ inDrawer = false, onNavigate }) => {
 						items={NAVIGATION}
 						activeMatch
 					/>
-					<Section id="resources" label="Resources" items={RESOURCES} />
+					<Section id="ai" label="AI" items={AI} />
+					<Section id="personalize" label="Personalize" items={PERSONALIZE} />
+					<Section id="system" label="System" items={SYSTEM} />
 				</div>
 
 				{/* Footer */}

@@ -707,11 +707,15 @@ export default function AgentsPage() {
 
 	return (
 		<div className="ag-page">
-			<h1 className="ag-title">Agents</h1>
-			<p className="ag-sub">
-				Multi-provider LLM setup. Add a provider + model and tune the agent's
-				config. Chat lives in the main app (and mobile).
-			</p>
+			<div className="vp-page-head">
+				<div>
+					<h1 className="vp-page-title">Agents</h1>
+					<p className="vp-page-subtitle">
+						Multi-provider LLM setup. Add a provider + model and tune the
+						agent's config. Chat lives in the main app (and mobile).
+					</p>
+				</div>
+			</div>
 			{agents.length > 0 && (
 				<div className="ag-row" style={{ marginBottom: 16 }}>
 					<span className="ag-muted">Default agent for new chats:</span>

@@ -1,14 +1,5 @@
 # Overview
 
-**Piuma Vault** is a self-hosted personal vault: a single home for notes (with
-semantic vector search), a multi-provider LLM chat with tool access, tasks &
-calendar, file storage, public note/folder shares, notifications, and an admin
-panel — plus a companion Expo mobile app.
-
-It is built to be feather-light and fast: a React front end, a Rust back end, and
-PostgreSQL, all orchestrated with Docker Compose behind Nginx, with TLS terminated
-at Cloudflare.
-
 ## What's inside
 
 - **Notes** — markdown notes with folders, tags, soft-delete trash, and vector

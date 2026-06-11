@@ -25,6 +25,7 @@ import BottomSheet from "../components/BottomSheet";
 import DateTimePickerField from "../components/DateTimePickerField";
 import ManageBucketsSheet from "../components/ManageBucketsSheet";
 import TagPicker from "../components/TagPicker";
+import { TaskSheet } from "./TasksScreen";
 import {
 	useCalendarEvent,
 	useCalendarEvents,
@@ -228,6 +229,10 @@ export default function CalendarScreen({ navigation, route }) {
 	const [sel, setSel] = useState(ALL); // tag filter selection
 	const [filterOpen, setFilterOpen] = useState(false);
 	const [manageSheet, setManageSheet] = useState(false);
+	// Task opened from the week / 3-day agenda. Tasks (deadlines) and recurring
+	// templates are both opened in the shared TaskSheet — the template has id +
+	// title, the rest is treated as defaults.
+	const [taskSheet, setTaskSheet] = useState(null); // task | null
 	// Persisted across launches so the calendar reopens in the last-used layout.
 	const view = usePrefsStore((s) => s.calendarView); // "month" | "week" | "3day"
 	const setView = usePrefsStore((s) => s.setCalendarView);
@@ -654,6 +659,7 @@ export default function CalendarScreen({ navigation, route }) {
 										pendingKey={pendingKey}
 										onOpenEvent={(ev) => setEventSheet({ event: ev })}
 										onAddEvent={(day) => setEventSheet({ date: day })}
+										onOpenTask={(task) => setTaskSheet(task)}
 										onToggleTask={(id) =>
 											wrapToggle(`t${id}`, (extra) =>
 												toggleTask.mutate(id, extra),
@@ -707,6 +713,10 @@ export default function CalendarScreen({ navigation, route }) {
 
 			{manageSheet ? (
 				<ManageBucketsSheet onClose={() => setManageSheet(false)} />
+			) : null}
+
+			{taskSheet ? (
+				<TaskSheet task={taskSheet} onClose={() => setTaskSheet(null)} />
 			) : null}
 		</View>
 	);
@@ -912,6 +922,7 @@ function AgendaView({
 	pendingKey,
 	onOpenEvent,
 	onAddEvent,
+	onOpenTask,
 	onToggleTask,
 	onToggleOccurrence,
 }) {
@@ -983,12 +994,17 @@ function AgendaView({
 													<Text style={s.check}>{occ.done ? "☑" : "☐"}</Text>
 												)}
 											</Pressable>
-											<Text
-												style={[s.itemTitle, occ.done && s.strike]}
-												numberOfLines={1}
+											<Pressable
+												style={s.itemTitleHit}
+												onPress={() => onOpenTask(occ.template)}
 											>
-												{occ.template.title}
-											</Text>
+												<Text
+													style={[s.itemTitle, occ.done && s.strike]}
+													numberOfLines={1}
+												>
+													{occ.template.title}
+												</Text>
+											</Pressable>
 										</View>
 									);
 								})}
@@ -1012,12 +1028,17 @@ function AgendaView({
 													<Text style={s.check}>{t.done ? "☑" : "☐"}</Text>
 												)}
 											</Pressable>
-											<Text
-												style={[s.itemTitle, t.done && s.strike]}
-												numberOfLines={1}
+											<Pressable
+												style={s.itemTitleHit}
+												onPress={() => onOpenTask(t)}
 											>
-												{t.title}
-											</Text>
+												<Text
+													style={[s.itemTitle, t.done && s.strike]}
+													numberOfLines={1}
+												>
+													{t.title}
+												</Text>
+											</Pressable>
 										</View>
 									);
 								})}
@@ -1204,6 +1225,10 @@ const s = StyleSheet.create({
 	},
 	itemTask: { borderLeftColor: colors.accent2 },
 	itemTitle: { color: colors.text, fontSize: 14, flex: 1 },
+	// Hit target for opening a task in its bottom sheet — wraps the title text
+	// in a pressable that fills the rest of the row. Separate from .itemTitle
+	// so the text style stays a plain Text style.
+	itemTitleHit: { flex: 1, justifyContent: "center" },
 	itemTime: { color: colors.muted, fontSize: 12 },
 	check: { color: colors.accent2, fontSize: 16 },
 	// Fixed-size slot for the checkbox / spinner so toggling state doesn't
