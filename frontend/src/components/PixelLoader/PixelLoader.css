@@ -1,3 +1,6 @@
+/* Mirrors the screen-lock overlay: flat base colour + a soft accent glow behind
+   the sprite, with the animated starfield canvas providing the texture. The
+   --accent/--text tokens are what the starfield canvas reads. */
 .vp-pixloader {
 	position: fixed;
 	inset: 0;
@@ -6,10 +9,17 @@
 	align-items: center;
 	justify-content: center;
 	padding: 24px;
-	background: var(--vp-bg, #14171c);
+	overflow: hidden;
 	opacity: 1;
 	transition: opacity 0.35s ease;
-	overflow: hidden;
+	--accent: var(--vp-accent, #f7c948);
+	--text: var(--vp-text, #d6dbe5);
+	background-color: var(--vp-bg, #14171c);
+	background-image: radial-gradient(
+		60% 50% at 50% 40%,
+		rgba(247, 201, 72, 0.06),
+		transparent 70%
+	);
 }
 
 /* Exit transition — fade the whole screen out. */
@@ -19,26 +29,12 @@
 }
 
 .vp-pixloader-inner {
+	position: relative;
+	z-index: 1; /* sit above the starfield canvas */
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	gap: 28px;
-}
-
-/* When the starfield is on, expose the tokens the canvas reads. The radial glow
-   keeps the sprite from sitting on a flat black backdrop. */
-.vp-pixloader--starfield {
-	--accent: var(--vp-accent, #f7c948);
-	--text: var(--vp-text, #d6dbe5);
-	background-image: radial-gradient(
-		60% 50% at 50% 40%,
-		rgba(247, 201, 72, 0.06),
-		transparent 70%
-	);
-}
-.vp-pixloader--starfield .vp-pixloader-inner {
-	position: relative;
-	z-index: 1; /* sit above the starfield canvas */
 }
 
 .vp-pixloader-text {

@@ -47,7 +47,7 @@ export default function ScreenLockOverlay() {
 				// Show the pixel loader briefly, then drop the overlay — a smooth
 				// transition back into the vault instead of an instant cut.
 				setUnlocking(true);
-				setTimeout(unlock, 1200);
+				setTimeout(unlock, 2000);
 			} else {
 				fail("Wrong PIN. Try again.");
 			}
@@ -78,7 +78,7 @@ export default function ScreenLockOverlay() {
 	};
 
 	if (unlocking) {
-		return <PixelLoader message="Unlocking" starfield />;
+		return <PixelLoader message="Unlocking" />;
 	}
 
 	return (

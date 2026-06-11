@@ -35,7 +35,7 @@ const Login = () => {
 	const [landing, setLanding] = useState(false);
 	const enterVault = () => {
 		setLanding(true);
-		setTimeout(() => navigate(redirectTo), 1200);
+		setTimeout(() => navigate(redirectTo), 2000);
 	};
 
 	// OTP second-step state. otpSession is held in memory only (never
@@ -165,7 +165,7 @@ const Login = () => {
 	};
 
 	if (landing) {
-		return <PixelLoader message="Entering vault" starfield />;
+		return <PixelLoader message="Entering vault" />;
 	}
 
 	return (
