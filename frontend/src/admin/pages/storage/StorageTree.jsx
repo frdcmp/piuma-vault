@@ -209,6 +209,7 @@ export default function StorageTree({
 	expanded,
 	toggleExpand,
 	onBack,
+	embedded = false,
 }) {
 	const signed = useStorageSignedUrl();
 	const zip = useStorageZip();
@@ -353,24 +354,26 @@ export default function StorageTree({
 
 	return (
 		<div className="notes-sidebar-container">
-			<div className="notes-sidebar-header storage-tree-header">
-				<div className="notes-sidebar-header-row">
-					<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-						<button
-							type="button"
-							className="pixel-btn notes-sidebar-back"
-							onClick={onBack}
-							title="Go back"
-						>
-							◀
-						</button>
-						<div>
-							<h3 className="notes-sidebar-title">Storage</h3>
-							<div className="storage-sidebar-sub">bunny · zone pv</div>
+			{!embedded && (
+				<div className="notes-sidebar-header storage-tree-header">
+					<div className="notes-sidebar-header-row">
+						<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+							<button
+								type="button"
+								className="pixel-btn notes-sidebar-back"
+								onClick={onBack}
+								title="Go back"
+							>
+								◀
+							</button>
+							<div>
+								<h3 className="notes-sidebar-title">Storage</h3>
+								<div className="storage-sidebar-sub">bunny · zone pv</div>
+							</div>
 						</div>
 					</div>
 				</div>
-			</div>
+			)}
 
 			<div className="notes-sidebar-tree">
 				<div className="ftree-root">

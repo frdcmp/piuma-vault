@@ -28,6 +28,12 @@ export const useStorageWorkspace = create((set) => ({
 
 	clearSelection: () =>
 		set((s) => (s.selection.size ? { selection: new Set() } : s)),
+
+	// Page-level action triggers (new folder / upload) registered by StorageGrid,
+	// which owns those flows, so the header buttons in StorageExplorer can invoke
+	// them. Null until the grid mounts. Shape: { newFolder(), upload() }.
+	actions: null,
+	setActions: (actions) => set({ actions }),
 }));
 
 // Selector: the single selected FILE key (for the tree's highlight), else null.
