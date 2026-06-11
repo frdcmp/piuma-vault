@@ -13,7 +13,6 @@ import {
 	BucketTagFilter,
 	ManageBucketsModal,
 } from "../../../components/buckets";
-import UserMenu from "../../../components/UserMenu";
 import {
 	useCalendarEvent,
 	useCalendarEvents,
@@ -119,7 +118,7 @@ export default function CalendarPage() {
 	const toggleTask = useToggleTask();
 	const completeOccurrence = useCompleteOccurrence();
 
-	// Deep-link: /admin/calendar?event=<id> opens that event's modal (e.g. from a
+	// Deep-link: /calendar?event=<id> opens that event's modal (e.g. from a
 	// chat link). Fetch the event by id, open it, and clear the param on close so
 	// it doesn't reopen. A missing/forbidden id degrades to a toast.
 	const [searchParams, setSearchParams] = useSearchParams();
@@ -319,7 +318,6 @@ export default function CalendarPage() {
 						>
 							+ event
 						</PvButton>
-						<UserMenu size={34} />
 					</div>
 				</header>
 

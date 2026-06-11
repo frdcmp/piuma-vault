@@ -27,7 +27,6 @@ import {
 	ManageBucketsModal,
 } from "../../../components/buckets";
 import TimeAgo from "../../../components/TimeAgo";
-import UserMenu from "../../../components/UserMenu";
 import {
 	useBuckets,
 	useDeleteRecurringTask,
@@ -346,10 +345,7 @@ export default function TasksPage() {
 						<h1>Tasks</h1>
 					</div>
 					<div className="tasks-actions">
-						<PvButton
-							variant="ghost"
-							onClick={() => navigate("/admin/calendar")}
-						>
+						<PvButton variant="ghost" onClick={() => navigate("/calendar")}>
 							calendar ▤
 						</PvButton>
 						<PvButton
@@ -365,7 +361,6 @@ export default function TasksPage() {
 						>
 							+ task
 						</PvButton>
-						<UserMenu size={34} />
 					</div>
 				</header>
 

@@ -15,7 +15,7 @@ import "./NavMenu.css";
 const ITEMS = [
 	{ key: "/notes", label: "Notes", icon: <BookOutlined /> },
 	{ key: "/tasks", label: "Tasks", icon: <CheckSquareOutlined /> },
-	{ key: "/admin/calendar", label: "Calendar", icon: <CalendarOutlined /> },
+	{ key: "/calendar", label: "Calendar", icon: <CalendarOutlined /> },
 	{ key: "/storage", label: "Storage", icon: <FolderOpenOutlined /> },
 	{ key: "/docs", label: "Docs", icon: <FileTextOutlined /> },
 ];

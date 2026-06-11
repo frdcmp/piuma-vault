@@ -5,10 +5,10 @@ import {
 } from "@ant-design/icons";
 import { Link, useNavigate } from "react-router-dom";
 import NavMenu from "../../../components/NavMenu/NavMenu";
+import UserMenu from "../../../components/UserMenu";
 import { Sprite, useSprite } from "../../../sprites";
 import useUiStore, { SCREEN_MODES } from "../../../store/uiStore";
 import AppBreadcrumbs from "./Breadcrumbs";
-import UserMenu from "./UserMenu";
 import "../../vault-pixel.css";
 import "./layout.css";
 
@@ -52,7 +52,7 @@ const HeaderComponent = ({ onSidebarToggle, showSidebarToggle = false }) => {
 								type="button"
 								className="vp-icon-btn"
 								title="Settings"
-								onClick={() => navigate("/admin/settings")}
+								onClick={() => navigate("/admin/security")}
 								aria-label="Settings"
 							>
 								<SettingOutlined />
@@ -67,7 +67,7 @@ const HeaderComponent = ({ onSidebarToggle, showSidebarToggle = false }) => {
 							</button>
 						</>
 					)}
-					<UserMenu />
+					<UserMenu size={34} />
 				</div>
 			</div>
 		</header>

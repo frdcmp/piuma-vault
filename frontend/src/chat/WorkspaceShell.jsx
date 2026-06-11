@@ -1,13 +1,15 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import WorkspaceHeader from "../components/WorkspaceHeader/WorkspaceHeader";
 import useUiStore from "../store/uiStore";
 import ChatDock from "./ChatDock";
 import "./ChatDock.css";
 
 // Shared layout layer for the workspace pages (Notes, Storage, Tasks,
-// Calendar): page content on the left, the single resizable ChatDock on the
-// right. Render the page's own content as children; the dock manages its own
-// open/width state via chatDockStore, so it's unified across every page.
+// Calendar): the slim WorkspaceHeader across the top, page content on the left,
+// the single resizable ChatDock on the right. Render the page's own content as
+// children; the dock manages its own open/width state via chatDockStore, so
+// it's unified across every page.
 //
 // `onOpenNote` is forwarded to ChatPanel — invoked when the user clicks a note
 // reference inside the chat. Defaults to navigating to that note.
@@ -29,6 +31,7 @@ export default function WorkspaceShell({ children, onOpenNote }) {
 
 	return (
 		<div className="workspace-shell">
+			<WorkspaceHeader />
 			<div className="workspace-shell-row">
 				{children}
 				<ChatDock onOpenNote={handleOpenNote} />

@@ -1,0 +1,57 @@
+/* Slim header for the workspace pages (WorkspaceHeader.jsx). Thinner than the
+   admin .vp-header — a single compact row: brand · nav · actions. */
+
+.ws-header {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 5px 16px;
+	background: var(--vp-panel);
+	border-bottom: 2px solid var(--vp-border);
+	flex: 0 0 auto;
+}
+
+.ws-header-brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	text-decoration: none;
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+	font-weight: 700;
+	letter-spacing: 1px;
+}
+
+.ws-header-logo {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	image-rendering: pixelated;
+}
+
+.ws-header-wordmark {
+	font-size: 14px;
+	color: var(--vp-accent);
+}
+
+/* Nav sits just after the brand; actions are pushed to the far right. */
+.ws-header-nav {
+	gap: 2px;
+}
+
+.ws-header-actions {
+	margin-left: auto;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+@media (max-width: 640px) {
+	.ws-header {
+		gap: 8px;
+		padding: 5px 10px;
+	}
+	.ws-header-wordmark {
+		display: none;
+	}
+}
