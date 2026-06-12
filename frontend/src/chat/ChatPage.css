@@ -638,12 +638,12 @@ button.chat-context-tag-main {
 	box-sizing: border-box;
 	/* one line + padding + border; auto-grows up to 5 lines (~1.45em each) */
 	min-height: 46px;
-	max-height: calc(5 * 1.45em + 20px + 4px);
+	max-height: calc(5 * 1.45em + 12px + 4px);
 	resize: none;
 	overflow-y: auto;
 	background: var(--bg);
 	border: 2px solid var(--border-strong);
-	padding: 10px 12px;
+	padding: 6px 10px;
 	color: var(--text);
 	font-family: inherit;
 	font-size: 11pt;
