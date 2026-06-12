@@ -7,12 +7,23 @@ import { pvMessage } from "../../components/ui";
 import "../../vault-pixel.css";
 import BlackHole from "./BlackHole";
 import PixelWaveform from "./PixelWaveform";
+import { colorForSpeaker, resetSpeakerColors } from "./speakerColors";
 import "./recorder.css";
 
 // The recorder is a scene, not a form: a starfield, a big pixel black hole that
 // IS the record button, a live pixel waveform with the vault mascot, and a link
 // down to the sessions archive. All capture plumbing (mic → AudioWorklet PCM16
 // → WebSocket relay) is unchanged from the previous form-based page.
+
+// When hosted inside the mobile app's WebView, the native shell owns navigation
+// and the sessions archive. Detect the bridge and post lifecycle events to it
+// (instead of navigating the SPA to the note / sessions list).
+const isEmbedded = typeof window !== "undefined" && !!window.ReactNativeWebView;
+const postNative = (payload) => {
+	try {
+		window.ReactNativeWebView?.postMessage(JSON.stringify(payload));
+	} catch {}
+};
 
 // Live transcript terminal: providers emit word-by-word, so we buffer words
 // into lines and scroll the last few like a terminal feed.
@@ -42,9 +53,10 @@ export default function RecorderPage() {
 	const streamRef = useRef(null);
 	const nodeRef = useRef(null);
 	// Transcript terminal buffers: committed lines + the in-progress line.
-	const committedRef = useRef([]); // [{ id, text }]
+	const committedRef = useRef([]); // [{ id, text, speaker }]
 	const lineBufRef = useRef("");
 	const lineIdRef = useRef(0);
+	const currentSpeakerRef = useRef(null); // speaker for the in-progress buf
 	// Shared with the visuals: the analyser feeds the waveform; the waveform
 	// loop writes the RMS level here for the black hole to react to.
 	const analyserRef = useRef(null);
@@ -60,6 +72,8 @@ export default function RecorderPage() {
 	const phaseRef = useRef(phase);
 	useEffect(() => {
 		phaseRef.current = phase;
+		// Let the native shell mirror the capture state in its own header.
+		if (isEmbedded) postNative({ type: "phase", phase });
 	}, [phase]);
 
 	const teardownAudio = useCallback(() => {
@@ -171,11 +185,14 @@ export default function RecorderPage() {
 				stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 			} catch {
 				pvMessage.error("Microphone permission denied");
+				setPhase("idle");
 				return;
 			}
 			streamRef.current = stream;
 			committedRef.current = [];
 			lineBufRef.current = "";
+			currentSpeakerRef.current = null;
+			resetSpeakerColors();
 			setLines([]);
 
 			const ctx = new AudioContext();
@@ -190,6 +207,7 @@ export default function RecorderPage() {
 			} catch {
 				pvMessage.error("Failed to load audio processor");
 				teardownAudio();
+				setPhase("idle");
 				return;
 			}
 
@@ -227,7 +245,22 @@ export default function RecorderPage() {
 				if (msg.type === "transcript" && msg.segment) {
 					if (msg.segment.is_final) {
 						const word = (msg.segment.text || "").trim();
+						const speaker = msg.segment.speaker ?? null;
 						if (word) {
+							// Speaker changed mid-line → commit current line first.
+							if (speaker !== currentSpeakerRef.current && lineBufRef.current) {
+								committedRef.current.push({
+									id: ++lineIdRef.current,
+									text: tidyLine(lineBufRef.current),
+									speaker: currentSpeakerRef.current,
+								});
+								if (committedRef.current.length > MAX_LINES) {
+									committedRef.current.shift();
+								}
+								lineBufRef.current = "";
+							}
+							currentSpeakerRef.current = speaker;
+
 							lineBufRef.current = lineBufRef.current
 								? `${lineBufRef.current} ${word}`
 								: word;
@@ -237,6 +270,7 @@ export default function RecorderPage() {
 								committedRef.current.push({
 									id: ++lineIdRef.current,
 									text: tidyLine(lineBufRef.current),
+									speaker,
 								});
 								if (committedRef.current.length > MAX_LINES) {
 									committedRef.current.shift();
@@ -245,8 +279,11 @@ export default function RecorderPage() {
 							}
 							const display = [...committedRef.current];
 							if (lineBufRef.current) {
-								// Stable id so the in-progress line updates in place.
-								display.push({ id: "buf", text: tidyLine(lineBufRef.current) });
+								display.push({
+									id: "buf",
+									text: tidyLine(lineBufRef.current),
+									speaker,
+								});
 							}
 							setLines(display.slice(-MAX_LINES));
 						}
@@ -256,10 +293,24 @@ export default function RecorderPage() {
 				} else if (msg.type === "done") {
 					pvMessage.success("Summary saved to your vault");
 					cleanupAfterStop();
-					if (msg.note_id) navigate(`/notes/${msg.note_id}`);
+					// Embedded: hand the result to the native shell (it opens the
+					// native transcript detail). Standalone web: open the session's
+					// detail page (transcript + summary), not the raw note.
+					if (isEmbedded) {
+						postNative({
+							type: "done",
+							session_id: msg.session_id,
+							note_id: msg.note_id,
+						});
+					} else if (msg.session_id) {
+						navigate(`/recorder/sessions/${msg.session_id}`);
+					}
 				} else if (msg.type === "error") {
 					pvMessage.error(msg.message || "Recording failed");
 					cleanupAfterStop();
+					if (isEmbedded) {
+						postNative({ type: "error", message: msg.message || "" });
+					}
 				}
 			};
 			ws.onerror = () => pvMessage.error("Connection error");
@@ -270,13 +321,16 @@ export default function RecorderPage() {
 		[navigate, teardownAudio, cleanupAfterStop, stopMonitor],
 	);
 
-	// New recording: create a session, then capture into it.
+	// New recording: create a session, then capture into it. `connecting` shows
+	// the black hole "charging" through the create→mic→worklet→WS-open lag.
 	const start = useCallback(async () => {
+		setPhase("connecting");
 		let session;
 		try {
 			session = await createRecording.mutateAsync({ title: "" });
 		} catch {
 			pvMessage.error("Could not create recording session");
+			setPhase("idle");
 			return;
 		}
 		await beginCapture(session);
@@ -287,6 +341,7 @@ export default function RecorderPage() {
 	const startExisting = useCallback(
 		async (sessionId) => {
 			setArmed(null);
+			setPhase("connecting");
 			await beginCapture({ ws_path: `/recorder/sessions/${sessionId}/ws` });
 		},
 		[beginCapture],
@@ -314,11 +369,13 @@ export default function RecorderPage() {
 	const label =
 		phase === "recording"
 			? "● REC — TAP TO STOP"
-			: phase === "summarising"
-				? "SUMMARISING…"
-				: armed
-					? "AGENT ARMED — TAP TO RECORD"
-					: "TAP THE VOID TO RECORD";
+			: phase === "connecting"
+				? "OPENING THE VOID…"
+				: phase === "summarising"
+					? "SUMMARISING…"
+					: armed
+						? "AGENT ARMED — TAP TO RECORD"
+						: "TAP THE VOID TO RECORD";
 
 	return (
 		<div className="recorder-scene">
@@ -340,11 +397,20 @@ export default function RecorderPage() {
 					<div className="recorder-term">
 						{lines.map((ln, i) => {
 							const latest = i === lines.length - 1;
+							const spColor = colorForSpeaker(ln.speaker);
 							return (
 								<div
 									key={ln.id}
 									className={`recorder-term-line${latest ? " is-latest" : ""}`}
 								>
+									{ln.speaker && (
+										<span
+											className="recorder-term-speaker"
+											style={{ color: spColor }}
+										>
+											{ln.speaker}
+										</span>
+									)}
 									<span className="recorder-term-caret">›</span> {ln.text}
 									{latest && <span className="recorder-term-cursor">▋</span>}
 								</div>
@@ -354,9 +420,11 @@ export default function RecorderPage() {
 				)}
 			</div>
 
-			<Link to="/recorder/sessions" className="recorder-sessions-link">
-				▸ RECORDED SESSIONS
-			</Link>
+			{!isEmbedded && (
+				<Link to="/recorder/sessions" className="recorder-sessions-link">
+					▸ RECORDED SESSIONS
+				</Link>
+			)}
 		</div>
 	);
 }

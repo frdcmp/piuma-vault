@@ -316,6 +316,24 @@ a.vp-card:hover {
 	padding: 4px 10px;
 	font-size: 11px;
 }
+.vp-btn--loading {
+	pointer-events: none;
+	opacity: 0.7;
+}
+.vp-btn-spinner {
+	display: inline-block;
+	width: 12px;
+	height: 12px;
+	border: 2px solid currentColor;
+	border-top-color: transparent;
+	border-radius: 50%;
+	animation: vp-spin 0.6s steps(8, end) infinite;
+}
+@keyframes vp-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
 
 /* ---- Inputs ---------------------------------------------------------------- */
 .vp-field {

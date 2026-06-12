@@ -65,6 +65,10 @@
 	color: var(--vp-accent-3);
 	animation: recorder-label-blink 1s steps(2) infinite;
 }
+.recorder-hole-label--connecting {
+	color: var(--vp-accent-4);
+	animation: recorder-label-blink 0.7s steps(2) infinite;
+}
 .recorder-hole-label--summarising {
 	color: var(--vp-accent);
 	animation: recorder-label-blink 0.8s steps(2) infinite;
@@ -160,6 +164,14 @@
 /* The just-recorded (newest) line is highlighted; everything above is grey. */
 .recorder-term-line.is-latest {
 	color: var(--vp-accent-2);
+}
+
+.recorder-term-speaker {
+	font-size: 10px;
+	font-weight: 800;
+	letter-spacing: 1px;
+	margin-right: 4px;
+	text-transform: uppercase;
 }
 
 .recorder-term-caret {

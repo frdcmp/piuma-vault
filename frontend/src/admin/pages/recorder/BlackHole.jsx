@@ -30,6 +30,12 @@ const HALO_R = RING_R + 9; // mean radius of the lensed vertical halo
 const HALO_THICK = 20; // halo band thickness
 const HALO_N = 380;
 const BEAM = 0.22; // subtle Doppler brightening on the approaching side
+const SHADOW_R2 = SHADOW_R * SHADOW_R;
+// Only the thin central disk band is allowed to cross IN FRONT of the shadow;
+// everything else inside the silhouette is clipped so the hole stays pure black.
+const BAND_HALF = 14;
+// Pool of matter the hole flings out along the disk plane while recording.
+const EJECTA_N = 280;
 
 // Heat palette, hottest → coolest.
 const HEAT = ["#ffffff", "#fff3c4", "#f7c948", "#ffa53d", "#ff7a45", "#c4513a"];
@@ -90,6 +96,11 @@ export default function BlackHole({ state = "idle", levelRef, onPress }) {
 			});
 		}
 
+		// Ejecta pool — recycled particles the hole spews out while recording.
+		// `life <= 0` means free to (re)spawn.
+		const ejecta = Array.from({ length: EJECTA_N }, () => ({ life: 0 }));
+		let spawnAcc = 0;
+
 		// Pre-render the shadow silhouette once.
 		const shadow = document.createElement("canvas");
 		shadow.width = SIZE * dpr;
@@ -116,6 +127,13 @@ export default function BlackHole({ state = "idle", levelRef, onPress }) {
 			ctx.fillStyle = color;
 			ctx.fillRect(snap(x), snap(y), PX, PX);
 		};
+		// Is a point within the event-horizon silhouette? Used to keep stray
+		// particles out of the hole's interior.
+		const inShadow = (x, y) => {
+			const dx = x - CENTER;
+			const dy = y - CENTER;
+			return dx * dx + dy * dy <= SHADOW_R2;
+		};
 
 		let raf = 0;
 		let last = performance.now();
@@ -126,15 +144,20 @@ export default function BlackHole({ state = "idle", levelRef, onPress }) {
 			last = now;
 			const st = stateRef.current;
 			const level = Math.min(1, levelRef?.current ?? 0);
-			const speedMul =
-				st === "recording"
-					? 1.8 + level * 2.4
+			const connecting = st === "connecting";
+			const recording = st === "recording";
+			const speedMul = recording
+				? 1.8 + level * 2.4
+				: connecting
+					? 1.25
 					: st === "summarising"
 						? 0.4
 						: hoverRef.current
 							? 0.85
 							: 0.3;
-			const glow = st === "recording" ? 1 + level * 0.7 : 1;
+			// Connecting: the disk dims as the hole "charges"; recording flares it
+			// with the mic level.
+			const glow = recording ? 1 + level * 0.7 : connecting ? 0.5 : 1;
 			t += dt;
 			ctx.clearRect(0, 0, SIZE, SIZE);
 
@@ -175,25 +198,99 @@ export default function BlackHole({ state = "idle", levelRef, onPress }) {
 				cell(x, y, HEAT[h.heat], tw * vert * (0.9 * glow));
 			}
 
-			// 4) Photon ring — thin, white-hot, flaring with state + mic.
-			const flare =
-				st === "recording"
+			// 4) Photon ring. Connecting → a hot arc races around it like a loading
+			//    spinner. Otherwise → the steady white-hot ring, throbbing harder
+			//    while recording.
+			if (connecting) {
+				const head = (t * 3.4) % (Math.PI * 2);
+				const arcLen = Math.PI * 0.7; // length of the bright sweep
+				for (let a = 0; a < Math.PI * 2; a += 0.03) {
+					let d = head - a;
+					d = ((d % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+					const bright = d < arcLen ? 1 - d / arcLen : 0; // tail fades back
+					cell(
+						CENTER + Math.cos(a) * RING_R,
+						CENTER + Math.sin(a) * RING_R,
+						bright > 0.5 ? "#ffffff" : "#fff3c4",
+						0.12 + bright * 0.95,
+					);
+				}
+			} else {
+				const flare = recording
 					? 0.7 + 0.3 * Math.min(1, level * 2 + 0.2 * Math.sin(t * 6))
 					: st === "summarising"
 						? 0.4 + 0.25 * Math.sin(t * 2.5)
 						: 0.6 + 0.12 * Math.sin(t * 1.3);
-			const ringColor = st === "recording" ? "#ffd0c0" : "#fff3c4";
-			for (let a = 0; a < Math.PI * 2; a += 0.03) {
-				cell(
-					CENTER + Math.cos(a) * RING_R,
-					CENTER + Math.sin(a) * RING_R,
-					ringColor,
-					flare,
-				);
+				const ringColor = recording ? "#ffd0c0" : "#fff3c4";
+				for (let a = 0; a < Math.PI * 2; a += 0.03) {
+					cell(
+						CENTER + Math.cos(a) * RING_R,
+						CENTER + Math.sin(a) * RING_R,
+						ringColor,
+						flare,
+					);
+				}
 			}
 
-			// 5) Near half of the wings, in front of everything.
-			for (const e of front) cell(e.x, e.y, e.color, e.alpha);
+			// 4b) Recording: shock rings pulse outward along the disk plane —
+			//     stronger and faster with the mic level, so loud moments "boom".
+			if (recording) {
+				const span = WING_OUT - RING_R;
+				for (let i = 0; i < 3; i++) {
+					const p01 = (t * (0.5 + level * 0.9) + i / 3) % 1;
+					const rr = RING_R + p01 * span;
+					const a = (1 - p01) * (0.3 + level * 0.55);
+					if (a <= 0.02) continue;
+					for (let ang = 0; ang < Math.PI * 2; ang += 0.06) {
+						const cos = Math.cos(ang);
+						const x = CENTER + cos * rr;
+						const y = CENTER + Math.sin(ang) * rr * WING_TILT;
+						if (inShadow(x, y)) continue;
+						cell(x, y, "#ffd0c0", a * (0.45 + 0.55 * Math.abs(cos)));
+					}
+				}
+			}
+
+			// 5) Near half of the wings, in front of everything. Inside the
+			//    silhouette keep ONLY the thin central band crossing — clip the rest
+			//    so the hole's interior stays pure black.
+			for (const e of front) {
+				if (inShadow(e.x, e.y) && Math.abs(e.y - CENTER) > BAND_HALF) continue;
+				cell(e.x, e.y, e.color, e.alpha);
+			}
+
+			// 6) Recording: the hole flings matter out along the disk plane. Spawn
+			//    rate + speed scale with the mic level, so it spews harder on louder
+			//    input. Particles launch from outside the ring — never the interior.
+			if (recording) {
+				spawnAcc += dt * (50 + level * 320);
+				while (spawnAcc >= 1) {
+					spawnAcc -= 1;
+					const p = ejecta.find((e) => e.life <= 0);
+					if (!p) break;
+					const side = rand() < 0.5 ? -1 : 1;
+					const ang = (side < 0 ? Math.PI : 0) + (rand() - 0.5) * 0.6;
+					const sp = 70 + rand() * 140 + level * 260;
+					p.x = CENTER + Math.cos(ang) * WING_IN;
+					p.y = CENTER + Math.sin(ang) * WING_IN * WING_TILT;
+					p.vx = Math.cos(ang) * sp;
+					p.vy = Math.sin(ang) * sp * WING_TILT + (rand() - 0.5) * 14;
+					p.maxLife = 0.7 + rand() * 0.9;
+					p.life = p.maxLife;
+					p.heat = rand() < 0.5 ? 0 : rand() < 0.6 ? 1 : 2;
+				}
+			}
+			// Drift + draw live ejecta (they keep flying out and fade even after
+			// recording stops, so the burst tails off naturally).
+			for (const p of ejecta) {
+				if (p.life <= 0) continue;
+				p.life -= dt;
+				p.x += p.vx * dt;
+				p.y += p.vy * dt;
+				const k = p.life / p.maxLife;
+				if (k <= 0) continue;
+				cell(p.x, p.y, HEAT[p.heat], k * (0.55 + 0.45 * level));
+			}
 
 			ctx.globalAlpha = 1;
 			raf = requestAnimationFrame(draw);

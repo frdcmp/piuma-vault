@@ -23,6 +23,14 @@ body — no preamble, no code fences. Use the transcript's language.";
 // model), or `content` comes back empty. Generous cap for a full summary.
 const MAX_TOKENS: u32 = 4096;
 
+const TITLE_SYSTEM: &str = "You generate a short title for a voice recording \
+from its summary. Reply with ONLY the title: 3-6 words, no quotes, no trailing \
+punctuation, in the summary's language. Name the topic, not the format.";
+
+// Reasoning models spend tokens before emitting `content`; a small cap can leave
+// the title empty. 512 fits the thinking plus a short title.
+const TITLE_MAX_TOKENS: u32 = 512;
+
 /// Summarise `transcript` for session `id`, save a note, and finalize the row.
 /// On any failure the session is marked `failed` and the error returned.
 pub async fn run(
@@ -60,12 +68,17 @@ pub async fn run(
         .unwrap_or_else(chrono::Utc::now)
         .format("%d%m%Y %H%M%S")
         .to_string();
-    let base = if title.trim().is_empty() {
-        "Recording"
+    // Respect a user-/agent-set title; otherwise ask the LLM for a concise one
+    // from the summary so the session isn't left as "Untitled recording".
+    let provided = title.trim();
+    let display_title = if provided.is_empty() {
+        gen_title(pool, &summary)
+            .await
+            .unwrap_or_else(|| "Recording".to_string())
     } else {
-        title.trim()
+        provided.to_string()
     };
-    let note_title = format!("{base} — {stamp}");
+    let note_title = format!("{display_title} — {stamp}");
     let content = format!("# {note_title}\n\n{summary}\n");
 
     // Create the vault note + queue it for embedding (semantic search parity
@@ -95,16 +108,89 @@ pub async fn run(
 
     let _ = sqlx::query(
         "UPDATE db_recording_sessions \
-         SET status = 'done', final_note_id = $2, running_summary = $3, updated_at = NOW() \
+         SET status = 'done', final_note_id = $2, running_summary = $3, title = $4, updated_at = NOW() \
          WHERE id = $1",
     )
     .bind(id)
     .bind(note_id)
     .bind(&summary)
+    .bind(&display_title)
     .execute(pool)
     .await;
 
     Ok(note_id)
+}
+
+/// Ask the default LLM for a concise recording title from its summary.
+/// Best-effort: returns `None` on any failure. Logs spend as `recorder:title`
+/// in the same ledger the chat path uses.
+async fn gen_title(pool: &DbPool, summary: &str) -> Option<String> {
+    let model: ModelRow =
+        sqlx::query_as("SELECT * FROM db_llm_models WHERE is_default AND enabled LIMIT 1")
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()?;
+    let provider: ProviderRow = sqlx::query_as("SELECT * FROM db_llm_providers WHERE id = $1")
+        .bind(model.provider_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()?;
+    if !providers::supported(&provider.kind) || provider.api_key.trim().is_empty() {
+        return None;
+    }
+
+    let messages = vec![
+        serde_json::json!({ "role": "system", "content": TITLE_SYSTEM }),
+        serde_json::json!({ "role": "user", "content": format!("Summary:\n{summary}\n\nTitle:") }),
+    ];
+
+    let (raw, tokens_in, tokens_out) = providers::complete_usage(
+        &provider.kind,
+        &provider.api_key,
+        provider.base_url.as_deref(),
+        &model.model_id,
+        &messages,
+        TITLE_MAX_TOKENS,
+    )
+    .await
+    .ok()?;
+
+    if tokens_in + tokens_out > 0 {
+        let _ = sqlx::query(
+            "INSERT INTO db_token_usage \
+               (kind, source, provider_kind, model, tokens_input, tokens_output) \
+             VALUES ('title', 'recorder:title', $1, $2, $3, $4)",
+        )
+        .bind(&provider.kind)
+        .bind(&model.model_id)
+        .bind(tokens_in)
+        .bind(tokens_out)
+        .execute(pool)
+        .await;
+    }
+
+    let title = sanitize_title(&raw);
+    if title.is_empty() {
+        None
+    } else {
+        Some(title)
+    }
+}
+
+/// Strip a leading "Title:" label, wrapping quotes, and trailing punctuation;
+/// cap the length defensively. Mirrors `agents::title::sanitize`.
+fn sanitize_title(raw: &str) -> String {
+    let mut s = raw.trim();
+    for prefix in ["Title:", "title:"] {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            s = rest.trim();
+        }
+    }
+    let s = s.trim_matches('"').trim_matches('\'').trim();
+    let s = s.trim_end_matches(['.', '!', '?', ':']).trim();
+    s.chars().take(80).collect()
 }
 
 /// One-shot LLM summarisation against the default configured model.

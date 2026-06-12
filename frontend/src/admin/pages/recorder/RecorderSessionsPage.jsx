@@ -153,6 +153,10 @@ export default function RecorderSessionsPage() {
 										<PvButton
 											size="sm"
 											variant="danger"
+											loading={
+												deleteRecording.isPending &&
+												deleteRecording.variables === r.id
+											}
 											onClick={() => deleteRecording.mutate(r.id)}
 										>
 											Delete
