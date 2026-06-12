@@ -14,7 +14,7 @@ pub mod openai;
 
 use bytes::Bytes;
 use futures::channel::mpsc::UnboundedSender;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 pub type SseSender = UnboundedSender<Result<Bytes, actix_web::Error>>;
 
@@ -86,6 +86,46 @@ pub async fn complete_usage(
         }
         _ => deepseek::complete_usage(api_key, base_url, model, messages, max_tokens).await,
     }
+}
+
+/// Normalise chat-loop messages into OpenAI `/chat/completions` shape. Only
+/// touches messages whose `content` is a block array (our multimodal user
+/// turns) — text-only messages (the common case) pass through unchanged.
+/// Canonical `{type:"image", url}` blocks become OpenAI `{type:"image_url"}`.
+pub(crate) fn to_openai_messages(messages: &[Value]) -> Vec<Value> {
+    messages
+        .iter()
+        .map(|m| {
+            if m.get("content").map(|c| c.is_array()).unwrap_or(false) {
+                let mut m = m.clone();
+                m["content"] = to_openai_content(&m["content"]);
+                m
+            } else {
+                m.clone()
+            }
+        })
+        .collect()
+}
+
+fn to_openai_content(content: &Value) -> Value {
+    let Value::Array(blocks) = content else {
+        return content.clone();
+    };
+    let mut out = Vec::with_capacity(blocks.len());
+    for b in blocks {
+        match b.get("type").and_then(|t| t.as_str()) {
+            Some("text") => {
+                let text = b.get("text").and_then(|t| t.as_str()).unwrap_or("");
+                out.push(json!({ "type": "text", "text": text }));
+            }
+            Some("image") => {
+                let url = b.get("url").and_then(|u| u.as_str()).unwrap_or("");
+                out.push(json!({ "type": "image_url", "image_url": { "url": url } }));
+            }
+            _ => {}
+        }
+    }
+    Value::Array(out)
 }
 
 /// Rough token estimate (~4 chars/token) over a message array's string content.

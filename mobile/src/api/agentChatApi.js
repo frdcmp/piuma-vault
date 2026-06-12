@@ -66,7 +66,13 @@ const localTimezone = () => {
 	}
 };
 
-const buildChatRequest = (conversationId, message, contextNoteIds, signal) => {
+const buildChatRequest = (
+	conversationId,
+	message,
+	contextNoteIds,
+	images,
+	signal,
+) => {
 	const token = useAuthStore.getState().token;
 	return fetch(`${BASE_PATH}/agents/conversations/${conversationId}/chat`, {
 		method: "POST",
@@ -77,6 +83,7 @@ const buildChatRequest = (conversationId, message, contextNoteIds, signal) => {
 		body: JSON.stringify({
 			message,
 			context_note_ids: contextNoteIds || [],
+			images: images || [],
 			timezone: localTimezone(),
 			client_now: localNowIso(),
 		}),
@@ -92,6 +99,7 @@ export async function streamChat({
 	conversationId,
 	message,
 	contextNoteIds,
+	images,
 	signal,
 	onText,
 	onThinking,
@@ -104,6 +112,7 @@ export async function streamChat({
 			conversationId,
 			message,
 			contextNoteIds,
+			images,
 			signal,
 		);
 		if (resp.status === 401 && useAuthStore.getState().refreshToken) {
@@ -113,6 +122,7 @@ export async function streamChat({
 					conversationId,
 					message,
 					contextNoteIds,
+					images,
 					signal,
 				);
 			} catch (refreshErr) {

@@ -52,6 +52,39 @@ fn push_msg(out: &mut Vec<Value>, role: &str, mut blocks: Vec<Value>) {
     out.push(json!({ "role": role, "content": blocks }));
 }
 
+/// A user message's content → Anthropic content blocks. A plain string becomes
+/// one text block; a multimodal array maps text blocks through and turns our
+/// canonical `{type:"image", url, media_type}` into Anthropic url image sources.
+fn user_blocks(content: Option<&Value>) -> Vec<Value> {
+    match content {
+        Some(Value::Array(blocks)) => {
+            let mut out: Vec<Value> = Vec::with_capacity(blocks.len());
+            for b in blocks {
+                match b.get("type").and_then(|t| t.as_str()) {
+                    Some("text") => {
+                        let text = b.get("text").and_then(|t| t.as_str()).unwrap_or("");
+                        out.push(json!({ "type": "text", "text": text }));
+                    }
+                    Some("image") => {
+                        // A `url` source takes only the url — `media_type` is
+                        // required only for base64 sources (Anthropic fetches +
+                        // sniffs the type itself for url sources).
+                        let url = b.get("url").and_then(|u| u.as_str()).unwrap_or("");
+                        out.push(json!({
+                            "type": "image",
+                            "source": { "type": "url", "url": url }
+                        }));
+                    }
+                    _ => {}
+                }
+            }
+            out
+        }
+        Some(Value::String(s)) => vec![json!({ "type": "text", "text": s })],
+        _ => vec![json!({ "type": "text", "text": "" })],
+    }
+}
+
 /// OpenAI-shaped messages → (system prompt, Anthropic `messages`).
 fn translate_messages(messages: &[Value]) -> (String, Vec<Value>) {
     let mut system = String::new();
@@ -102,10 +135,10 @@ fn translate_messages(messages: &[Value]) -> (String, Vec<Value>) {
                 }
                 push_msg(&mut out, "assistant", blocks);
             }
-            // user (and anything else) → plain text block.
+            // user (and anything else) → text block(s), plus image blocks when
+            // the content is a multimodal array (`{type:image,url,media_type}`).
             _ => {
-                let content = m.get("content").and_then(|c| c.as_str()).unwrap_or("");
-                push_msg(&mut out, "user", vec![json!({ "type": "text", "text": content })]);
+                push_msg(&mut out, "user", user_blocks(m.get("content")));
             }
         }
     }

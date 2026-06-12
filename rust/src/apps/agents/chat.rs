@@ -38,6 +38,46 @@ pub(super) fn blocks_to_text(content: &Value) -> String {
     }
 }
 
+/// Build the provider message `content` for one persisted message. Text-only
+/// messages collapse to a plain string (unchanged behaviour). When the message
+/// has image blocks AND the active model supports vision, return a multimodal
+/// block array (`[{type:text},{type:image,url,media_type}]`) so the provider
+/// adapter forwards the images; otherwise images are dropped (string only).
+fn content_for_provider(content: &Value, supports_vision: bool) -> Value {
+    let text = blocks_to_text(content);
+    let images: Vec<&Value> = match content {
+        Value::Array(blocks) if supports_vision => blocks
+            .iter()
+            .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("image"))
+            .collect(),
+        _ => Vec::new(),
+    };
+    if images.is_empty() {
+        return Value::String(text);
+    }
+    let mut out: Vec<Value> = Vec::with_capacity(images.len() + 1);
+    if !text.trim().is_empty() {
+        out.push(json!({ "type": "text", "text": text }));
+    }
+    for img in images {
+        out.push(json!({
+            "type": "image",
+            "url": img.get("url").and_then(|u| u.as_str()).unwrap_or(""),
+            "media_type": img.get("media_type").and_then(|m| m.as_str()).unwrap_or("image/png"),
+        }));
+    }
+    Value::Array(out)
+}
+
+/// True when a provider message `content` carries nothing to send.
+fn content_is_empty(content: &Value) -> bool {
+    match content {
+        Value::String(s) => s.trim().is_empty(),
+        Value::Array(a) => a.is_empty(),
+        _ => true,
+    }
+}
+
 fn frame(payload: Value) -> Bytes {
     Bytes::from(format!("data: {payload}\n\n"))
 }
@@ -126,13 +166,31 @@ async fn build_context(pool: &DbPool, user_id: &str, ids: &[Uuid]) -> String {
 
 /// Prepend the context block to the latest (user) message sent to the model —
 /// the persisted user message stays raw, so the transcript shows what was typed.
+/// Handles both string content and multimodal block arrays (image turns): for an
+/// array, the context is folded into the first text block (or a new one).
 fn inject_context(messages: &mut [Value], context: &str) {
     if context.is_empty() {
         return;
     }
-    if let Some(last) = messages.last_mut() {
-        let orig = last.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
-        last["content"] = json!(format!("{context}\n{orig}"));
+    let Some(last) = messages.last_mut() else {
+        return;
+    };
+    match last.get_mut("content") {
+        Some(Value::Array(blocks)) => {
+            if let Some(tb) = blocks
+                .iter_mut()
+                .find(|b| b.get("type").and_then(|t| t.as_str()) == Some("text"))
+            {
+                let orig = tb.get("text").and_then(|t| t.as_str()).unwrap_or("").to_string();
+                tb["text"] = json!(format!("{context}\n{orig}"));
+            } else {
+                blocks.insert(0, json!({ "type": "text", "text": context }));
+            }
+        }
+        _ => {
+            let orig = last.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string();
+            last["content"] = json!(format!("{context}\n{orig}"));
+        }
     }
 }
 
@@ -163,6 +221,7 @@ pub async fn chat(
     let req = body.into_inner();
     let msg = req.message;
     let context_ids = req.context_note_ids;
+    let images = req.images;
     let timezone = req.timezone;
     let client_now = req.client_now;
     let db = pool.get_ref();
@@ -235,10 +294,26 @@ pub async fn chat(
     };
     let tool_schemas = tools::schemas_for(&enabled);
 
+    // Whether this conversation's model can see images — gates whether attached
+    // images are forwarded to the provider (they're always persisted as a record
+    // of what the user sent).
+    let supports_vision = model_row.supports_vision;
+
     // Persist user message + set a title on the first turn.
     // Pre-embed the user message so L2 retrieval can use the cached vector
     // instead of calling the embedding API synchronously each turn.
-    let user_content = json!([{ "type": "text", "text": msg }]);
+    // Content is a block array: one text block, then one image block per
+    // attached image (`{type:"image", url, media_type, key}`).
+    let mut user_blocks = vec![json!({ "type": "text", "text": msg })];
+    for img in &images {
+        user_blocks.push(json!({
+            "type": "image",
+            "url": img.url,
+            "media_type": img.media_type.clone().unwrap_or_else(|| "image/png".to_string()),
+            "key": img.key,
+        }));
+    }
+    let user_content = Value::Array(user_blocks);
     let user_text = blocks_to_text(&user_content);
     let user_emb = crate::apps::embeddings::embed(db, &user_text, 1536, "embedding:chat").await.ok();
     if let Err(e) = if let Some(ref emb) = user_emb {
@@ -281,11 +356,11 @@ pub async fn chat(
     .fetch_all(db)
     .await
     .unwrap_or_default();
-    let mut hist: Vec<(String, String)> = rows
+    let mut hist: Vec<(String, Value)> = rows
         .into_iter()
         .filter(|(role, _)| role == "user" || role == "assistant")
-        .map(|(role, content)| (role, blocks_to_text(&content)))
-        .filter(|(_, text)| !text.trim().is_empty())
+        .map(|(role, content)| (role, content_for_provider(&content, supports_vision)))
+        .filter(|(_, content)| !content_is_empty(content))
         .collect();
     if hist.len() > 50 {
         hist.drain(..hist.len() - 50);
@@ -366,8 +441,8 @@ pub async fn chat(
     if !system.trim().is_empty() {
         messages.push(json!({ "role": "system", "content": system }));
     }
-    for (role, text) in hist {
-        messages.push(json!({ "role": role, "content": text }));
+    for (role, content) in hist {
+        messages.push(json!({ "role": role, "content": content }));
     }
     let context = build_context(db, &user.user_id, &context_ids).await;
     inject_context(&mut messages, &context);

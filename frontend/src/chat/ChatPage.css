@@ -685,6 +685,128 @@ button.chat-context-tag-main {
 	background: rgba(255, 107, 107, 0.08);
 }
 
+/* Attach (image) button in the composer row — square, matches the send button
+   footprint but icon-only. Only shown when the active model supports vision. */
+.chat-attach {
+	width: 38px;
+	height: 38px;
+	flex: 0 0 auto;
+	padding: 0;
+	background: var(--bg-soft);
+	border: 2px solid var(--border-strong);
+	color: var(--text);
+	font-size: 13pt;
+	line-height: 1;
+	cursor: pointer;
+}
+.chat-attach:hover {
+	border-color: var(--accent-2);
+	transform: translate(-1px, -1px);
+}
+
+/* Pending image chips above the composer — thumbnail + filename + dimensions +
+   remove ×, mirroring the context chips. Dimmed with a spinner while uploading. */
+.chat-image-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.chat-image-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 240px;
+	padding: 3px 6px 3px 3px;
+	border: 1px solid var(--border-strong);
+	background: var(--bg-soft);
+	color: var(--text);
+	font-size: 8.5pt;
+	font-weight: 700;
+	line-height: 1;
+}
+.chat-image-tag.is-uploading {
+	opacity: 0.6;
+}
+.chat-image-tag.is-error {
+	border-color: var(--accent-3);
+}
+.chat-image-tag-thumb {
+	width: 28px;
+	height: 28px;
+	object-fit: cover;
+	border: 1px solid var(--border-strong);
+	flex: 0 0 auto;
+}
+.chat-image-tag-meta {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+.chat-image-tag-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.chat-image-tag-dim {
+	color: var(--muted);
+	font-weight: 400;
+	font-size: 8pt;
+}
+.chat-image-tag-remove {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 14px;
+	padding: 0;
+	border: 1px solid transparent;
+	background: transparent;
+	color: var(--muted);
+	font-family: inherit;
+	font-size: 11pt;
+	font-weight: 900;
+	line-height: 1;
+	cursor: pointer;
+}
+.chat-image-tag-remove:hover {
+	border-color: var(--accent-3);
+	color: var(--accent-3);
+}
+.chat-image-tag-spin {
+	width: 12px;
+	height: 12px;
+	border: 2px solid var(--border-strong);
+	border-top-color: var(--accent-2);
+	border-radius: 50%;
+	animation: chat-image-spin 0.7s linear infinite;
+	flex: 0 0 auto;
+}
+@keyframes chat-image-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* Sent images inside a user bubble — thumbnail grid, click to open full size. */
+.chat-user-images {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 8px;
+}
+.chat-user-image {
+	display: inline-flex;
+	border: 1px solid var(--border-strong);
+	max-width: 200px;
+}
+.chat-user-image img {
+	max-width: 200px;
+	max-height: 200px;
+	object-fit: contain;
+	display: block;
+}
+
 /* Slash-command menu — keyboard + mouse navigable. Pixel-styled to match the
    vault design language (sharp corners, 2px border, hard offset shadow). */
 .slash-menu {

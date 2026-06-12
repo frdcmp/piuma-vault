@@ -1,8 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useNavigation } from "@react-navigation/native";
+import * as DocumentPicker from "expo-document-picker";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	Animated,
+	Image,
 	Keyboard,
 	Linking,
 	Modal,
@@ -14,7 +17,6 @@ import {
 	TextInput,
 	View,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import {
 	SafeAreaView,
@@ -35,13 +37,14 @@ import {
 	streamChat,
 	updateConversation,
 } from "../api/agentChatApi";
+import { uploadChatImage } from "../api/storageApi";
 import MarkdownView from "../components/MarkdownView";
-import SpriteRunner from "../components/SpriteRunner";
-import { toast } from "../components/Toast";
 import SpriteAvatar from "../components/SpriteAvatar";
+import SpriteRunner from "../components/SpriteRunner";
 import StreamingCursor from "../components/StreamingCursor";
 import { TOP_EXTRA } from "../components/SystemBars";
 import ThinkingLoader from "../components/ThinkingLoader";
+import { toast } from "../components/Toast";
 import { colors } from "../utils/theme";
 import useProgressiveText from "../utils/useProgressiveText";
 
@@ -86,6 +89,14 @@ const blocksToText = (content) => {
 			.map((b) => b.text)
 			.join("");
 	return "";
+};
+
+// Pull image blocks out of a persisted user message → [{ url, mediaType }].
+const blocksToImages = (content) => {
+	if (!Array.isArray(content)) return [];
+	return content
+		.filter((b) => b.type === "image" && b.url)
+		.map((b) => ({ url: b.url, mediaType: b.media_type }));
 };
 
 // "/folder/sub/My Note" → "My Note" for the chip label.
@@ -281,10 +292,22 @@ const toolSummary = (tools) => {
 // editor look). The chat is a terminal — force monospace everywhere.
 const chatMarkdownTextStyle = { fontFamily: MONO };
 
-function UserBubble({ content, context }) {
+function UserBubble({ content, context, images }) {
 	return (
 		<View style={styles.userRow}>
 			<View style={styles.userCol}>
+				{images?.length ? (
+					<View style={styles.userImages}>
+						{images.map((img) => (
+							<Pressable
+								key={img.url}
+								onPress={() => Linking.openURL(img.url).catch(() => {})}
+							>
+								<Image source={{ uri: img.url }} style={styles.userImage} />
+							</Pressable>
+						))}
+					</View>
+				) : null}
 				<View style={styles.userCard}>
 					<Text style={styles.userText}>{content}</Text>
 				</View>
@@ -429,8 +452,7 @@ function AssistantBubble({ parts, isStreaming, onNavigate }) {
 						url: p.url,
 					});
 					if (!to) return null;
-					const navLabel =
-						p.label || NAV_FALLBACK_LABEL[p.target] || "open";
+					const navLabel = p.label || NAV_FALLBACK_LABEL[p.target] || "open";
 					return (
 						<Pressable
 							key={p.id}
@@ -467,7 +489,9 @@ function FadeIn({ children, style }) {
 			useNativeDriver: true,
 		}).start();
 	}, [o]);
-	return <Animated.View style={[style, { opacity: o }]}>{children}</Animated.View>;
+	return (
+		<Animated.View style={[style, { opacity: o }]}>{children}</Animated.View>
+	);
 }
 
 export default function ChatScreen({ onClose, notePath, noteId }) {
@@ -532,6 +556,12 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	// The conversation's chosen model (null = use the admin default). Drives the
 	// "in use" marker in the /models picker.
 	const [modelId, setModelId] = useState(null);
+	// All enabled models (fetched once) so the composer can read the ACTIVE model's
+	// `supports_vision` to gate the image-attach button.
+	const [allModels, setAllModels] = useState([]);
+	// Images attached for the next turn: { id, localUri, url, key, mediaType, name,
+	// status: "uploading"|"ready"|"error" }.
+	const [pendingImages, setPendingImages] = useState([]);
 	const [agentKind, setAgentKind] = useState("vault_agent");
 	const [agentLabel, setAgentLabel] = useState("Piuma");
 	const [agentCommands, setAgentCommands] = useState([]);
@@ -560,6 +590,133 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	useEffect(() => {
 		conversationIdRef.current = conversationId;
 	}, [conversationId]);
+
+	// Load the model catalog once so we know the active model's vision support.
+	useEffect(() => {
+		fetchAllModels()
+			.then(setAllModels)
+			.catch(() => {});
+	}, []);
+	// The model actually in use: the conversation's override, or the default.
+	const activeModel = allModels.length
+		? modelId
+			? allModels.find((m) => m.id === modelId)
+			: allModels.find((m) => m.is_default)
+		: null;
+	const visionEnabled = !!activeModel?.supports_vision;
+
+	const removePendingImage = useCallback((id) => {
+		setPendingImages((curr) => curr.filter((p) => p.id !== id));
+	}, []);
+
+	// Upload one image file ({ uri, name, mimeType }) to __temp/chat/, showing an
+	// instant local thumbnail and swapping in the CDN url when it lands. Shared by
+	// the file picker and the clipboard-paste handler. Gated on the active model
+	// supporting vision.
+	const addImageFile = useCallback(
+		(file) => {
+			if (!file?.uri) return;
+			if (!visionEnabled) {
+				toast.info("This model can't read images — switch to a vision model.");
+				return;
+			}
+			const mimeType = file.mimeType || "image/png";
+			const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+			setPendingImages((curr) => [
+				...curr,
+				{
+					id,
+					localUri: file.uri,
+					url: null,
+					key: null,
+					mediaType: mimeType,
+					name: file.name || "image.png",
+					status: "uploading",
+				},
+			]);
+			uploadChatImage({
+				file: { ...file, mimeType },
+				conversationId: conversationIdRef.current,
+			})
+				.then(({ key, publicUrl, media_type }) =>
+					setPendingImages((curr) =>
+						curr.map((p) =>
+							p.id === id
+								? {
+										...p,
+										url: publicUrl,
+										key,
+										mediaType: media_type || p.mediaType,
+										status: "ready",
+									}
+								: p,
+						),
+					),
+				)
+				.catch(() => {
+					toast.error("Image upload failed");
+					removePendingImage(id);
+				});
+		},
+		[visionEnabled, removePendingImage],
+	);
+
+	// Pick image(s) via the document picker.
+	const pickImages = useCallback(async () => {
+		if (!visionEnabled) {
+			toast.info("This model can't read images — switch to a vision model.");
+			return;
+		}
+		let res;
+		try {
+			res = await DocumentPicker.getDocumentAsync({
+				type: "image/*",
+				multiple: true,
+				copyToCacheDirectory: true,
+			});
+		} catch {
+			toast.error("Couldn't open the picker");
+			return;
+		}
+		if (res.canceled) return;
+		for (const asset of res.assets || []) {
+			addImageFile({
+				uri: asset.uri,
+				name: asset.name,
+				mimeType: asset.mimeType || "image/png",
+			});
+		}
+	}, [visionEnabled, addImageFile]);
+
+	// Clipboard paste (RN 0.79+ TextInput.onPaste): pull any image items off the
+	// paste payload and upload them. Text paste is unaffected (RN handles it).
+	const onPaste = useCallback(
+		(e) => {
+			const items = e?.nativeEvent?.items || [];
+			for (const it of items) {
+				if (it?.type?.startsWith("image/") && it.data) {
+					const ext = it.type.split("/")[1] || "png";
+					addImageFile({
+						uri: it.data,
+						name: `pasted-image.${ext}`,
+						mimeType: it.type,
+					});
+				}
+			}
+		},
+		[addImageFile],
+	);
+
+	// Open the model picker overlay (same as the /models command).
+	const openModelPicker = useCallback(async () => {
+		try {
+			setPickList(await fetchAllModels());
+			setOverlay("models");
+		} catch {
+			/* ignore */
+		}
+	}, []);
+
 	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
 	// Stick-to-bottom: only auto-follow new content while the user is already
@@ -654,7 +811,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 						content: blocksToText(m.content),
 						...(m.role === "assistant"
 							? { parts: blocksToParts(m.content) }
-							: {}),
+							: { images: blocksToImages(m.content) }),
 					})),
 				);
 			} catch {
@@ -744,7 +901,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					content: blocksToText(m.content),
 					...(m.role === "assistant"
 						? { parts: blocksToParts(m.content) }
-						: {}),
+						: { images: blocksToImages(m.content) }),
 				})),
 			);
 		} catch {
@@ -758,6 +915,16 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		async (m) => {
 			setOverlay(null);
 			setModelId(m.id); // optimistic; also carried into a not-yet-created convo
+			// Switching to a text-only model: drop any pending images.
+			if (!m.supports_vision) {
+				setPendingImages((curr) => {
+					if (curr.length)
+						toast.info(
+							`${m.display_name} can't read images — removed the attached image(s).`,
+						);
+					return [];
+				});
+			}
 			toast.success(`Model switched to ${m.display_name}`);
 			if (conversationId) {
 				try {
@@ -920,7 +1087,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 							content: blocksToText(m.content),
 							...(m.role === "assistant"
 								? { parts: blocksToParts(m.content) }
-								: {}),
+								: { images: blocksToImages(m.content) }),
 						})),
 					);
 					return;
@@ -947,7 +1114,10 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 
 	const sendMessage = useCallback(async () => {
 		const text = input.trim();
-		if (!text) return;
+		const readyImages = pendingImages.filter(
+			(p) => p.status === "ready" && p.url,
+		);
+		if (!text && !readyImages.length) return;
 
 		// While a turn is streaming, a send INJECTS into it instead of starting a
 		// new turn; the running turn picks it up at the next round boundary.
@@ -1014,6 +1184,14 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			role: "user",
 			content: text,
 			...(context.length ? { context } : {}),
+			...(readyImages.length
+				? {
+						images: readyImages.map((p) => ({
+							url: p.url,
+							mediaType: p.mediaType,
+						})),
+					}
+				: {}),
 		};
 		const assistantMsg = {
 			id: newMessageId(),
@@ -1023,6 +1201,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		setMessages((curr) => [...curr, userMsg, assistantMsg]);
 		setInput("");
 		setInputHeight(INPUT_MIN_H);
+		setPendingImages([]);
 		setIsStreaming(true);
 		// Sending re-arms the stick-to-bottom lock so the new turn scrolls into view.
 		scrollToBottom(true);
@@ -1047,6 +1226,11 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				conversationId: convId,
 				message: text,
 				contextNoteIds,
+				images: readyImages.map((p) => ({
+					url: p.url,
+					key: p.key,
+					media_type: p.mediaType,
+				})),
 				signal: controller.signal,
 				onText: appendText,
 				onThinking: () => {},
@@ -1113,14 +1297,18 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		noteId,
 		scrollToBottom,
 		modelId,
+		pendingImages,
 		recoverTurn,
 	]);
 
 	// Composer button is state-driven: STOP while streaming with an empty box,
 	// otherwise SEND (which injects when streaming, sends a new turn when idle).
 	const hasText = input.trim().length > 0;
+	const hasReadyImage = pendingImages.some((p) => p.status === "ready");
+	const uploadingImages = pendingImages.some((p) => p.status === "uploading");
 	const showStop = isStreaming && !hasText;
-	const canSend = hasText;
+	// Block send until uploads finish so we never send a half-uploaded image.
+	const canSend = (hasText || hasReadyImage) && !uploadingImages;
 
 	return (
 		<KeyboardAvoidingView
@@ -1215,6 +1403,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 											key={m.id}
 											content={m.content}
 											context={m.context}
+											images={m.images}
 										/>
 									) : (
 										<AssistantBubble
@@ -1314,33 +1503,86 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 							{ paddingBottom: keyboardVisible ? 10 : insets.bottom + 10 },
 						]}
 					>
-						<View style={styles.composerRow}>
-							<TextInput
-								style={[
-									styles.input,
-									{
-										// Empty → always one line (ignore the wrapped
-										// placeholder's reported height). Otherwise grow
-										// with content, capped at ~5 lines.
-										height: input
-											? Math.min(
-													Math.max(inputHeight, INPUT_MIN_H),
-													INPUT_MAX_H,
-												)
-											: INPUT_MIN_H,
-									},
+						{pendingImages.length > 0 ? (
+							<View style={styles.imageTags}>
+								{pendingImages.map((img) => (
+									<View key={img.id} style={styles.imageTag}>
+										<Image
+											source={{ uri: img.localUri || img.url }}
+											style={[
+												styles.imageTagThumb,
+												img.status === "uploading" && styles.imageTagUploading,
+											]}
+										/>
+										<Text style={styles.imageTagName} numberOfLines={1}>
+											{img.name}
+										</Text>
+										<Pressable
+											onPress={() => removePendingImage(img.id)}
+											hitSlop={8}
+											accessibilityLabel={`Remove ${img.name}`}
+										>
+											<Text style={styles.imageTagRemove}>×</Text>
+										</Pressable>
+									</View>
+								))}
+							</View>
+						) : null}
+						{/* Row 1 — full-width text input. */}
+						<TextInput
+							style={[
+								styles.input,
+								{
+									// Empty → always one line (ignore the wrapped
+									// placeholder's reported height). Otherwise grow
+									// with content, capped at ~5 lines.
+									height: input
+										? Math.min(Math.max(inputHeight, INPUT_MIN_H), INPUT_MAX_H)
+										: INPUT_MIN_H,
+								},
+							]}
+							value={input}
+							onChangeText={setInput}
+							onContentSizeChange={(e) =>
+								setInputHeight(e.nativeEvent.contentSize.height)
+							}
+							onPaste={onPaste}
+							placeholder="Ask anything…"
+							placeholderTextColor={colors.muted}
+							multiline
+							scrollEnabled={inputHeight > INPUT_MAX_H}
+							showsVerticalScrollIndicator={false}
+						/>
+						{/* Row 2 — attach (left) · model switcher + send (right). */}
+						<View style={styles.composerActions}>
+							<Pressable
+								onPress={pickImages}
+								style={({ pressed }) => [
+									styles.iconBtn,
+									pressed && styles.sendBtnPressed,
 								]}
-								value={input}
-								onChangeText={setInput}
-								onContentSizeChange={(e) =>
-									setInputHeight(e.nativeEvent.contentSize.height)
-								}
-								placeholder="Ask anything…"
-								placeholderTextColor={colors.muted}
-								multiline
-								scrollEnabled={inputHeight > INPUT_MAX_H}
-								showsVerticalScrollIndicator={false}
-							/>
+								accessibilityLabel="Attach an image"
+							>
+								<Ionicons
+									name="image-outline"
+									size={20}
+									color={visionEnabled ? colors.accent2 : colors.muted}
+								/>
+							</Pressable>
+							<View style={{ flex: 1 }} />
+							<Pressable
+								onPress={openModelPicker}
+								style={({ pressed }) => [
+									styles.modelSwitch,
+									pressed && styles.sendBtnPressed,
+								]}
+								accessibilityLabel="Switch model"
+							>
+								<Text style={styles.modelSwitchText} numberOfLines={1}>
+									{activeModel?.display_name || "model"}
+								</Text>
+								<Ionicons name="chevron-down" size={13} color={colors.muted} />
+							</Pressable>
 							{showStop ? (
 								<Pressable
 									onPress={stopStreaming}
@@ -1399,147 +1641,153 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 								<Text style={styles.floatClose}>×</Text>
 							</Pressable>
 						</View>
-					{overlay === "title" ? (
-						<View style={styles.overlayTitleWrap}>
-							<Pressable
-								onPress={autoRename}
-								style={({ pressed }) => [
-									styles.overlayAuto,
-									pressed && styles.slashItemPressed,
-								]}
-							>
-								<Ionicons
-									name="sparkles-outline"
-									size={16}
-									color={colors.accent2}
-								/>
-								<View style={{ flex: 1 }}>
-									<Text style={styles.overlayAutoText}>
-										Auto-rename with AI
-									</Text>
-									<Text style={styles.overlayAutoDesc}>
-										Generate a title from the conversation
-									</Text>
-								</View>
-							</Pressable>
-							<Text style={styles.overlayOr}>or edit manually</Text>
-							<View style={styles.overlayTitleForm}>
-								<TextInput
-									style={styles.overlayInput}
-									value={titleDraft}
-									onChangeText={setTitleDraft}
-									placeholder="New title…"
-									placeholderTextColor={colors.muted}
-									returnKeyType="done"
-									onSubmitEditing={saveTitle}
-								/>
+						{overlay === "title" ? (
+							<View style={styles.overlayTitleWrap}>
 								<Pressable
-									onPress={saveTitle}
+									onPress={autoRename}
 									style={({ pressed }) => [
-										styles.overlaySave,
-										pressed && styles.sendBtnPressed,
+										styles.overlayAuto,
+										pressed && styles.slashItemPressed,
 									]}
 								>
-									<Text style={styles.sendLabel}>save</Text>
+									<Ionicons
+										name="sparkles-outline"
+										size={16}
+										color={colors.accent2}
+									/>
+									<View style={{ flex: 1 }}>
+										<Text style={styles.overlayAutoText}>
+											Auto-rename with AI
+										</Text>
+										<Text style={styles.overlayAutoDesc}>
+											Generate a title from the conversation
+										</Text>
+									</View>
 								</Pressable>
+								<Text style={styles.overlayOr}>or edit manually</Text>
+								<View style={styles.overlayTitleForm}>
+									<TextInput
+										style={styles.overlayInput}
+										value={titleDraft}
+										onChangeText={setTitleDraft}
+										placeholder="New title…"
+										placeholderTextColor={colors.muted}
+										returnKeyType="done"
+										onSubmitEditing={saveTitle}
+									/>
+									<Pressable
+										onPress={saveTitle}
+										style={({ pressed }) => [
+											styles.overlaySave,
+											pressed && styles.sendBtnPressed,
+										]}
+									>
+										<Text style={styles.sendLabel}>save</Text>
+									</Pressable>
+								</View>
 							</View>
-						</View>
-					) : overlay === "sessions" && sessionsLoading ? (
-						<View style={styles.overlayLoading}>
-							<SpriteRunner pixelSize={2} />
-							<Text style={styles.overlayLoadingLabel}>loading…</Text>
-						</View>
-					) : (
-						<>
-							<FadeIn>
-							<ScrollView
-								style={styles.overlayList}
-								keyboardShouldPersistTaps="handled"
-							>
-								{pickList.length === 0 ? (
-									<Text style={styles.overlayEmpty}>None</Text>
-								) : overlay === "models" ? (
-									(() => {
-										// In use = the conversation's chosen model, or the admin
-										// default when none is set.
-										const activeId =
-											modelId ?? pickList.find((x) => x.is_default)?.id;
-										return pickList.map((m) => {
-											const inUse = m.id === activeId;
-											return (
-												<Pressable
-													key={m.id}
-													onPress={() => pickModel(m)}
-													style={({ pressed }) => [
-														styles.overlayRow,
-														inUse && styles.overlayRowActive,
-														pressed && styles.slashItemPressed,
-													]}
-												>
-													<View style={styles.overlayRowHead}>
-														<Text style={styles.overlayRowText}>
-															{m.display_name}
-														</Text>
-														{inUse ? (
-															<Text style={styles.overlayRowCheck}>
-																✓ in use
+						) : overlay === "sessions" && sessionsLoading ? (
+							<View style={styles.overlayLoading}>
+								<SpriteRunner pixelSize={2} />
+								<Text style={styles.overlayLoadingLabel}>loading…</Text>
+							</View>
+						) : (
+							<>
+								<FadeIn>
+									<ScrollView
+										style={styles.overlayList}
+										keyboardShouldPersistTaps="handled"
+									>
+										{pickList.length === 0 ? (
+											<Text style={styles.overlayEmpty}>None</Text>
+										) : overlay === "models" ? (
+											(() => {
+												// In use = the conversation's chosen model, or the admin
+												// default when none is set.
+												const activeId =
+													modelId ?? pickList.find((x) => x.is_default)?.id;
+												return pickList.map((m) => {
+													const inUse = m.id === activeId;
+													return (
+														<Pressable
+															key={m.id}
+															onPress={() => pickModel(m)}
+															style={({ pressed }) => [
+																styles.overlayRow,
+																inUse && styles.overlayRowActive,
+																pressed && styles.slashItemPressed,
+															]}
+														>
+															<View style={styles.overlayRowHead}>
+																<Text style={styles.overlayRowText}>
+																	{m.display_name}
+																</Text>
+																{inUse ? (
+																	<Text style={styles.overlayRowCheck}>
+																		✓ in use
+																	</Text>
+																) : null}
+															</View>
+															<Text
+																style={styles.overlayRowMeta}
+																numberOfLines={1}
+															>
+																{m.provider}
+																{m.is_default ? " · default" : ""}
 															</Text>
-														) : null}
-													</View>
-													<Text style={styles.overlayRowMeta} numberOfLines={1}>
-														{m.provider}
-														{m.is_default ? " · default" : ""}
-													</Text>
-												</Pressable>
-											);
-										});
-									})()
-								) : (
-									pickList.map((c) => (
-										<View key={c.id} style={styles.overlaySessionRow}>
-											<Pressable
-												onPress={() => switchConversation(c.id)}
-												style={({ pressed }) => [
-													styles.overlaySessionMain,
-													pressed && styles.slashItemPressed,
-												]}
-											>
-												<Text style={styles.overlayRowText} numberOfLines={1}>
-													{c.title || "Untitled"}
-												</Text>
-											</Pressable>
-											<Pressable
-												onPress={() => removeConversation(c.id)}
-												hitSlop={8}
-												style={({ pressed }) => [
-													styles.overlayDel,
-													pressed && styles.slashItemPressed,
-												]}
-											>
-												<Ionicons
-													name="trash-outline"
-													size={16}
-													color={colors.accent3}
-												/>
-											</Pressable>
-										</View>
-									))
-								)}
-							</ScrollView>
-							</FadeIn>
-							{overlay === "sessions" ? (
-								<TextInput
-									style={styles.overlaySearch}
-									value={sessionQuery}
-									onChangeText={setSessionQuery}
-									placeholder="Search title or message text…"
-									placeholderTextColor={colors.muted}
-									autoFocus
-									returnKeyType="search"
-								/>
-							) : null}
-						</>
-					)}
+														</Pressable>
+													);
+												});
+											})()
+										) : (
+											pickList.map((c) => (
+												<View key={c.id} style={styles.overlaySessionRow}>
+													<Pressable
+														onPress={() => switchConversation(c.id)}
+														style={({ pressed }) => [
+															styles.overlaySessionMain,
+															pressed && styles.slashItemPressed,
+														]}
+													>
+														<Text
+															style={styles.overlayRowText}
+															numberOfLines={1}
+														>
+															{c.title || "Untitled"}
+														</Text>
+													</Pressable>
+													<Pressable
+														onPress={() => removeConversation(c.id)}
+														hitSlop={8}
+														style={({ pressed }) => [
+															styles.overlayDel,
+															pressed && styles.slashItemPressed,
+														]}
+													>
+														<Ionicons
+															name="trash-outline"
+															size={16}
+															color={colors.accent3}
+														/>
+													</Pressable>
+												</View>
+											))
+										)}
+									</ScrollView>
+								</FadeIn>
+								{overlay === "sessions" ? (
+									<TextInput
+										style={styles.overlaySearch}
+										value={sessionQuery}
+										onChangeText={setSessionQuery}
+										placeholder="Search title or message text…"
+										placeholderTextColor={colors.muted}
+										autoFocus
+										returnKeyType="search"
+									/>
+								) : null}
+							</>
+						)}
 					</View>
 				) : null}
 				<Modal
@@ -1846,9 +2094,10 @@ const styles = StyleSheet.create({
 		borderStyle: "dashed",
 		backgroundColor: colors.panel,
 	},
-	composerRow: {
+	// Row 2 of the composer — attach (left), model switcher + send (right).
+	composerActions: {
 		flexDirection: "row",
-		alignItems: "stretch",
+		alignItems: "center",
 		gap: 8,
 	},
 
@@ -1963,7 +2212,7 @@ const styles = StyleSheet.create({
 		letterSpacing: 0.2,
 	},
 	input: {
-		flex: 1,
+		alignSelf: "stretch",
 		minHeight: 44,
 		maxHeight: 140,
 		backgroundColor: colors.bg,
@@ -1978,7 +2227,8 @@ const styles = StyleSheet.create({
 		textAlignVertical: "top",
 	},
 	sendBtn: {
-		minWidth: 96,
+		minWidth: 88,
+		height: 40,
 		paddingHorizontal: 12,
 		flexDirection: "row",
 		alignItems: "center",
@@ -2010,6 +2260,89 @@ const styles = StyleSheet.create({
 		textTransform: "uppercase",
 	},
 	sendLabelDisabled: { color: colors.muted },
+	// Attach-image button — square, icon-only, sits before the input.
+	// Square icon button (attach) in the actions row.
+	iconBtn: {
+		width: 40,
+		height: 40,
+		alignItems: "center",
+		justifyContent: "center",
+		backgroundColor: colors.bgSoft,
+		borderWidth: 2,
+		borderColor: colors.borderStrong,
+	},
+	// Model switcher chip — shows the active model, opens the /models picker.
+	modelSwitch: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 4,
+		maxWidth: 150,
+		height: 40,
+		paddingHorizontal: 10,
+		backgroundColor: colors.bgSoft,
+		borderWidth: 2,
+		borderColor: colors.borderStrong,
+	},
+	modelSwitchText: {
+		flexShrink: 1,
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 12,
+		fontWeight: "700",
+	},
+
+	// ── PENDING IMAGE CHIPS (composer) ───────────────────────
+	imageTags: {
+		flexDirection: "row",
+		flexWrap: "wrap",
+		gap: 6,
+	},
+	imageTag: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		maxWidth: 200,
+		paddingHorizontal: 6,
+		paddingVertical: 4,
+		borderWidth: 1,
+		borderColor: colors.borderStrong,
+		backgroundColor: colors.bgSoft,
+	},
+	imageTagThumb: {
+		width: 28,
+		height: 28,
+		borderWidth: 1,
+		borderColor: colors.borderStrong,
+	},
+	imageTagUploading: { opacity: 0.5 },
+	imageTagName: {
+		flexShrink: 1,
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 11,
+		fontWeight: "700",
+	},
+	imageTagRemove: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 16,
+		fontWeight: "900",
+	},
+
+	// ── SENT IMAGES (user bubble) ────────────────────────────
+	userImages: {
+		flexDirection: "row",
+		flexWrap: "wrap",
+		justifyContent: "flex-end",
+		gap: 6,
+	},
+	userImage: {
+		width: 160,
+		height: 160,
+		borderWidth: 1,
+		borderColor: "rgba(247, 201, 72, 0.32)",
+		resizeMode: "cover",
+	},
 
 	// ── SLASH COMMAND MENU ───────────────────────────────────
 	// Floating pickers (slash list + sessions/models/rename) — anchored just above

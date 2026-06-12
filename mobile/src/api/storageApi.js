@@ -67,6 +67,24 @@ export const uploadAttachment = async ({ file, noteId }) => {
 	return { key, publicUrl, filename: original };
 };
 
+// Upload a chat image (picked via expo-document-picker) to the disposable
+// `__temp/chat/<convId>/` prefix and return its tokenless public CDN URL (sent
+// to the vision model) plus the S3 `key` (cleaned up with its conversation) and
+// the media type. Treated as a temp file. NOTE: the `__temp/` prefix must be
+// served publicly so the LLM provider can fetch the image by URL.
+export const uploadChatImage = async ({ file, conversationId }) => {
+	const mediaType = file.mimeType || "image/png";
+	const ext = mediaType.split("/")[1] || "png";
+	const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+	const safe = sanitizeKeyName(file.name || `image.${ext}`);
+	const path = `__temp/chat/${conversationId || "misc"}/`;
+	const { key, publicUrl } = await uploadFile({
+		file: { ...file, name: `${stamp}-${safe}`, mimeType: mediaType },
+		path,
+	});
+	return { key, publicUrl, media_type: mediaType };
+};
+
 // Zip files/folders server-side (staged to __temp on Bunny); returns
 // `{ url, key }` — a signed CDN URL the client opens/downloads directly.
 // `keys` are explicit files; `prefixes` are folders expanded server-side.

@@ -34,18 +34,13 @@
 	color: var(--vp-accent);
 }
 
-/* Nav fills remaining space and centres its content. */
-.ws-header-nav {
-	flex: 1;
-	display: flex;
-	justify-content: center;
-	gap: 14px;
-}
+/* Nav sits next to the brand on the left. */
 
 .ws-header-actions {
 	display: flex;
 	align-items: center;
 	gap: 8px;
+	margin-left: auto;
 }
 
 @media (max-width: 640px) {

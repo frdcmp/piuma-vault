@@ -16,7 +16,7 @@ import {
 	useUpdateModel,
 	useUpdatePersona,
 } from "../../../queries";
-import { PvModal } from "../../components/ui";
+import { PvCheckbox, PvModal } from "../../components/ui";
 import "./agents.css";
 
 const PROVIDER_KINDS = ["deepseek", "anthropic", "openai", "gemini", "minimax"];
@@ -34,6 +34,7 @@ function ModelsList({ providerId }) {
 	const [modelId, setModelId] = useState("");
 	const [displayName, setDisplayName] = useState("");
 	const [thinking, setThinking] = useState(true);
+	const [vision, setVision] = useState(false);
 	const [error, setError] = useState("");
 	const [pendingDelete, setPendingDelete] = useState(null);
 	const [picker, setPicker] = useState(false);
@@ -94,123 +95,166 @@ function ModelsList({ providerId }) {
 				model_id: modelId.trim(),
 				display_name: displayName.trim(),
 				supports_thinking: thinking,
+				supports_vision: vision,
 			});
 			setModelId("");
 			setDisplayName("");
+			setVision(false);
 		} catch (e) {
 			setError(errMsg(e, "Failed to add model"));
 		}
 	};
 
 	return (
-		<div>
+		<div className="ag-models">
 			{models.map((m) => (
-				<div key={m.id} className="ag-row" style={{ padding: "4px 0" }}>
+				<div key={m.id} className="ag-model">
 					<button
 						type="button"
-						className="ag-btn--icon"
+						className="ag-star"
 						title={m.is_default ? "Default model" : "Set as default"}
 						onClick={() => updateModel.mutate({ id: m.id, is_default: true })}
-						style={{ color: m.is_default ? "#f7c948" : undefined }}
+						data-on={m.is_default ? "true" : undefined}
 					>
 						{m.is_default ? "★" : "☆"}
 					</button>
-					<strong>{m.display_name}</strong>
-					<span className="ag-muted">{m.model_id}</span>
-					{m.supports_thinking && (
-						<span className="ag-tag ag-tag--purple">thinking</span>
-					)}
-					{(m.price_input > 0 || m.price_output > 0) && (
-						<span className="ag-muted" title="USD per 1M tokens (in / out)">
-							${m.price_input}/${m.price_output}
-						</span>
-					)}
-					<button
-						type="button"
-						className="ag-btn--icon"
-						title="Set token prices"
-						onClick={() => openPricing(m)}
-					>
-						$
-					</button>
-					<button
-						type="button"
-						className="ag-btn--icon ag-btn--danger"
-						title="Delete model"
-						onClick={() => setPendingDelete(m)}
-					>
-						✕
-					</button>
+					<div className="ag-model-id">
+						<strong className="ag-model-name">{m.display_name}</strong>
+						<span className="ag-muted ag-model-wire">{m.model_id}</span>
+					</div>
+					<div className="ag-model-caps">
+						<button
+							type="button"
+							className={`ag-cap${m.supports_thinking ? " is-on ag-cap--purple" : ""}`}
+							title={
+								m.supports_thinking
+									? "Thinking enabled — click to disable"
+									: "Enable extended thinking"
+							}
+							onClick={() =>
+								updateModel.mutate({
+									id: m.id,
+									supports_thinking: !m.supports_thinking,
+								})
+							}
+						>
+							thinking
+						</button>
+						<button
+							type="button"
+							className={`ag-cap${m.supports_vision ? " is-on ag-cap--green" : ""}`}
+							title={
+								m.supports_vision
+									? "Vision enabled — click to disable"
+									: "Enable vision (image input)"
+							}
+							onClick={() =>
+								updateModel.mutate({
+									id: m.id,
+									supports_vision: !m.supports_vision,
+								})
+							}
+						>
+							vision
+						</button>
+					</div>
+					<div className="ag-model-actions">
+						<button
+							type="button"
+							className="ag-price"
+							title="Set token prices (USD per 1M tokens, in / out)"
+							onClick={() => openPricing(m)}
+						>
+							${m.price_input ?? 0}/${m.price_output ?? 0}
+						</button>
+						<button
+							type="button"
+							className="ag-btn--icon ag-btn--danger"
+							title="Delete model"
+							onClick={() => setPendingDelete(m)}
+						>
+							✕
+						</button>
+					</div>
 				</div>
 			))}
-			<div className="ag-row" style={{ marginTop: 8 }}>
-				<div className="ag-combo" style={{ maxWidth: 200 }}>
+			<div className="ag-model-add">
+				<div className="ag-model-add-fields">
+					<div className="ag-combo">
+						<input
+							className="ag-input"
+							placeholder="wire id (deepseek-chat)"
+							value={modelId}
+							onChange={(e) => setModelId(e.target.value)}
+							onFocus={openPicker}
+							onBlur={() => setTimeout(() => setPicker(false), 150)}
+						/>
+						{picker && (
+							<div className="ag-combo-menu">
+								{catalogLoading && (
+									<div className="ag-combo-note">Loading models…</div>
+								)}
+								{catalogError && (
+									<div className="ag-combo-note ag-error" style={{ margin: 0 }}>
+										{errMsg(catalogErr, "Couldn't list models")}
+									</div>
+								)}
+								{!catalogLoading &&
+									!catalogError &&
+									(suggestions.length ? (
+										suggestions.map((id) => (
+											<button
+												type="button"
+												key={id}
+												className="ag-combo-item"
+												// mouse-down fires before the input's blur, so the
+												// pick lands before the menu closes.
+												onMouseDown={(e) => {
+													e.preventDefault();
+													pick(id);
+												}}
+												disabled={existingIds.has(id)}
+											>
+												{id}
+												{existingIds.has(id) && (
+													<span className="ag-muted">added</span>
+												)}
+											</button>
+										))
+									) : (
+										<div className="ag-combo-note">
+											{available.length ? "No match" : "No models returned"}
+										</div>
+									))}
+							</div>
+						)}
+					</div>
 					<input
 						className="ag-input"
-						placeholder="wire id (deepseek-chat)"
-						value={modelId}
-						onChange={(e) => setModelId(e.target.value)}
-						onFocus={openPicker}
-						onBlur={() => setTimeout(() => setPicker(false), 150)}
+						placeholder="display name"
+						value={displayName}
+						onChange={(e) => setDisplayName(e.target.value)}
 					/>
-					{picker && (
-						<div className="ag-combo-menu">
-							{catalogLoading && (
-								<div className="ag-combo-note">Loading models…</div>
-							)}
-							{catalogError && (
-								<div className="ag-combo-note ag-error" style={{ margin: 0 }}>
-									{errMsg(catalogErr, "Couldn't list models")}
-								</div>
-							)}
-							{!catalogLoading &&
-								!catalogError &&
-								(suggestions.length ? (
-									suggestions.map((id) => (
-										<button
-											type="button"
-											key={id}
-											className="ag-combo-item"
-											// mouse-down fires before the input's blur, so the
-											// pick lands before the menu closes.
-											onMouseDown={(e) => {
-												e.preventDefault();
-												pick(id);
-											}}
-											disabled={existingIds.has(id)}
-										>
-											{id}
-											{existingIds.has(id) && (
-												<span className="ag-muted">added</span>
-											)}
-										</button>
-									))
-								) : (
-									<div className="ag-combo-note">
-										{available.length ? "No match" : "No models returned"}
-									</div>
-								))}
-						</div>
-					)}
 				</div>
-				<input
-					className="ag-input"
-					style={{ maxWidth: 200 }}
-					placeholder="display name"
-					value={displayName}
-					onChange={(e) => setDisplayName(e.target.value)}
-				/>
-				<label className="ag-muted ag-row" style={{ gap: 4 }}>
-					<input
-						type="checkbox"
+				<div className="ag-model-add-opts">
+					<PvCheckbox
 						checked={thinking}
-						onChange={(e) => setThinking(e.target.checked)}
+						onChange={setThinking}
+						label="thinking"
 					/>
-					thinking
-				</label>
-				<button type="button" className="ag-btn ag-btn--sm" onClick={add}>
-					+ Add model
-				</button>
+					<PvCheckbox
+						checked={vision}
+						onChange={setVision}
+						label="vision"
+					/>
+					<button
+						type="button"
+						className="ag-btn ag-btn--sm ag-btn--primary"
+						onClick={add}
+					>
+						+ Add model
+					</button>
+				</div>
 			</div>
 			{error && <div className="ag-error">{error}</div>}
 			<PvModal

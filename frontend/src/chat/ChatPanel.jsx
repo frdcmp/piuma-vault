@@ -24,6 +24,7 @@ import {
 	streamChat,
 	updateConversation,
 } from "../api/agentChatApi";
+import { uploadChatImage } from "../api/storage";
 import { useAgentList, useDefaultAgent } from "../queries";
 
 // Universal client commands (same for every agent). Agent-specific commands are
@@ -67,6 +68,14 @@ const blocksToText = (content) => {
 			.map((b) => b.text)
 			.join("");
 	return "";
+};
+
+// Pull the image blocks out of a persisted user message → [{ url, mediaType }].
+const blocksToImages = (content) => {
+	if (!Array.isArray(content)) return [];
+	return content
+		.filter((b) => b.type === "image" && b.url)
+		.map((b) => ({ url: b.url, mediaType: b.media_type }));
 };
 
 // Walk persisted content blocks IN ORDER into renderable parts, so tools show up
@@ -287,7 +296,7 @@ function ContextTag({ label, title, locked, preview, onClick, onRemove }) {
 	);
 }
 
-function UserBubble({ content, context }) {
+function UserBubble({ content, context, images }) {
 	return (
 		<div className="chat-user-row">
 			<div className="chat-user-card">
@@ -300,6 +309,21 @@ function UserBubble({ content, context }) {
 								title={path}
 								locked
 							/>
+						))}
+					</div>
+				) : null}
+				{images?.length ? (
+					<div className="chat-user-images">
+						{images.map((img) => (
+							<a
+								key={img.url}
+								href={img.url}
+								target="_blank"
+								rel="noreferrer"
+								className="chat-user-image"
+							>
+								<img src={img.url} alt="attachment" />
+							</a>
 						))}
 					</div>
 				) : null}
@@ -452,6 +476,12 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	// or null when it hasn't been overridden — then the backend uses the default,
 	// so the model flagged is_default is the one actually in use.
 	const [modelId, setModelId] = useState(null);
+	// All enabled models (fetched once), so the composer can read the ACTIVE
+	// model's capabilities — chiefly `supports_vision` to gate image attach.
+	const [allModels, setAllModels] = useState([]);
+	// Images pasted/attached for the next turn, each:
+	// { id, localUrl, url, key, mediaType, name, w, h, status: "uploading"|"ready"|"error" }.
+	const [pendingImages, setPendingImages] = useState([]);
 	// Only restore when a stored conversation exists; a fresh panel (and any
 	// conversation created later this session) starts already-hydrated so the
 	// restore effect never clobbers live streaming state.
@@ -518,6 +548,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 						role: m.role,
 						content: blocksToText(m.content),
 						parts: blocksToParts(m.content),
+						images: blocksToImages(m.content),
 					})),
 				);
 				setHydrated(true);
@@ -555,7 +586,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		// If content overflows after setting, add border width
 		if (el.scrollHeight > el.clientHeight) {
 			const cs = getComputedStyle(el);
-			const bh = parseInt(cs.borderTopWidth, 10) + parseInt(cs.borderBottomWidth, 10);
+			const bh =
+				parseInt(cs.borderTopWidth, 10) + parseInt(cs.borderBottomWidth, 10);
 			el.style.height = `${sh + bh}px`;
 		}
 	}, [input]);
@@ -581,6 +613,131 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const sentContextIds = useMemo(
 		() => lockedContext.map((t) => t.id).filter(Boolean),
 		[lockedContext],
+	);
+
+	// Load the model catalog once so the composer knows the active model's
+	// capabilities (vision). Refreshed lazily by the /models picker too.
+	useEffect(() => {
+		fetchAllModels()
+			.then(setAllModels)
+			.catch(() => {});
+	}, []);
+
+	// The model actually in use: the conversation's override, or the default.
+	const activeModel = useMemo(() => {
+		if (!allModels.length) return null;
+		return modelId
+			? allModels.find((m) => m.id === modelId)
+			: allModels.find((m) => m.is_default);
+	}, [allModels, modelId]);
+	const visionEnabled = !!activeModel?.supports_vision;
+
+	const fileInputRef = useRef(null);
+	const uploadingImages = pendingImages.some((p) => p.status === "uploading");
+
+	const removePendingImage = useCallback((id) => {
+		setPendingImages((curr) => {
+			const hit = curr.find((p) => p.id === id);
+			if (hit?.localUrl) URL.revokeObjectURL(hit.localUrl);
+			return curr.filter((p) => p.id !== id);
+		});
+	}, []);
+
+	// Upload an image file to the disposable __temp/chat/ prefix, showing an
+	// optimistic local thumbnail immediately and swapping in the CDN URL when the
+	// upload lands. Gated on the active model supporting vision.
+	const addImageFile = useCallback(
+		(file) => {
+			if (!file?.type?.startsWith("image/")) return;
+			if (!visionEnabled) {
+				pvMessage.info(
+					"This model can't read images — switch to a vision model first.",
+				);
+				return;
+			}
+			const id = newMessageId();
+			const localUrl = URL.createObjectURL(file);
+			const probe = new Image();
+			probe.onload = () =>
+				setPendingImages((curr) =>
+					curr.map((p) =>
+						p.id === id
+							? { ...p, w: probe.naturalWidth, h: probe.naturalHeight }
+							: p,
+					),
+				);
+			probe.src = localUrl;
+			setPendingImages((curr) => [
+				...curr,
+				{
+					id,
+					localUrl,
+					url: null,
+					key: null,
+					mediaType: file.type || "image/png",
+					name: file.name || "image.png",
+					w: 0,
+					h: 0,
+					status: "uploading",
+				},
+			]);
+			uploadChatImage({ file, conversationId: conversationIdRef.current })
+				.then(({ key, publicUrl, media_type }) =>
+					setPendingImages((curr) =>
+						curr.map((p) =>
+							p.id === id
+								? {
+										...p,
+										url: publicUrl,
+										key,
+										mediaType: media_type || p.mediaType,
+										status: "ready",
+									}
+								: p,
+						),
+					),
+				)
+				.catch(() => {
+					pvMessage.error("Image upload failed");
+					removePendingImage(id);
+				});
+		},
+		[visionEnabled, removePendingImage],
+	);
+
+	// Paste handler: grab any image items off the clipboard.
+	const onPaste = useCallback(
+		(e) => {
+			const items = e.clipboardData?.items || [];
+			let handled = false;
+			for (const it of items) {
+				if (it.kind === "file" && it.type.startsWith("image/")) {
+					const f = it.getAsFile();
+					if (f) {
+						addImageFile(f);
+						handled = true;
+					}
+				}
+			}
+			if (handled) e.preventDefault();
+		},
+		[addImageFile],
+	);
+
+	const onDrop = useCallback(
+		(e) => {
+			const files = e.dataTransfer?.files;
+			if (!files?.length) return;
+			let handled = false;
+			for (const f of files) {
+				if (f.type.startsWith("image/")) {
+					addImageFile(f);
+					handled = true;
+				}
+			}
+			if (handled) e.preventDefault();
+		},
+		[addImageFile],
 	);
 
 	useEffect(() => () => abortRef.current?.abort(), []);
@@ -633,6 +790,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 							role: m.role,
 							content: blocksToText(m.content),
 							parts: blocksToParts(m.content),
+							images: blocksToImages(m.content),
 						})),
 					);
 					return;
@@ -658,7 +816,10 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 
 	const sendMessage = useCallback(async () => {
 		const text = input.trim();
-		if (!text) return;
+		const readyImages = pendingImages.filter(
+			(p) => p.status === "ready" && p.url,
+		);
+		if (!text && !readyImages.length) return;
 
 		// While a turn is streaming, a send INJECTS into it instead of starting a
 		// new turn; the running turn picks it up at the next round boundary.
@@ -713,6 +874,14 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			role: "user",
 			content: text,
 			...(sentContextPaths.length ? { context: sentContextPaths } : {}),
+			...(readyImages.length
+				? {
+						images: readyImages.map((p) => ({
+							url: p.url,
+							mediaType: p.mediaType,
+						})),
+					}
+				: {}),
 		};
 		const assistantMsg = {
 			id: newMessageId(),
@@ -721,6 +890,11 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		};
 		setMessages((curr) => [...curr, userMsg, assistantMsg]);
 		setInput("");
+		// Sent → drop the pending chips (the CDN urls now live on the message).
+		setPendingImages((curr) => {
+			for (const p of curr) if (p.localUrl) URL.revokeObjectURL(p.localUrl);
+			return [];
+		});
 		setIsStreaming(true);
 		scrollToBottom(); // sending re-arms the stick-to-bottom lock
 
@@ -744,6 +918,11 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				conversationId: convId,
 				message: text,
 				contextNoteIds: sentContextIds,
+				images: readyImages.map((p) => ({
+					url: p.url,
+					key: p.key,
+					media_type: p.mediaType,
+				})),
 				signal: controller.signal,
 				onText: appendText,
 				onThinking: () => {},
@@ -840,6 +1019,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		effectiveAgent,
 		sentContextPaths,
 		sentContextIds,
+		pendingImages,
 		recoverTurn,
 		scrollToBottom,
 	]);
@@ -969,6 +1149,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 					role: m.role,
 					content: blocksToText(m.content),
 					parts: blocksToParts(m.content),
+					images: blocksToImages(m.content),
 				})),
 			);
 		} catch {
@@ -1080,6 +1261,20 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			setOverlay(null);
 			focusInput();
 			setModelId(m.id);
+			// Switching to a model that can't see images: drop any pending ones so
+			// we don't try to send them to a text-only model.
+			if (!m.supports_vision) {
+				setPendingImages((curr) => {
+					if (curr.length) {
+						for (const p of curr)
+							if (p.localUrl) URL.revokeObjectURL(p.localUrl);
+						pvMessage.info(
+							`${m.display_name} can't read images — removed the attached image(s).`,
+						);
+					}
+					return [];
+				});
+			}
 			pvMessage.success(`Model switched to ${m.display_name}`);
 			if (conversationId) {
 				try {
@@ -1188,8 +1383,11 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	// Composer button is state-driven: STOP while streaming with an empty box,
 	// otherwise SEND (which injects when streaming, sends a new turn when idle).
 	const hasText = input.trim().length > 0;
+	const hasReadyImage = pendingImages.some((p) => p.status === "ready");
 	const showStop = isStreaming && !hasText;
-	const canSend = hasText;
+	// Block send while an upload is in flight so we never send a half-uploaded
+	// image (no CDN url yet). Text-only or a ready image both enable send.
+	const canSend = (hasText || hasReadyImage) && !uploadingImages;
 
 	return (
 		<div className="chat-root chat-panel">
@@ -1276,6 +1474,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 										key={m.id}
 										content={m.content}
 										context={m.context}
+										images={m.images}
 									/>
 								) : (
 									<AssistantBubble
@@ -1323,6 +1522,43 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 										chip.locked ? () => unlockContext(chip.id) : undefined
 									}
 								/>
+							))}
+						</div>
+					) : null}
+					{pendingImages.length > 0 ? (
+						<div className="chat-image-tags">
+							{pendingImages.map((img) => (
+								<div
+									key={img.id}
+									className={`chat-image-tag${img.status === "uploading" ? " is-uploading" : ""}${img.status === "error" ? " is-error" : ""}`}
+									title={img.name}
+								>
+									<img
+										className="chat-image-tag-thumb"
+										src={img.localUrl || img.url}
+										alt={img.name}
+									/>
+									<span className="chat-image-tag-meta">
+										<span className="chat-image-tag-name">{img.name}</span>
+										{img.w && img.h ? (
+											<span className="chat-image-tag-dim">
+												{img.w}×{img.h}
+											</span>
+										) : null}
+									</span>
+									{img.status === "uploading" ? (
+										<span className="chat-image-tag-spin" aria-hidden="true" />
+									) : (
+										<button
+											type="button"
+											className="chat-image-tag-remove"
+											onClick={() => removePendingImage(img.id)}
+											aria-label={`Remove ${img.name}`}
+										>
+											×
+										</button>
+									)}
+								</div>
 							))}
 						</div>
 					) : null}
@@ -1464,7 +1700,38 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 								</div>
 							</div>
 						) : null}
-						<div className="chat-composer-row">
+						{/* biome-ignore lint/a11y/noStaticElementInteractions: drop zone for image attachments */}
+						<div
+							className="chat-composer-row"
+							onDrop={onDrop}
+							onDragOver={(e) => {
+								if (visionEnabled) e.preventDefault();
+							}}
+						>
+							{visionEnabled ? (
+								<>
+									<input
+										ref={fileInputRef}
+										type="file"
+										accept="image/*"
+										multiple
+										hidden
+										onChange={(e) => {
+											for (const f of e.target.files || []) addImageFile(f);
+											e.target.value = "";
+										}}
+									/>
+									<button
+										type="button"
+										className="chat-attach"
+										onClick={() => fileInputRef.current?.click()}
+										title="Attach an image"
+										aria-label="Attach an image"
+									>
+										📎
+									</button>
+								</>
+							) : null}
 							<textarea
 								ref={inputRef}
 								className="chat-input"
@@ -1475,6 +1742,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 									setTitleMenu(false);
 								}}
 								onKeyDown={onKeyDown}
+								onPaste={onPaste}
 								placeholder={
 									compact
 										? `Ask ${agentLabel}…`
