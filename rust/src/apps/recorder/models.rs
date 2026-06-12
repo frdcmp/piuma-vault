@@ -48,3 +48,10 @@ pub struct CreateSessionRequest {
 pub struct TitleRequest {
     pub title: String,
 }
+
+/// `POST /recorder/sessions/{id}/append` body — merge session `{id}`'s transcript
+/// into `target_id`, then re-summarise the target.
+#[derive(Debug, Deserialize)]
+pub struct AppendRequest {
+    pub target_id: Uuid,
+}

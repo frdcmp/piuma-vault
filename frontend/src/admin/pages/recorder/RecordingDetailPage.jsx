@@ -1,14 +1,19 @@
 import { useNavigate, useParams } from "react-router-dom";
-import { useRecording, useRecordingTranscript } from "../../../queries";
+import {
+	useRecording,
+	useRecordingTranscript,
+	useSummariseRecording,
+} from "../../../queries";
 import { formatDateTime } from "../../../utils/dateTime";
 import Starfield from "../../components/notes/Starfield";
-import { PvButton, PvPanel } from "../../components/ui";
+import { PvButton, PvPanel, pvMessage } from "../../components/ui";
 import "../../vault-pixel.css";
 import { colorForSpeaker } from "./speakerColors";
 import "./recorder.css";
 
 const STATUS_TAG = {
 	recording: "vp-tag--red",
+	ready: "vp-tag--accent",
 	summarising: "vp-tag--accent",
 	done: "vp-tag--green",
 	failed: "vp-tag--red",
@@ -65,10 +70,21 @@ export default function RecordingDetailPage() {
 	const navigate = useNavigate();
 	const { data: rec, isLoading } = useRecording(id);
 	const { data: transcript, isLoading: trLoading } = useRecordingTranscript(id);
+	const summarise = useSummariseRecording();
 
 	const segments = mergeSegments(
 		(transcript?.segments || []).filter((s) => s.is_final),
 	);
+
+	// 'ready' = transcript saved but never summarised (user chose "keep" after
+	// stopping). Offer to summarise it now.
+	const canSummarise = rec?.status === "ready" || rec?.status === "failed";
+	const runSummarise = () => {
+		summarise.mutate(id, {
+			onSuccess: () => pvMessage.success("Summary saved to your vault"),
+			onError: () => pvMessage.error("Couldn't summarise the recording"),
+		});
+	};
 
 	return (
 		<div className="recorder-scene recorder-scene--page">
@@ -100,13 +116,22 @@ export default function RecordingDetailPage() {
 							</div>
 						)}
 					</div>
-					{rec?.final_note_id && (
+					{canSummarise ? (
+						<PvButton
+							variant="primary"
+							loading={summarise.isPending}
+							disabled={summarise.isPending}
+							onClick={runSummarise}
+						>
+							{rec?.status === "failed" ? "Retry summary" : "Summarize now"}
+						</PvButton>
+					) : rec?.final_note_id ? (
 						<PvButton
 							onClick={() => navigate(`/notes/${rec.final_note_id}`)}
 						>
 							Open summary note
 						</PvButton>
-					)}
+					) : null}
 				</div>
 
 				{rec?.status === "failed" && rec.error && (

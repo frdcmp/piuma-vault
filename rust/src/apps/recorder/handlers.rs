@@ -11,8 +11,11 @@ use crate::apps::notes::events::{NoteAction, NotesEventBus};
 use crate::apps::settings::store;
 use crate::db::db::DbPool;
 
-use super::models::{CreateSessionRequest, CreateSessionResponse, RecordingSession, TitleRequest};
-use super::session::SessionRegistry;
+use super::models::{
+    AppendRequest, CreateSessionRequest, CreateSessionResponse, RecordingSession, TitleRequest,
+};
+use super::session::{self, SessionRegistry};
+use super::summarise;
 
 fn forbidden() -> HttpResponse {
     HttpResponse::Forbidden().json(serde_json::json!({ "error": "admin_access required" }))
@@ -287,6 +290,152 @@ pub async fn delete_session(
         .execute(pool.get_ref())
         .await;
     HttpResponse::Ok().json(serde_json::json!({ "ok": true }))
+}
+
+/// POST /recorder/sessions/{id}/summarise — run the deferred summary on a saved
+/// transcript, creating (or refreshing) the vault note. Used by the post-stop
+/// "Summarize" choice and the detail page.
+pub async fn summarise_session(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden();
+    }
+    let pool = pool.get_ref();
+    let id = path.into_inner();
+    let Some(s) = fetch(pool, id, &user.user_id).await else {
+        return HttpResponse::NotFound().json(serde_json::json!({ "error": "not found" }));
+    };
+    if s.transcript_storage_key.is_none() {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "error": "no transcript to summarise" }));
+    }
+    let _ = sqlx::query(
+        "UPDATE db_recording_sessions SET status = 'summarising', error = NULL, updated_at = NOW() \
+         WHERE id = $1 AND user_id = $2",
+    )
+    .bind(id)
+    .bind(&user.user_id)
+    .execute(pool)
+    .await;
+    match summarise::run(pool, id, &user.user_id).await {
+        Ok(note_id) => {
+            HttpResponse::Ok().json(serde_json::json!({ "session_id": id, "note_id": note_id }))
+        }
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e })),
+    }
+}
+
+/// POST /recorder/sessions/{id}/append — merge `{id}`'s transcript into
+/// `target_id` (shifting its timestamps past the target's duration), delete the
+/// source session, then re-summarise the combined target. Lets you stop and
+/// resume into one recording.
+pub async fn append_session(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    registry: web::Data<SessionRegistry>,
+    notes_bus: web::Data<NotesEventBus>,
+    path: web::Path<Uuid>,
+    body: web::Json<AppendRequest>,
+) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden();
+    }
+    let pool = pool.get_ref();
+    let src_id = path.into_inner();
+    let target_id = body.into_inner().target_id;
+    if src_id == target_id {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "error": "cannot append a recording to itself" }));
+    }
+    let Some(src) = fetch(pool, src_id, &user.user_id).await else {
+        return HttpResponse::NotFound().json(serde_json::json!({ "error": "source not found" }));
+    };
+    let Some(target) = fetch(pool, target_id, &user.user_id).await else {
+        return HttpResponse::NotFound().json(serde_json::json!({ "error": "target not found" }));
+    };
+    let (Some(src_key), Some(tgt_key)) = (
+        src.transcript_storage_key.clone(),
+        target.transcript_storage_key.clone(),
+    ) else {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "error": "both recordings need a saved transcript" }));
+    };
+
+    // Merge: target segments, then the source's shifted past the target's
+    // duration so timestamps stay monotonic in the combined transcript.
+    let src_segs = match session::read_segments(pool, &src_key).await {
+        Ok(s) => s,
+        Err(e) => return HttpResponse::BadGateway().json(serde_json::json!({ "error": e })),
+    };
+    let mut segs = match session::read_segments(pool, &tgt_key).await {
+        Ok(s) => s,
+        Err(e) => return HttpResponse::BadGateway().json(serde_json::json!({ "error": e })),
+    };
+    let offset = target.duration_secs as f64;
+    for mut seg in src_segs {
+        seg.start += offset;
+        seg.end += offset;
+        segs.push(seg);
+    }
+
+    // Persist the merged transcript onto the target's key + refresh its index.
+    let jsonl = session::to_jsonl(&segs);
+    if let Err(e) = session::upload_transcript(pool, target_id, &jsonl).await {
+        return HttpResponse::BadGateway().json(serde_json::json!({ "error": e }));
+    }
+    let text = session::joined_text(&segs);
+    let word_count = text.split_whitespace().count() as i32;
+    let preview: String = text.chars().take(200).collect();
+    let combined_dur = target.duration_secs + src.duration_secs;
+    let _ = sqlx::query(
+        "UPDATE db_recording_sessions \
+         SET word_count = $2, preview = $3, duration_secs = $4, status = 'summarising', updated_at = NOW() \
+         WHERE id = $1",
+    )
+    .bind(target_id)
+    .bind(word_count)
+    .bind(&preview)
+    .bind(combined_dur)
+    .execute(pool)
+    .await;
+
+    // Tear down the now-merged source: live state, S3 transcript, any note, row.
+    registry.remove(&src_id);
+    if let Ok((client, bucket)) = crate::apps::storage::handlers::s3_client(pool).await {
+        let _ = client
+            .delete_object()
+            .bucket(&bucket)
+            .key(&src_key)
+            .send()
+            .await;
+    }
+    if let Some(note_id) = src.final_note_id {
+        let res = sqlx::query(
+            "UPDATE notes SET deleted_at = NOW() \
+             WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(note_id)
+        .bind(&user.user_id)
+        .execute(pool)
+        .await;
+        if matches!(res, Ok(r) if r.rows_affected() > 0) {
+            notes_bus.publish(NoteAction::Deleted, note_id);
+        }
+    }
+    let _ = sqlx::query("DELETE FROM db_recording_sessions WHERE id = $1 AND user_id = $2")
+        .bind(src_id)
+        .bind(&user.user_id)
+        .execute(pool)
+        .await;
+
+    match summarise::run(pool, target_id, &user.user_id).await {
+        Ok(note_id) => HttpResponse::Ok()
+            .json(serde_json::json!({ "session_id": target_id, "note_id": note_id })),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e })),
+    }
 }
 
 async fn fetch(pool: &DbPool, id: Uuid, user_id: &str) -> Option<RecordingSession> {

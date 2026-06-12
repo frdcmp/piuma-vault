@@ -23,7 +23,6 @@ use crate::apps::transcription::{self, models::TranscriberConfig};
 use crate::db::db::DbPool;
 
 use super::session::{self, SessionRegistry};
-use super::summarise;
 
 #[derive(Deserialize)]
 pub struct WsAuthQuery {
@@ -52,15 +51,15 @@ pub async fn ws_handler(
     let user_id = claims.sub.clone();
 
     // The session row must exist, belong to this user, and still be recording.
-    let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT title, status FROM db_recording_sessions WHERE id = $1 AND user_id = $2",
+    let status: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM db_recording_sessions WHERE id = $1 AND user_id = $2",
     )
     .bind(id)
     .bind(&user_id)
     .fetch_optional(pool.get_ref())
     .await
     .map_err(actix_web::error::ErrorInternalServerError)?;
-    let Some((title, status)) = row else {
+    let Some(status) = status else {
         return Ok(HttpResponse::NotFound().finish());
     };
     if status != "recording" {
@@ -87,7 +86,7 @@ pub async fn ws_handler(
     let registry = registry.get_ref().clone();
 
     actix_web::rt::spawn(relay(
-        id, user_id, title, cfg, upstream, ws_session, ws_stream, handle, pool, registry,
+        id, cfg, upstream, ws_session, ws_stream, handle, pool, registry,
     ));
 
     Ok(response)
@@ -96,8 +95,6 @@ pub async fn ws_handler(
 #[allow(clippy::too_many_arguments)]
 async fn relay(
     id: Uuid,
-    user_id: String,
-    title: String,
     cfg: TranscriberConfig,
     upstream: transcription::UpstreamWs,
     mut client: actix_ws::Session,
@@ -188,24 +185,13 @@ async fn relay(
     let segments = std::mem::take(&mut buffer.lock().await.segments);
     registry.remove(&id);
 
-    let _ = client
-        .text(serde_json::json!({ "type": "summarising" }).to_string())
-        .await;
-
-    // Flush transcript → S3, then summarise → note.
-    let result: Result<Uuid, String> = async {
-        let text = session::flush(&pool, id, &segments, duration).await?;
-        summarise::run(&pool, id, &user_id, &title, &text).await
-    }
-    .await;
-
-    match result {
-        Ok(note_id) => {
+    // Save the transcript to S3 and index the row as `ready`. We do NOT summarise
+    // here — the client decides next (summarise / append / keep) via the REST
+    // endpoints, so we never auto-create a note (avoids summary-note bloat).
+    match session::flush(&pool, id, &segments, duration).await {
+        Ok(_) => {
             let _ = client
-                .text(
-                    serde_json::json!({ "type": "done", "session_id": id, "note_id": note_id })
-                        .to_string(),
-                )
+                .text(serde_json::json!({ "type": "stopped", "session_id": id }).to_string())
                 .await;
         }
         Err(e) => {

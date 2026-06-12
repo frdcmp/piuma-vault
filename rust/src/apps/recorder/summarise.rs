@@ -31,22 +31,50 @@ punctuation, in the summary's language. Name the topic, not the format.";
 // the title empty. 512 fits the thinking plus a short title.
 const TITLE_MAX_TOKENS: u32 = 512;
 
-/// Summarise `transcript` for session `id`, save a note, and finalize the row.
-/// On any failure the session is marked `failed` and the error returned.
-pub async fn run(
-    pool: &DbPool,
-    id: Uuid,
-    user_id: &str,
-    title: &str,
-    transcript: &str,
-) -> Result<Uuid, String> {
+/// Summarise session `id` from its saved transcript, upsert its vault note, and
+/// finalize the row to `done`. Self-contained: reads the title, transcript (from
+/// S3) and any existing note off the row, so it serves both the deferred
+/// "summarise now" action and re-summarising after an append. On any failure the
+/// session is marked `failed` and the error returned.
+pub async fn run(pool: &DbPool, id: Uuid, user_id: &str) -> Result<Uuid, String> {
+    let row: Option<(
+        String,
+        Option<String>,
+        Option<Uuid>,
+        chrono::DateTime<chrono::Utc>,
+    )> = sqlx::query_as(
+        "SELECT title, transcript_storage_key, final_note_id, created_at \
+         FROM db_recording_sessions WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    let Some((title, key, existing_note, recorded_at)) = row else {
+        return Err("session not found".to_string());
+    };
+    let Some(key) = key else {
+        let msg = "no transcript saved — nothing to summarise".to_string();
+        session::mark_failed(pool, id, &msg).await;
+        return Err(msg);
+    };
+
+    let segments = match session::read_segments(pool, &key).await {
+        Ok(s) => s,
+        Err(e) => {
+            session::mark_failed(pool, id, &e).await;
+            return Err(e);
+        }
+    };
+    let transcript = session::joined_text(&segments);
     if transcript.trim().is_empty() {
         let msg = "empty transcript — nothing to summarise".to_string();
         session::mark_failed(pool, id, &msg).await;
         return Err(msg);
     }
 
-    let summary = match summarise(pool, transcript).await {
+    let summary = match summarise(pool, &transcript).await {
         Ok(s) => s,
         Err(e) => {
             session::mark_failed(pool, id, &e).await;
@@ -57,17 +85,7 @@ pub async fn run(
     // Stamp the note title with the recording's start time (UTC) so multiple
     // recordings — especially untitled ones — never collide. Format: `ddmmyyyy
     // HHMMSS`, e.g. "Recording — 12062026 143501".
-    let recorded_at: Option<chrono::DateTime<chrono::Utc>> =
-        sqlx::query_scalar("SELECT created_at FROM db_recording_sessions WHERE id = $1")
-            .bind(id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten();
-    let stamp = recorded_at
-        .unwrap_or_else(chrono::Utc::now)
-        .format("%d%m%Y %H%M%S")
-        .to_string();
+    let stamp = recorded_at.format("%d%m%Y %H%M%S").to_string();
     // Respect a user-/agent-set title; otherwise ask the LLM for a concise one
     // from the summary so the session isn't left as "Untitled recording".
     let provided = title.trim();
@@ -81,24 +99,40 @@ pub async fn run(
     let note_title = format!("{display_title} — {stamp}");
     let content = format!("# {note_title}\n\n{summary}\n");
 
-    // Create the vault note + queue it for embedding (semantic search parity
-    // with hand-written notes).
-    let note_id: Uuid = match sqlx::query_scalar(
-        "INSERT INTO notes (user_id, title, content, tags, folder) \
-         VALUES ($1, $2, $3, ARRAY['recording'], '/recordings') RETURNING id",
-    )
-    .bind(user_id)
-    .bind(&note_title)
-    .bind(&content)
-    .fetch_one(pool)
-    .await
-    {
-        Ok(nid) => nid,
-        Err(e) => {
-            let msg = format!("note insert failed: {e}");
-            session::mark_failed(pool, id, &msg).await;
-            return Err(msg);
+    // Upsert the vault note: re-summarise (e.g. after an append) updates the
+    // existing note in place; first summarise creates it. Either way re-queue
+    // embedding so search reflects the latest text.
+    let note_id: Uuid = match existing_note {
+        Some(nid) => {
+            let res = sqlx::query(
+                "UPDATE notes SET title = $3, content = $4, updated_at = NOW() \
+                 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
+            )
+            .bind(nid)
+            .bind(user_id)
+            .bind(&note_title)
+            .bind(&content)
+            .execute(pool)
+            .await;
+            // If the note was trashed/removed, fall back to a fresh insert.
+            match res {
+                Ok(r) if r.rows_affected() > 0 => nid,
+                _ => match insert_note(pool, user_id, &note_title, &content).await {
+                    Ok(nid) => nid,
+                    Err(e) => {
+                        session::mark_failed(pool, id, &e).await;
+                        return Err(e);
+                    }
+                },
+            }
         }
+        None => match insert_note(pool, user_id, &note_title, &content).await {
+            Ok(nid) => nid,
+            Err(e) => {
+                session::mark_failed(pool, id, &e).await;
+                return Err(e);
+            }
+        },
     };
     let _ = sqlx::query("INSERT INTO embedding_jobs (note_id, content) VALUES ($1, $2)")
         .bind(note_id)
@@ -119,6 +153,25 @@ pub async fn run(
     .await;
 
     Ok(note_id)
+}
+
+/// Insert a fresh recording note + return its id.
+async fn insert_note(
+    pool: &DbPool,
+    user_id: &str,
+    title: &str,
+    content: &str,
+) -> Result<Uuid, String> {
+    sqlx::query_scalar(
+        "INSERT INTO notes (user_id, title, content, tags, folder) \
+         VALUES ($1, $2, $3, ARRAY['recording'], '/recordings') RETURNING id",
+    )
+    .bind(user_id)
+    .bind(title)
+    .bind(content)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| format!("note insert failed: {e}"))
 }
 
 /// Ask the default LLM for a concise recording title from its summary.

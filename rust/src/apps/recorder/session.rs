@@ -112,8 +112,9 @@ pub async fn upload_transcript(
 }
 
 /// Persist the finished transcript: upload JSONL to S3, then write the index
-/// fields (`transcript_storage_key`, `word_count`, `preview`) to the DB row and
-/// mark it `summarising`. Returns the joined transcript text for the summariser.
+/// fields (`transcript_storage_key`, `word_count`, `preview`, `duration_secs`)
+/// to the DB row and mark it `ready` — transcript saved, awaiting the user's
+/// post-stop choice (summarise / append / keep). Returns the joined text.
 pub async fn flush(
     pool: &DbPool,
     id: Uuid,
@@ -130,7 +131,7 @@ pub async fn flush(
     sqlx::query(
         "UPDATE db_recording_sessions \
          SET transcript_storage_key = $2, word_count = $3, preview = $4, \
-             duration_secs = $5, status = 'summarising', updated_at = NOW() \
+             duration_secs = $5, status = 'ready', updated_at = NOW() \
          WHERE id = $1",
     )
     .bind(id)
@@ -143,6 +144,33 @@ pub async fn flush(
     .map_err(|e| format!("session update failed: {e}"))?;
 
     Ok(text)
+}
+
+/// Fetch + parse a session's JSONL transcript from S3 into segments. Used by the
+/// transcript endpoint, the deferred summariser, and the append merge.
+pub async fn read_segments(
+    pool: &DbPool,
+    key: &str,
+) -> Result<Vec<TranscriptSegment>, String> {
+    let (client, bucket) = crate::apps::storage::handlers::s3_client(pool).await?;
+    let out = client
+        .get_object()
+        .bucket(&bucket)
+        .key(key)
+        .send()
+        .await
+        .map_err(|e| format!("transcript fetch failed: {e}"))?;
+    let agg = out
+        .body
+        .collect()
+        .await
+        .map_err(|e| format!("transcript read failed: {e}"))?;
+    let bytes = agg.into_bytes();
+    let jsonl = String::from_utf8_lossy(&bytes);
+    Ok(jsonl
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect())
 }
 
 /// Mark a session failed with an error message (best-effort).

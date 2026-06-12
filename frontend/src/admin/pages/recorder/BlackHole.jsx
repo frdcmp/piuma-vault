@@ -150,7 +150,7 @@ export default function BlackHole({ state = "idle", levelRef, onPress }) {
 				? 1.8 + level * 2.4
 				: connecting
 					? 1.25
-					: st === "summarising"
+					: st === "finishing"
 						? 0.4
 						: hoverRef.current
 							? 0.85
@@ -218,7 +218,7 @@ export default function BlackHole({ state = "idle", levelRef, onPress }) {
 			} else {
 				const flare = recording
 					? 0.7 + 0.3 * Math.min(1, level * 2 + 0.2 * Math.sin(t * 6))
-					: st === "summarising"
+					: st === "finishing"
 						? 0.4 + 0.25 * Math.sin(t * 2.5)
 						: 0.6 + 0.12 * Math.sin(t * 1.3);
 				const ringColor = recording ? "#ffd0c0" : "#fff3c4";

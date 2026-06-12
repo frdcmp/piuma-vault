@@ -38,6 +38,23 @@ export const stopRecording = async (id) => {
 	return data;
 };
 
+// Run the deferred summary on a saved ('ready') transcript → creates/refreshes
+// the vault note and flips the session to 'done'.
+export const summariseRecording = async (id) => {
+	const { data } = await axiosInstance.post(
+		`/recorder/sessions/${id}/summarise`,
+	);
+	return data;
+};
+
+// Merge this session's transcript into `targetId` and re-summarise the target.
+export const appendRecording = async ({ id, targetId }) => {
+	const { data } = await axiosInstance.post(`/recorder/sessions/${id}/append`, {
+		target_id: targetId,
+	});
+	return data;
+};
+
 export const renameRecording = async ({ id, title }) => {
 	const { data } = await axiosInstance.post(`/recorder/sessions/${id}/title`, {
 		title,

@@ -22,6 +22,14 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         web::resource("/recorder/sessions/{id}/stop").route(web::post().to(handlers::stop_session)),
     )
     .service(
+        web::resource("/recorder/sessions/{id}/summarise")
+            .route(web::post().to(handlers::summarise_session)),
+    )
+    .service(
+        web::resource("/recorder/sessions/{id}/append")
+            .route(web::post().to(handlers::append_session)),
+    )
+    .service(
         web::resource("/recorder/sessions/{id}/title").route(web::post().to(handlers::set_title)),
     )
     .service(

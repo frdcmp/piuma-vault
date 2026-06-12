@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+	appendRecording,
 	createRecording,
 	deleteRecording,
 	getRecorderUsage,
@@ -8,6 +9,7 @@ import {
 	listRecordings,
 	renameRecording,
 	stopRecording,
+	summariseRecording,
 } from "../api/recorder";
 
 const RECORDINGS_KEY = ["recordings"];
@@ -58,6 +60,22 @@ export const useRenameRecording = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: renameRecording,
+		onSuccess: () => qc.invalidateQueries({ queryKey: RECORDINGS_KEY }),
+	});
+};
+
+export const useSummariseRecording = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: summariseRecording,
+		onSuccess: () => qc.invalidateQueries({ queryKey: RECORDINGS_KEY }),
+	});
+};
+
+export const useAppendRecording = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: appendRecording,
 		onSuccess: () => qc.invalidateQueries({ queryKey: RECORDINGS_KEY }),
 	});
 };
