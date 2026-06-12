@@ -816,7 +816,7 @@ const TABLES: &[TableDefinition] = &[
                 user_id TEXT NOT NULL REFERENCES db_users(id) ON DELETE CASCADE,
                 title TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'recording'
-                    CHECK (status IN ('recording', 'summarising', 'done', 'failed')),
+                    CHECK (status IN ('recording', 'ready', 'summarising', 'done', 'failed')),
                 provider TEXT NOT NULL DEFAULT 'speechmatics',
                 duration_secs INTEGER NOT NULL DEFAULT 0,
                 transcript_storage_key TEXT,

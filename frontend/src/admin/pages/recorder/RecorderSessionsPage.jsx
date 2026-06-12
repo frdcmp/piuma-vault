@@ -15,6 +15,7 @@ import "./recorder.css";
 
 const STATUS_TAG = {
 	recording: "vp-tag--red",
+	ready: "vp-tag--accent",
 	summarising: "vp-tag--accent",
 	done: "vp-tag--green",
 	failed: "vp-tag--red",

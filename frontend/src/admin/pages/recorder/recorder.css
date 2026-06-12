@@ -69,7 +69,7 @@
 	color: var(--vp-accent-4);
 	animation: recorder-label-blink 0.7s steps(2) infinite;
 }
-.recorder-hole-label--summarising {
+.recorder-hole-label--finishing {
 	color: var(--vp-accent);
 	animation: recorder-label-blink 0.8s steps(2) infinite;
 }
@@ -223,6 +223,137 @@
 .recorder-sessions-link:hover {
 	color: var(--vp-accent);
 	border-color: var(--vp-accent);
+}
+
+/* ---- Post-stop choice modal ------------------------------------------------- */
+/* Loader shown while a summarise / append runs — a pixel "accretion" wave: five
+   blocks brighten + hop through the heat palette, like matter falling in. */
+.recorder-poststop-loading {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 16px;
+	padding: 28px 0 14px;
+}
+.recorder-loader {
+	display: flex;
+	gap: 6px;
+	height: 22px;
+	align-items: flex-end;
+}
+.recorder-loader span {
+	width: 12px;
+	height: 12px;
+	image-rendering: pixelated;
+	background: var(--vp-accent-2);
+	animation: recorder-loader-hop 0.72s steps(3, end) infinite;
+}
+.recorder-loader span:nth-child(1) {
+	animation-delay: 0s;
+}
+.recorder-loader span:nth-child(2) {
+	animation-delay: 0.1s;
+	background: var(--vp-accent);
+}
+.recorder-loader span:nth-child(3) {
+	animation-delay: 0.2s;
+	background: var(--vp-accent-4);
+}
+.recorder-loader span:nth-child(4) {
+	animation-delay: 0.3s;
+	background: var(--vp-accent);
+}
+.recorder-loader span:nth-child(5) {
+	animation-delay: 0.4s;
+	background: var(--vp-accent-2);
+}
+@keyframes recorder-loader-hop {
+	0% {
+		opacity: 0.25;
+		transform: translateY(8px) scale(0.7);
+	}
+	50% {
+		opacity: 1;
+		transform: translateY(-6px) scale(1);
+	}
+	100% {
+		opacity: 0.25;
+		transform: translateY(8px) scale(0.7);
+	}
+}
+.recorder-loader-label {
+	margin: 0;
+	font-family: var(--vp-font, monospace);
+	font-size: 12.5px;
+	letter-spacing: 1px;
+	color: var(--vp-muted);
+	text-align: center;
+}
+
+.recorder-poststop-body {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+.recorder-poststop-text {
+	margin: 0;
+	font-size: 14px;
+	color: var(--vp-text);
+}
+.recorder-poststop-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.recorder-poststop-hint {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--vp-muted);
+}
+.recorder-poststop-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	max-height: 46vh;
+	overflow-y: auto;
+}
+.recorder-poststop-target {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 10px 12px;
+	border: 2px solid var(--vp-border);
+	background: var(--vp-bg-soft);
+	color: var(--vp-text);
+	font: inherit;
+	cursor: pointer;
+	text-align: left;
+}
+.recorder-poststop-target:hover:not(:disabled) {
+	border-color: var(--vp-accent);
+	color: var(--vp-accent);
+}
+.recorder-poststop-target:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+.recorder-poststop-target-title {
+	font-size: 13px;
+	font-weight: 700;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.recorder-poststop-target-meta {
+	flex-shrink: 0;
+	font-size: 11px;
+	color: var(--vp-muted);
 }
 
 /* ════════ Sessions archive + detail pages ════════════════════════════════ */

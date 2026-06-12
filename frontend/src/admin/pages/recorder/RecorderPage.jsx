@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { recorderWsUrl } from "../../../api/recorder";
-import { useCreateRecording } from "../../../queries";
+import {
+	useAppendRecording,
+	useCreateRecording,
+	useRecordings,
+	useSummariseRecording,
+} from "../../../queries";
 import Starfield from "../../components/notes/Starfield";
-import { pvMessage } from "../../components/ui";
+import { PvButton, PvModal, pvMessage } from "../../components/ui";
 import "../../vault-pixel.css";
 import BlackHole from "./BlackHole";
 import PixelWaveform from "./PixelWaveform";
@@ -39,13 +44,24 @@ const endsSentence = (s) => /[.!?]$/.test(s.trim());
 export default function RecorderPage() {
 	const navigate = useNavigate();
 	const createRecording = useCreateRecording();
+	const summariseRecording = useSummariseRecording();
+	const appendRecording = useAppendRecording();
+	const { data: recordings = [] } = useRecordings();
 
 	const [searchParams, setSearchParams] = useSearchParams();
-	const [phase, setPhase] = useState("idle"); // idle | recording | summarising
+	// idle | connecting | recording | finishing
+	const [phase, setPhase] = useState("idle");
 	const [lines, setLines] = useState([]); // [{ id, text }] terminal feed
 	// A session id the agent created (via `?session=`); the black hole arms to it
 	// so one tap starts capturing into that existing session.
 	const [armed, setArmed] = useState(null);
+	// After a stop, the session id awaiting the user's choice (summarise / append
+	// / keep). Drives the post-stop modal. `appendPick` toggles the target list.
+	const [postStop, setPostStop] = useState(null);
+	const [appendPick, setAppendPick] = useState(false);
+	// null while idle; a status label string while a summarise/append is running
+	// (drives the modal's loader overlay).
+	const [busy, setBusy] = useState(null);
 
 	// Live capture resources, kept out of render state.
 	const wsRef = useRef(null);
@@ -288,23 +304,11 @@ export default function RecorderPage() {
 							setLines(display.slice(-MAX_LINES));
 						}
 					}
-				} else if (msg.type === "summarising") {
-					setPhase("summarising");
-				} else if (msg.type === "done") {
-					pvMessage.success("Summary saved to your vault");
+				} else if (msg.type === "stopped") {
+					// Transcript is saved ('ready') but deliberately NOT summarised —
+					// open the post-stop choice (summarise / append / keep).
 					cleanupAfterStop();
-					// Embedded: hand the result to the native shell (it opens the
-					// native transcript detail). Standalone web: open the session's
-					// detail page (transcript + summary), not the raw note.
-					if (isEmbedded) {
-						postNative({
-							type: "done",
-							session_id: msg.session_id,
-							note_id: msg.note_id,
-						});
-					} else if (msg.session_id) {
-						navigate(`/recorder/sessions/${msg.session_id}`);
-					}
+					if (msg.session_id) setPostStop(msg.session_id);
 				} else if (msg.type === "error") {
 					pvMessage.error(msg.message || "Recording failed");
 					cleanupAfterStop();
@@ -318,7 +322,7 @@ export default function RecorderPage() {
 				if (phaseRef.current !== "summarising") cleanupAfterStop();
 			};
 		},
-		[navigate, teardownAudio, cleanupAfterStop, stopMonitor],
+		[teardownAudio, cleanupAfterStop, stopMonitor],
 	);
 
 	// New recording: create a session, then capture into it. `connecting` shows
@@ -352,10 +356,77 @@ export default function RecorderPage() {
 		if (ws && ws.readyState === WebSocket.OPEN) {
 			ws.send(JSON.stringify({ type: "stop" }));
 		}
-		// Stop sending audio immediately; await the `done`/`error` frame.
+		// Stop sending audio immediately; await the `stopped`/`error` frame, then
+		// the post-stop modal opens.
 		teardownAudio();
-		setPhase("summarising");
+		setPhase("finishing");
 	}, [teardownAudio]);
+
+	// ── Post-stop choices ────────────────────────────────────────────────
+	// After finishing, the session sits at 'ready' (transcript saved, no note).
+	const closePostStop = useCallback(() => {
+		setPostStop(null);
+		setAppendPick(false);
+		setBusy(null);
+	}, []);
+
+	// Decision made: embedded → hand off to the native shell; web → open the
+	// session's detail page.
+	const finishTo = useCallback(
+		(sessionId) => {
+			closePostStop();
+			if (isEmbedded) postNative({ type: "done", session_id: sessionId });
+			else if (sessionId) navigate(`/recorder/sessions/${sessionId}`);
+		},
+		[closePostStop, navigate],
+	);
+
+	const doSummarise = useCallback(async () => {
+		if (!postStop) return;
+		setBusy("Collapsing transcript into a summary…");
+		try {
+			const res = await summariseRecording.mutateAsync(postStop);
+			finishTo(res?.session_id || postStop);
+		} catch {
+			pvMessage.error("Couldn't summarise the recording");
+			setBusy(null);
+		}
+	}, [postStop, summariseRecording, finishTo]);
+
+	const doKeep = useCallback(() => {
+		// Keep it as a transcript-only recording; summarise / append later.
+		const id = postStop;
+		pvMessage.success("Transcript saved");
+		finishTo(id);
+	}, [postStop, finishTo]);
+
+	const doAppend = useCallback(
+		async (targetId) => {
+			if (!postStop || !targetId) return;
+			setBusy("Merging transcripts & re-summarizing…");
+			try {
+				const res = await appendRecording.mutateAsync({
+					id: postStop,
+					targetId,
+				});
+				pvMessage.success("Appended & re-summarised");
+				finishTo(res?.session_id || targetId);
+			} catch {
+				pvMessage.error("Couldn't append to that recording");
+				setBusy(null);
+			}
+		},
+		[postStop, appendRecording, finishTo],
+	);
+
+	// Candidate targets to append into: any other recording with a saved
+	// transcript (ready or already summarised), newest first.
+	const appendTargets = recordings.filter(
+		(r) =>
+			r.id !== postStop &&
+			(r.status === "ready" || r.status === "done") &&
+			r.transcript_storage_key,
+	);
 
 	// One control: the black hole. Idle → start (into the armed session if the
 	// agent set one up); recording → stop; summarising → inert.
@@ -371,8 +442,8 @@ export default function RecorderPage() {
 			? "● REC — TAP TO STOP"
 			: phase === "connecting"
 				? "OPENING THE VOID…"
-				: phase === "summarising"
-					? "SUMMARISING…"
+				: phase === "finishing"
+					? "FINISHING…"
 					: armed
 						? "AGENT ARMED — TAP TO RECORD"
 						: "TAP THE VOID TO RECORD";
@@ -425,6 +496,88 @@ export default function RecorderPage() {
 					▸ RECORDED SESSIONS
 				</Link>
 			)}
+
+			<PvModal
+				open={!!postStop}
+				title="recording stopped"
+				onCancel={busy ? undefined : closePostStop}
+				dismissOnOverlay={!busy}
+				showClose={!busy}
+				className="recorder-poststop"
+			>
+				{busy ? (
+					<div className="recorder-poststop-loading">
+						<div className="recorder-loader" aria-hidden="true">
+							<span />
+							<span />
+							<span />
+							<span />
+							<span />
+						</div>
+						<p className="recorder-loader-label">
+							{busy}
+							<span className="recorder-term-cursor">▋</span>
+						</p>
+					</div>
+				) : !appendPick ? (
+					<div className="recorder-poststop-body">
+						<p className="recorder-poststop-text">
+							Transcript saved. What do you want to do?
+						</p>
+						<div className="recorder-poststop-actions">
+							<PvButton variant="primary" block onClick={doSummarise}>
+								Summarize now
+							</PvButton>
+							<PvButton
+								block
+								disabled={appendTargets.length === 0}
+								onClick={() => setAppendPick(true)}
+							>
+								Append to another recording…
+							</PvButton>
+							<PvButton variant="ghost" block onClick={doKeep}>
+								Keep transcript only
+							</PvButton>
+						</div>
+						<p className="recorder-poststop-hint">
+							“Keep” stores the transcript without a summary note — summarize or
+							append later from its page.
+						</p>
+					</div>
+				) : (
+					<div className="recorder-poststop-body">
+						<p className="recorder-poststop-text">
+							Append this transcript onto…
+						</p>
+						<ul className="recorder-poststop-list">
+							{appendTargets.map((r) => (
+								<li key={r.id}>
+									<button
+										type="button"
+										className="recorder-poststop-target"
+										onClick={() => doAppend(r.id)}
+									>
+										<span className="recorder-poststop-target-title">
+											{r.title || "Untitled recording"}
+										</span>
+										<span className="recorder-poststop-target-meta">
+											{r.status === "done" ? "summarized · " : ""}
+											{r.word_count > 0 ? `${r.word_count} words` : "—"}
+										</span>
+									</button>
+								</li>
+							))}
+						</ul>
+						<PvButton
+							variant="ghost"
+							block
+							onClick={() => setAppendPick(false)}
+						>
+							← Back
+						</PvButton>
+					</div>
+				)}
+			</PvModal>
 		</div>
 	);
 }

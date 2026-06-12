@@ -32,6 +32,15 @@ export const deleteRecording = async (id) => {
 	return data;
 };
 
+// Run the deferred summary on a saved ('ready') transcript → creates/refreshes
+// the vault note and flips the session to 'done'.
+export const summariseRecording = async (id) => {
+	const { data } = await axiosInstance.post(
+		`/recorder/sessions/${id}/summarise`,
+	);
+	return data;
+};
+
 // The web app origin is the API base minus the `/api/v1` suffix — derived from
 // the same env var axiosInstance uses so dev and prod stay in sync.
 const API_BASE =

@@ -29,12 +29,14 @@ const PHASE_LABEL = {
 	idle: "READY",
 	connecting: "OPENING…",
 	recording: "● REC",
+	finishing: "FINISHING…",
 	summarising: "SUMMARISING…",
 };
 const PHASE_COLOR = {
 	idle: colors.muted,
 	connecting: colors.accent4,
 	recording: colors.accent3,
+	finishing: colors.accent,
 	summarising: colors.accent,
 };
 

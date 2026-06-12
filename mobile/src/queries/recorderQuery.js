@@ -5,6 +5,7 @@ import {
 	getRecording,
 	getRecordingTranscript,
 	listRecordings,
+	summariseRecording,
 } from "../api/recorderApi";
 
 export const recorderKeys = {
@@ -45,6 +46,14 @@ export const useRecorderUsage = (options = {}) =>
 		staleTime: 60_000,
 		...options,
 	});
+
+export const useSummariseRecording = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: summariseRecording,
+		onSuccess: () => qc.invalidateQueries({ queryKey: recorderKeys.all }),
+	});
+};
 
 export const useDeleteRecording = () => {
 	const qc = useQueryClient();

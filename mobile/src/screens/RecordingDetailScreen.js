@@ -10,7 +10,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PixelStarfield from "../components/PixelStarfield";
-import { useRecording, useRecordingTranscript } from "../queries/recorderQuery";
+import { toast } from "../components/Toast";
+import {
+	useRecording,
+	useRecordingTranscript,
+	useSummariseRecording,
+} from "../queries/recorderQuery";
 import { formatDateTime } from "../utils/dateTime";
 import { colors, mono } from "../utils/theme";
 
@@ -18,6 +23,7 @@ const SCREEN = Dimensions.get("window");
 
 const STATUS_COLOR = {
 	recording: colors.accent3,
+	ready: colors.accent4,
 	summarising: colors.accent,
 	done: colors.accent2,
 	failed: colors.accent3,
@@ -74,11 +80,22 @@ export default function RecordingDetailScreen({ navigation, route }) {
 	const id = route?.params?.id;
 	const { data: rec, isLoading } = useRecording(id);
 	const { data: transcript, isLoading: trLoading } = useRecordingTranscript(id);
+	const summarise = useSummariseRecording();
 
 	const segments = mergeSegments(
 		(transcript?.segments || []).filter((s) => s.is_final),
 	);
 	const statusColor = STATUS_COLOR[rec?.status] || colors.muted;
+
+	// 'ready' = transcript saved but never summarised (user chose "keep" after
+	// stopping). 'failed' can be retried. Offer to summarise now.
+	const canSummarise = rec?.status === "ready" || rec?.status === "failed";
+	const runSummarise = () => {
+		summarise.mutate(id, {
+			onSuccess: () => toast.success("Summary saved to your vault"),
+			onError: () => toast.error("Couldn't summarise the recording"),
+		});
+	};
 
 	return (
 		<View style={styles.root}>
@@ -91,7 +108,23 @@ export default function RecordingDetailScreen({ navigation, route }) {
 				<Text style={styles.barTitle} numberOfLines={1}>
 					{rec?.title || (isLoading ? "Loading…" : "Untitled recording")}
 				</Text>
-				{rec?.final_note_id ? (
+				{canSummarise ? (
+					<Pressable
+						onPress={summarise.isPending ? undefined : runSummarise}
+						disabled={summarise.isPending}
+						hitSlop={10}
+					>
+						{summarise.isPending ? (
+							<ActivityIndicator size="small" color={colors.accent} />
+						) : (
+							<Ionicons
+								name="sparkles-outline"
+								size={20}
+								color={colors.accent}
+							/>
+						)}
+					</Pressable>
+				) : rec?.final_note_id ? (
 					<Pressable
 						onPress={() =>
 							navigation.navigate("VaultHome", { noteId: rec.final_note_id })
@@ -144,6 +177,25 @@ export default function RecordingDetailScreen({ navigation, route }) {
 						<Text style={styles.panelTitle}>error</Text>
 						<Text style={styles.errorText}>{rec.error}</Text>
 					</View>
+				) : null}
+
+				{canSummarise ? (
+					<Pressable
+						style={styles.cta}
+						disabled={summarise.isPending}
+						onPress={runSummarise}
+					>
+						{summarise.isPending ? (
+							<ActivityIndicator size="small" color={colors.bg} />
+						) : (
+							<>
+								<Ionicons name="sparkles" size={16} color={colors.bg} />
+								<Text style={styles.ctaText}>
+									{rec?.status === "failed" ? "Retry summary" : "Summarize now"}
+								</Text>
+							</>
+						)}
+					</Pressable>
 				) : null}
 
 				{rec?.running_summary ? (
@@ -206,6 +258,22 @@ const styles = StyleSheet.create({
 		marginHorizontal: 12,
 	},
 	scroll: { padding: 12, gap: 10 },
+	cta: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+		backgroundColor: colors.accent,
+		paddingVertical: 12,
+	},
+	ctaText: {
+		fontFamily: mono,
+		color: colors.bg,
+		fontSize: 13,
+		fontWeight: "700",
+		letterSpacing: 1,
+		textTransform: "uppercase",
+	},
 	meta: {
 		flexDirection: "row",
 		flexWrap: "wrap",

@@ -25,6 +25,7 @@ const SCREEN = Dimensions.get("window");
 
 const STATUS_COLOR = {
 	recording: colors.accent3,
+	ready: colors.accent4,
 	summarising: colors.accent,
 	done: colors.accent2,
 	failed: colors.accent3,
