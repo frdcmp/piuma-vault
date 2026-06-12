@@ -549,8 +549,10 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	useLayoutEffect(() => {
 		const el = inputRef.current;
 		if (!el) return;
+		const cs = getComputedStyle(el);
+		const bh = parseInt(cs.borderTopWidth, 10) + parseInt(cs.borderBottomWidth, 10);
 		el.style.height = "auto";
-		el.style.height = `${el.scrollHeight}px`;
+		el.style.height = `${el.scrollHeight + bh}px`;
 	}, [input]);
 
 	const openTabs = useNotesWorkspaceStore((s) => s.tabs);
