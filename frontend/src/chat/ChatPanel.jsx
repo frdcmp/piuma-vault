@@ -549,10 +549,15 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	useLayoutEffect(() => {
 		const el = inputRef.current;
 		if (!el) return;
-		const cs = getComputedStyle(el);
-		const bh = parseInt(cs.borderTopWidth, 10) + parseInt(cs.borderBottomWidth, 10);
 		el.style.height = "auto";
-		el.style.height = `${el.scrollHeight + bh}px`;
+		const sh = el.scrollHeight;
+		el.style.height = `${sh}px`;
+		// If content overflows after setting, add border width
+		if (el.scrollHeight > el.clientHeight) {
+			const cs = getComputedStyle(el);
+			const bh = parseInt(cs.borderTopWidth, 10) + parseInt(cs.borderBottomWidth, 10);
+			el.style.height = `${sh + bh}px`;
+		}
 	}, [input]);
 
 	const openTabs = useNotesWorkspaceStore((s) => s.tabs);
