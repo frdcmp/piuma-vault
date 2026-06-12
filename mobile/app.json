@@ -2,7 +2,7 @@
   "expo": {
     "name": "pv vault",
     "slug": "pv",
-    "version": "1.0.16",
+    "version": "1.0.17",
     "scheme": "piumavault",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,12 +13,23 @@
       "backgroundColor": "#0e0f12"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Allow Piuma Vault to use the microphone to record and transcribe.",
+        "UIBackgroundModes": ["audio"]
+      }
     },
     "android": {
       "package": "com.pv.vault",
       "googleServicesFile": "./google-services.json",
       "versionCode": 5,
+      "permissions": [
+        "RECORD_AUDIO",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MICROPHONE",
+        "POST_NOTIFICATIONS",
+        "WAKE_LOCK"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#0e0f12",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -85,7 +96,23 @@
           ]
         }
       ],
-      "expo-background-task"
+      "expo-background-task",
+      [
+        "@siteed/audio-studio",
+        {
+          "enablePhoneStateHandling": true,
+          "enableNotifications": true,
+          "enableBackgroundAudio": true,
+          "iosBackgroundModes": {
+            "useAudio": true,
+            "useProcessing": true
+          },
+          "iosConfig": {
+            "microphoneUsageDescription": "Allow Piuma Vault to use the microphone to record and transcribe.",
+            "backgroundProcessingTitle": "Recording in progress"
+          }
+        }
+      ]
     ]
   }
 }

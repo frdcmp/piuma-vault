@@ -1,128 +1,126 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useQueryClient } from "@tanstack/react-query";
-import { requestRecordingPermissionsAsync } from "expo-audio";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-	ActivityIndicator,
-	Linking,
-	Platform,
-	Pressable,
-	StyleSheet,
-	Text,
-	View,
-} from "react-native";
+import { useCallback, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { WebView } from "react-native-webview";
-import { recorderEmbedUrl } from "../api/recorderApi";
+import { useRecorderStream } from "../audio/useRecorderStream";
+import PixelStarfield from "../components/PixelStarfield";
+import BlackHole from "../components/recorder/BlackHole";
+import PostStopModal from "../components/recorder/PostStopModal";
+import Waveform from "../components/recorder/Waveform";
 import { toast } from "../components/Toast";
-import { recorderKeys } from "../queries/recorderQuery";
-import { useAuthStore } from "../stores/authStore";
+import {
+	useAppendRecording,
+	useRecordings,
+	useSummariseRecording,
+} from "../queries/recorderQuery";
 import { colors, mono } from "../utils/theme";
 
-// The live recorder is the web `/recorder` pixel scene (black hole + live
-// scrolling transcript) hosted in a WebView — managed Expo can't stream raw PCM
-// to the streaming backend, but the browser inside the WebView can. The native
-// shell owns the header + navigation; the web page posts lifecycle events back
-// over the ReactNativeWebView bridge (see frontend RecorderPage.jsx).
+// Fully native recorder scene: a starfield, the black-hole record button, a
+// live waveform, and the scrolling transcript. Audio is captured natively
+// (PCM16 → WebSocket relay) and keeps running with the screen off — see
+// useRecorderStream / audioStream. No WebView.
 
 const PHASE_LABEL = {
+	idle: "HOLD THE VOID · 3S TO IGNITE",
+	connecting: "OPENING THE VOID…",
+	recording: "● REC — HOLD 3S TO STOP",
+	finishing: "FINISHING…",
+};
+const PHASE_TAG = {
 	idle: "READY",
 	connecting: "OPENING…",
 	recording: "● REC",
 	finishing: "FINISHING…",
-	summarising: "SUMMARISING…",
 };
 const PHASE_COLOR = {
 	idle: colors.muted,
 	connecting: colors.accent4,
 	recording: colors.accent3,
 	finishing: colors.accent,
-	summarising: colors.accent,
 };
-
-// On the web target, react-native-webview renders as a cross-origin <iframe>,
-// which the vault origin blocks (X-Frame-Options: DENY / frame-ancestors 'none').
-// The embed only works in a real native WebView (top-level document, not framed),
-// so on web we send the user to the page in a real browser tab instead.
-const isWeb = Platform.OS === "web";
 
 export default function RecorderScreen({ navigation }) {
 	const insets = useSafeAreaInsets();
-	const qc = useQueryClient();
-	const token = useAuthStore((s) => s.token);
-	const refreshToken = useAuthStore((s) => s.refreshToken);
+	const {
+		phase,
+		lines,
+		levelRef,
+		barsRef,
+		monitoring,
+		start,
+		stop,
+		postStop,
+		clearPostStop,
+	} = useRecorderStream();
+	const { data: recordings = [] } = useRecordings();
+	const summarise = useSummariseRecording();
+	const append = useAppendRecording();
 
-	const [phase, setPhase] = useState("idle");
-	const [loading, setLoading] = useState(true);
-	const webRef = useRef(null);
+	// null while idle; a status label string while a summarise/append runs.
+	const [busy, setBusy] = useState(null);
+	const [scene, setScene] = useState({ w: 0, h: 0 });
+	// null | "start" | "stop" — which hold the user is performing on the void.
+	const [chargeMode, setChargeMode] = useState(null);
 
-	// Make sure the OS mic permission is granted before the WebView asks for it
-	// (Android's WebView only gets the mic if the app already holds RECORD_AUDIO).
-	useEffect(() => {
-		let alive = true;
-		requestRecordingPermissionsAsync()
-			.then((res) => {
-				if (alive && res && res.granted === false) {
-					toast.error("Microphone access is needed to record");
-				}
-			})
-			.catch(() => {});
-		return () => {
-			alive = false;
-		};
-	}, []);
-
-	// Seed the web app's auth into the WebView's storage before its scripts run,
-	// so it resolves /me (ProtectedRoute) and the WS gets its token without a
-	// login bounce. Keys mirror the web axios layer: `token` / `refreshToken`.
-	const injectedBefore = useMemo(
-		() => `(function(){try{
-      window.localStorage.setItem('token', ${JSON.stringify(token || "")});
-      window.localStorage.setItem('refreshToken', ${JSON.stringify(refreshToken || "")});
-    }catch(e){}})(); true;`,
-		[token, refreshToken],
+	// Decision made → close the modal and open the session's detail page.
+	const finishTo = useCallback(
+		(sessionId) => {
+			setBusy(null);
+			clearPostStop();
+			if (sessionId) navigation.navigate("RecordingDetail", { id: sessionId });
+			else navigation.navigate("RecorderSessions");
+		},
+		[clearPostStop, navigation],
 	);
 
-	// Safety net: if the page never signals load (slow link, blocked frame),
-	// stop the spinner so the user isn't stuck on it forever.
-	useEffect(() => {
-		if (isWeb) return;
-		const t = setTimeout(() => setLoading(false), 12000);
-		return () => clearTimeout(t);
-	}, []);
+	const doSummarise = useCallback(async () => {
+		if (!postStop) return;
+		setBusy("Collapsing transcript into a summary…");
+		try {
+			const res = await summarise.mutateAsync(postStop);
+			finishTo(res?.session_id || postStop);
+		} catch {
+			toast.error("Couldn't summarise the recording");
+			setBusy(null);
+		}
+	}, [postStop, summarise, finishTo]);
 
-	const openInBrowser = useCallback(() => {
-		Linking.openURL(recorderEmbedUrl()).catch(() => {
-			toast.error("Couldn't open the recorder");
-		});
-	}, []);
+	const doKeep = useCallback(() => {
+		const id = postStop;
+		toast.success("Transcript saved");
+		finishTo(id);
+	}, [postStop, finishTo]);
 
-	const onMessage = useCallback(
-		(event) => {
-			let msg;
+	const doAppend = useCallback(
+		async (targetId) => {
+			if (!postStop || !targetId) return;
+			setBusy("Merging transcripts & re-summarizing…");
 			try {
-				msg = JSON.parse(event.nativeEvent.data);
+				const res = await append.mutateAsync({ id: postStop, targetId });
+				toast.success("Appended & re-summarised");
+				finishTo(res?.session_id || targetId);
 			} catch {
-				return;
-			}
-			if (msg.type === "phase") {
-				setPhase(msg.phase || "idle");
-			} else if (msg.type === "done") {
-				qc.invalidateQueries({ queryKey: recorderKeys.all });
-				toast.success("Summary saved to your vault");
-				setPhase("idle");
-				if (msg.session_id) {
-					navigation.navigate("RecordingDetail", { id: msg.session_id });
-				} else {
-					navigation.navigate("RecorderSessions");
-				}
-			} else if (msg.type === "error") {
-				setPhase("idle");
-				toast.error(msg.message || "Recording failed");
+				toast.error("Couldn't append to that recording");
+				setBusy(null);
 			}
 		},
-		[qc, navigation],
+		[postStop, append, finishTo],
 	);
+
+	// Candidate targets: any other recording with a saved transcript.
+	const appendTargets = recordings.filter(
+		(r) =>
+			r.id !== postStop &&
+			(r.status === "ready" || r.status === "done") &&
+			r.transcript_storage_key,
+	);
+
+	// Fixed black hole + fixed transcript box, both sized from the (stable) scene
+	// dimensions only — never from content — so the centered group's height is
+	// constant and the hole never moves, in any phase.
+	const holeSize = scene.w
+		? Math.max(120, Math.min(scene.w * 0.55, scene.h * 0.3, 240))
+		: 180;
 
 	return (
 		<View style={styles.root}>
@@ -133,7 +131,7 @@ export default function RecorderScreen({ navigation }) {
 				<View style={styles.titleWrap}>
 					<Text style={styles.title}>Recorder</Text>
 					<Text style={[styles.phase, { color: PHASE_COLOR[phase] }]}>
-						{PHASE_LABEL[phase] || "READY"}
+						{PHASE_TAG[phase] || "READY"}
 					</Text>
 				</View>
 				<Pressable
@@ -146,53 +144,93 @@ export default function RecorderScreen({ navigation }) {
 				</Pressable>
 			</View>
 
-			{isWeb ? (
-				<View style={styles.webFallback}>
-					<Text style={styles.fallbackGlyph}>◉</Text>
-					<Text style={styles.fallbackTitle}>
-						The void lives in a real browser tab
-					</Text>
-					<Text style={styles.fallbackText}>
-						The recorder can't run inside the web preview — the vault origin
-						blocks framing. It works in the iOS / Android app, or in a normal
-						browser tab.
-					</Text>
-					<Pressable style={styles.fallbackBtn} onPress={openInBrowser}>
-						<Ionicons name="open-outline" size={16} color={colors.bg} />
-						<Text style={styles.fallbackBtnText}>open recorder</Text>
-					</Pressable>
+			<View
+				style={styles.scene}
+				onLayout={(e) =>
+					setScene({
+						w: e.nativeEvent.layout.width,
+						h: e.nativeEvent.layout.height,
+					})
+				}
+			>
+				{scene.w > 0 && <PixelStarfield width={scene.w} height={scene.h} />}
+
+				{/* Fixed layout: the hole + label + waveform are centered in the top
+				    region (which is always the scene minus the reserved transcript
+				    box), so the black hole sits in the same centered spot in every
+				    phase. The transcript clips inside its fixed bottom box. */}
+				<View style={styles.sceneInner}>
+					{/* Flex spacer above the hole + a flexed transcript below set the
+					    vertical balance: the hole sits a bit below the top, the feed
+					    fills the rest down to the bottom edge. */}
+					<View style={styles.spacerTop} />
+					<View style={styles.stage}>
+						<BlackHole
+							state={phase}
+							levelRef={levelRef}
+							size={holeSize}
+							onStart={start}
+							onStop={stop}
+							onChargingChange={setChargeMode}
+						/>
+
+						<Text
+							style={[
+								styles.holeLabel,
+								{
+									color:
+										chargeMode === "stop"
+											? colors.accent3
+											: chargeMode === "start"
+												? colors.accent
+												: PHASE_COLOR[phase],
+								},
+							]}
+						>
+							{chargeMode === "start"
+								? "POWERING UP…"
+								: chargeMode === "stop"
+									? "COLLAPSING…"
+									: PHASE_LABEL[phase]}
+						</Text>
+
+						<Waveform
+							barsRef={barsRef}
+							active={phase === "recording" || monitoring}
+						/>
+					</View>
+
+					<View style={styles.term}>
+						{phase !== "idle" &&
+							lines.map((ln, i) => {
+								const latest = i === lines.length - 1;
+								return (
+									<Text
+										key={ln.id}
+										style={[styles.termLine, latest && styles.termLatest]}
+										numberOfLines={1}
+									>
+										<Text style={styles.termCaret}>›</Text> {ln.text}
+										{latest ? " ▋" : ""}
+									</Text>
+								);
+							})}
+					</View>
 				</View>
-			) : (
-				<View style={styles.webWrap}>
-					<WebView
-						ref={webRef}
-						source={{ uri: recorderEmbedUrl() }}
-						originWhitelist={["*"]}
-						injectedJavaScriptBeforeContentLoaded={injectedBefore}
-						onMessage={onMessage}
-						onLoadEnd={() => setLoading(false)}
-						onError={() => setLoading(false)}
-						onHttpError={() => setLoading(false)}
-						// Mic capture needs an active media session without a tap gate.
-						mediaPlaybackRequiresUserAction={false}
-						allowsInlineMediaPlayback
-						// iOS: auto-grant getUserMedia (the app already holds mic perm).
-						mediaCapturePermissionGrantType="grant"
-						javaScriptEnabled
-						domStorageEnabled
-						// Keep the WebView mounted so capture isn't interrupted by RN.
-						androidLayerType="hardware"
-						style={styles.web}
-						containerStyle={styles.web}
-					/>
-					{loading && (
-						<View style={styles.loader} pointerEvents="none">
-							<ActivityIndicator color={colors.accent} />
-							<Text style={styles.loaderText}>entering the void…</Text>
-						</View>
-					)}
-				</View>
-			)}
+			</View>
+
+			<PostStopModal
+				visible={!!postStop}
+				busy={busy}
+				appendTargets={appendTargets}
+				onSummarise={doSummarise}
+				onAppend={doAppend}
+				onKeep={doKeep}
+				onClose={() => {
+					// Closing without a choice keeps it as a transcript-only recording.
+					doKeep();
+				}}
+			/>
 		</View>
 	);
 }
@@ -208,6 +246,7 @@ const styles = StyleSheet.create({
 		borderBottomWidth: 1,
 		borderBottomColor: colors.border,
 		backgroundColor: "#0b0c10",
+		zIndex: 2,
 	},
 	titleWrap: { flex: 1, marginLeft: 12 },
 	title: { color: colors.text, fontSize: 17, fontWeight: "600" },
@@ -236,60 +275,47 @@ const styles = StyleSheet.create({
 		letterSpacing: 1,
 		textTransform: "uppercase",
 	},
-	webFallback: {
-		flex: 1,
-		backgroundColor: "#0b0c10",
+	scene: { flex: 1, backgroundColor: "#0b0c10", overflow: "hidden" },
+	sceneInner: { flex: 1, paddingHorizontal: 16, paddingVertical: 16 },
+	// Spacer above the hole — its flex vs the transcript's flex sets how far down
+	// the hole sits (smaller flex here = higher hole).
+	spacerTop: { flex: 1 },
+	// Hole + label + waveform group. Content-sized (no flex) so its height is
+	// constant → the hole sits in the same spot every phase.
+	stage: {
 		alignItems: "center",
-		justifyContent: "center",
-		padding: 28,
 		gap: 14,
 	},
-	fallbackGlyph: { color: colors.accent, fontSize: 48, fontFamily: mono },
-	fallbackTitle: {
+	holeLabel: {
 		fontFamily: mono,
-		color: colors.text,
-		fontSize: 15,
-		fontWeight: "700",
-		textAlign: "center",
-	},
-	fallbackText: {
-		fontFamily: mono,
-		color: colors.muted,
-		fontSize: 12,
-		lineHeight: 19,
-		textAlign: "center",
-		maxWidth: 360,
-	},
-	fallbackBtn: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 8,
-		marginTop: 6,
-		backgroundColor: colors.accent,
-		paddingHorizontal: 16,
-		paddingVertical: 10,
-	},
-	fallbackBtnText: {
-		fontFamily: mono,
-		color: colors.bg,
 		fontSize: 12,
 		fontWeight: "700",
 		letterSpacing: 1,
-		textTransform: "uppercase",
+		textAlign: "center",
 	},
-	webWrap: { flex: 1, backgroundColor: "#0b0c10" },
-	web: { flex: 1, backgroundColor: "#0b0c10" },
-	loader: {
-		...StyleSheet.absoluteFillObject,
-		alignItems: "center",
-		justifyContent: "center",
-		gap: 12,
-		backgroundColor: "#0b0c10",
+	term: {
+		// Starts right under the waveform and flexes down to the bottom edge.
+		// A bigger flex than spacerTop pulls the hole upward into the top third
+		// while the feed owns the lower ~60%. Newest line pinned to the bottom;
+		// older lines scroll up and clip.
+		flex: 1.7,
+		minHeight: 0,
+		width: "100%",
+		maxWidth: 460,
+		alignSelf: "center",
+		justifyContent: "flex-end",
+		overflow: "hidden",
+		gap: 2,
+		paddingTop: 8,
+		paddingBottom: 4,
 	},
-	loaderText: {
+	termLine: {
 		fontFamily: mono,
-		color: colors.muted,
 		fontSize: 12,
-		letterSpacing: 1,
+		lineHeight: 18,
+		color: colors.muted,
+		opacity: 0.6,
 	},
+	termLatest: { color: colors.text, opacity: 1 },
+	termCaret: { color: colors.accent2 },
 });

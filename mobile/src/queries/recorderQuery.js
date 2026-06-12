@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+	appendRecording,
+	createRecording,
 	deleteRecording,
 	getRecorderUsage,
 	getRecording,
@@ -47,10 +49,27 @@ export const useRecorderUsage = (options = {}) =>
 		...options,
 	});
 
+export const useCreateRecording = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: createRecording,
+		onSuccess: () => qc.invalidateQueries({ queryKey: recorderKeys.all }),
+	});
+};
+
 export const useSummariseRecording = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: summariseRecording,
+		onSuccess: () => qc.invalidateQueries({ queryKey: recorderKeys.all }),
+	});
+};
+
+// Merge one session's transcript into another and re-summarise the target.
+export const useAppendRecording = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: appendRecording,
 		onSuccess: () => qc.invalidateQueries({ queryKey: recorderKeys.all }),
 	});
 };
