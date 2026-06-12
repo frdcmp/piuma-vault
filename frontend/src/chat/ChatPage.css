@@ -637,7 +637,7 @@ button.chat-context-tag-main {
 	flex: 1;
 	box-sizing: border-box;
 	/* one line + padding + border; auto-grows up to 5 lines (~1.45em each) */
-	min-height: 46px;
+	min-height: 38px;
 	max-height: calc(5 * 1.45em + 12px + 4px);
 	resize: none;
 	overflow-y: auto;
@@ -655,7 +655,7 @@ button.chat-context-tag-main {
 }
 .chat-send {
 	min-width: 110px;
-	height: 46px;
+	height: 38px;
 	padding: 0 14px;
 	background: var(--bg-soft);
 	border: 2px solid var(--accent-2);
