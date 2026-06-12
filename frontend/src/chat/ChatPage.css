@@ -35,8 +35,8 @@
 .chat-header {
 	display: flex;
 	align-items: center;
-	gap: 12px;
-	padding: 12px 18px;
+	gap: 8px;
+	padding: 6px 14px;
 	border-bottom: 2px dashed var(--border-strong);
 }
 .chat-back {
@@ -55,20 +55,20 @@
 .chat-title {
 	flex: 1;
 	display: flex;
-	align-items: baseline;
-	gap: 8px;
+	align-items: center;
+	gap: 6px;
 	min-width: 0;
 }
 .chat-eyebrow {
 	color: var(--muted);
-	font-size: 9pt;
+	font-size: 8pt;
 	font-weight: 800;
 	letter-spacing: 1.2px;
 	text-transform: uppercase;
 }
 .chat-name {
 	color: var(--accent);
-	font-size: 12pt;
+	font-size: 10.5pt;
 	font-weight: 900;
 }
 /* Header controls — status, clear, close all share one square box so they
@@ -80,8 +80,8 @@
 	align-items: center;
 	justify-content: center;
 	flex: none;
-	width: 32px;
-	height: 32px;
+	width: 28px;
+	height: 28px;
 	border: 2px solid var(--border-strong);
 	background: var(--bg-soft);
 	color: var(--text);
@@ -89,8 +89,8 @@
 	line-height: 1;
 }
 .chat-status-dot {
-	width: 10px;
-	height: 10px;
+	width: 8px;
+	height: 8px;
 	background: var(--muted);
 }
 .chat-status.streaming .chat-status-dot {
@@ -98,7 +98,7 @@
 }
 .chat-clear {
 	color: var(--muted, #8a93a3);
-	font-size: 14pt;
+	font-size: 12pt;
 	cursor: pointer;
 }
 .chat-clear:hover:not(:disabled) {
@@ -111,7 +111,7 @@
 .chat-close {
 	text-decoration: none;
 	font-weight: 900;
-	font-size: 18pt;
+	font-size: 16pt;
 	cursor: pointer;
 }
 .chat-close:hover {
@@ -522,8 +522,8 @@
 
 .chat-composer {
 	display: flex;
-	gap: 10px;
-	padding: 12px 18px 16px;
+	gap: 6px;
+	padding: 6px 6px 8px;
 	border-top: 2px dashed var(--border-strong);
 	background: var(--panel);
 }
@@ -533,11 +533,11 @@
 	margin: 0 auto;
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: 4px;
 }
 .chat-composer-row {
 	display: flex;
-	gap: 10px;
+	gap: 6px;
 	align-items: flex-end;
 }
 

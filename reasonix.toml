@@ -52,7 +52,7 @@ enabled = true   # language server tools; servers launch lazily when used
 # Rules are "Tool" or "Tool(specifier)"; e.g. Bash(go test:*), Edit(src/**).
 mode  = "ask"
 # deny = ["Bash(rm -rf*)", "Bash(git push*)"]   # hard-blocked in every mode
-allow = ["Edit"]
+allow = ["Edit", "explore", "Bash(cd /home/user/docker/piuma-vault/frontend && bun run build 2>&1 | tail -20)", "Bash(cd /home/user/docker/piuma-vault/frontend && bunx biome check --write src/chat/ChatPanel.jsx src/chat/ChatPage.css 2>&1)", "Bash(file /home/user/docker/piuma-vault/.reasonix/attachments/clipboard-20260612-121134.057521-000003.png && ls -la /home/user/docker/piuma-vault/.reasonix/attachments/clipboard-20260612-121134.057521-000003.png)", "Bash(cd /home/user/docker/piuma-vault/frontend && bun run build 2>&1 | tail -5)", "Bash(cd /home/user/docker/piuma-vault/frontend && bun run build 2>&1 | tail -3)"]
 # ask = ["Edit(src/**)"]   # force a prompt even if otherwise allowed
 
 [sandbox]

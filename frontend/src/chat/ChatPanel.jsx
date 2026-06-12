@@ -1199,8 +1199,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 								background: "var(--vp-bg-soft, #15171c)",
 								color: "var(--vp-text, #d6dbe5)",
 								border: "1px solid var(--vp-border-soft, #2a2f39)",
-								padding: "2px 6px",
-								fontSize: 13,
+								padding: "1px 4px",
+								fontSize: 11.5,
 							}}
 						>
 							{agents.map((a) => (
