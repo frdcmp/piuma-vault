@@ -91,6 +91,28 @@ export const uploadAttachment = async ({ file, noteId }) => {
 	return { key, publicUrl, filename: original };
 };
 
+// Upload a pasted/attached chat image to the disposable `__temp/chat/<convId>/`
+// prefix and return its tokenless public CDN URL (sent to the vision model) plus
+// the S3 `key` (kept so it can be cleaned up with its conversation). Treated as a
+// temp file — see the recorder cleanup pattern + the orphan sweep policy.
+// NOTE: the `__temp/` prefix must be served publicly (token-excluded on the pull
+// zone) so the LLM provider can fetch the image by URL.
+export const uploadChatImage = async ({ file, conversationId, onProgress }) => {
+	const ext = file.type?.split("/")[1] || "png";
+	const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+	const safe = sanitizeKeyName(file.name || `image.${ext}`);
+	const named = new File([file], `${stamp}-${safe}`, {
+		type: file.type || "image/png",
+	});
+	const path = `__temp/chat/${conversationId || "misc"}/`;
+	const { key, publicUrl } = await uploadFile({
+		file: named,
+		path,
+		onProgress,
+	});
+	return { key, publicUrl, media_type: file.type || "image/png" };
+};
+
 export const deleteObject = async (key) => {
 	const { data } = await axiosInstance.delete(
 		`/storage/object/${encodeURI(key)}`,

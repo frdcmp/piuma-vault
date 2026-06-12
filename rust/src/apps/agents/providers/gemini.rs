@@ -54,6 +54,46 @@ fn response_obj(content: &str) -> Value {
     }
 }
 
+/// A user message's content → Gemini parts. Plain string → one text part; a
+/// multimodal array maps text through and turns our canonical
+/// `{type:"image", url, media_type}` into a `fileData` part referencing the
+/// public (Bunny CDN) URL.
+///
+/// NOTE: `fileData.fileUri` is reliably resolved for Google-hosted URIs (Files
+/// API / GCS). Arbitrary public URLs may not be fetched by Gemini in all
+/// regions; if that proves flaky, switch to `inlineData` with base64 (requires
+/// fetching the bytes server-side first). DeepSeek/OpenAI/Anthropic take the URL
+/// directly, so they're the recommended vision providers here.
+fn user_parts(content: Option<&Value>) -> Vec<Value> {
+    match content {
+        Some(Value::Array(blocks)) => {
+            let mut parts: Vec<Value> = Vec::with_capacity(blocks.len());
+            for b in blocks {
+                match b.get("type").and_then(|t| t.as_str()) {
+                    Some("text") => {
+                        let text = b.get("text").and_then(|t| t.as_str()).unwrap_or("");
+                        parts.push(json!({ "text": text }));
+                    }
+                    Some("image") => {
+                        let url = b.get("url").and_then(|u| u.as_str()).unwrap_or("");
+                        let mt = b
+                            .get("media_type")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("image/png");
+                        parts.push(json!({
+                            "fileData": { "mimeType": mt, "fileUri": url }
+                        }));
+                    }
+                    _ => {}
+                }
+            }
+            parts
+        }
+        Some(Value::String(s)) => vec![json!({ "text": s })],
+        _ => vec![json!({ "text": "" })],
+    }
+}
+
 /// OpenAI-shaped messages → (systemInstruction text, Gemini `contents`).
 fn translate_messages(messages: &[Value]) -> (String, Vec<Value>) {
     let mut system = String::new();
@@ -115,8 +155,7 @@ fn translate_messages(messages: &[Value]) -> (String, Vec<Value>) {
                 push_content(&mut out, "model", parts);
             }
             _ => {
-                let content = m.get("content").and_then(|c| c.as_str()).unwrap_or("");
-                push_content(&mut out, "user", vec![json!({ "text": content })]);
+                push_content(&mut out, "user", user_parts(m.get("content")));
             }
         }
     }

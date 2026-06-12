@@ -12,7 +12,23 @@ const isEmbedded = typeof window !== "undefined" && !!window.ReactNativeWebView;
 // content (the <Outlet/>) swaps. That keeps the chat conversation (and any live
 // stream) alive instead of remounting on every page change.
 export default function WorkspaceLayout() {
-	if (isEmbedded) return <Outlet />;
+	// Bare, but in a full-viewport flex column so the page (e.g. the recorder
+	// scene with its absolutely-positioned starfield) fills the WebView height.
+	// Without this the scene collapses to content height and the starfield stops
+	// short — there's no global html/body/#root height chain to inherit from.
+	if (isEmbedded)
+		return (
+			<div
+				style={{
+					height: "100dvh",
+					minHeight: "100vh",
+					display: "flex",
+					flexDirection: "column",
+				}}
+			>
+				<Outlet />
+			</div>
+		);
 	return (
 		<WorkspaceShell>
 			<Outlet />

@@ -23,11 +23,18 @@
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 14px;
-	/* Sit a bit below the top — not dead-center, not flush. */
-	margin-top: 6vh;
-	/* Shared width so the meter box and the transcript line up on the left. */
-	--recorder-w: 380px;
+	box-sizing: border-box;
+	width: 100%;
+	padding: 0 12px;
+	/* Everything scales to the viewport so the scene fits any screen:
+	   - hole-size is capped by BOTH width (76vw) and height (46vh) so it never
+	     overflows a short/landscape or a narrow/portrait window;
+	   - the meter + transcript share one responsive width;
+	   - vertical gap + top offset shrink on small/short screens. */
+	--hole-size: clamp(180px, min(76vw, 46vh), 620px);
+	--recorder-w: min(440px, 90vw);
+	gap: clamp(8px, 1.8vh, 16px);
+	margin-top: clamp(6px, 4vh, 48px);
 }
 
 /* ---- The black hole button -------------------------------------------------- */
@@ -49,6 +56,8 @@
 .recorder-hole-canvas {
 	image-rendering: pixelated;
 	display: block;
+	width: var(--hole-size);
+	height: var(--hole-size);
 }
 
 .recorder-hole-label {
@@ -88,7 +97,7 @@
 /* ---- Pixel waveform + mascot ------------------------------------------------ */
 .recorder-meter {
 	width: var(--recorder-w);
-	max-width: 86vw;
+	max-width: 100%;
 	box-sizing: border-box;
 	display: flex;
 	align-items: center;
@@ -102,6 +111,11 @@
 .recorder-meter-canvas {
 	image-rendering: pixelated;
 	display: block;
+	/* Fill the row beside the mascot; intrinsic W×H keeps the aspect ratio. */
+	flex: 1 1 auto;
+	min-width: 0;
+	width: 100%;
+	height: auto;
 }
 
 .recorder-meter-sprite {
@@ -127,11 +141,11 @@
    before they reach the sessions button. */
 .recorder-term {
 	width: var(--recorder-w);
-	max-width: 86vw;
+	max-width: 100%;
 	box-sizing: border-box;
 	/* Match the meter's inner padding so the text lines up with the waveform. */
 	padding: 0 16px;
-	height: 168px;
+	height: clamp(84px, 20vh, 168px);
 	display: flex;
 	flex-direction: column;
 	justify-content: flex-end;

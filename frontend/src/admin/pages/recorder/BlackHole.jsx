@@ -313,11 +313,9 @@ export default function BlackHole({ state = "idle", levelRef, onPress }) {
 			}}
 			aria-label={state === "recording" ? "Stop recording" : "Start recording"}
 		>
-			<canvas
-				ref={canvasRef}
-				style={{ width: SIZE, height: SIZE }}
-				className="recorder-hole-canvas"
-			/>
+			{/* Internal resolution stays SIZE×SIZE (set in the effect); the displayed
+			    size is responsive via CSS and stays crisp through image-rendering. */}
+			<canvas ref={canvasRef} className="recorder-hole-canvas" />
 		</button>
 	);
 }

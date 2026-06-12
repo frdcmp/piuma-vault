@@ -117,11 +117,8 @@ export default function PixelWaveform({ analyserRef, active, levelRef }) {
 			<div className={`recorder-meter-sprite ${active ? "is-walking" : ""}`}>
 				<Sprite rows={[...body, ...legs]} pixelSize={4} />
 			</div>
-			<canvas
-				ref={canvasRef}
-				style={{ width: W, height: H }}
-				className="recorder-meter-canvas"
-			/>
+			{/* Intrinsic W×H gives the aspect ratio; CSS scales it to fill the row. */}
+			<canvas ref={canvasRef} className="recorder-meter-canvas" />
 		</div>
 	);
 }

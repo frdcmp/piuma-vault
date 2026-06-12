@@ -255,14 +255,30 @@ pub struct MessageRow {
     pub created_at: DateTime<Utc>,
 }
 
+/// A pasted/attached image for a chat turn. Uploaded to Bunny (`__temp/chat/…`)
+/// by the client, which sends only the public URL + media type here. `key` is the
+/// S3 object key, kept so the image can be cleaned up with its conversation.
+#[derive(Debug, Deserialize)]
+pub struct ChatImageRef {
+    pub url: String,
+    #[serde(default)]
+    pub media_type: Option<String>,
+    #[serde(default)]
+    pub key: Option<String>,
+}
+
 /// Body of POST /agents/conversations/{id}/chat — the new user message, plus
 /// optional note ids whose content is injected as context for this turn (the
-/// "locked note" chips in the chat UI).
+/// "locked note" chips in the chat UI), plus optional pasted images (vision).
 #[derive(Debug, Deserialize)]
 pub struct ChatTurnReq {
     pub message: String,
     #[serde(default)]
     pub context_note_ids: Vec<Uuid>,
+    /// Images attached to this turn. Forwarded to the provider only when the
+    /// active model has `supports_vision`; otherwise persisted but not sent.
+    #[serde(default)]
+    pub images: Vec<ChatImageRef>,
     /// IANA timezone of the client (e.g. "Europe/Rome"), so the agent can
     /// resolve relative dates and emit correctly-offset timestamps.
     #[serde(default)]

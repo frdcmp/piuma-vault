@@ -1,0 +1,67 @@
+.pv-checkbox {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	cursor: pointer;
+	user-select: none;
+	font-family: inherit;
+	font-size: 0.8rem;
+	color: var(--vp-muted, #8a93a3);
+	line-height: 1;
+}
+.pv-checkbox.is-disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Native input kept for a11y + keyboard, visually hidden. */
+.pv-checkbox-input {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: 0;
+	padding: 0;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.pv-checkbox-box {
+	position: relative;
+	box-sizing: border-box;
+	width: 16px;
+	height: 16px;
+	flex: 0 0 auto;
+	border: 2px solid var(--vp-border, #3a4150);
+	background: var(--vp-bg-soft, #15171c);
+	transition:
+		border-color 0.12s ease,
+		background 0.12s ease;
+}
+.pv-checkbox:hover .pv-checkbox-box {
+	border-color: var(--vp-accent-2, #5cd0a9);
+}
+.pv-checkbox-input:focus-visible + .pv-checkbox-box {
+	outline: 2px solid var(--vp-accent-2, #5cd0a9);
+	outline-offset: 1px;
+}
+
+/* Checked: filled accent box with a pixel checkmark drawn via borders. */
+.pv-checkbox-input:checked + .pv-checkbox-box {
+	background: var(--vp-accent-2, #5cd0a9);
+	border-color: var(--vp-accent-2, #5cd0a9);
+}
+.pv-checkbox-input:checked + .pv-checkbox-box::after {
+	content: "";
+	position: absolute;
+	left: 3px;
+	top: 0;
+	width: 4px;
+	height: 8px;
+	border: solid var(--vp-bg, #0f1115);
+	border-width: 0 2px 2px 0;
+	transform: rotate(45deg);
+}
+
+.pv-checkbox-label {
+	color: var(--vp-text, #d6dbe5);
+}

@@ -191,6 +191,135 @@
 	gap: 8px;
 	flex-wrap: wrap;
 }
+
+/* ── Models list ─────────────────────────────────────────────────────────── */
+.ag-models {
+	display: flex;
+	flex-direction: column;
+}
+.ag-model {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 4px;
+	border-bottom: 1px solid var(--vp-border-soft, #2a2f39);
+}
+.ag-model:hover {
+	background: var(--vp-bg-soft, #15171c);
+}
+.ag-star {
+	flex: 0 0 auto;
+	background: none;
+	border: none;
+	padding: 0;
+	cursor: pointer;
+	font-size: 16px;
+	line-height: 1;
+	color: var(--vp-faint, #5b6373);
+}
+.ag-star[data-on="true"] {
+	color: #f7c948;
+}
+/* Name + wire id stacked; takes the slack so caps + actions sit at the right. */
+.ag-model-id {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+.ag-model-name {
+	color: var(--vp-text, #d6dbe5);
+	font-size: 13.5px;
+}
+.ag-model-wire {
+	font-size: 11px;
+	font-family: var(--vp-mono, ui-monospace, monospace);
+}
+.ag-model-caps {
+	flex: 0 0 auto;
+	display: flex;
+	gap: 6px;
+}
+/* Capability toggle chip — off = dashed/dimmed, on = solid accent. */
+.ag-cap {
+	padding: 2px 8px;
+	border: 1px dashed var(--vp-border, #3a4150);
+	background: none;
+	color: var(--vp-faint, #5b6373);
+	font-family: inherit;
+	font-size: 11px;
+	cursor: pointer;
+	opacity: 0.7;
+	transition:
+		opacity 0.12s ease,
+		border-color 0.12s ease,
+		color 0.12s ease;
+}
+.ag-cap:hover {
+	opacity: 1;
+	border-color: var(--vp-muted, #8a93a3);
+	color: var(--vp-muted, #8a93a3);
+}
+.ag-cap.is-on {
+	border-style: solid;
+	opacity: 1;
+}
+.ag-cap--purple.is-on {
+	color: #c084fc;
+	border-color: #c084fc;
+}
+.ag-cap--green.is-on {
+	color: var(--vp-accent-2, #5cd0a9);
+	border-color: var(--vp-accent-2, #5cd0a9);
+}
+.ag-model-actions {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+.ag-price {
+	background: none;
+	border: 1px solid transparent;
+	color: var(--vp-muted, #8a93a3);
+	font-family: var(--vp-mono, ui-monospace, monospace);
+	font-size: 11px;
+	padding: 2px 6px;
+	cursor: pointer;
+}
+.ag-price:hover {
+	border-color: var(--vp-border, #3a4150);
+	color: var(--vp-text, #d6dbe5);
+}
+
+/* Add-model row — inputs grow, the checkbox/add cluster sits at the right. */
+.ag-model-add {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px dashed var(--vp-border-soft, #2a2f39);
+}
+.ag-model-add-fields {
+	display: flex;
+	flex: 1 1 320px;
+	gap: 8px;
+	min-width: 0;
+}
+.ag-model-add-fields .ag-combo,
+.ag-model-add-fields .ag-input {
+	flex: 1 1 0;
+	min-width: 0;
+}
+.ag-model-add-opts {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	flex: 0 0 auto;
+}
 .ag-error {
 	color: var(--vp-accent-3, #ff6b6b);
 	font-size: 12px;

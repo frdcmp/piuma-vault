@@ -103,6 +103,8 @@ pub async fn call(
 ) -> Result<CallResult, String> {
     let url = format!("{}/chat/completions", base(base_url).trim_end_matches('/'));
 
+    // Normalise any multimodal (image) content into OpenAI's `image_url` shape.
+    let messages = super::to_openai_messages(messages);
     let mut payload = json!({
         "model": model,
         "messages": messages,
