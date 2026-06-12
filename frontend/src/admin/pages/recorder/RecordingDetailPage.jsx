@@ -4,6 +4,7 @@ import { formatDateTime } from "../../../utils/dateTime";
 import Starfield from "../../components/notes/Starfield";
 import { PvButton, PvPanel } from "../../components/ui";
 import "../../vault-pixel.css";
+import { colorForSpeaker } from "./speakerColors";
 import "./recorder.css";
 
 const STATUS_TAG = {
@@ -140,7 +141,12 @@ export default function RecordingDetailPage() {
 								>
 									<span className="recorder-seg-time">{fmtClock(seg.t)}</span>
 									{seg.speaker && (
-										<span className="recorder-seg-speaker">{seg.speaker}</span>
+										<span
+											className="recorder-seg-speaker"
+											style={{ color: colorForSpeaker(seg.speaker) }}
+										>
+											{seg.speaker}
+										</span>
 									)}
 									<span className="recorder-seg-text">{seg.text}</span>
 								</div>

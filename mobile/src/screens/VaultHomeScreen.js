@@ -302,6 +302,7 @@ export default function VaultHomeScreen({ navigation, route }) {
 							onStorage={() => navigation.navigate("Storage")}
 							onTasks={() => navigation.navigate("Tasks")}
 							onCalendar={() => navigation.navigate("Calendar")}
+							onRecorder={() => navigation.navigate("Recorder")}
 							onSettings={() => navigation.navigate("Settings")}
 							onLogout={logout}
 						/>

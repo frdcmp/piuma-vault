@@ -12,12 +12,14 @@ import "../../../vault-pixel.css";
  *   size:    "md" (default) | "sm"
  *   block:   stretch to full width
  *   icon:    leading node (e.g. an antd icon)
+ *   loading: show a spinner in place of children
  */
 export default function PvButton({
 	children,
 	variant = "default",
 	size = "md",
 	block = false,
+	loading = false,
 	icon,
 	to,
 	href,
@@ -30,12 +32,15 @@ export default function PvButton({
 		variant !== "default" && `vp-btn--${variant}`,
 		size === "sm" && "vp-btn--sm",
 		block && "vp-btn--block",
+		loading && "vp-btn--loading",
 		className,
 	]
 		.filter(Boolean)
 		.join(" ");
 
-	const inner = (
+	const inner = loading ? (
+		<span className="vp-btn-spinner" />
+	) : (
 		<>
 			{icon != null && <span className="vp-btn-icon">{icon}</span>}
 			{children != null && <span>{children}</span>}

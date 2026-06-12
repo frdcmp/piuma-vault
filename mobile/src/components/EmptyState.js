@@ -85,6 +85,7 @@ export default function EmptyState({
 	onStorage,
 	onTasks,
 	onCalendar,
+	onRecorder,
 	onSettings,
 	onLogout,
 }) {
@@ -318,6 +319,16 @@ export default function EmptyState({
 				>
 					<Text style={styles.futureGlyph}>▤</Text>
 					<Text style={styles.hintText}>calendar</Text>
+				</Pressable>
+				<Pressable
+					onPress={onRecorder}
+					style={({ pressed }) => [
+						styles.menuItem,
+						pressed && styles.menuItemPressed,
+					]}
+				>
+					<Text style={styles.storageGlyph}>◉</Text>
+					<Text style={styles.hintText}>recorder</Text>
 				</Pressable>
 				<Pressable
 					onPress={onSettings}
