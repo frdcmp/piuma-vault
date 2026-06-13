@@ -22,6 +22,9 @@ pub struct ScheduledNotification {
     pub channels: Vec<String>,
     pub source_type: String,
     pub source_id: uuid::Uuid,
+    /// Local date of this occurrence — lets a notification action complete the
+    /// right recurring instance. May be null for non-dated sources.
+    pub occurrence_date: Option<chrono::NaiveDate>,
 }
 
 // ── Upcoming alarms (read model for the in-app alarm scheduler) ──

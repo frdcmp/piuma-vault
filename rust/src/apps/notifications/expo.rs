@@ -17,6 +17,41 @@ pub async fn dispatch_expo(
     body: &str,
     data: &serde_json::Value,
 ) -> usize {
+    send_messages(pool, user_id, |t| {
+        json!({
+            "to": t,
+            "title": title,
+            "body": body,
+            "sound": "default",
+            "data": data,
+        })
+    })
+    .await
+}
+
+/// Send a DATA-ONLY (silent) high-priority push — no title/body, so the OS won't
+/// auto-show a plain notification; instead the device's background notification
+/// task wakes and re-displays it as a rich Notifee alarm (with the Complete /
+/// Snooze / Dismiss buttons). `_contentAvailable` is the iOS silent flag;
+/// `priority: high` maximises Android delivery to the background task.
+pub async fn dispatch_expo_data(pool: &DbPool, user_id: &str, data: &serde_json::Value) -> usize {
+    send_messages(pool, user_id, |t| {
+        json!({
+            "to": t,
+            "data": data,
+            "priority": "high",
+            "_contentAvailable": true,
+        })
+    })
+    .await
+}
+
+/// Shared sender: one message per registered token (built by `make`), POSTed to
+/// the Expo push service, pruning tokens it reports as unregistered.
+async fn send_messages<F>(pool: &DbPool, user_id: &str, make: F) -> usize
+where
+    F: Fn(&str) -> serde_json::Value,
+{
     let tokens: Vec<String> =
         match sqlx::query_scalar("SELECT token FROM db_expo_push_tokens WHERE user_id = $1")
             .bind(user_id)
@@ -34,18 +69,7 @@ pub async fn dispatch_expo(
         return 0;
     }
 
-    let messages: Vec<serde_json::Value> = tokens
-        .iter()
-        .map(|t| {
-            json!({
-                "to": t,
-                "title": title,
-                "body": body,
-                "sound": "default",
-                "data": data,
-            })
-        })
-        .collect();
+    let messages: Vec<serde_json::Value> = tokens.iter().map(|t| make(t)).collect();
 
     let client = reqwest::Client::new();
     let resp = match client.post(EXPO_PUSH_URL).json(&messages).send().await {
