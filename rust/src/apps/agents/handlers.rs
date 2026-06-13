@@ -220,6 +220,42 @@ pub async fn list_available_models(
     }
 }
 
+#[derive(Deserialize)]
+pub struct ModelMetaQuery {
+    pub model_id: String,
+}
+
+/// GET /agents/providers/{id}/model-meta?model_id=… — best-effort capability
+/// auto-detect for the add-model form. Only Ollama exposes this (native
+/// `/api/show`); other kinds return nulls so the UI keeps its manual toggles.
+pub async fn model_meta(
+    _user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    path: web::Path<Uuid>,
+    q: web::Query<ModelMetaQuery>,
+) -> impl Responder {
+    let provider: Option<ProviderRow> =
+        match sqlx::query_as("SELECT * FROM db_llm_providers WHERE id = $1")
+            .bind(path.into_inner())
+            .fetch_optional(pool.get_ref())
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => return db_err(e),
+        };
+    let Some(provider) = provider else {
+        return HttpResponse::NotFound().json(ApiError::new("provider not found"));
+    };
+    if provider.kind != "ollama" {
+        return HttpResponse::Ok()
+            .json(json!({ "context_window": null, "supports_vision": false }));
+    }
+    let (ctx, vision) =
+        super::providers::catalog::ollama_model_meta(provider.base_url.as_deref(), &q.model_id)
+            .await;
+    HttpResponse::Ok().json(json!({ "context_window": ctx, "supports_vision": vision }))
+}
+
 /// All enabled models across providers — for the `/models` chat command picker.
 pub async fn list_all_models(_user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
     let rows: Vec<(Uuid, String, String, bool, String, f64, f64, f64, bool)> = sqlx::query_as(

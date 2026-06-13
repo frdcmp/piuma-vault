@@ -153,6 +153,15 @@
 	margin-bottom: 4px;
 }
 
+.ag-hint {
+	display: block;
+	margin-top: 4px;
+	font-size: 11px;
+	line-height: 1.5;
+	color: var(--vp-muted, #8a93a3);
+	opacity: 0.85;
+}
+
 /* Cards */
 .ag-card {
 	background: var(--vp-panel, #1b1e25);

@@ -21,7 +21,10 @@ pub async fn list_models(
     api_key: &str,
     base_url: Option<&str>,
 ) -> Result<Vec<String>, String> {
-    if api_key.trim().is_empty() {
+    // Local OpenAI-compatible runtimes (LM Studio / Ollama) need no key, so we
+    // only require one for the cloud providers.
+    let is_local = matches!(kind, "lmstudio" | "ollama");
+    if api_key.trim().is_empty() && !is_local {
         return Err("provider has no API key set".into());
     }
     let client = reqwest::Client::new();
@@ -59,18 +62,22 @@ pub async fn list_models(
             let v = read_json(resp, kind).await?;
             openai_ids(&v)
         }
-        // OpenAI-compatible wire format: deepseek/openai/minimax and friends.
+        // OpenAI-compatible wire format: deepseek/openai/minimax + local runtimes
+        // (lmstudio/ollama). Local kinds rely on the user-supplied base_url.
         _ => {
             let default = match kind {
                 "openai" => super::openai::DEFAULT_BASE_URL,
                 "minimax" => super::minimax::DEFAULT_BASE_URL,
                 _ => super::deepseek::DEFAULT_BASE_URL,
             };
-            let base = trim_base(base_url, default);
+            let base = super::reach_host(&trim_base(base_url, default));
             let url = format!("{base}/models");
-            let resp = client
-                .get(&url)
-                .bearer_auth(api_key)
+            let mut req = client.get(&url);
+            // Local servers take no key; only attach a bearer when we have one.
+            if !api_key.trim().is_empty() {
+                req = req.bearer_auth(api_key);
+            }
+            let resp = req
                 .send()
                 .await
                 .map_err(|e| format!("{kind} request failed: {e}"))?;
@@ -81,6 +88,58 @@ pub async fn list_models(
     ids.sort();
     ids.dedup();
     Ok(ids)
+}
+
+/// Ollama-only: richer per-model metadata via the native `/api/show` endpoint
+/// (context length + vision capability) that the OpenAI `/v1/models` id list
+/// doesn't expose. Best-effort — returns `(None, false)` on any failure so the
+/// UI just falls back to manual toggles. `base_url` includes `/v1`; the native
+/// API lives at the server root, so we strip it.
+pub async fn ollama_model_meta(base_url: Option<&str>, model: &str) -> (Option<i32>, bool) {
+    let base = super::reach_host(&trim_base(base_url, "http://host.docker.internal:11434/v1"));
+    let root = base.strip_suffix("/v1").unwrap_or(&base).trim_end_matches('/');
+    let url = format!("{root}/api/show");
+
+    let resp = match reqwest::Client::new()
+        .post(&url)
+        .json(&serde_json::json!({ "name": model }))
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => r,
+        _ => return (None, false),
+    };
+    let Ok(v) = resp.json::<Value>().await else {
+        return (None, false);
+    };
+
+    // Vision: newer Ollama reports a `capabilities` array; older builds expose
+    // it via `details.families` containing a vision projector (clip/mllama).
+    let cap_vision = v
+        .get("capabilities")
+        .and_then(|c| c.as_array())
+        .is_some_and(|a| a.iter().any(|x| x.as_str() == Some("vision")));
+    let fam_vision = v
+        .get("details")
+        .and_then(|d| d.get("families"))
+        .and_then(|f| f.as_array())
+        .is_some_and(|a| {
+            a.iter()
+                .any(|x| matches!(x.as_str(), Some("clip") | Some("mllama")))
+        });
+
+    // Context length lives under `model_info` as `"<arch>.context_length"`.
+    let ctx = v
+        .get("model_info")
+        .and_then(|m| m.as_object())
+        .and_then(|m| {
+            m.iter()
+                .find(|(k, _)| k.ends_with(".context_length"))
+                .and_then(|(_, val)| val.as_i64())
+        })
+        .map(|n| n as i32);
+
+    (ctx, cap_vision || fam_vision)
 }
 
 async fn read_json(resp: reqwest::Response, kind: &str) -> Result<Value, String> {

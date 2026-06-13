@@ -66,6 +66,12 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             web::resource("/agents/providers/{id}/available-models")
                 .route(web::get().to(handlers::list_available_models)),
         )
+        // Ollama-only capability auto-detect (context window + vision) for the
+        // add-model form.
+        .service(
+            web::resource("/agents/providers/{id}/model-meta")
+                .route(web::get().to(handlers::model_meta)),
+        )
         // Models
         .service(web::resource("/agents/models").route(web::get().to(handlers::list_all_models)))
         .service(

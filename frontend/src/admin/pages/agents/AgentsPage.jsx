@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fetchModelMeta } from "../../../api/agentChatApi";
 import {
 	useAgentList,
 	useAgentPersonas,
@@ -19,14 +20,37 @@ import {
 import { PvCheckbox, PvModal } from "../../components/ui";
 import "./agents.css";
 
-const PROVIDER_KINDS = ["deepseek", "anthropic", "openai", "gemini", "minimax"];
+const PROVIDER_KINDS = [
+	"deepseek",
+	"anthropic",
+	"openai",
+	"gemini",
+	"minimax",
+	"ollama",
+	"lmstudio",
+];
+
+// Friendlier labels for the kind dropdown.
+const KIND_LABEL = {
+	ollama: "Ollama (local)",
+	lmstudio: "LM Studio (local)",
+};
+
+// Local, OpenAI-compatible runtimes: no API key required, and we pre-fill the
+// intuitive localhost URL. The backend rewrites localhost → the docker host
+// gateway when it calls out, so this just works. URL includes the `/v1` path.
+const LOCAL_KINDS = new Set(["ollama", "lmstudio"]);
+const DEFAULT_BASE_URL = {
+	ollama: "http://localhost:11434/v1",
+	lmstudio: "http://localhost:1234/v1",
+};
 
 const errMsg = (e, fallback) =>
 	e?.response?.data?.error || e?.message || fallback;
 
 // ── Providers + models ───────────────────────────────────────────────────────
 
-function ModelsList({ providerId }) {
+function ModelsList({ providerId, providerKind }) {
 	const { data: models = [] } = useModels(providerId);
 	const createModel = useCreateModel();
 	const updateModel = useUpdateModel();
@@ -35,6 +59,8 @@ function ModelsList({ providerId }) {
 	const [displayName, setDisplayName] = useState("");
 	const [thinking, setThinking] = useState(true);
 	const [vision, setVision] = useState(false);
+	// Context window auto-detected from Ollama /api/show (null = leave to default).
+	const [ctxWindow, setCtxWindow] = useState(null);
 	const [error, setError] = useState("");
 	const [pendingDelete, setPendingDelete] = useState(null);
 	const [picker, setPicker] = useState(false);
@@ -84,6 +110,15 @@ function ModelsList({ providerId }) {
 		setModelId(id);
 		if (!displayName.trim()) setDisplayName(id);
 		setPicker(false);
+		// Ollama exposes per-model capabilities — auto-fill vision + context.
+		if (providerKind === "ollama") {
+			fetchModelMeta(providerId, id)
+				.then((meta) => {
+					if (meta?.supports_vision) setVision(true);
+					if (meta?.context_window) setCtxWindow(meta.context_window);
+				})
+				.catch(() => {});
+		}
 	};
 
 	const add = async () => {
@@ -96,10 +131,12 @@ function ModelsList({ providerId }) {
 				display_name: displayName.trim(),
 				supports_thinking: thinking,
 				supports_vision: vision,
+				...(ctxWindow ? { context_window: ctxWindow } : {}),
 			});
 			setModelId("");
 			setDisplayName("");
 			setVision(false);
+			setCtxWindow(null);
 		} catch (e) {
 			setError(errMsg(e, "Failed to add model"));
 		}
@@ -331,9 +368,26 @@ function ProvidersTab() {
 	const [error, setError] = useState("");
 	const [pendingDelete, setPendingDelete] = useState(null);
 
+	const isLocal = LOCAL_KINDS.has(kind);
+
+	// Picking a local runtime pre-fills its default endpoint + name (only when
+	// the fields are still empty, so we never clobber what the user typed).
+	const onKindChange = (k) => {
+		setKind(k);
+		if (LOCAL_KINDS.has(k)) {
+			if (!baseUrl.trim()) setBaseUrl(DEFAULT_BASE_URL[k]);
+			if (!displayName.trim()) setDisplayName(KIND_LABEL[k]);
+		}
+	};
+
 	const create = async () => {
-		if (!displayName.trim() || !apiKey.trim()) {
-			setError("Display name and API key are required");
+		// Local runtimes don't need an API key; everyone else does.
+		if (!displayName.trim() || (!isLocal && !apiKey.trim())) {
+			setError(
+				isLocal
+					? "Display name is required"
+					: "Display name and API key are required",
+			);
 			return;
 		}
 		setError("");
@@ -341,8 +395,11 @@ function ProvidersTab() {
 			await createProvider.mutateAsync({
 				kind,
 				display_name: displayName.trim(),
-				api_key: apiKey.trim(),
-				base_url: baseUrl.trim() || undefined,
+				// LM Studio / Ollama ignore the key but the column is non-null and the
+				// adapter sends a bearer — use a placeholder when none was given.
+				api_key: apiKey.trim() || (isLocal ? "local" : ""),
+				base_url:
+					baseUrl.trim() || (isLocal ? DEFAULT_BASE_URL[kind] : undefined),
 			});
 			setShowForm(false);
 			setDisplayName("");
@@ -371,11 +428,11 @@ function ProvidersTab() {
 							<select
 								className="ag-select"
 								value={kind}
-								onChange={(e) => setKind(e.target.value)}
+								onChange={(e) => onKindChange(e.target.value)}
 							>
 								{PROVIDER_KINDS.map((k) => (
 									<option key={k} value={k}>
-										{k}
+										{KIND_LABEL[k] || k}
 									</option>
 								))}
 							</select>
@@ -386,27 +443,42 @@ function ProvidersTab() {
 								className="ag-input"
 								value={displayName}
 								onChange={(e) => setDisplayName(e.target.value)}
-								placeholder="DeepSeek"
+								placeholder={isLocal ? KIND_LABEL[kind] : "DeepSeek"}
 							/>
 						</div>
 						<div className="ag-field">
-							<span className="ag-label">API key</span>
+							<span className="ag-label">
+								API key{isLocal ? " (not needed)" : ""}
+							</span>
 							<input
 								className="ag-input"
 								type="password"
 								value={apiKey}
 								onChange={(e) => setApiKey(e.target.value)}
-								placeholder="sk-…"
+								placeholder={isLocal ? "— leave blank —" : "sk-…"}
+								disabled={isLocal}
 							/>
 						</div>
 						<div className="ag-field">
-							<span className="ag-label">Base URL (optional)</span>
+							<span className="ag-label">
+								Base URL{isLocal ? "" : " (optional)"}
+							</span>
 							<input
 								className="ag-input"
 								value={baseUrl}
 								onChange={(e) => setBaseUrl(e.target.value)}
-								placeholder="https://api.deepseek.com"
+								placeholder={
+									isLocal ? DEFAULT_BASE_URL[kind] : "https://api.deepseek.com"
+								}
 							/>
+							{isLocal && (
+								<span className="ag-hint">
+									Use <code>localhost</code> if the model server runs on the
+									same machine as the backend — it's auto-mapped to the host
+									from inside the container. Otherwise use the host's ZeroTier
+									IP. Keep the <code>/v1</code> path.
+								</span>
+							)}
 						</div>
 						{error && <div className="ag-error">{error}</div>}
 						<button
@@ -450,7 +522,7 @@ function ProvidersTab() {
 							</button>
 						</div>
 						<div className="ag-card-body">
-							<ModelsList providerId={p.id} />
+							<ModelsList providerId={p.id} providerKind={p.kind} />
 						</div>
 					</div>
 				))}

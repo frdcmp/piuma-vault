@@ -52,7 +52,8 @@ pub async fn complete_usage(
     messages: &[Value],
     max_tokens: u32,
 ) -> Result<(String, i32, i32), String> {
-    let url = format!("{}/chat/completions", base(base_url).trim_end_matches('/'));
+    let b = super::reach_host(base(base_url));
+    let url = format!("{}/chat/completions", b.trim_end_matches('/'));
 
     let payload = json!({
         "model": model,
@@ -101,7 +102,8 @@ pub async fn call(
     tools: &[Value],
     tx: &SseSender,
 ) -> Result<CallResult, String> {
-    let url = format!("{}/chat/completions", base(base_url).trim_end_matches('/'));
+    let b = super::reach_host(base(base_url));
+    let url = format!("{}/chat/completions", b.trim_end_matches('/'));
 
     // Normalise any multimodal (image) content into OpenAI's `image_url` shape.
     let messages = super::to_openai_messages(messages);
