@@ -460,6 +460,9 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const [messages, setMessages] = useState([]);
 	const [input, setInput] = useState("");
 	const [isStreaming, setIsStreaming] = useState(false);
+	// True from clicking send until the stream starts — covers the
+	// create-conversation + first-request gap so the send button shows a loader.
+	const [sending, setSending] = useState(false);
 	const [compact, setCompact] = useState(false);
 	const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 	const [overlay, setOverlay] = useState(null); // null | "models" | "sessions"
@@ -820,6 +823,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			(p) => p.status === "ready" && p.url,
 		);
 		if (!text && !readyImages.length) return;
+		// Ignore clicks during the brief setup gap (button already shows a loader).
+		if (sending) return;
 
 		// While a turn is streaming, a send INJECTS into it instead of starting a
 		// new turn; the running turn picks it up at the next round boundary.
@@ -848,27 +853,6 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			return;
 		}
 
-		let convId = conversationId;
-		if (!convId) {
-			try {
-				const conv = await createConversation({ agent: effectiveAgent });
-				convId = conv.id;
-				setConversationId(conv.id);
-				setModelId(conv.model_id || null);
-				localStorage.setItem(STORAGE_KEY, conv.id);
-			} catch {
-				setMessages((c) => [
-					...c,
-					{
-						id: newMessageId(),
-						role: "assistant",
-						content: "**Error:** failed to start conversation",
-					},
-				]);
-				return;
-			}
-		}
-
 		const userMsg = {
 			id: newMessageId(),
 			role: "user",
@@ -888,6 +872,9 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			role: "assistant",
 			parts: [],
 		};
+		// Show the message + an empty assistant bubble IMMEDIATELY, and put the
+		// send button into a loading state — instant feedback during the
+		// create-conversation + first-request gap (don't wait on the network).
 		setMessages((curr) => [...curr, userMsg, assistantMsg]);
 		setInput("");
 		// Sent → drop the pending chips (the CDN urls now live on the message).
@@ -895,7 +882,38 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			for (const p of curr) if (p.localUrl) URL.revokeObjectURL(p.localUrl);
 			return [];
 		});
+		setSending(true);
+		scrollToBottom();
+
+		let convId = conversationId;
+		if (!convId) {
+			try {
+				const conv = await createConversation({ agent: effectiveAgent });
+				convId = conv.id;
+				setConversationId(conv.id);
+				setModelId(conv.model_id || null);
+				localStorage.setItem(STORAGE_KEY, conv.id);
+			} catch {
+				// Surface the failure in the assistant bubble we already showed.
+				setMessages((curr) => {
+					const updated = [...curr];
+					const last = updated[updated.length - 1];
+					updated[updated.length - 1] = {
+						...last,
+						parts: appendTextPart(
+							last.parts,
+							"**Error:** failed to start conversation",
+						),
+					};
+					return updated;
+				});
+				setSending(false);
+				return;
+			}
+		}
+
 		setIsStreaming(true);
+		setSending(false);
 		scrollToBottom(); // sending re-arms the stick-to-bottom lock
 
 		const controller = new AbortController();
@@ -1010,11 +1028,13 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		} finally {
 			// Always re-enable the composer, even if the stream throws.
 			setIsStreaming(false);
+			setSending(false);
 			abortRef.current = null;
 		}
 	}, [
 		input,
 		isStreaming,
+		sending,
 		conversationId,
 		effectiveAgent,
 		sentContextPaths,
@@ -1750,7 +1770,16 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 								}
 								rows={1}
 							/>
-							{showStop ? (
+							{sending ? (
+								<button
+									type="button"
+									className="chat-send"
+									disabled
+									title="Sending…"
+								>
+									<span className="chat-send-spinner" /> send
+								</button>
+							) : showStop ? (
 								<button
 									type="button"
 									className="chat-send chat-stop"
