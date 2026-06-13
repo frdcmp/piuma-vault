@@ -2,6 +2,7 @@ import {
 	ApiOutlined,
 	AppstoreOutlined,
 	BarChartOutlined,
+	ClockCircleOutlined,
 	DatabaseOutlined,
 	DeleteOutlined,
 	DownOutlined,
@@ -38,6 +39,7 @@ const NAVIGATION = [
 const AI = [
 	{ key: "/admin/agents", icon: <RobotOutlined />, label: "Agents" },
 	{ key: "/admin/memory", icon: <GoldOutlined />, label: "Memory" },
+	{ key: "/admin/cron", icon: <ClockCircleOutlined />, label: "Scheduled" },
 	{
 		key: "/admin/token-usage",
 		icon: <BarChartOutlined />,

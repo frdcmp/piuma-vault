@@ -54,6 +54,12 @@ const SECTIONS = [
 		desc: "Agent memory & moderation",
 	},
 	{
+		route: "Cron",
+		icon: "time-outline",
+		label: "Scheduled",
+		desc: "Recurring agent jobs",
+	},
+	{
 		route: "SettingsTokenUsage",
 		icon: "stats-chart-outline",
 		label: "Token usage",

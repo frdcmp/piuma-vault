@@ -10,6 +10,7 @@ pub mod calendar;
 pub mod tasks;
 pub mod buckets;
 pub mod agenda;
+pub mod cron;
 pub mod notifications;
 pub mod shares;
 pub mod storage;

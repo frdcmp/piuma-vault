@@ -4,6 +4,7 @@ import * as Linking from "expo-linking";
 import { useEffect, useState } from "react";
 import UpdatePrompt from "../components/UpdatePrompt";
 import CalendarScreen from "../screens/CalendarScreen";
+import CronScreen from "../screens/CronScreen";
 import LoginScreen from "../screens/LoginScreen";
 import RecorderScreen from "../screens/RecorderScreen";
 import RecorderSessionsScreen from "../screens/RecorderSessionsScreen";
@@ -96,6 +97,7 @@ export default function AppNavigator() {
 							<Stack.Screen name="Calendar" component={CalendarScreen} />
 							<Stack.Screen name="Tasks" component={TasksScreen} />
 							<Stack.Screen name="Recorder" component={RecorderScreen} />
+							<Stack.Screen name="Cron" component={CronScreen} />
 							<Stack.Screen
 								name="RecorderSessions"
 								component={RecorderSessionsScreen}

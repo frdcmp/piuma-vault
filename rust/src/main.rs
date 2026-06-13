@@ -79,6 +79,7 @@ async fn main() -> io::Result<()> {
     let notes_bus = apps::notes::events::NotesEventBus::new();
     let tasks_bus = apps::tasks::events::TasksEventBus::new();
     let calendar_bus = apps::calendar::events::CalendarEventBus::new();
+    let cron_bus = apps::cron::events::CronEventBus::new();
     // Control plane for in-flight chat turns: STOP (cancel) + INJECT (mailbox).
     let turn_control = apps::agents::control::TurnControl::new();
     // Live recording sessions: shared between the recorder WS relay and the
@@ -100,6 +101,7 @@ async fn main() -> io::Result<()> {
             .app_data(web::Data::new(notes_bus.clone()))
             .app_data(web::Data::new(tasks_bus.clone()))
             .app_data(web::Data::new(calendar_bus.clone()))
+            .app_data(web::Data::new(cron_bus.clone()))
             .app_data(web::Data::new(turn_control.clone()))
             .app_data(web::Data::new(recorder_registry.clone()))
             .configure(apps::health::routes::configure_routes)
@@ -111,6 +113,7 @@ async fn main() -> io::Result<()> {
             .configure(apps::tasks::routes::configure_routes)
             .configure(apps::buckets::routes::configure_routes)
             .configure(apps::agenda::routes::configure_routes)
+            .configure(apps::cron::routes::configure_routes)
             .configure(apps::notifications::routes::configure_routes)
             .configure(apps::shares::routes::configure_routes)
             .configure(apps::storage::routes::configure_routes)
