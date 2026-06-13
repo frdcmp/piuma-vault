@@ -1,7 +1,6 @@
 import notifee from "@notifee/react-native";
 import { focusManager } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import * as Notifications from "expo-notifications";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { AppState, Platform, View } from "react-native";
@@ -12,29 +11,18 @@ import {
 	SafeAreaProvider,
 } from "react-native-safe-area-context";
 import { registerExpoToken } from "./src/api/notificationsApi";
-import AlarmModal from "./src/components/AlarmModal";
 import ScreenLockGate from "./src/components/ScreenLockGate";
 import SystemBars from "./src/components/SystemBars";
 import ToastHost from "./src/components/Toast";
 import AppNavigator from "./src/navigation/AppNavigator";
 import { SpriteProvider } from "./src/sprites";
-import { useAlarmStore } from "./src/stores/alarmStore";
 import { useAuthStore } from "./src/stores/authStore";
-import { alarmFromNotifee, EventType } from "./src/utils/alarm";
+import { EventType, handleAlarmAction } from "./src/utils/alarm";
 import { registerForPushNotifications } from "./src/utils/notifications";
+import { subscribeForegroundAlarms } from "./src/utils/pushTask";
 import { asyncStoragePersister, queryClient } from "./src/utils/queryClient";
 import { colors } from "./src/utils/theme";
 import { useWidgetSync } from "./src/widgets/useWidgetSync";
-
-// Turn a delivered notification into an in-app alarm payload.
-function alarmFromNotification(notification) {
-	const c = notification.request.content;
-	return {
-		tag: c.data?.tag || notification.request.identifier,
-		title: c.title || "Reminder",
-		body: c.body || "",
-	};
-}
 
 export default function App() {
 	// On web, RN's root only fills part of the viewport, so any uncovered
@@ -86,43 +74,26 @@ export default function App() {
 
 	// Escalate delivered alerts to the loud in-app alarm. Two delivery systems
 	// feed the same store (de-duped by tag):
-	//   • expo-notifications — REMOTE push (foreground receive / tap-to-open).
-	//   • Notifee — LOCAL full-screen alarms. Its full-screen intent wakes the
-	//     screen and launches the app over the lock screen; on launch we read
-	//     getInitialNotification(), and while foregrounded onForegroundEvent
-	//     fires DELIVERED. Either way we present the in-app modal, which owns the
-	//     looping sound — so we don't double up with Notifee's loopSound.
 	// Keep the Android home-screen widgets in sync with in-app data changes,
 	// foreground transitions, and the periodic background task.
 	useWidgetSync();
 
-	const present = useAlarmStore((s) => s.present);
+	// Alarms ARE the OS notification (loud + persistent, with Complete/Snooze/
+	// Dismiss buttons) — no in-app modal. index.js handles button presses while
+	// the app is backgrounded/killed; this handles presses while it's foreground.
 	useEffect(() => {
-		const received = Notifications.addNotificationReceivedListener((n) =>
-			present(alarmFromNotification(n)),
-		);
-		const response = Notifications.addNotificationResponseReceivedListener(
-			(r) => present(alarmFromNotification(r.notification)),
-		);
-
-		const unsubNotifee = notifee.onForegroundEvent(({ type, detail }) => {
-			if (type === EventType.DELIVERED || type === EventType.PRESS) {
-				if (detail.notification) present(alarmFromNotifee(detail.notification));
-			}
+		// Action-button presses while the app is foreground.
+		const unsub = notifee.onForegroundEvent(({ type, detail }) => {
+			if (type === EventType.ACTION_PRESS) handleAlarmAction(detail);
 		});
-
-		// App was cold-launched by tapping / a full-screen alarm intent.
-		notifee.getInitialNotification().then((initial) => {
-			if (initial?.notification)
-				present(alarmFromNotifee(initial.notification));
-		});
-
+		// Server data pushes received while foreground → display the rich alarm
+		// (the background task covers the app-closed case).
+		const received = subscribeForegroundAlarms();
 		return () => {
+			unsub();
 			received.remove();
-			response.remove();
-			unsubNotifee();
 		};
-	}, [present]);
+	}, []);
 
 	return (
 		<GestureHandlerRootView style={{ flex: 1 }}>
@@ -140,7 +111,6 @@ export default function App() {
 							</View>
 							<SystemBars />
 							<StatusBar style="light" />
-							<AlarmModal />
 							<ToastHost />
 						</KeyboardProvider>
 					</SafeAreaProvider>

@@ -9,17 +9,23 @@ import {
 	requestAlarmPermissions,
 	scheduleAlarm,
 } from "./alarm";
+import { registerBackgroundNotificationTask } from "./pushTask";
 import { expandRecurrence } from "./recurrence";
 
 // Foreground display behavior (SDK 53+ fields: shouldShowBanner / shouldShowList
-// replace the deprecated shouldShowAlert).
+// replace the deprecated shouldShowAlert). DATA-ONLY "alarm" pushes are suppressed
+// here — we re-display them as a rich Notifee alarm (with action buttons) via the
+// foreground listener, so the OS shouldn't also show a bare banner.
 Notifications.setNotificationHandler({
-	handleNotification: async () => ({
-		shouldPlaySound: true,
-		shouldSetBadge: false,
-		shouldShowBanner: true,
-		shouldShowList: true,
-	}),
+	handleNotification: async (n) => {
+		const isAlarm = n?.request?.content?.data?.type === "alarm";
+		return {
+			shouldPlaySound: !isAlarm,
+			shouldSetBadge: false,
+			shouldShowBanner: !isAlarm,
+			shouldShowList: !isAlarm,
+		};
+	},
 });
 
 // Local-scheduling horizon. The OS caps pending notifications (iOS ~64), so we
@@ -51,6 +57,9 @@ export async function registerForPushNotifications() {
 	await configureAndroidChannel();
 	// Alarm channel + exact-alarm permission for the local full-screen alarms.
 	await requestAlarmPermissions();
+	// Route incoming DATA pushes to the background task that re-displays them as
+	// rich alarms (TickTick-style action buttons on server-pushed reminders).
+	await registerBackgroundNotificationTask();
 
 	const projectId =
 		Constants?.expoConfig?.extra?.eas?.projectId ??
@@ -62,7 +71,10 @@ export async function registerForPushNotifications() {
 	} catch (e) {
 		// Most common cause on Android: missing/invalid FCM config
 		// (google-services.json + FCM V1 key uploaded to Expo).
-		console.warn("[notifications] getExpoPushTokenAsync failed:", e?.message || e);
+		console.warn(
+			"[notifications] getExpoPushTokenAsync failed:",
+			e?.message || e,
+		);
 		return null;
 	}
 }
@@ -80,19 +92,25 @@ function buildReminders({ events = [], tasks = [], recurring = [] }) {
 	const horizon = now.add(HORIZON_DAYS, "day");
 	const out = [];
 
-	// `tag` = `{source_type}:{source_id}`, matching the backend's remote-push tag
-	// so a local + remote delivery of the same alert de-dupes to one alarm.
-	const addAlerts = (anchorISO, title, alerts, tag) => {
+	// `source` = { source_type, source_id, occurrence_date? }. The tag
+	// (`{source_type}:{source_id}`) matches the backend's remote-push tag so a
+	// local + remote delivery of the same alert de-dupes to one alarm; the source
+	// also lets the notification's "Complete" button mark the task done.
+	const addAlerts = (anchorISO, title, alerts, source) => {
 		if (!anchorISO || !Array.isArray(alerts)) return;
 		const anchor = dayjs(anchorISO);
 		for (const a of alerts) {
-			const fire = anchor.subtract(Math.max(0, a.offset_minutes || 0), "minute");
+			const fire = anchor.subtract(
+				Math.max(0, a.offset_minutes || 0),
+				"minute",
+			);
 			if (fire.isAfter(now) && fire.isBefore(horizon)) {
 				out.push({
 					title,
 					body: offsetLabel(a.offset_minutes),
 					date: fire.toDate(),
-					tag,
+					tag: `${source.source_type}:${source.source_id}`,
+					source,
 				});
 			}
 		}
@@ -101,18 +119,25 @@ function buildReminders({ events = [], tasks = [], recurring = [] }) {
 	// One-off (non-recurring) events.
 	for (const ev of events) {
 		if (ev.rrule) continue; // recurring events rely on remote push
-		addAlerts(ev.starts_at, ev.title, ev.alerts, `event:${ev.id}`);
+		addAlerts(ev.starts_at, ev.title, ev.alerts, {
+			source_type: "event",
+			source_id: ev.id,
+		});
 	}
 
 	// One-off tasks with a due date.
 	for (const t of tasks) {
 		if (t.done || t.recurrence_id) continue;
-		addAlerts(t.due_at, t.title, t.alerts, `task:${t.id}`);
+		addAlerts(t.due_at, t.title, t.alerts, {
+			source_type: "task",
+			source_id: t.id,
+		});
 	}
 
 	// Recurring task templates → expand occurrences within the horizon.
 	for (const tpl of recurring) {
-		if (!tpl.active || !Array.isArray(tpl.alerts) || !tpl.alerts.length) continue;
+		if (!tpl.active || !Array.isArray(tpl.alerts) || !tpl.alerts.length)
+			continue;
 		const occurrences = expandRecurrence({
 			rrule: tpl.rrule,
 			dtstart: tpl.dtstart,
@@ -123,13 +148,22 @@ function buildReminders({ events = [], tasks = [], recurring = [] }) {
 		for (const occ of occurrences) {
 			const occDate = dayjs(occ);
 			for (const a of tpl.alerts) {
-				const fire = occDate.subtract(Math.max(0, a.offset_minutes || 0), "minute");
+				const fire = occDate.subtract(
+					Math.max(0, a.offset_minutes || 0),
+					"minute",
+				);
 				if (fire.isAfter(now) && fire.isBefore(horizon)) {
 					out.push({
 						title: tpl.title,
 						body: offsetLabel(a.offset_minutes),
 						date: fire.toDate(),
 						tag: `recurring:${tpl.id}`,
+						source: {
+							source_type: "recurring",
+							source_id: tpl.id,
+							// Local date of THIS occurrence — the complete endpoint keys on it.
+							occurrence_date: occDate.format("YYYY-MM-DD"),
+						},
 					});
 				}
 			}
@@ -156,6 +190,7 @@ export async function syncLocalAlerts(data) {
 				body: r.body,
 				tag: r.tag,
 				date: r.date,
+				source: r.source,
 			});
 		}
 	} catch (_e) {

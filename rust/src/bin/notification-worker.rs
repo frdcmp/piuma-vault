@@ -45,7 +45,7 @@ async fn main() {
                 LIMIT 50
                 FOR UPDATE SKIP LOCKED
             )
-            RETURNING id, user_id, title, body, channels, source_type, source_id
+            RETURNING id, user_id, title, body, channels, source_type, source_id, occurrence_date
             "#,
         )
         .bind(max_attempts)
@@ -141,8 +141,20 @@ async fn dispatch(pool: &db::db::DbPool, n: &ScheduledNotification) {
     }
 
     if wants_push {
-        let data = json!({ "url": url, "tag": tag });
-        let sent = expo::dispatch_expo(pool, &n.user_id, &n.title, &body, &data).await;
-        log::info!("expo push: {sent} delivered for '{}'", n.title);
+        // DATA-ONLY push: the device's background task re-displays it as a rich
+        // Notifee alarm with Complete/Snooze/Dismiss buttons (handled on-device).
+        // Carries the source so "Complete" can mark the right task/occurrence.
+        let data = json!({
+            "type": "alarm",
+            "url": url,
+            "tag": tag,
+            "title": n.title,
+            "body": body,
+            "source_type": n.source_type,
+            "source_id": n.source_id,
+            "occurrence_date": n.occurrence_date,
+        });
+        let sent = expo::dispatch_expo_data(pool, &n.user_id, &data).await;
+        log::info!("expo data push: {sent} delivered for '{}'", n.title);
     }
 }

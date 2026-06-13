@@ -8,31 +8,21 @@ import { registerRootComponent } from "expo";
 import { Platform } from "react-native";
 
 import App from "./App";
-import {
-	NOTIFICATION_SNOOZE_MINUTES,
-	scheduleSnoozeAlarm,
-} from "./src/utils/alarm";
+import { handleAlarmAction } from "./src/utils/alarm";
+// Defines the background notification task at module load so the OS can invoke
+// it headlessly when a data push arrives (server reminders → rich alarm).
+import "./src/utils/pushTask";
 
 // Notifee requires a background event handler registered at the top level (it
-// runs even when the app is killed). This is what lets the lock-screen
-// Dismiss / Snooze buttons work WITHOUT opening the app:
-//   • Dismiss → just clear the ringing notification (stops loopSound).
-//   • Snooze  → clear it and re-arm a new alarm N minutes out.
-// If the user instead taps the body / full-screen intent, the app launches and
-// App.js reads getInitialNotification() to show the in-app alarm.
+// runs even when the app is killed). This is what makes the notification's
+// Complete / Snooze / Dismiss buttons work WITHOUT opening the app:
+//   • Complete → mark the task/occurrence done via a background API call.
+//   • Snooze   → clear it and re-arm a new alarm N minutes out.
+//   • Dismiss  → just clear the ringing notification (stops loopSound).
+// Tapping the body opens the app normally.
 notifee.onBackgroundEvent(async ({ type, detail }) => {
-	const { notification, pressAction } = detail;
 	if (type !== EventType.ACTION_PRESS) return;
-
-	if (pressAction?.id === "snooze") {
-		await scheduleSnoozeAlarm({
-			title: notification?.title,
-			body: notification?.body,
-			tag: notification?.data?.tag,
-			minutes: NOTIFICATION_SNOOZE_MINUTES,
-		});
-	}
-	if (notification?.id) await notifee.cancelNotification(notification.id);
+	await handleAlarmAction(detail);
 });
 
 // Android home-screen widgets. The task handler must be registered at the entry

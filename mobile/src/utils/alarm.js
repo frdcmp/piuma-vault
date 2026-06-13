@@ -8,10 +8,16 @@ import notifee, {
 	EventType,
 	TriggerType,
 } from "@notifee/react-native";
+import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
-// Minutes the lock-screen "Snooze" button re-arms for. The in-app modal still
-// offers the full 5/10/15 choice; the notification button is a single tap.
+// Backend base — mirrors api/axiosInstance. Used by the background "Complete"
+// action, which can't go through axios/zustand (they aren't initialised when the
+// OS wakes the app headlessly to handle a notification button).
+const API_BASE =
+	process.env.EXPO_PUBLIC_API_URL || "https://vault.example.com/api/v1";
+
+// Minutes the notification "Snooze" button re-arms for (single tap).
 export const NOTIFICATION_SNOOZE_MINUTES = 10;
 
 // Dedicated high-importance channel for alarms. `loopSound` keeps the channel's
@@ -70,64 +76,101 @@ export async function requestAlarmPermissions() {
 	return granted;
 }
 
-// Build the Android payload shared by scheduled + snoozed alarms. The
-// full-screen action launches MainActivity (flagged showWhenLocked /
-// turnScreenOn) so the in-app AlarmModal can take over even from a locked
-// screen; `loopSound` + `ongoing` keep it ringing until dismissed.
-function alarmNotification({ id, title, body, tag }) {
+// Build the Android alarm-notification payload (shared by scheduled + snoozed
+// alarms). TickTick-style: a loud, persistent heads-up notification that rings
+// (`loopSound`) and can't be swiped away (`ongoing`) until an action button is
+// pressed — handled in the background/foreground event handlers so it works with
+// the app closed. NO in-app modal. `source` ({ source_type, source_id,
+// occurrence_date }) rides in `data` so "Complete" can mark the task done.
+function alarmNotification({ id, title, body, tag, source = {} }) {
+	const { source_type, source_id, occurrence_date } = source;
+	// "Complete" only makes sense for tasks / recurring-task occurrences.
+	const canComplete = source_type === "task" || source_type === "recurring";
+	const actions = [];
+	if (canComplete) {
+		actions.push({ title: "Complete", pressAction: { id: "complete" } });
+	}
+	actions.push({
+		title: `Snooze ${NOTIFICATION_SNOOZE_MINUTES}m`,
+		pressAction: { id: "snooze" },
+	});
+	actions.push({ title: "Dismiss", pressAction: { id: "dismiss" } });
+
 	return {
 		id,
 		title: title || "Reminder",
 		body: body || "",
-		data: { tag: tag || id },
+		data: {
+			tag: tag || id,
+			source_type: source_type || "",
+			source_id: source_id || "",
+			occurrence_date: occurrence_date || "",
+		},
 		android: {
 			channelId: ALARM_CHANNEL_ID,
 			category: AndroidCategory.ALARM,
 			importance: AndroidImportance.HIGH,
 			visibility: AndroidVisibility.PUBLIC,
-			fullScreenAction: { id: "default" },
+			// Tap the body to open the app; action buttons handle complete/snooze/
+			// dismiss without opening it.
 			pressAction: { id: "default" },
 			loopSound: true,
 			ongoing: true,
 			autoCancel: false,
-			// Lock-screen buttons so the alarm can be handled WITHOUT opening the
-			// app. Resolved in the background event handler (index.js).
-			actions: [
-				{ title: "Dismiss", pressAction: { id: "dismiss" } },
-				{
-					title: `Snooze ${NOTIFICATION_SNOOZE_MINUTES}m`,
-					pressAction: { id: "snooze" },
-				},
-			],
+			actions,
 		},
 	};
 }
 
 // Schedule one alarm to fire at `date`. `id` is stable per reminder so a
 // reschedule overwrites rather than duplicates. Returns the created id.
-export async function scheduleAlarm({ id, title, body, tag, date }) {
+export async function scheduleAlarm({ id, title, body, tag, date, source }) {
 	await ensureAlarmChannel();
-	await notifee.createTriggerNotification(alarmNotification({ id, title, body, tag }), {
-		type: TriggerType.TIMESTAMP,
-		timestamp: date.getTime(),
-		// setAlarmClock(): Doze-exempt, fires exactly even with the app closed.
-		alarmManager: { type: AlarmType.SET_ALARM_CLOCK },
-	});
+	await notifee.createTriggerNotification(
+		alarmNotification({ id, title, body, tag, source }),
+		{
+			type: TriggerType.TIMESTAMP,
+			timestamp: date.getTime(),
+			// setAlarmClock(): Doze-exempt, fires exactly even with the app closed.
+			alarmManager: { type: AlarmType.SET_ALARM_CLOCK },
+		},
+	);
 	return id;
 }
 
-// Fire an alarm `minutes` from now (used by the in-app Snooze).
-export async function scheduleSnoozeAlarm({ title, body, tag, minutes }) {
+// Fire an alarm `minutes` from now (the Snooze button). Carries the source
+// through so the re-armed alarm keeps its Complete button.
+export async function scheduleSnoozeAlarm({
+	title,
+	body,
+	tag,
+	minutes,
+	source,
+}) {
 	await ensureAlarmChannel();
 	const id = `${tag || "snooze"}:snooze:${minutes}`;
 	await notifee.createTriggerNotification(
-		alarmNotification({ id, title, body, tag }),
+		alarmNotification({ id, title, body, tag, source }),
 		{
 			type: TriggerType.TIMESTAMP,
 			timestamp: Date.now() + minutes * 60 * 1000,
 			// setAlarmClock(): Doze-exempt, fires exactly even with the app closed.
 			alarmManager: { type: AlarmType.SET_ALARM_CLOCK },
 		},
+	);
+	return id;
+}
+
+// Display an alarm RIGHT NOW (not scheduled) — used by the background push task
+// when a data push arrives: the server-pushed reminder becomes the same rich,
+// loud notification with Complete/Snooze/Dismiss as a locally-scheduled one. The
+// id is derived from the tag so repeated deliveries of the same alert collapse
+// (and overlap a local-scheduled one rather than double).
+export async function displayAlarmNow({ title, body, tag, source }) {
+	await ensureAlarmChannel();
+	const id = tag || `alarm:${Date.now()}`;
+	await notifee.displayNotification(
+		alarmNotification({ id, title, body, tag, source }),
 	);
 	return id;
 }
@@ -145,21 +188,67 @@ export async function cancelAllAlarms() {
 // stops loopSound) so the in-app modal owns the audio from here.
 export async function stopRingingNotification(notificationId) {
 	try {
-		if (notificationId) await notifee.cancelDisplayedNotification(notificationId);
+		if (notificationId)
+			await notifee.cancelDisplayedNotification(notificationId);
 		else await notifee.cancelDisplayedNotifications();
 	} catch (_e) {
 		/* best-effort */
 	}
 }
 
-// Map a Notifee event's notification into the alarm-store payload shape.
-export function alarmFromNotifee(notification) {
-	return {
-		tag: notification?.data?.tag || notification?.id,
-		title: notification?.title || "Reminder",
-		body: notification?.body || "",
-		notificationId: notification?.id,
-	};
+// Handle a notification action-button press (Complete / Snooze / Dismiss) from
+// either the background (index.js) or foreground (App.js) Notifee event handler.
+// Works with the app closed — no in-app modal involved.
+export async function handleAlarmAction({ notification, pressAction }) {
+	const id = pressAction?.id;
+	const data = notification?.data || {};
+	if (id === "snooze") {
+		await scheduleSnoozeAlarm({
+			title: notification?.title,
+			body: notification?.body,
+			tag: data.tag,
+			minutes: NOTIFICATION_SNOOZE_MINUTES,
+			source: {
+				source_type: data.source_type,
+				source_id: data.source_id,
+				occurrence_date: data.occurrence_date,
+			},
+		});
+	} else if (id === "complete") {
+		await completeReminder(data);
+	}
+	// Snooze / Complete / Dismiss all clear the ringing notification.
+	if (notification?.id) await notifee.cancelNotification(notification.id);
+}
+
+// Mark the task / recurring-occurrence behind an alarm done, straight from the
+// notification button. Raw fetch + token from SecureStore because axios/zustand
+// aren't initialised when the OS wakes the app headlessly. Best-effort.
+async function completeReminder(data) {
+	try {
+		const sourceType = data?.source_type;
+		const sourceId = data?.source_id;
+		if (!sourceType || !sourceId) return;
+		const token =
+			Platform.OS === "web" ? null : await SecureStore.getItemAsync("token");
+		const headers = {
+			"Content-Type": "application/json",
+			...(token ? { Authorization: `Bearer ${token}` } : {}),
+		};
+		let url;
+		let body;
+		if (sourceType === "task") {
+			url = `${API_BASE}/admin/tasks/${sourceId}/toggle`;
+		} else if (sourceType === "recurring" && data?.occurrence_date) {
+			url = `${API_BASE}/admin/recurring-tasks/${sourceId}/occurrences/${data.occurrence_date}/complete`;
+			body = JSON.stringify({ done: true });
+		} else {
+			return;
+		}
+		await fetch(url, { method: "PUT", headers, body });
+	} catch (_e) {
+		// Best-effort: the alarm is cleared regardless so it won't keep ringing.
+	}
 }
 
 export { EventType };
