@@ -102,6 +102,36 @@ services:
     networks:
       - network
 
+  cron-worker:
+    container_name: ${COMPOSE_NAME}-cron-worker
+    build: ./rust
+    restart: unless-stopped
+    profiles: ["server-stack"]
+    command: ["cargo", "watch", "-x", "run --bin cron-worker"]
+    # Reach host-run local LLM providers (Ollama / LM Studio) the same way the
+    # backend does — the provider adapter rewrites localhost → host gateway.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./rust:/app
+    environment:
+      - RUST_LOG=${RUST_LOG}
+      - DB_HOST=${DB_HOST}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_PORT=${DB_PORT}
+      # Email (send_email tool) + Web Push (VAPID) for completion notifications.
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
+      - VAPID_PRIVATE_KEY_PATH=${VAPID_PRIVATE_KEY_PATH:-}
+    networks:
+      - network
+
   embedding-worker:
     container_name: ${COMPOSE_NAME}-embedding-worker
     build: ./rust

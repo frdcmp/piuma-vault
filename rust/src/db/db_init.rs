@@ -833,6 +833,84 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_recording_sessions_user ON db_recording_sessions USING btree (user_id, created_at DESC)",
         ],
     },
+    // Scheduled autonomous agent jobs. Recurrence reuses RRULE (expanded by
+    // apps::agenda::recurrence) + `dtstart` for the time-of-day, exactly like
+    // calendar/tasks — no cron crate. The cron-worker polls `next_run_at`.
+    TableDefinition {
+        name: "db_cron_jobs",
+        sql: r#"
+            CREATE TABLE db_cron_jobs (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL REFERENCES db_users(id) ON DELETE CASCADE,
+                title TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                agent TEXT NOT NULL DEFAULT 'vault_agent',
+                conversation_id UUID REFERENCES db_chat_conversations(id) ON DELETE SET NULL,
+                schedule_kind TEXT NOT NULL DEFAULT 'recurring'
+                    CHECK (schedule_kind IN ('recurring', 'once')),
+                rrule TEXT,
+                dtstart TIMESTAMPTZ,
+                run_at TIMESTAMPTZ,
+                timezone TEXT NOT NULL DEFAULT 'Europe/Rome',
+                next_run_at TIMESTAMPTZ,
+                last_run_at TIMESTAMPTZ,
+                notify BOOLEAN NOT NULL DEFAULT TRUE,
+                notify_channels TEXT[] NOT NULL DEFAULT '{web,push}',
+                allow_destructive BOOLEAN NOT NULL DEFAULT FALSE,
+                enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                max_runtime_secs INTEGER NOT NULL DEFAULT 180,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_cron_jobs_due ON db_cron_jobs USING btree (next_run_at) WHERE enabled = TRUE",
+            "CREATE INDEX IF NOT EXISTS idx_cron_jobs_user ON db_cron_jobs USING btree (user_id, created_at DESC)",
+        ],
+    },
+    // Execution history / audit for cron jobs. A 'running' row is the lock that
+    // prevents a second worker (or a double-fire) from re-executing a job.
+    TableDefinition {
+        name: "db_cron_runs",
+        sql: r#"
+            CREATE TABLE db_cron_runs (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                job_id UUID NOT NULL REFERENCES db_cron_jobs(id) ON DELETE CASCADE,
+                started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                finished_at TIMESTAMPTZ,
+                status TEXT NOT NULL DEFAULT 'running'
+                    CHECK (status IN ('running', 'success', 'error', 'timeout', 'skipped')),
+                summary TEXT,
+                message_id UUID,
+                tools_used JSONB NOT NULL DEFAULT '[]',
+                error TEXT,
+                tokens_in INTEGER,
+                tokens_out INTEGER
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_cron_runs_job ON db_cron_runs USING btree (job_id, started_at DESC)",
+        ],
+    },
+    // Audit log + rate-limit source for the agent `send_email` tool. Every send
+    // (incl. scheduled/cron sends) writes a row; the tool refuses once the 24h
+    // count exceeds its cap.
+    TableDefinition {
+        name: "db_email_log",
+        sql: r#"
+            CREATE TABLE db_email_log (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL REFERENCES db_users(id) ON DELETE CASCADE,
+                to_addr TEXT NOT NULL,
+                subject TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT 'agent',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_email_log_user_time ON db_email_log USING btree (user_id, created_at DESC)",
+        ],
+    },
 ];
 
 pub async fn init_db(pool: &DbPool) -> Result<InitResult, sqlx::Error> {

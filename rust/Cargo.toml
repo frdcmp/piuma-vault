@@ -16,6 +16,10 @@ path = "src/bin/embedding-worker.rs"
 name = "notification-worker"
 path = "src/bin/notification-worker.rs"
 
+[[bin]]
+name = "cron-worker"
+path = "src/bin/cron-worker.rs"
+
 [dependencies]
 actix-web = "4.3"
 actix-cors = "0.7"

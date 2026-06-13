@@ -14,6 +14,7 @@ export {
 	useVerifyEmail,
 } from "./authQuery";
 export * from "./calendarQuery";
+export * from "./cronQuery";
 export * from "./dbDumpQuery";
 export * from "./folderSharesQuery";
 export * from "./healthQuery";

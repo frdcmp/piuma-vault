@@ -13,6 +13,7 @@ import ForgotPassword from "./admin/pages/auth/forgotPassword";
 import Login from "./admin/pages/auth/login";
 import VerifyEmail from "./admin/pages/auth/verifyEmail";
 import CalendarPage from "./admin/pages/calendar/CalendarPage";
+import CronPage from "./admin/pages/cron/CronPage";
 import DbDump from "./admin/pages/dbDump";
 import Files from "./admin/pages/files";
 import Health from "./admin/pages/health";
@@ -186,6 +187,7 @@ function AppContent() {
 					<Route path="profile" element={<Profile />} />
 					<Route path="security" element={<Security />} />
 					<Route path="services" element={<Services />} />
+					<Route path="cron" element={<CronPage />} />
 					<Route path="token-usage" element={<TokenUsage />} />
 					<Route path="shares" element={<SharesPage />} />
 					<Route path="trash" element={<TrashPage />} />

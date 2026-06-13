@@ -17,6 +17,7 @@ mod agenda;
 mod buckets;
 mod calendar;
 pub mod conversations;
+mod email;
 pub mod github;
 mod navigation;
 pub mod memory;
@@ -42,6 +43,7 @@ fn all_defs() -> Vec<(&'static str, &'static str, Value)> {
     defs.extend(memory::defs());
     defs.extend(conversations::defs());
     defs.extend(web::defs());
+    defs.extend(email::defs());
     defs.extend(github::defs());
     defs.extend(navigation::defs());
     defs.extend(recordings::defs());
@@ -146,6 +148,7 @@ pub async fn dispatch(
         // ── Web ──
         "web_search" => web::web_search(pool, args).await,
         "web_fetch" => web::web_fetch(args).await,
+        "send_email" => email::send_email(pool, user_id, args).await,
         // ── GitHub (token from admin → Services) ──
         "github_list_repos" => github::list_repos(pool, args).await,
         "github_search_repos" => github::search_repos(pool, args).await,

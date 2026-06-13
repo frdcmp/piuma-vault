@@ -11,6 +11,7 @@ pub mod models;
 pub mod providers;
 pub mod registry;
 pub mod routes;
+pub mod runner;
 pub mod seed;
 pub mod title;
 pub mod tools;

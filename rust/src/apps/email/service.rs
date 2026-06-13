@@ -1,5 +1,6 @@
 use lettre::{
     message::header::ContentType,
+    message::Mailbox,
     transport::smtp::authentication::Credentials,
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
@@ -28,6 +29,34 @@ async fn build_transport(host: &str, port: u16, user: String, password: String)
         .credentials(creds)
         .build();
     Ok(transport)
+}
+
+/// Generic plain-text email send, used by the agent `send_email` tool. `bcc` is
+/// blind-copied (the cron flow BCCs the vault owner for an audit trail).
+pub async fn send(to_email: &str, subject: &str, body: &str, bcc: Option<&str>) -> Result<(), String> {
+    let (host, port, user, password) = smtp_config()?;
+    let from: Mailbox = user
+        .parse()
+        .map_err(|e: lettre::address::AddressError| format!("Invalid FROM address: {e}"))?;
+    let to: Mailbox = to_email
+        .parse()
+        .map_err(|e: lettre::address::AddressError| format!("Invalid TO address: {e}"))?;
+
+    let mut builder = Message::builder().from(from).to(to).subject(subject);
+    if let Some(b) = bcc.filter(|s| !s.trim().is_empty() && *s != to_email) {
+        let bcc_box: Mailbox = b
+            .parse()
+            .map_err(|e: lettre::address::AddressError| format!("Invalid BCC address: {e}"))?;
+        builder = builder.bcc(bcc_box);
+    }
+    let email = builder
+        .header(ContentType::TEXT_PLAIN)
+        .body(body.to_string())
+        .map_err(|e| format!("Email build error: {e}"))?;
+
+    let transport = build_transport(&host, port, user, password).await?;
+    transport.send(email).await.map_err(|e| format!("SMTP send error: {e}"))?;
+    Ok(())
 }
 
 pub async fn send_verification_email(to_email: &str, token: &str, frontend_base_url: &str) -> Result<(), String> {
