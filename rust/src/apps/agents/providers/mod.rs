@@ -18,6 +18,16 @@ use serde_json::{json, Value};
 
 pub type SseSender = UnboundedSender<Result<Bytes, actix_web::Error>>;
 
+/// Inside the Docker backend, `localhost`/`127.0.0.1` in a provider base URL
+/// means the container itself — not the host where LM Studio / Ollama run. We
+/// rewrite those to the docker host gateway so a user can enter the intuitive
+/// `localhost` URL. `host.docker.internal` is provided by docker-compose
+/// `extra_hosts`. No-op for any non-local URL (cloud providers never use it).
+pub(crate) fn reach_host(url: &str) -> String {
+    url.replace("://localhost", "://host.docker.internal")
+        .replace("://127.0.0.1", "://host.docker.internal")
+}
+
 #[derive(Debug, Clone)]
 pub struct ToolCall {
     pub id: String,
@@ -41,9 +51,14 @@ pub struct CallResult {
     pub tokens_cache_write: i32,
 }
 
-/// Whether the chat loop can drive this provider kind.
+/// Whether the chat loop can drive this provider kind. `lmstudio` and `ollama`
+/// are local OpenAI-compatible runtimes — they ride the `openai` adapter, just
+/// with a user-supplied `base_url`.
 pub fn supported(kind: &str) -> bool {
-    matches!(kind, "deepseek" | "openai" | "minimax" | "anthropic" | "gemini")
+    matches!(
+        kind,
+        "deepseek" | "openai" | "minimax" | "anthropic" | "gemini" | "lmstudio" | "ollama"
+    )
 }
 
 /// One non-streaming completion (utility calls: titles, dialectic, NLI).
@@ -56,7 +71,9 @@ pub async fn complete(
     max_tokens: u32,
 ) -> Result<String, String> {
     match kind {
-        "openai" => openai::complete(api_key, base_url, model, messages, max_tokens).await,
+        "openai" | "lmstudio" | "ollama" => {
+            openai::complete(api_key, base_url, model, messages, max_tokens).await
+        }
         "minimax" => minimax::complete(api_key, base_url, model, messages, max_tokens).await,
         "anthropic" => anthropic::complete(api_key, base_url, model, messages, max_tokens).await,
         "gemini" => gemini::complete(api_key, base_url, model, messages, max_tokens).await,
@@ -77,7 +94,9 @@ pub async fn complete_usage(
     max_tokens: u32,
 ) -> Result<(String, i32, i32), String> {
     match kind {
-        "openai" => openai::complete_usage(api_key, base_url, model, messages, max_tokens).await,
+        "openai" | "lmstudio" | "ollama" => {
+            openai::complete_usage(api_key, base_url, model, messages, max_tokens).await
+        }
         "minimax" => minimax::complete_usage(api_key, base_url, model, messages, max_tokens).await,
         "anthropic" | "gemini" => {
             let text = complete(kind, api_key, base_url, model, messages, max_tokens).await?;
@@ -154,7 +173,9 @@ pub async fn call(
     tx: &SseSender,
 ) -> Result<CallResult, String> {
     match kind {
-        "openai" => openai::call(api_key, base_url, model, messages, tools, tx).await,
+        "openai" | "lmstudio" | "ollama" => {
+            openai::call(api_key, base_url, model, messages, tools, tx).await
+        }
         "minimax" => minimax::call(api_key, base_url, model, messages, tools, tx).await,
         "anthropic" => anthropic::call(api_key, base_url, model, messages, tools, tx).await,
         "gemini" => gemini::call(api_key, base_url, model, messages, tools, tx).await,

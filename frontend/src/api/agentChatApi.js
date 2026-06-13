@@ -31,6 +31,13 @@ export const fetchModels = async (providerId) =>
 export const fetchAvailableModels = async (providerId) =>
 	(await axiosInstance.get(`/agents/providers/${providerId}/available-models`))
 		.data;
+// Best-effort per-model capabilities (Ollama only) — { context_window, supports_vision }.
+export const fetchModelMeta = async (providerId, modelId) =>
+	(
+		await axiosInstance.get(`/agents/providers/${providerId}/model-meta`, {
+			params: { model_id: modelId },
+		})
+	).data;
 export const createModel = async ({ providerId, ...payload }) =>
 	(await axiosInstance.post(`/agents/providers/${providerId}/models`, payload))
 		.data;
