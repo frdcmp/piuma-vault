@@ -141,14 +141,44 @@ pub async fn list_tasks(
     }
     if query.bucket.is_some() {
         clauses.push(format!("bucket_id = ${idx}"));
+        idx += 1;
+    }
+    // The "no bucket" view (no placeholder needed).
+    if query.no_bucket == Some(true) {
+        clauses.push("bucket_id IS NULL".to_string());
+    }
+    // Restrict to one-off (recurring=false) or materialized recurring-occurrence
+    // (recurring=true) rows. Absent => both.
+    match query.recurring {
+        Some(true) => clauses.push("recurrence_id IS NOT NULL".to_string()),
+        Some(false) => clauses.push("recurrence_id IS NULL".to_string()),
+        None => {}
     }
 
-    // Manual order is authoritative: pending before done, then by the
-    // fractional-index `rank` (NULLS LAST so legacy/unranked rows trail), with
-    // created_at as a stable final tiebreaker for equal/absent ranks.
+    // A done-only listing is a completion *history*: most-recently-finished
+    // first. Any other listing keeps the manual order (pending before done, then
+    // by the fractional-index `rank`, NULLS LAST so unranked rows trail, with
+    // created_at as a stable final tiebreaker).
+    let order_by = if query.done == Some(true) {
+        "completed_at DESC NULLS LAST, created_at DESC"
+    } else {
+        "done ASC, rank ASC NULLS LAST, created_at ASC"
+    };
+
+    // Optional pagination (`limit`/`offset`) — used by the mobile completed-task
+    // history, which pages instead of loading every done task at once. Absent =>
+    // return the full set (the default for the web client). LIMIT is clamped so a
+    // bad client can't request an unbounded page.
+    let mut tail = String::new();
+    if query.limit.is_some() {
+        tail.push_str(&format!(" LIMIT ${idx}"));
+        idx += 1;
+        tail.push_str(&format!(" OFFSET ${idx}"));
+    }
+    let _ = idx; // last placeholder index consumed; keeps the bucket bump honest
+
     let sql = format!(
-        "SELECT {TASK_FIELDS} FROM db_tasks WHERE {} \
-         ORDER BY done ASC, rank ASC NULLS LAST, created_at ASC",
+        "SELECT {TASK_FIELDS} FROM db_tasks WHERE {} ORDER BY {order_by}{tail}",
         clauses.join(" AND ")
     );
 
@@ -167,6 +197,10 @@ pub async fn list_tasks(
     }
     if let Some(bucket) = query.bucket {
         q = q.bind(bucket);
+    }
+    if let Some(limit) = query.limit {
+        q = q.bind(limit.clamp(1, 200));
+        q = q.bind(query.offset.unwrap_or(0).max(0));
     }
 
     match q.fetch_all(pool.get_ref()).await {

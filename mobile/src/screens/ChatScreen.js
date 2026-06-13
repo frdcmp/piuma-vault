@@ -4,6 +4,7 @@ import { useNavigation } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+	ActivityIndicator,
 	Animated,
 	Image,
 	Keyboard,
@@ -544,6 +545,9 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		[navigation],
 	);
 	const [messages, setMessages] = useState([]);
+	// True from tapping send until the stream actually starts — covers the
+	// create-conversation + first-request gap so the send button shows a loader.
+	const [sending, setSending] = useState(false);
 	const [input, setInput] = useState("");
 	const [inputHeight, setInputHeight] = useState(INPUT_MIN_H);
 	// Composer height — measured so the floating picker (slash list / sessions /
@@ -1118,6 +1122,8 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			(p) => p.status === "ready" && p.url,
 		);
 		if (!text && !readyImages.length) return;
+		// Ignore taps during the brief setup gap (button already shows a loader).
+		if (sending) return;
 
 		// While a turn is streaming, a send INJECTS into it instead of starting a
 		// new turn; the running turn picks it up at the next round boundary.
@@ -1147,36 +1153,6 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			return;
 		}
 
-		// Ensure a conversation exists (create with the default agent on first send).
-		let convId = conversationId;
-		if (!convId) {
-			try {
-				const conv = await createConversation({
-					agent: agentKind,
-					...(modelId ? { model_id: modelId } : {}),
-				});
-				convId = conv.id;
-				setConversationId(conv.id);
-				await AsyncStorage.setItem(CONV_STORAGE_KEY, conv.id);
-			} catch {
-				setMessages((c) => [
-					...c,
-					{
-						id: newMessageId(),
-						role: "assistant",
-						parts: [
-							{
-								kind: "text",
-								id: "p0",
-								text: "**Error:** failed to start conversation",
-							},
-						],
-					},
-				]);
-				return;
-			}
-		}
-
 		const context = contextAttached && notePath ? [notePath] : [];
 		const contextNoteIds = contextAttached && noteId ? [noteId] : [];
 		const userMsg = {
@@ -1198,12 +1174,49 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			role: "assistant",
 			parts: [],
 		};
+		// Show the message + an empty assistant bubble IMMEDIATELY, and put the
+		// send button into a loading state — so there's instant feedback during the
+		// create-conversation + first-request gap (don't wait on the network).
 		setMessages((curr) => [...curr, userMsg, assistantMsg]);
 		setInput("");
 		setInputHeight(INPUT_MIN_H);
 		setPendingImages([]);
+		setSending(true);
+		scrollToBottom(true);
+
+		// Ensure a conversation exists (create with the default agent on first send).
+		let convId = conversationId;
+		if (!convId) {
+			try {
+				const conv = await createConversation({
+					agent: agentKind,
+					...(modelId ? { model_id: modelId } : {}),
+				});
+				convId = conv.id;
+				setConversationId(conv.id);
+				await AsyncStorage.setItem(CONV_STORAGE_KEY, conv.id);
+			} catch {
+				// Surface the failure in the assistant bubble we already showed.
+				setMessages((curr) => {
+					const updated = [...curr];
+					const last = updated[updated.length - 1];
+					updated[updated.length - 1] = {
+						...last,
+						parts: appendTextPart(
+							last.parts,
+							"**Error:** failed to start conversation",
+						),
+					};
+					return updated;
+				});
+				setSending(false);
+				return;
+			}
+		}
+
 		setIsStreaming(true);
-		// Sending re-arms the stick-to-bottom lock so the new turn scrolls into view.
+		setSending(false);
+		// Re-arm the stick-to-bottom lock so the new turn scrolls into view.
 		scrollToBottom(true);
 
 		const controller = new AbortController();
@@ -1285,6 +1298,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			});
 		} finally {
 			setIsStreaming(false);
+			setSending(false);
 			abortRef.current = null;
 		}
 	}, [
@@ -1299,6 +1313,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		modelId,
 		pendingImages,
 		recoverTurn,
+		sending,
 	]);
 
 	// Composer button is state-driven: STOP while streaming with an empty box,
@@ -1583,7 +1598,17 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 								</Text>
 								<Ionicons name="chevron-down" size={13} color={colors.muted} />
 							</Pressable>
-							{showStop ? (
+							{sending ? (
+								<View
+									style={[styles.sendBtn, styles.sendBtnDisabled]}
+									accessibilityLabel="Sending…"
+								>
+									<Text style={[styles.sendLabel, styles.sendLabelDisabled]}>
+										{SUBMIT_LABEL}
+									</Text>
+									<ActivityIndicator size="small" color={colors.accent2} />
+								</View>
+							) : showStop ? (
 								<Pressable
 									onPress={stopStreaming}
 									style={({ pressed }) => [

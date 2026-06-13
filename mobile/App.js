@@ -84,6 +84,12 @@ export default function App() {
 	useEffect(() => {
 		// Action-button presses while the app is foreground.
 		const unsub = notifee.onForegroundEvent(({ type, detail }) => {
+			console.log(
+				"[alarm] fg event type:",
+				type,
+				"action:",
+				detail?.pressAction?.id,
+			);
 			if (type === EventType.ACTION_PRESS) handleAlarmAction(detail);
 		});
 		// Server data pushes received while foreground → display the rich alarm

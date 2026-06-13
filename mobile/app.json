@@ -2,7 +2,7 @@
   "expo": {
     "name": "pv vault",
     "slug": "pv",
-    "version": "1.0.19",
+    "version": "1.0.23",
     "scheme": "piumavault",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

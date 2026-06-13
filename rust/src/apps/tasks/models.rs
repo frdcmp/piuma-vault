@@ -89,6 +89,17 @@ pub struct ListTasksQuery {
     pub tag: Option<String>,
     // Filter to tasks belonging to this bucket (db_tasks.bucket_id).
     pub bucket: Option<uuid::Uuid>,
+    // Filter to tasks with no bucket (bucket_id IS NULL). Mutually exclusive with
+    // `bucket` in practice.
+    pub no_bucket: Option<bool>,
+    // `false` => one-off tasks only (recurrence_id IS NULL); `true` => only
+    // materialized recurring occurrences. Absent => both.
+    pub recurring: Option<bool>,
+    // Pagination (used by the mobile completed-task history). When `limit` is
+    // set the result is a single page ordered per the handler; absent => the
+    // full set. `limit` is clamped to [1, 200] server-side.
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 // ── Recurring-task template DB Model ──

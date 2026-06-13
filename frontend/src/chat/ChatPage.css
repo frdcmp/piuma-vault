@@ -788,6 +788,19 @@ button.chat-context-tag-main {
 	}
 }
 
+/* Inline spinner on the send button during the create/first-request gap. */
+.chat-send-spinner {
+	display: inline-block;
+	width: 11px;
+	height: 11px;
+	margin-right: 6px;
+	vertical-align: -1px;
+	border: 2px solid var(--border-strong);
+	border-top-color: var(--accent-2);
+	border-radius: 50%;
+	animation: chat-image-spin 0.7s linear infinite;
+}
+
 /* Sent images inside a user bubble — thumbnail grid, click to open full size. */
 .chat-user-images {
 	display: flex;

@@ -190,7 +190,10 @@ pub async fn list_models(
 
 /// Live model catalog from the provider's own API — powers the wire-id
 /// suggestions in the admin UI. Best-effort: a bad key or unreachable provider
-/// surfaces as a 502 with the upstream message.
+/// surfaces as 424 Failed Dependency with the upstream message. (Deliberately
+/// not a 5xx: Cloudflare replaces origin 5xx with its own error page, which
+/// would swallow the real "connection refused / bad key" detail before it
+/// reaches the admin UI.)
 pub async fn list_available_models(
     _user: AuthenticatedUser,
     pool: web::Data<DbPool>,
@@ -216,7 +219,7 @@ pub async fn list_available_models(
     .await
     {
         Ok(models) => HttpResponse::Ok().json(json!({ "models": models })),
-        Err(e) => HttpResponse::BadGateway().json(ApiError::new(e)),
+        Err(e) => HttpResponse::FailedDependency().json(ApiError::new(e)),
     }
 }
 

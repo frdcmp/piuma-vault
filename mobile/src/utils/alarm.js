@@ -1,6 +1,7 @@
 import notifee, {
 	AlarmType,
 	AndroidCategory,
+	AndroidForegroundServiceType,
 	AndroidImportance,
 	AndroidNotificationSetting,
 	AndroidVisibility,
@@ -20,21 +21,35 @@ const API_BASE =
 // Minutes the notification "Snooze" button re-arms for (single tap).
 export const NOTIFICATION_SNOOZE_MINUTES = 10;
 
-// Dedicated high-importance channel for alarms. `loopSound` keeps the channel's
-// sound ringing until the user interacts, and the full-screen intent (set per
-// notification) wakes the screen / launches the app over the lock screen.
-export const ALARM_CHANNEL_ID = "alarm";
+// How long the alarm rings before auto-stopping if the user never acts. The
+// foreground-service runner resolves after this, which stops the looping sound.
+export const ALARM_RING_MS = 55_000;
+
+// Dedicated high-importance channel for alarms. The channel carries the SOUND
+// (`loopSound` on the notification loops the channel's sound until the user acts);
+// without a channel sound the alarm is silent. Android channels are IMMUTABLE
+// once created, so the `_v2` suffix forces a fresh channel with sound on devices
+// that already have the old (soundless) "alarm" channel from earlier builds.
+export const ALARM_CHANNEL_ID = "alarm_v2";
 
 let channelReady = false;
 let alarmSettingsPrompted = false;
 
 export async function ensureAlarmChannel() {
 	if (Platform.OS !== "android" || channelReady) return;
+	// Drop the legacy soundless channel so it doesn't linger in app settings.
+	try {
+		await notifee.deleteChannel("alarm");
+	} catch (_e) {
+		/* best-effort */
+	}
 	await notifee.createChannel({
 		id: ALARM_CHANNEL_ID,
 		name: "Alarms",
 		importance: AndroidImportance.HIGH,
 		visibility: AndroidVisibility.PUBLIC,
+		// The default notification sound, looped by `loopSound` for an alarm feel.
+		sound: "default",
 		vibration: true,
 		// Notifee requires an even number of POSITIVE values: [vibrate, pause, …]
 		// (no leading 0 like Android's native / expo-notifications convention).
@@ -111,6 +126,16 @@ function alarmNotification({ id, title, body, tag, source = {} }) {
 			category: AndroidCategory.ALARM,
 			importance: AndroidImportance.HIGH,
 			visibility: AndroidVisibility.PUBLIC,
+			// Run as a foreground service — REQUIRED for `loopSound` to actually
+			// loop (otherwise the channel sound plays once and stops). The service
+			// runner (index.js) keeps it ringing until an action is pressed or the
+			// auto-stop timeout. MEDIA_PLAYBACK is a grantable FGS type that won't
+			// throw on Android 14+ (declared on Notifee's service via the config
+			// plugin). The runner resolves after ALARM_RING_MS to auto-stop.
+			asForegroundService: true,
+			foregroundServiceTypes: [
+				AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+			],
 			// Tap the body to open the app; action buttons handle complete/snooze/
 			// dismiss without opening it.
 			pressAction: { id: "default" },
@@ -202,6 +227,21 @@ export async function stopRingingNotification(notificationId) {
 export async function handleAlarmAction({ notification, pressAction }) {
 	const id = pressAction?.id;
 	const data = notification?.data || {};
+	console.log("[alarm] handleAlarmAction:", id, "notifId:", notification?.id);
+
+	// Stop the ring + clear the notification FIRST, so every button responds
+	// INSTANTLY regardless of slower follow-up work. (Complete does a network call
+	// — doing it first left the alarm ringing and the cleanup got dropped when the
+	// headless task ended.)
+	try {
+		await notifee.stopForegroundService();
+		console.log("[alarm] stopForegroundService ok");
+	} catch (e) {
+		console.log("[alarm] stopForegroundService err:", e?.message);
+	}
+	if (notification?.id) await notifee.cancelNotification(notification.id);
+
+	// Then the side effect.
 	if (id === "snooze") {
 		await scheduleSnoozeAlarm({
 			title: notification?.title,
@@ -217,8 +257,7 @@ export async function handleAlarmAction({ notification, pressAction }) {
 	} else if (id === "complete") {
 		await completeReminder(data);
 	}
-	// Snooze / Complete / Dismiss all clear the ringing notification.
-	if (notification?.id) await notifee.cancelNotification(notification.id);
+	console.log("[alarm] handleAlarmAction done:", id);
 }
 
 // Mark the task / recurring-occurrence behind an alarm done, straight from the
@@ -245,9 +284,18 @@ async function completeReminder(data) {
 		} else {
 			return;
 		}
-		await fetch(url, { method: "PUT", headers, body });
-	} catch (_e) {
+		console.log(
+			"[alarm] complete:",
+			sourceType,
+			sourceId,
+			"hasToken:",
+			!!token,
+		);
+		const res = await fetch(url, { method: "PUT", headers, body });
+		console.log("[alarm] complete status:", res.status);
+	} catch (e) {
 		// Best-effort: the alarm is cleared regardless so it won't keep ringing.
+		console.log("[alarm] complete error:", e?.message);
 	}
 }
 

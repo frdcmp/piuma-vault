@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	useInfiniteQuery,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import {
 	completeOccurrence,
 	createRecurringTask,
@@ -16,8 +21,13 @@ import { useResourceLiveUpdates } from "./liveUpdates";
 export const taskKeys = {
 	all: ["tasks"],
 	list: (filter) => ["tasks", "list", filter ?? {}],
+	done: (filter) => ["tasks", "done", filter ?? {}],
 	recurring: () => ["tasks", "recurring"],
 };
+
+// Completed tasks are paged from the server rather than loaded all at once — a
+// long history would otherwise bloat every list fetch and render.
+export const DONE_PAGE_SIZE = 20;
 
 const invalidateAll = (qc) => qc.invalidateQueries({ queryKey: taskKeys.all });
 
@@ -28,6 +38,31 @@ export const useTasks = (filter = {}, options = {}) =>
 		queryKey: taskKeys.list(filter),
 		queryFn: () => fetchTasks(filter),
 		keepPreviousData: true,
+		staleTime: 30_000,
+		...options,
+	});
+
+// Completed-task history, paged. `filter` carries the active bucket/tag scope
+// (bucket / no_bucket / tag); `recurring: false` keeps it to one-off tasks, to
+// match the to-do list. The query key sits under ["tasks", …] so task mutations
+// and the live-update stream invalidate it like every other tasks query.
+export const useDoneTasks = (filter = {}, options = {}) =>
+	useInfiniteQuery({
+		queryKey: taskKeys.done(filter),
+		queryFn: ({ pageParam = 0 }) =>
+			fetchTasks({
+				...filter,
+				done: true,
+				recurring: false,
+				limit: DONE_PAGE_SIZE,
+				offset: pageParam,
+			}),
+		initialPageParam: 0,
+		// A short page (fewer rows than asked) means the end of the history.
+		getNextPageParam: (lastPage, allPages) =>
+			lastPage.length < DONE_PAGE_SIZE
+				? undefined
+				: allPages.length * DONE_PAGE_SIZE,
 		staleTime: 30_000,
 		...options,
 	});

@@ -30,6 +30,7 @@ import {
 	useCreateTask,
 	useDeleteRecurringTask,
 	useDeleteTask,
+	useDoneTasks,
 	useRecurringTasks,
 	useTasks,
 	useTasksLiveUpdates,
@@ -83,7 +84,12 @@ export default function TasksScreen({ navigation, route }) {
 	const insets = useSafeAreaInsets();
 	useTasksLiveUpdates(); // refetch when tasks change on another device
 	useTagsLiveUpdates("tasks"); // keep buckets + tags fresh
-	const { data: tasks = [], isLoading: tasksLoading } = useTasks();
+	// Only the to-do tasks are loaded in full (bounded, and they drive the
+	// drag-order + bucket/tag counts). Completed tasks are paged separately
+	// (`useDoneTasks` below) so a long history never loads at once.
+	const { data: tasks = [], isLoading: tasksLoading } = useTasks({
+		done: false,
+	});
 	const { data: recurring = [], isLoading: recurringLoading } =
 		useRecurringTasks();
 	const { data: buckets = [] } = useBuckets();
@@ -170,7 +176,6 @@ export default function TasksScreen({ navigation, route }) {
 	// the user's in-progress drag so a reorder doesn't snap back while the rank
 	// PUT round-trips.
 	const serverPending = visible.filter((t) => !t.done);
-	const done = visible.filter((t) => t.done);
 
 	const byId = new Map(serverPending.map((t) => [t.id, t]));
 	const [pending, setPending] = useState([]);
@@ -182,6 +187,29 @@ export default function TasksScreen({ navigation, route }) {
 	useEffect(() => {
 		setPending(serverPending);
 	}, [setSig]);
+
+	// Completed tasks, paged from the server. The query is scoped to the active
+	// bucket/tag so the DONE block mirrors the to-do filter; it pages in as the
+	// user scrolls to the end. Disabled in the recurring view (no DONE block).
+	const doneFilter = {
+		...(bucketSel.key.startsWith("bucket:")
+			? { bucket: bucketSel.bucketId }
+			: bucketSel.key === "nobucket"
+				? { no_bucket: true }
+				: {}),
+		...(tags.length ? { tag: tags[0] } : {}),
+	};
+	const {
+		data: donePages,
+		fetchNextPage,
+		hasNextPage,
+		isFetchingNextPage,
+		isLoading: doneLoading,
+	} = useDoneTasks(doneFilter, { enabled: !showRecurring });
+	const done = donePages?.pages.flat() ?? [];
+	const loadMoreDone = () => {
+		if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+	};
 
 	// Drop handler: optimistically apply the new order, then mint a key strictly
 	// between the new neighbours and persist it.
@@ -371,7 +399,12 @@ export default function TasksScreen({ navigation, route }) {
 				   which would otherwise read as "no tasks" before data arrives. */
 				<SpriteLoader message="Loading tasks" />
 			) : showRecurring ? (
-				<ScrollView contentContainerStyle={s.scroll}>
+				<ScrollView
+					contentContainerStyle={[
+						s.scroll,
+						{ paddingBottom: insets.bottom + 48 },
+					]}
+				>
 					<View style={s.recHead}>
 						<Text style={s.section}>RECURRING · {recurring.length}</Text>
 						<Pressable onPress={() => setRecSheet(true)} hitSlop={10}>
@@ -414,8 +447,13 @@ export default function TasksScreen({ navigation, route }) {
 					data={pending}
 					onDragEnd={onDragEnd}
 					keyExtractor={(t) => t.id}
-					contentContainerStyle={s.scroll}
+					contentContainerStyle={[
+						s.scroll,
+						{ paddingBottom: insets.bottom + 48 },
+					]}
 					activationDistance={12}
+					onEndReached={loadMoreDone}
+					onEndReachedThreshold={0.4}
 					ListHeaderComponent={
 						<>
 							<Text style={s.section}>
@@ -428,9 +466,12 @@ export default function TasksScreen({ navigation, route }) {
 						</>
 					}
 					ListFooterComponent={
-						done.length > 0 ? (
+						done.length > 0 || doneLoading ? (
 							<>
-								<Text style={s.section}>DONE · {done.length}</Text>
+								<Text style={s.section}>
+									DONE · {done.length}
+									{hasNextPage ? "+" : ""}
+								</Text>
 								{done.map((t) => (
 									<View key={t.id} style={[s.taskRow, s.dim]}>
 										<Pressable
@@ -456,6 +497,16 @@ export default function TasksScreen({ navigation, route }) {
 										</Pressable>
 									</View>
 								))}
+								{/* Auto-loads on scroll (onEndReached); the row doubles as a
+								   manual tap target and a loading indicator. */}
+								{hasNextPage ? (
+									<Pressable style={s.loadMore} onPress={loadMoreDone}>
+										<ActivityIndicator size="small" color={colors.muted} />
+										<Text style={s.loadMoreText}>
+											{isFetchingNextPage ? "Loading…" : "Show more completed"}
+										</Text>
+									</Pressable>
+								) : null}
 							</>
 						) : null
 					}
@@ -1048,6 +1099,21 @@ const s = StyleSheet.create({
 	chipTextOn: { color: colors.accent2 },
 	chipCount: { color: colors.muted, fontFamily: MONO, fontSize: 11 },
 	scroll: { padding: 16, paddingBottom: 48 },
+	// Footer button revealing the next page of completed tasks.
+	loadMore: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+		paddingVertical: 12,
+		marginTop: 2,
+	},
+	loadMoreText: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 12,
+		letterSpacing: 0.5,
+	},
 	section: {
 		color: colors.muted,
 		fontFamily: MONO,
