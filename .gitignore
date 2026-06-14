@@ -81,3 +81,7 @@ generate_vapid.py
 .github/full-stack.instructions.md
 CLAUDE.md
 .vscode/
+
+# Tool/runtime directories
+.reasonix/
+.codegraph/
