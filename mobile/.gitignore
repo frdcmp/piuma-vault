@@ -34,9 +34,10 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
-# ---- OS / TypeScript ----
+# ---- OS / TypeScript / tooling ----
 .DS_Store
 *.tsbuildinfo
+.claude/
 
 # ---- Build artifacts (build.sh outputs) ----
 *.apk
