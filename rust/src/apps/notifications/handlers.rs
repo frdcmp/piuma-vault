@@ -18,11 +18,9 @@ fn err(msg: impl Into<String>) -> NotificationsApiError {
 // ── Web Push subscriptions ──────────────────────────────────────────────────
 
 pub async fn vapid_public_key() -> impl Responder {
-    match std::env::var("VAPID_PUBLIC_KEY") {
-        Ok(key) if !key.trim().is_empty() => {
-            HttpResponse::Ok().json(VapidKeyResponse { key })
-        }
-        _ => HttpResponse::ServiceUnavailable().json(err("Web Push not configured on the server")),
+    match webpush::public_key() {
+        Some(key) => HttpResponse::Ok().json(VapidKeyResponse { key }),
+        None => HttpResponse::ServiceUnavailable().json(err("Web Push not configured on the server")),
     }
 }
 

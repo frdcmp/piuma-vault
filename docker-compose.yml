@@ -67,10 +67,7 @@ services:
       - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-false}
       # Canonical site URL (also used as the OTP / 2FA issuer label)
       - SITE_URL=${SITE_URL}
-      # Web Push (VAPID) — served to the browser + used by the /test endpoint.
-      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
-      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
-      - VAPID_PRIVATE_KEY_PATH=${VAPID_PRIVATE_KEY_PATH:-}
+      # Web Push (VAPID) key material lives in rust/src/keys/ (file-based), not env.
       # S3 object storage config lives in the DB (Services dashboard), not here.
     networks:
       - network
@@ -90,10 +87,7 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_PORT=${DB_PORT}
-      # Web Push (VAPID) — needed to sign and send pushes.
-      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
-      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
-      - VAPID_PRIVATE_KEY_PATH=${VAPID_PRIVATE_KEY_PATH:-}
+      # Web Push (VAPID) key material lives in rust/src/keys/ (file-based), not env.
     networks:
       - network
 
@@ -117,10 +111,7 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_PORT=${DB_PORT}
       # Email (send_email tool) now lives in the DB — Services → Email.
-      # Web Push (VAPID) for completion notifications.
-      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
-      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
-      - VAPID_PRIVATE_KEY_PATH=${VAPID_PRIVATE_KEY_PATH:-}
+      # Web Push (VAPID) key material lives in rust/src/keys/ (file-based), not env.
     networks:
       - network
 

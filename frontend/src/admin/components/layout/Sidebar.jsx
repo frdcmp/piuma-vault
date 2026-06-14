@@ -8,7 +8,6 @@ import {
 	DownOutlined,
 	FileOutlined,
 	GoldOutlined,
-	HeartOutlined,
 	HomeOutlined,
 	KeyOutlined,
 	LockOutlined,
@@ -59,7 +58,6 @@ const SYSTEM = [
 	{ key: "/settings/files", icon: <FileOutlined />, label: "Files" },
 	{ key: "/settings/trash", icon: <DeleteOutlined />, label: "Trash" },
 	{ key: "/settings/db-backups", icon: <DatabaseOutlined />, label: "Backups" },
-	{ key: "/settings/health", icon: <HeartOutlined />, label: "Health" },
 	{ key: "/settings/projects", icon: <ProjectOutlined />, label: "Projects" },
 	{ key: "/settings/test", icon: <ThunderboltOutlined />, label: "API Test" },
 ];

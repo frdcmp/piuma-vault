@@ -28,16 +28,6 @@ struct TableDefinition {
 
 const TABLES: &[TableDefinition] = &[
     TableDefinition {
-        name: "health",
-        sql: r#"
-            CREATE TABLE health (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL
-            )
-        "#,
-        indices: &[],
-    },
-    TableDefinition {
         name: "db_users",
         sql: r#"
             CREATE TABLE db_users (

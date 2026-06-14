@@ -16,7 +16,6 @@ import CalendarPage from "./admin/pages/calendar/CalendarPage";
 import CronPage from "./admin/pages/cron/CronPage";
 import DbDump from "./admin/pages/dbDump";
 import Files from "./admin/pages/files";
-import Health from "./admin/pages/health";
 import Homepage from "./admin/pages/homepage";
 import Memory from "./admin/pages/memory";
 import NoteEditor from "./admin/pages/notes/NoteEditor";
@@ -197,7 +196,6 @@ function AppContent() {
 					<Route path="projects" element={<Projects />} />
 					<Route path="files" element={<Files />} />
 					<Route path="api-keys" element={<ApiKeysPage />} />
-					<Route path="health" element={<Health />} />
 					<Route path="profile" element={<Profile />} />
 					<Route path="security" element={<Security />} />
 					<Route path="services" element={<Services />} />

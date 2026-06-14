@@ -19,8 +19,8 @@ axios interceptor in `frontend/src/api/axiosInstance.js` transparently handles
 redirecting to login if no refresh token is present.
 
 JWT signing keys resolve from configuration; if unset, the dev keys in
-`rust/src/keys/` are used. The build auto-generates a key pair when the files are
-missing, or you can run `generate_keys.py`.
+`rust/src/keys/` are used. The build (`build.rs`) auto-generates a key pair when
+the files are missing; to rotate deliberately, delete them and rebuild.
 
 ## Permissions model
 
