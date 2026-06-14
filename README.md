@@ -7,7 +7,7 @@
   
   *A highly secure, privacy-first, self-hosted digital workspace integrating rich notes, an AI agent with long-term memory, file hosting, tasks, and scheduling.*
 
-  [![License: MIT](https://img.shields.io/badge/License-MIT-f7c948.svg?style=flat-square)](LICENSE)
+  [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-f7c948.svg?style=flat-square)](LICENSE)
   [![Stack: Rust](https://img.shields.io/badge/Backend-Rust_1.75+-3a4150.svg?logo=rust&style=flat-square)](https://www.rust-lang.org/)
   [![Stack: React](https://img.shields.io/badge/Frontend-React_19_/_Vite_7-6ab0ff.svg?logo=react&style=flat-square)](https://react.dev/)
   [![Stack: Postgres](https://img.shields.io/badge/Database-Postgres_15_/_pgvector-5cd0a9.svg?logo=postgresql&style=flat-square)](https://github.com/pgvector/pgvector)
@@ -201,6 +201,14 @@ Deep architectural specifications, database schemas, local development steps, an
 *   **Interactive Documentation:** Access `/docs` directly on your running vault instance for a comprehensive guide.
 *   **Local development:** Run the frontend dev server with `cd frontend && bun run dev` (proxies `/api` to nginx); tail the backend with `docker compose logs -f rust`.
 *   **Mobile app:** The companion Expo/React Native app is maintained separately and is not included in this repository — the backend exposes the same API it consumes, so you can build your own client against it.
+
+---
+
+## 📜 License
+
+Copyright (C) 2026 Piuma Vault contributors.
+
+Piuma Vault is free software licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). You may use, modify, and redistribute it under the terms of that license. Crucially, if you run a modified version as a network service, you must make your modified source available to its users. See the [LICENSE](LICENSE) file for the full text.
 
 ---
 
