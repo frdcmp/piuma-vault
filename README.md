@@ -69,9 +69,11 @@ flowchart TD
     
     BE -->|Raw SQL Queries| DB[(postgres <br/> + pgvector)]
     
-    %% The worker polls database jobs
-    Worker[embedding-worker <br/> Background Queue] -->|Polls db_memory_embedding_jobs| DB
+    %% Background workers poll database jobs / due windows
+    Worker[embedding-worker <br/> vector queue] -->|Polls embedding jobs| DB
     Worker -.->|Generates 1536-Dim Vectors| AO[Azure OpenAI <br/> text-embedding-3-large]
+    NW[notification-worker <br/> Web Push + Expo] -->|Dispatches due alerts| DB
+    CW[cron-worker <br/> scheduled agent jobs] -->|Runs RRULE schedules| DB
 
     %% Styles and Classes for gorgeous, readable theme integration
     classDef store fill:#1b1e25,stroke:#3a4150,stroke-width:2px;
@@ -132,30 +134,73 @@ flowchart TD
 
 ## 🚀 Quick Start (Docker Compose)
 
-Piuma Vault is designed to be easily self-hosted using Docker. 
+Piuma Vault is self-hosted with Docker Compose. You'll need **Docker** (with Compose v2) and **[Bun](https://bun.sh)** (to build the web frontend).
 
-### 1. Configure the Environment
-Clone the template environment file and fill in your secrets, SMTP credentials, Bunny Storage keys, and domain configuration:
+> **Note on services:** API keys for external services — LLM chat providers (DeepSeek/Anthropic/OpenAI/Gemini), Azure OpenAI embeddings, S3/Bunny object storage, and SMTP email — are **not** set in `.env`. You configure them at runtime from the in-app **admin → Services / Agents** dashboards after your first login. The `.env` file only covers the core stack (compose, server, CORS, database, auth).
+
+### 1. Configure the environment
+
+Copy the template and edit the values:
+
 ```bash
 cp .env.example .env
 ```
 
-### 2. Start the Stack
-Run Docker Compose with the profiles for the servers and database:
+| Variable | Description |
+| :--- | :--- |
+| `COMPOSE_PROFILES` | Default profiles to bring up: `db-stack` (Postgres) and/or `server-stack` (nginx + backend + workers). |
+| `COMPOSE_NAME` | Prefix for container names and the internal nginx→backend proxy target. |
+| `SERVER_NAME` | Server name injected into the nginx config. |
+| `BASE_URL` | Base path the app is served under. Use `/` unless hosting under a sub-path. |
+| `RUST_LOG` | Backend log level (`info`, `debug`, …). |
+| `NGINX_PORT` | Host port nginx listens on. Default `8034`. |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated exact origins the backend allows (e.g. your public URLs). |
+| `CORS_ALLOW_LOCAL` | If `true`, also permit `localhost`/LAN origins (handy for dev). Set `false` in production. |
+| `DB_HOST` | Postgres host. Use `db` to reach the compose database service. |
+| `DB_USER` / `DB_PASSWORD` / `DB_NAME` | Postgres credentials and database name. |
+| `DB_PORT` | Postgres port *inside* the network (`5432`). |
+| `DB_PORT_EXTERNAL` | Host port mapped to Postgres, for connecting with `psql` from your machine. |
+| `DB_VERIFY_SCHEMA` | Boot-time schema-drift check against `db_init`'s table definitions. `1` = on, `0` = off. |
+| `SITE_URL` | Canonical site URL. Also used as the issuer label in 2FA authenticator apps. |
+| `ALLOW_REGISTRATION` | `true` to allow account sign-ups. Default `false`. **See step 4.** |
+
+> JWT and Web Push (VAPID) key material is **auto-generated** into `rust/src/keys/` on first build — no env vars needed.
+
+### 2. Build the web frontend
+
+Nginx serves the compiled SPA from `frontend/dist`, so build it once (and after any frontend change):
+
+```bash
+cd frontend && bun install && bun run build && cd ..
+```
+
+### 3. Start the stack
+
 ```bash
 docker compose --profile server-stack --profile db-stack up -d
 ```
 
-Your vault is now running! By default, the application is exposed via Nginx at `http://localhost:8034`.
+The backend runs under `cargo watch`, so the **first boot compiles Rust and takes a few minutes** — follow along with `docker compose logs -f rust`. Your vault is then served via nginx at `http://localhost:8034` (or whatever `NGINX_PORT` you set).
+
+### 4. Create your admin account
+
+The **first account to register automatically becomes the admin** (auto-verified, full `admin_access`). Because registration is locked by default:
+
+1. Set `ALLOW_REGISTRATION=true` in `.env` and restart: `docker compose --profile server-stack up -d rust`
+2. Open the app, register your account — you're now the admin.
+3. (Recommended) Set `ALLOW_REGISTRATION=false` again and restart to lock down sign-ups.
+
+Then head to **admin → Services / Agents** to plug in your LLM, embedding, storage, and email providers.
 
 ---
 
 ## 📖 Development & Documentation
 
-Deep architectural specifications, database schemas, local development steps, and mobile build instructions are decoupled from this file to keep it clean. 
+Deep architectural specifications, database schemas, local development steps, and mobile build instructions are decoupled from this file to keep it clean.
 
 *   **Interactive Documentation:** Access `/docs` directly on your running vault instance for a comprehensive guide.
-*   **Markdown Guides:** Read through the markdown documentation in `/md` (e.g., plans, security specs, and integrations) or consult the primary workflow rules in `CLAUDE.md`.
+*   **Local development:** Run the frontend dev server with `cd frontend && bun run dev` (proxies `/api` to nginx); tail the backend with `docker compose logs -f rust`.
+*   **Mobile app:** Build instructions live in `mobile/md/BUILD.md`.
 
 ---
 
