@@ -152,6 +152,10 @@ const st = StyleSheet.create({
 		fontFamily: MONO,
 		fontSize: 14,
 		paddingVertical: 2,
+		// Buckets read uppercase everywhere (chips, rows); display matches while
+		// the stored value keeps its original case.
+		textTransform: "uppercase",
+		letterSpacing: 0.5,
 	},
 	tagBlock: {
 		borderTopWidth: 1,

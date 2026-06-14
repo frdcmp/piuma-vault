@@ -57,10 +57,17 @@ export const updatePersona = async ({ id, ...payload }) =>
 	(await axiosInstance.patch(`/agents/personas/${id}`, payload)).data;
 
 // ── Conversations ────────────────────────────────────────────────────────────
-export const fetchConversations = async (agent, q) =>
+// `opts` enables backend pagination: { limit, offset }. Omitted → no limit
+// (full list), so existing callers (e.g. the dock's session picker) are unchanged.
+export const fetchConversations = async (agent, q, { limit, offset } = {}) =>
 	(
 		await axiosInstance.get("/agents/conversations", {
-			params: { ...(agent ? { agent } : {}), ...(q ? { q } : {}) },
+			params: {
+				...(agent ? { agent } : {}),
+				...(q ? { q } : {}),
+				...(limit != null ? { limit } : {}),
+				...(offset != null ? { offset } : {}),
+			},
 		})
 	).data;
 export const createConversation = async (payload) =>
@@ -135,6 +142,7 @@ const buildChatRequest = (
 	contextNoteIds,
 	images,
 	signal,
+	regenerate,
 ) => {
 	const token = localStorage.getItem("token");
 	return fetch(`${BASE_PATH}/agents/conversations/${conversationId}/chat`, {
@@ -149,6 +157,7 @@ const buildChatRequest = (
 			images: images || [],
 			timezone: localTimezone(),
 			client_now: localNowIso(),
+			regenerate: !!regenerate,
 		}),
 		signal,
 	});
@@ -164,6 +173,7 @@ export async function streamChat({
 	contextNoteIds,
 	images,
 	signal,
+	regenerate,
 	onText,
 	onThinking,
 	onTool,
@@ -177,6 +187,7 @@ export async function streamChat({
 			contextNoteIds,
 			images,
 			signal,
+			regenerate,
 		);
 		if (resp.status === 401 && localStorage.getItem("refreshToken")) {
 			try {
@@ -187,6 +198,7 @@ export async function streamChat({
 					contextNoteIds,
 					images,
 					signal,
+					regenerate,
 				);
 			} catch (refreshErr) {
 				localStorage.removeItem("token");

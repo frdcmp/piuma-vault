@@ -224,6 +224,7 @@ pub async fn chat(
     let images = req.images;
     let timezone = req.timezone;
     let client_now = req.client_now;
+    let regenerate = req.regenerate;
     let db = pool.get_ref();
 
     let conv = match sqlx::query_as::<_, ConversationRow>("SELECT * FROM db_chat_conversations WHERE id = $1")
@@ -316,7 +317,20 @@ pub async fn chat(
     let user_content = Value::Array(user_blocks);
     let user_text = blocks_to_text(&user_content);
     let user_emb = crate::apps::embeddings::embed(db, &user_text, 1536, "embedding:chat").await.ok();
-    if let Err(e) = if let Some(ref emb) = user_emb {
+    // Regenerate ("try again"): drop the last assistant message so the turn
+    // re-runs from the existing last user message; don't insert a new user
+    // message (it's already there — `msg` is just its text for retrieval).
+    if regenerate {
+        let _ = sqlx::query(
+            "DELETE FROM db_chat_messages WHERE id = ( \
+                 SELECT id FROM db_chat_messages \
+                 WHERE conversation_id = $1 AND role = 'assistant' \
+                 ORDER BY created_at DESC LIMIT 1)",
+        )
+        .bind(conv_id)
+        .execute(db)
+        .await;
+    } else if let Err(e) = if let Some(ref emb) = user_emb {
         let pg_vec = pgvector::Vector::from(emb.clone());
         sqlx::query("INSERT INTO db_chat_messages (conversation_id, role, content, content_text, embedding) VALUES ($1, 'user', $2, $3, $4)")
             .bind(conv_id)

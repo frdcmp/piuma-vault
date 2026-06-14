@@ -167,6 +167,11 @@
 	flex-direction: column;
 	gap: 4px;
 }
+.chatx-session-more {
+	display: flex;
+	justify-content: center;
+	padding: 12px 0 6px;
+}
 .chatx-session-loading,
 .chatx-session-empty {
 	display: flex;
@@ -488,6 +493,49 @@
 	left: -10px;
 	right: -10px;
 	bottom: calc(100% + 12px);
+}
+
+/* Per-message action row under each finished assistant reply (copy / try again /
+   model used). Dim by default, brightening on hover of the message block. */
+.chatx-msg {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.chatx-msg-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	opacity: 0.35;
+	transition: opacity 0.12s ease;
+}
+.chatx-msg:hover .chatx-msg-actions,
+.chatx-msg-actions:focus-within {
+	opacity: 1;
+}
+.chatx-msg-action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	box-sizing: border-box;
+	background: var(--bg-soft);
+	border: 1px solid var(--border-strong);
+	color: var(--muted);
+	font-size: 11pt;
+	cursor: pointer;
+}
+.chatx-msg-action:hover {
+	border-color: var(--accent-2);
+	color: var(--accent-2);
+}
+.chatx-msg-model {
+	margin-left: 4px;
+	color: var(--muted);
+	font-size: 8.5pt;
+	letter-spacing: 0.3px;
+	white-space: nowrap;
 }
 
 /* Image-attach button left of the composer textarea. */

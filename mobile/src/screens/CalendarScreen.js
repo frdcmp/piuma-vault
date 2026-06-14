@@ -26,6 +26,7 @@ import DateTimePickerField from "../components/DateTimePickerField";
 import ManageBucketsSheet from "../components/ManageBucketsSheet";
 import ScreenHeader from "../components/ScreenHeader";
 import TagPicker from "../components/TagPicker";
+import { TaskSheet } from "../components/tasks/TaskSheet";
 import {
 	useCalendarEvent,
 	useCalendarEvents,
@@ -48,7 +49,6 @@ import { syncLocalAlerts } from "../utils/notifications";
 import { expandRecurrence } from "../utils/recurrence";
 import { tagColor } from "../utils/tagColor";
 import { colors } from "../utils/theme";
-import { TaskSheet } from "./TasksScreen";
 
 const ALL = { key: "all", names: null, label: "all" };
 

@@ -409,12 +409,13 @@
 	border: 0;
 	border-top: 2px dashed var(--border-strong);
 }
-/* GFM tables — bordered grid with a tinted header, sized to the (often narrow)
-   chat column. Cells wrap; very wide tables scroll horizontally instead of
-   crushing the layout. */
+/* GFM tables — bordered grid with a tinted header. Sized to their content
+   (`max-content`) so short tables don't stretch across a wide chat column and
+   leave a big empty area; capped at the column width, with horizontal scroll
+   when a table genuinely is wider than it. */
 .chat-assistant-body table {
 	display: block;
-	width: 100%;
+	width: max-content;
 	max-width: 100%;
 	overflow-x: auto;
 	border-collapse: collapse;
