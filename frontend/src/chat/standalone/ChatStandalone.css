@@ -457,9 +457,24 @@
 	border-color: transparent;
 	background: transparent;
 }
-/* Leave room so the last message clears the floating composer when scrolled. */
+/* Leave room so the last message clears the floating composer when scrolled, and
+   fade the content out toward the bottom (a gradient mask) so messages dissolve
+   progressively as they slide under the floating composer — the textured
+   background still shows through, only the text fades. */
 .chatx-conv .chat-messages {
-	padding-bottom: 140px;
+	padding-bottom: 150px;
+	-webkit-mask-image: linear-gradient(
+		to bottom,
+		#000 calc(100% - 140px),
+		rgba(0, 0, 0, 0.15) calc(100% - 40px),
+		transparent calc(100% - 8px)
+	);
+	mask-image: linear-gradient(
+		to bottom,
+		#000 calc(100% - 140px),
+		rgba(0, 0, 0, 0.15) calc(100% - 40px),
+		transparent calc(100% - 8px)
+	);
 }
 /* Lift the jump-to-latest pill above the floating composer. */
 .chatx-conv .chat-jump {

@@ -134,9 +134,11 @@ function AppContent() {
 				</Route>
 
 				{/* Standalone full-screen AI chat — its own shell (no WorkspaceHeader
-				    or dock), with a searchable conversation rail. */}
+				    or dock), with a searchable conversation rail. The splat (`/chat/*`)
+				    keeps the page mounted across /chat ↔ /chat/c/:id so an in-flight
+				    stream survives the URL change when a new conversation is created. */}
 				<Route
-					path="/chat"
+					path="/chat/*"
 					element={
 						<ProtectedRoute requiredPermission={null}>
 							<ChatPage />
