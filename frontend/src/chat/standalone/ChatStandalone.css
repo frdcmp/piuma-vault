@@ -1,0 +1,532 @@
+/* Standalone full-screen chat page. Reuses the message-rendering classes from
+   ChatPage.css (.chat-messages, .chat-assistant-body, .chat-composer, …) and
+   adds the page shell + conversation rail on top. The color tokens are
+   redeclared here so the reused .chat-* classes resolve them. */
+.chatx-page {
+	--bg: #0e0f12;
+	--bg-soft: #15171c;
+	--panel: #1b1e25;
+	--border: #2a2f3a;
+	--border-strong: #3a4150;
+	--text: #d6dbe5;
+	--muted: #8a93a3;
+	--accent: #f7c948;
+	--accent-2: #5cd0a9;
+	--accent-3: #ff6b6b;
+	--accent-4: #6cb6ff;
+
+	position: fixed;
+	inset: 0;
+	display: flex;
+	background: var(--bg);
+	color: var(--text);
+	font-family:
+		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+	font-size: 11pt;
+	line-height: 1.5;
+	overflow: hidden;
+}
+
+/* ── Left rail ─────────────────────────────────────────────────────────────── */
+.chatx-rail {
+	flex: 0 0 280px;
+	width: 280px;
+	display: flex;
+	min-height: 0;
+	border-right: 2px solid var(--border-strong);
+	background: var(--panel);
+}
+.chatx-sidebar {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	min-height: 0;
+	background-image:
+		linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+	background-size: 8px 8px;
+}
+.chatx-sidebar-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	box-sizing: border-box;
+	/* Shared chrome-header height — same as the conversation header. */
+	height: 50px;
+	padding: 0 12px;
+	border-bottom: 2px dashed var(--border-strong);
+}
+.chatx-brand {
+	flex: 1;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--accent);
+	font-weight: 900;
+	font-size: 12pt;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	text-shadow: 2px 2px 0 #000;
+	text-decoration: none;
+}
+.chatx-home {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	/* Square, model-selector height (the standard for all chrome buttons). */
+	width: 30px;
+	height: 30px;
+	border: 2px solid var(--border-strong);
+	background: var(--bg-soft);
+	color: var(--muted);
+	font-size: 11pt;
+	text-decoration: none;
+}
+.chatx-home:hover {
+	border-color: var(--accent-2);
+	color: var(--accent-2);
+}
+.chatx-brand-dot {
+	width: 9px;
+	height: 9px;
+	background: var(--accent-2);
+}
+.chatx-new {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	box-sizing: border-box;
+	height: 30px;
+	padding: 0 12px;
+	background: var(--bg-soft);
+	border: 2px solid var(--accent-2);
+	color: var(--accent-2);
+	font-family: inherit;
+	font-weight: 900;
+	font-size: 9.5pt;
+	letter-spacing: 0.6px;
+	text-transform: uppercase;
+	cursor: pointer;
+}
+.chatx-new:hover {
+	transform: translate(-1px, -1px);
+}
+.chatx-new:active {
+	transform: translate(1px, 1px);
+}
+
+.chatx-search {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 10px 10px 6px;
+	padding: 0 8px;
+	background: var(--bg);
+	border: 2px solid var(--border-strong);
+}
+.chatx-search:focus-within {
+	border-color: var(--accent-2);
+}
+.chatx-search-icon {
+	color: var(--muted);
+	font-size: 11pt;
+}
+.chatx-search-input {
+	flex: 1;
+	min-width: 0;
+	background: transparent;
+	border: 0;
+	outline: none;
+	padding: 7px 0;
+	color: var(--text);
+	font-family: inherit;
+	font-size: 10pt;
+}
+.chatx-search-input::placeholder {
+	color: var(--muted);
+}
+.chatx-search-clear {
+	background: none;
+	border: 0;
+	color: var(--muted);
+	font-size: 14pt;
+	line-height: 1;
+	cursor: pointer;
+}
+.chatx-search-clear:hover {
+	color: var(--accent-3);
+}
+
+.chatx-session-list {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 6px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.chatx-session-loading,
+.chatx-session-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 10px;
+	padding: 28px 12px;
+	color: var(--muted);
+	font-size: 9.5pt;
+	text-align: center;
+}
+.chatx-session {
+	display: flex;
+	align-items: stretch;
+	border: 1px solid transparent;
+	border-left: 3px solid transparent;
+}
+.chatx-session:hover {
+	background: rgba(92, 208, 169, 0.08);
+	border-left-color: var(--border-strong);
+}
+.chatx-session.is-active {
+	background: rgba(92, 208, 169, 0.12);
+	border-color: var(--accent-2);
+	border-left-width: 3px;
+}
+.chatx-session-main {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	align-items: flex-start;
+	padding: 9px 10px;
+	background: none;
+	border: 0;
+	color: var(--text);
+	font-family: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+.chatx-session-title {
+	width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 10pt;
+	font-weight: 700;
+}
+.chatx-session.is-active .chatx-session-title {
+	color: var(--accent);
+}
+.chatx-session-time {
+	color: var(--muted);
+	font-size: 8pt;
+	letter-spacing: 0.3px;
+}
+.chatx-session-del {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	padding: 0 10px;
+	background: none;
+	border: 0;
+	color: var(--muted);
+	font-size: 11pt;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 0.1s;
+}
+.chatx-session:hover .chatx-session-del,
+.chatx-session.is-active .chatx-session-del {
+	opacity: 1;
+}
+.chatx-session-del:hover {
+	color: var(--accent-3);
+}
+
+/* ── Center conversation ───────────────────────────────────────────────────── */
+.chatx-conv {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	background-image:
+		linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+	background-size: 8px 8px;
+}
+.chatx-conv-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	box-sizing: border-box;
+	/* Shared chrome-header height — same as the sessions header. */
+	height: 50px;
+	padding: 0 16px;
+	border-bottom: 2px dashed var(--border-strong);
+	background: var(--panel);
+}
+.chatx-hamburger {
+	display: none;
+	width: 30px;
+	height: 30px;
+	align-items: center;
+	justify-content: center;
+	background: var(--bg-soft);
+	border: 2px solid var(--border-strong);
+	color: var(--text);
+	font-size: 13pt;
+	line-height: 1;
+	cursor: pointer;
+}
+.chatx-conv-titlewrap {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: row;
+	align-items: baseline;
+	gap: 12px;
+}
+.chatx-conv-title {
+	flex: 0 1 auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text);
+	font-weight: 900;
+	font-size: 11.5pt;
+}
+/* Created / last-edited timestamps, inline after the title on one row. */
+.chatx-conv-meta {
+	flex: none;
+	color: var(--muted);
+	font-size: 8.5pt;
+	white-space: nowrap;
+}
+.chatx-status {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	/* Square, same height as the model-select button beside it. */
+	width: 30px;
+	height: 30px;
+	border: 2px solid var(--border-strong);
+	background: var(--bg-soft);
+	flex: none;
+}
+.chatx-status-dot {
+	width: 8px;
+	height: 8px;
+	background: var(--muted);
+}
+.chatx-status.streaming .chatx-status-dot {
+	background: var(--accent-2);
+	animation: chat-blink 1s steps(2, start) infinite;
+}
+
+/* Model picker button + dropdown (header, right side). */
+.chatx-model {
+	position: relative;
+	flex: none;
+}
+.chatx-model-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	box-sizing: border-box;
+	height: 30px;
+	max-width: 220px;
+	padding: 0 10px;
+	background: var(--bg-soft);
+	border: 2px solid var(--border-strong);
+	color: var(--text);
+	font-family: inherit;
+	font-size: 9.5pt;
+	font-weight: 700;
+	cursor: pointer;
+}
+.chatx-model-btn:hover {
+	border-color: var(--accent-2);
+}
+.chatx-model-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.chatx-model-caret {
+	font-size: 8pt;
+	color: var(--muted);
+}
+.chatx-model-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	cursor: default;
+}
+.chatx-model-menu {
+	position: absolute;
+	top: calc(100% + 6px);
+	right: 0;
+	z-index: 41;
+	min-width: 300px;
+	max-width: min(440px, 90vw);
+	max-height: 60vh;
+	overflow-y: auto;
+	padding: 6px;
+	background: var(--panel);
+	border: 2px solid var(--border-strong);
+	box-shadow:
+		4px 4px 0 0 #000,
+		0 10px 30px rgba(0, 0, 0, 0.5);
+}
+/* Keep each model on a single line — crop with an ellipsis instead of wrapping
+   the provider under the name. */
+.chatx-model-menu .picker-item {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+/* The model currently in use reads as selected — accent-tinted name, a faint
+   wash, and the accent edge — not just bolded. */
+.chatx-model-menu .picker-item.is-current {
+	color: var(--accent-2);
+	background: rgba(92, 208, 169, 0.1);
+	border-left-color: var(--accent-2);
+}
+.chatx-model-menu .picker-item.is-current .picker-item-meta {
+	color: var(--accent-2);
+	opacity: 0.7;
+}
+
+/* Default model marker — the left diamond, white, shown only when the default
+   isn't the currently-selected model (the selected diamond takes the slot when
+   it is). The selected diamond keeps the inherited accent-2 colour. */
+.chatx-model-menu .picker-item-mark.chatx-mark-default {
+	color: #fff;
+}
+
+/* The reused .chat-* viewport/composer fill the conversation column. */
+.chatx-conv .chat-messages-viewport {
+	flex: 1;
+	min-height: 0;
+}
+
+/* ChatGPT-style floating composer: instead of a docked bottom bar, it overlays
+   the bottom of the scroll area and the messages scroll behind it, with a fade
+   so text dissolves into the background rather than getting clipped. Scoped to
+   the standalone page so the chat dock keeps its docked composer. */
+.chatx-conv {
+	position: relative;
+}
+.chatx-conv .chat-composer {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 10;
+	border-top: 0;
+	padding: 16px 16px 18px;
+	/* No full-width band — the textured chat background shows through behind the
+	   floating card, all the way to the bottom. Only the centered card is opaque. */
+	background: transparent;
+	pointer-events: none;
+}
+/* The floating card itself — re-enable interaction; the docked frame moves from
+   the textarea onto this wrapper. */
+.chatx-conv .chat-composer-inner {
+	pointer-events: auto;
+	padding: 8px;
+	background: var(--panel);
+	border: 2px solid var(--border-strong);
+	box-shadow:
+		4px 4px 0 0 #000,
+		0 12px 32px rgba(0, 0, 0, 0.5);
+}
+.chatx-conv .chat-composer-inner:focus-within {
+	border-color: var(--accent-2);
+}
+/* The textarea blends into the card (the card owns the frame now). */
+.chatx-conv .chat-input,
+.chatx-conv .chat-input:focus {
+	border-color: transparent;
+	background: transparent;
+}
+/* Leave room so the last message clears the floating composer when scrolled. */
+.chatx-conv .chat-messages {
+	padding-bottom: 140px;
+}
+/* Lift the jump-to-latest pill above the floating composer. */
+.chatx-conv .chat-jump {
+	bottom: 112px;
+}
+/* The slash / title dropdowns anchor to .chat-composer-fields, which sits inside
+   the floating card's 8px padding + 2px border. Pull the menu out to the card's
+   outer edges so it matches the card width and lines up with it, and lift it
+   clear of the card's top border. */
+.chatx-conv .slash-menu {
+	left: -10px;
+	right: -10px;
+	bottom: calc(100% + 12px);
+}
+
+/* Image-attach button left of the composer textarea. */
+.chatx-attach {
+	flex: none;
+	width: 38px;
+	height: 38px;
+	background: var(--bg-soft);
+	border: 2px solid var(--border-strong);
+	color: var(--muted);
+	font-size: 16pt;
+	line-height: 1;
+	cursor: pointer;
+}
+.chatx-attach:hover:not(:disabled) {
+	border-color: var(--accent-2);
+	color: var(--accent-2);
+}
+.chatx-attach:disabled {
+	opacity: 0.35;
+	cursor: not-allowed;
+}
+
+/* Mobile drawer scrim (hidden on desktop). */
+.chatx-scrim {
+	display: none;
+}
+
+/* ── Responsive: collapse the rail into a slide-in drawer ──────────────────── */
+@media (max-width: 760px) {
+	.chatx-rail {
+		position: fixed;
+		top: 0;
+		bottom: 0;
+		left: 0;
+		z-index: 50;
+		transform: translateX(-100%);
+		transition: transform 0.18s ease;
+		box-shadow: 6px 0 24px rgba(0, 0, 0, 0.5);
+	}
+	.chatx-rail.is-open {
+		transform: translateX(0);
+	}
+	.chatx-scrim {
+		display: block;
+		position: fixed;
+		inset: 0;
+		z-index: 45;
+		padding: 0;
+		border: 0;
+		background: rgba(0, 0, 0, 0.5);
+		cursor: pointer;
+	}
+	.chatx-hamburger {
+		display: inline-flex;
+	}
+}

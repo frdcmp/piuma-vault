@@ -133,6 +133,13 @@ export default function UserMenu({ size = 42, align = "right" }) {
 							</Link>
 							<Link
 								className="user-menu-item"
+								to="/chat"
+								onClick={() => setOpen(false)}
+							>
+								&gt; chat
+							</Link>
+							<Link
+								className="user-menu-item"
 								to="/admin"
 								onClick={() => setOpen(false)}
 							>

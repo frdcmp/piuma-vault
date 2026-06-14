@@ -1,4 +1,8 @@
-import { DeleteOutlined, FormOutlined } from "@ant-design/icons";
+import {
+	DeleteOutlined,
+	ExpandAltOutlined,
+	FormOutlined,
+} from "@ant-design/icons";
 import {
 	useCallback,
 	useEffect,
@@ -1462,6 +1466,15 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 					disabled={messages.length === 0}
 				>
 					<FormOutlined />
+				</button>
+				<button
+					type="button"
+					className="chat-clear"
+					onClick={() => navigate("/chat")}
+					aria-label="Open full-screen chat"
+					title="Open full-screen chat"
+				>
+					<ExpandAltOutlined />
 				</button>
 				{onClose ? (
 					<button
