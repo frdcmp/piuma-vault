@@ -30,6 +30,7 @@ import {
 } from "../api/agentChatApi";
 import { uploadChatImage } from "../api/storage";
 import { useAgentList, useDefaultAgent } from "../queries";
+import { normalizeChatMarkdown } from "./markdown";
 
 // Universal client commands (same for every agent). Agent-specific commands are
 // the prompt macros from db_agent_profiles.commands, merged in at render time.
@@ -406,7 +407,7 @@ function AssistantBubble({ parts, isStreaming, label, onNavigate }) {
 									remarkPlugins={[remarkGfm]}
 									components={mdComponents}
 								>
-									{p.text}
+									{normalizeChatMarkdown(p.text)}
 								</ReactMarkdown>
 							);
 						})}

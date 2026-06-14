@@ -484,7 +484,10 @@ export default function TasksScreen({ navigation, route }) {
 						<Text style={s.empty}>No recurring tasks. Add a workout plan?</Text>
 					) : null}
 					{recurring.map((r) => (
-						<View key={r.id} style={[s.taskRow, !r.active && s.dim]}>
+						<View
+							key={r.id}
+							style={[s.taskRow, s.taskRowInline, !r.active && s.dim]}
+						>
 							<Text style={s.check}>⟳</Text>
 							<View style={s.taskMain}>
 								<Text style={s.taskTitle}>{r.title}</Text>
@@ -567,7 +570,7 @@ export default function TasksScreen({ navigation, route }) {
 						// Completed row — non-draggable, dimmed, strikethrough.
 						if (t.done) {
 							return (
-								<View style={[s.taskRow, s.dim]}>
+								<View style={[s.taskRow, s.taskRowInline, s.dim]}>
 									<Pressable
 										onPress={() => toggleTask.mutate(t.id)}
 										hitSlop={8}
@@ -595,12 +598,13 @@ export default function TasksScreen({ navigation, route }) {
 						const bucket = bucketById.get(t.bucket_id);
 						const tagsOf = t.tags || [];
 						// Only dateless TO DO rows are draggable; dated rows are ordered
-						// by their due date, so dragging them is disabled.
+						// by their due date, so dragging them is disabled. Drag starts on
+						// a long-press anywhere on the card (no handle icon).
 						const canDrag = !t.due_at;
 						const overdueDue = dueBucket(t.due_at) === "overdue";
 						return (
 							<ScaleDecorator>
-								<View
+								<Pressable
 									style={[
 										s.taskRow,
 										t.priority
@@ -611,119 +615,96 @@ export default function TasksScreen({ navigation, route }) {
 											: null,
 										isActive && s.taskRowActive,
 									]}
+									onPress={() => setTaskSheet({ task: t })}
+									onLongPress={canDrag ? drag : undefined}
+									delayLongPress={200}
 								>
-									<Pressable
-										onPress={() => toggleTask.mutate(t.id)}
-										hitSlop={8}
-										disabled={togglingId === t.id}
-									>
-										{togglingId === t.id ? (
-											<ActivityIndicator
-												size="small"
-												color={PRIORITY_COLOR[t.priority]}
-												style={s.checkSpin}
-											/>
-										) : (
-											<Text
-												style={[s.check, { color: PRIORITY_COLOR[t.priority] }]}
-											>
-												☐
-											</Text>
-										)}
-									</Pressable>
-									<Pressable
-										style={s.taskMain}
-										onPress={() => setTaskSheet({ task: t })}
-										onLongPress={canDrag ? drag : undefined}
-										delayLongPress={200}
-									>
-										{/* Title fills the row (priority shows via the card's left
-										   bar). */}
-										<Text style={s.taskTitle} numberOfLines={2}>
-											{t.title}
-										</Text>
-										{/* Meta line: bucket + due on the left, tags on the right. */}
-										{bucket || t.due_at || tagsOf.length || hasAlerts(t) ? (
-											<View style={s.metaRow}>
-												<View style={s.metaLeft}>
-													{bucket ? (
-														<View style={s.bucketTag}>
-															<View
-																style={[
-																	s.bucketSwatch,
-																	bucket.color
-																		? {
-																				backgroundColor: bucket.color,
-																				borderColor: bucket.color,
-																			}
-																		: null,
-																]}
-															/>
-															<Text
-																style={[s.meta, s.bucketName]}
-																numberOfLines={1}
-															>
-																{bucket.name}
-															</Text>
-														</View>
-													) : null}
-													{bucket && t.due_at ? (
-														<Text style={[s.meta, s.metaSep]}>·</Text>
-													) : null}
-													{t.due_at ? (
-														<Text
-															style={[
-																s.meta,
-																overdueDue ? s.dueOverdue : s.due,
-															]}
-														>
-															due <TimeAgo value={t.due_at} />
-														</Text>
-													) : null}
-													{hasAlerts(t) ? (
-														<Ionicons
-															name="notifications-outline"
-															size={12}
-															color={colors.accent}
-															style={s.alertIcon}
-														/>
-													) : null}
+									{/* Top line: checkbox + bucket + due (+ alert bell), tags right. */}
+									<View style={s.taskTop}>
+										<Pressable
+											onPress={() => toggleTask.mutate(t.id)}
+											hitSlop={8}
+											disabled={togglingId === t.id}
+										>
+											{togglingId === t.id ? (
+												<ActivityIndicator
+													size="small"
+													color={PRIORITY_COLOR[t.priority]}
+													style={s.checkSpin}
+												/>
+											) : (
+												<Text
+													style={[
+														s.check,
+														{ color: PRIORITY_COLOR[t.priority] },
+													]}
+												>
+													☐
+												</Text>
+											)}
+										</Pressable>
+										<View style={s.metaLeft}>
+											{bucket ? (
+												<View style={s.bucketTag}>
+													<View
+														style={[
+															s.bucketSwatch,
+															bucket.color
+																? {
+																		backgroundColor: bucket.color,
+																		borderColor: bucket.color,
+																	}
+																: null,
+														]}
+													/>
+													<Text
+														style={[s.meta, s.bucketName]}
+														numberOfLines={1}
+													>
+														{bucket.name}
+													</Text>
 												</View>
-												{tagsOf.length ? (
-													<View style={s.tagsRight}>
-														{tagsOf.map((tag) => (
-															<Pressable
-																key={tag}
-																hitSlop={4}
-																onPress={() => selectTag(tag)}
-															>
-																<Text
-																	style={[s.meta, { color: tagColorOf(tag) }]}
-																>
-																	#{tag}
-																</Text>
-															</Pressable>
-														))}
-													</View>
-												) : null}
+											) : null}
+											{bucket && t.due_at ? (
+												<Text style={[s.meta, s.metaSep]}>·</Text>
+											) : null}
+											{t.due_at ? (
+												<Text
+													style={[s.meta, overdueDue ? s.dueOverdue : s.due]}
+												>
+													due <TimeAgo value={t.due_at} />
+												</Text>
+											) : null}
+											{hasAlerts(t) ? (
+												<Ionicons
+													name="notifications-outline"
+													size={12}
+													color={colors.accent}
+													style={s.alertIcon}
+												/>
+											) : null}
+										</View>
+										{tagsOf.length ? (
+											<View style={s.tagsRight}>
+												{tagsOf.map((tag) => (
+													<Pressable
+														key={tag}
+														hitSlop={4}
+														onPress={() => selectTag(tag)}
+													>
+														<Text style={[s.meta, { color: tagColorOf(tag) }]}>
+															#{tag}
+														</Text>
+													</Pressable>
+												))}
 											</View>
 										) : null}
-									</Pressable>
-									{/* Grab handle — only the dateless TO DO group reorders. */}
-									{canDrag ? (
-										<Pressable
-											onLongPress={drag}
-											delayLongPress={200}
-											hitSlop={8}
-										>
-											<Ionicons
-												name="reorder-three"
-												size={20}
-												color={colors.muted}
-											/>
-										</Pressable>
-									) : null}
-								</View>
+									</View>
+									{/* Second line: the task title (priority shows via the left bar). */}
+									<Text style={[s.taskTitle, s.taskTitleRow]} numberOfLines={2}>
+										{t.title}
+									</Text>
+								</Pressable>
 							</ScaleDecorator>
 						);
 					}}
@@ -1550,10 +1531,8 @@ const s = StyleSheet.create({
 		fontSize: 12,
 		padding: 4,
 	},
+	// Card holds two stacked lines (meta on top, title below).
 	taskRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 10,
 		backgroundColor: colors.bgSoft,
 		borderWidth: 1,
 		borderColor: colors.border,
@@ -1561,9 +1540,13 @@ const s = StyleSheet.create({
 		borderLeftWidth: 3,
 		// Square edges = pixel.
 		paddingHorizontal: 10,
-		paddingVertical: 9,
+		paddingVertical: 8,
 		marginBottom: 6,
 	},
+	// Completed rows stay single-line (checkbox + strikethrough title).
+	taskRowInline: { flexDirection: "row", alignItems: "center", gap: 10 },
+	// Top line of an active card: checkbox + bucket/due cluster + tags (right).
+	taskTop: { flexDirection: "row", alignItems: "center", gap: 8 },
 	// Row lifted while being dragged.
 	taskRowActive: {
 		borderColor: colors.accent2,
@@ -1579,7 +1562,14 @@ const s = StyleSheet.create({
 	// Match the ☐ glyph footprint so swapping in the spinner doesn't shift the row.
 	checkSpin: { width: 18, height: 18 },
 	taskMain: { flex: 1 },
-	taskTitle: { color: colors.text, fontFamily: MONO, fontSize: 14 },
+	taskTitle: {
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 15,
+		lineHeight: 20,
+	},
+	// Title on its own line under the meta row.
+	taskTitleRow: { marginTop: 6 },
 	strike: { textDecorationLine: "line-through", flex: 1 },
 	// Meta line: bucket+due cluster on the left, tags right-aligned.
 	metaRow: {

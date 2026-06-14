@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { normalizeChatMarkdown } from "../markdown";
 import SpriteRunner from "../SpriteRunner";
 
 // ── Content-block normalisation ───────────────────────────────────────────────
@@ -282,7 +283,7 @@ export function AssistantBubble({ parts, isStreaming, label, onNavigate }) {
 									remarkPlugins={[remarkGfm]}
 									components={mdComponents}
 								>
-									{p.text}
+									{normalizeChatMarkdown(p.text)}
 								</ReactMarkdown>
 							);
 						})}
