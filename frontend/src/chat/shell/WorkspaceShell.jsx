@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import WorkspaceHeader from "../components/WorkspaceHeader/WorkspaceHeader";
-import useChatDockStore from "../store/chatDockStore";
-import useUiStore from "../store/uiStore";
+import WorkspaceHeader from "../../components/WorkspaceHeader/WorkspaceHeader";
+import useChatDockStore from "../../store/chatDockStore";
+import useUiStore from "../../store/uiStore";
 import ChatDock from "./ChatDock";
 import "./ChatDock.css";
 

@@ -46,7 +46,7 @@ const ForgotPassword = () => {
 							administrator or check your server logs for the reset token.
 						</p>
 						<div className="vp-auth-actions">
-							<PvButton to="/admin/login">Back to Login</PvButton>
+							<PvButton to="/settings/login">Back to Login</PvButton>
 						</div>
 					</div>
 				</section>
@@ -76,7 +76,7 @@ const ForgotPassword = () => {
 							style={{ marginBottom: 20, textAlign: "left" }}
 						/>
 						<div className="vp-auth-actions">
-							<PvButton variant="primary" to="/admin/login">
+							<PvButton variant="primary" to="/settings/login">
 								Go to Login
 							</PvButton>
 						</div>
@@ -163,7 +163,7 @@ const ForgotPassword = () => {
 						</Form.Item>
 
 						<p className="vp-text vp-muted vp-auth-center">
-							<Link className="vp-link" to="/admin/login">
+							<Link className="vp-link" to="/settings/login">
 								Back to Login
 							</Link>
 						</p>

@@ -9,7 +9,7 @@ export const useUserMe = () => {
 		// attempted a token refresh, so retrying would only loop. Anything else
 		// (network error, 5xx, nginx stale-upstream 502 during a backend reload)
 		// is transient: retry a few times so a blip doesn't bounce a live session
-		// to /admin/login.
+		// to /settings/login.
 		retry: (failureCount, error) => {
 			const status = error?.response?.status;
 			if (status === 401 || status === 403) return false;

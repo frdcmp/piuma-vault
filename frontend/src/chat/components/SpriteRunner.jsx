@@ -1,4 +1,4 @@
-import { Sprite, useSprite, useSpriteCycle } from "../sprites";
+import { Sprite, useSprite, useSpriteCycle } from "../../sprites";
 
 // The mascot galloping — the chat "thinking" loader. Body stays fixed; only the
 // legs swap through the active mascot's gallop cycle.

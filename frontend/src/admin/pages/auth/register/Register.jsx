@@ -57,7 +57,7 @@ const Register = () => {
 									You have been automatically verified as the first admin user.
 								</p>
 								<div className="vp-auth-actions">
-									<PvButton variant="primary" to="/admin/login">
+									<PvButton variant="primary" to="/settings/login">
 										Proceed to Login
 									</PvButton>
 								</div>
@@ -75,13 +75,13 @@ const Register = () => {
 									Didn&apos;t receive the email?{" "}
 									<Link
 										className="vp-link"
-										to={`/admin/login?unverified=${encodeURIComponent(registeredEmail)}`}
+										to={`/settings/login?unverified=${encodeURIComponent(registeredEmail)}`}
 									>
 										Resend verification
 									</Link>
 								</p>
 								<p className="vp-text vp-muted">
-									<Link className="vp-link" to="/admin/login">
+									<Link className="vp-link" to="/settings/login">
 										Back to login
 									</Link>
 								</p>
@@ -181,7 +181,7 @@ const Register = () => {
 
 						<p className="vp-text vp-muted vp-auth-center">
 							Already have an account?{" "}
-							<Link className="vp-link" to="/admin/login">
+							<Link className="vp-link" to="/settings/login">
 								Login now
 							</Link>
 						</p>

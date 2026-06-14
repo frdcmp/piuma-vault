@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchConversations } from "../../api/agentChatApi";
 import { timeAgo } from "../../utils/dateTime";
-import SpriteRunner from "../SpriteRunner";
+import SpriteRunner from "../components/SpriteRunner";
 
 // How many conversations to fetch per page (backend LIMIT/OFFSET).
 const PAGE_SIZE = 25;

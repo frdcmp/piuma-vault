@@ -86,7 +86,7 @@ const Homepage = () => {
 					<PvButton variant="primary" href="/" icon={<BookOutlined />}>
 						Open the Vault
 					</PvButton>
-					<PvButton to="/admin/about" icon={<SearchOutlined />}>
+					<PvButton to="/settings/about" icon={<SearchOutlined />}>
 						About
 					</PvButton>
 					<PvButton to="/docs" icon={<FileTextOutlined />}>

@@ -28,7 +28,7 @@ const ProtectedRoute = ({ children, requiredPermission = "admin_access" }) => {
 
 	const redirectToLogin = (
 		<Navigate
-			to={`/admin/login?redirectTo=${encodeURIComponent(
+			to={`/settings/login?redirectTo=${encodeURIComponent(
 				location.pathname + location.search,
 			)}`}
 			replace

@@ -250,7 +250,7 @@ const Login = () => {
 							</div>
 
 							<div className="vp-auth-forgot">
-								<Link to="/admin/forgot-password" className="vp-link">
+								<Link to="/settings/forgot-password" className="vp-link">
 									Forgot password?
 								</Link>
 							</div>

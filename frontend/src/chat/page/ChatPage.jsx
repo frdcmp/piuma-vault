@@ -3,10 +3,10 @@ import { useCallback, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 import { PvModal } from "@/admin/components/ui";
 import { deleteConversation } from "../../api/agentChatApi";
-import "../ChatPage.css";
+import "../chat-shared.css";
 import ChatConversation from "./ChatConversation";
 import ChatSessionList from "./ChatSessionList";
-import "./ChatStandalone.css";
+import "./page.css";
 
 // Standalone full-screen chat: a searchable conversation rail on the left, a
 // ChatGPT-style streaming conversation in the center. The open conversation

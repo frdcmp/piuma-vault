@@ -168,7 +168,7 @@ export default function Home({ onBack }) {
 				<button
 					type="button"
 					className="piuma-menu-item"
-					onClick={() => navigate("/admin")}
+					onClick={() => navigate("/settings")}
 				>
 					<span className="piuma-menu-glyph" aria-hidden="true">
 						⚙

@@ -65,7 +65,7 @@ export default function UserMenu({ size = 42, align = "right" }) {
 	if (!me) {
 		return (
 			<div className="user-menu">
-				<Link className="user-menu-login" to="/admin/login">
+				<Link className="user-menu-login" to="/settings/login">
 					[ login ]
 				</Link>
 			</div>
@@ -140,10 +140,10 @@ export default function UserMenu({ size = 42, align = "right" }) {
 							</Link>
 							<Link
 								className="user-menu-item"
-								to="/admin"
+								to="/settings"
 								onClick={() => setOpen(false)}
 							>
-								&gt; admin
+								&gt; settings
 							</Link>
 							<div className="user-menu-divider" />
 						</>

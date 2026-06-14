@@ -1,7 +1,6 @@
 import {
 	BulbOutlined,
 	DeleteOutlined,
-	EditOutlined,
 	ExpandAltOutlined,
 	EyeOutlined,
 	FormOutlined,
@@ -15,9 +14,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import ReactMarkdown from "react-markdown";
 import { useNavigate } from "react-router-dom";
-import remarkGfm from "remark-gfm";
 import { PvModal, pvMessage } from "@/admin/components/ui";
 import {
 	clearConversation,
@@ -32,12 +29,24 @@ import {
 	streamChat,
 	switchBranch,
 	updateConversation,
-} from "../api/agentChatApi";
-import { uploadChatImage } from "../api/storage";
-import { useAgentList, useDefaultAgent } from "../queries";
-import { BranchSwitcher, MessageActions } from "./MessageActions";
-import { normalizeChatMarkdown } from "./markdown";
-import { partsToText } from "./standalone/messageUtils";
+} from "../../api/agentChatApi";
+import { useAgentList, useDefaultAgent } from "../../queries";
+import useNotesWorkspaceStore from "../../store/notesWorkspaceStore";
+import ContextTag from "../components/ContextTag";
+import MessageList from "../components/MessageList";
+import PendingImages from "../components/PendingImages";
+import SlashMenu from "../components/SlashMenu";
+import SpriteRunner from "../components/SpriteRunner";
+import {
+	appendTextPart,
+	mapServerMessage,
+	newMessageId,
+} from "../engine/messageModel";
+import useChatScroll from "../engine/useChatScroll";
+import useChatStream from "../engine/useChatStream";
+import useImageUpload from "../engine/useImageUpload";
+import useModelCatalog from "../engine/useModelCatalog";
+import "../chat-shared.css";
 
 // Universal client commands (same for every agent). Agent-specific commands are
 // the prompt macros from db_agent_profiles.commands, merged in at render time.
@@ -59,387 +68,27 @@ const TITLE_ACTIONS = [
 	{ key: "manual", label: "Edit manually", desc: "Type a new title yourself" },
 ];
 
-import useNotesWorkspaceStore from "../store/notesWorkspaceStore";
-import SpriteRunner from "./SpriteRunner";
-import "./ChatPage.css";
+// Slash-menu items derived from a list of matched commands.
+const slashItems = (matches) =>
+	matches.map((c) => ({
+		key: `${c.kind}-${c.name}`,
+		name: `/${c.name}`,
+		desc: `${c.description}${c.kind === "agent" ? " · agent" : ""}`,
+		agent: c.kind === "agent",
+	}));
+
+const titleItems = TITLE_ACTIONS.map((a) => ({
+	key: a.key,
+	name: a.label,
+	desc: a.desc,
+}));
 
 // Persists the active conversation so the panel restores it across mounts.
 const STORAGE_KEY = "pv:agents-active-conv";
 
-const noteLabel = (path) => path.split("/").filter(Boolean).pop() || path;
-
-const newMessageId = () =>
-	`msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-// Normalised content blocks → plain text (for rendering + history seed).
-const blocksToText = (content) => {
-	if (typeof content === "string") return content;
-	if (Array.isArray(content))
-		return content
-			.filter((b) => b.type === "text")
-			.map((b) => b.text)
-			.join("");
-	return "";
-};
-
-// Pull the image blocks out of a persisted user message → [{ url, mediaType }].
-const blocksToImages = (content) => {
-	if (!Array.isArray(content)) return [];
-	return content
-		.filter((b) => b.type === "image" && b.url)
-		.map((b) => ({ url: b.url, mediaType: b.media_type }));
-};
-
-// Walk persisted content blocks IN ORDER into renderable parts, so tools show up
-// inline at the point they ran rather than all grouped together. A part is either
-// a `text` segment or a `tools` run (consecutive tool chips between text). A
-// `tool_result` sets the status of the matching `tool_use` in the current run;
-// `thinking` blocks are skipped (not rendered, don't split a tool run).
-const blocksToParts = (content) => {
-	if (typeof content === "string")
-		return content ? [{ kind: "text", id: "p0", text: content }] : [];
-	if (!Array.isArray(content)) return [];
-	const parts = [];
-	const tail = () => parts[parts.length - 1];
-	for (const b of content) {
-		if (b.type === "text") {
-			if (!b.text) continue;
-			const t = tail();
-			if (t?.kind === "text") t.text += b.text;
-			else parts.push({ kind: "text", id: `p${parts.length}`, text: b.text });
-		} else if (b.type === "tool_use" && b.name === "navigate") {
-			// A navigation intent renders as a "Go" action, not a tool chip.
-			const a = b.input || {};
-			parts.push({
-				kind: "nav",
-				id: `p${parts.length}`,
-				target: a.target,
-				navId: a.id,
-				route: a.route,
-				url: a.url,
-				label: a.label,
-			});
-		} else if (b.type === "tool_use") {
-			let run = tail();
-			if (run?.kind !== "tools") {
-				run = { kind: "tools", id: `p${parts.length}`, tools: [] };
-				parts.push(run);
-			}
-			run.tools.push({
-				id: `${run.id}-${run.tools.length}`,
-				name: b.name,
-				args: b.input,
-				status: "done",
-			});
-		} else if (b.type === "tool_result") {
-			const run = tail();
-			const t =
-				run?.kind === "tools" &&
-				[...run.tools].reverse().find((x) => x.name === b.name);
-			if (t) {
-				const out = b.output;
-				const isErr = out && typeof out === "object" && "error" in out;
-				t.status = isErr ? "error" : "done";
-				// Show the entity's name (e.g. note/task title) on the chip instead
-				// of the raw UUID args.
-				if (out && typeof out === "object" && typeof out.title === "string")
-					t.label = out.title;
-			}
-		} else if (b.type === "injected") {
-			// A mid-turn user injection, rendered inline where it landed.
-			if (b.text)
-				parts.push({ kind: "inject", id: `p${parts.length}`, text: b.text });
-		}
-	}
-	return parts;
-};
-
-// Append text to a parts array, extending the trailing text segment or adding a
-// new one. Returns a new array (immutable update for setMessages).
-const appendTextPart = (parts, text) => {
-	const next = [...(parts || [])];
-	const t = next[next.length - 1];
-	if (t?.kind === "text") next[next.length - 1] = { ...t, text: t.text + text };
-	else next.push({ kind: "text", id: `p${next.length}`, text });
-	return next;
-};
-
-// Normalise a server message into the panel's shape, carrying the model + tree
-// fields used by the per-message actions and the fork (‹n/n›) switcher.
-const mapMsg = (m) => ({
-	id: m.id,
-	role: m.role,
-	content: blocksToText(m.content),
-	parts: blocksToParts(m.content),
-	images: blocksToImages(m.content),
-	model: m.model_used || null,
-	parentId: m.parent_id ?? null,
-	branchIndex: m.branch_index ?? 1,
-	branchCount: m.branch_count ?? 1,
-	siblingIds: m.sibling_ids ?? [],
-});
-
-// Map a `navigate`-tool intent to an in-app path (or pass through an external
-// URL). Returns null for anything we don't recognise, so the action is dropped
-// rather than sending the user somewhere bogus.
-const navTargetToPath = ({ target, id, route, url } = {}) => {
-	switch (target) {
-		case "note":
-			return id ? `/notes/${id}` : null;
-		case "event":
-			return id ? `/calendar?event=${id}` : null;
-		case "task":
-			return id ? `/tasks?task=${id}` : null;
-		case "view": {
-			const r = (route || "").toLowerCase();
-			if (r.includes("calendar")) return "/calendar";
-			if (r.includes("task")) return "/tasks";
-			if (r.includes("storage") || r.includes("file")) return "/storage";
-			if (r.includes("note")) return "/notes";
-			return null;
-		}
-		case "url":
-			return /^https?:\/\//i.test(url || "") ? url : null;
-		default:
-			return null;
-	}
-};
-
-const NAV_FALLBACK_LABEL = {
-	note: "note",
-	event: "event",
-	task: "task",
-	view: "view",
-	url: "link",
-};
-
-// Custom markdown <a>: internal app paths navigate client-side (keeping the
-// chat dock open); external http(s) links open in a new tab; anything else
-// (e.g. a stripped/odd scheme) renders as inert text.
-function VaultLink({ href = "", children, onNavigate }) {
-	if (href.startsWith("/")) {
-		return (
-			<a
-				className="vault-chat-link"
-				href={href}
-				onClick={(e) => {
-					e.preventDefault();
-					onNavigate?.(href);
-				}}
-			>
-				{children}
-			</a>
-		);
-	}
-	if (/^https?:\/\//i.test(href)) {
-		return (
-			<a href={href} target="_blank" rel="noopener noreferrer">
-				{children}
-			</a>
-		);
-	}
-	return <span>{children}</span>;
-}
-
-const TOOL_ICON = { running: "⚙", done: "✓", error: "✗" };
-
-// Compact one-line summary of a tool's arguments for the chip.
-const toolArgsSummary = (args) => {
-	if (!args || typeof args !== "object") return "";
-	return Object.entries(args)
-		.filter(([, v]) => v !== null && v !== undefined && v !== "")
-		.map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`)
-		.join(", ");
-};
-
-// Tool activity — always shown in full (chips wrap to fit). No
-// collapse-to-summary on completion; the run stays visible as a record.
-function ToolList({ tools }) {
-	if (!tools?.length) return null;
-	return (
-		<div className="chat-tools">
-			{tools.map((t) => {
-				// Prefer a resolved entity name (note/task title) over raw UUID args.
-				const summary = t.label || toolArgsSummary(t.args);
-				return (
-					<div key={t.id} className={`chat-tool chat-tool--${t.status}`}>
-						<span className="chat-tool-icon" aria-hidden="true">
-							{TOOL_ICON[t.status] || "⚙"}
-						</span>
-						<span className="chat-tool-name">{t.name}</span>
-						{summary ? <span className="chat-tool-args">{summary}</span> : null}
-					</div>
-				);
-			})}
-		</div>
-	);
-}
-
-// One context chip — transient (from an open tab, dimmed; click to lock) or
-// locked (pinned, solid; × to unlock). Read-only inside a sent bubble.
-function ContextTag({ label, title, locked, preview, onClick, onRemove }) {
-	const inner = (
-		<>
-			<span className="chat-context-tag-icon" aria-hidden="true">
-				{locked ? "◆" : "◇"}
-			</span>
-			<span className="chat-context-tag-label">{label}</span>
-		</>
-	);
-	return (
-		<span
-			className={`chat-context-tag ${locked ? "locked" : "transient"} ${
-				!locked && preview ? "preview" : ""
-			}`}
-			title={title}
-		>
-			{onClick ? (
-				<button
-					type="button"
-					className="chat-context-tag-main"
-					onClick={onClick}
-					title={
-						locked
-							? "Click to open this note"
-							: "Click to keep this note in context"
-					}
-				>
-					{inner}
-				</button>
-			) : (
-				<span className="chat-context-tag-main">{inner}</span>
-			)}
-			{onRemove ? (
-				<button
-					type="button"
-					className="chat-context-tag-x"
-					onClick={onRemove}
-					aria-label={`Remove ${label} from context`}
-				>
-					×
-				</button>
-			) : null}
-		</span>
-	);
-}
-
-function UserBubble({ content, context, images }) {
-	return (
-		<div className="chat-user-row">
-			<div className="chat-user-card">
-				{context?.length ? (
-					<div className="chat-context-tags chat-context-tags--bubble">
-						{context.map((path) => (
-							<ContextTag
-								key={path}
-								label={noteLabel(path)}
-								title={path}
-								locked
-							/>
-						))}
-					</div>
-				) : null}
-				{images?.length ? (
-					<div className="chat-user-images">
-						{images.map((img) => (
-							<a
-								key={img.url}
-								href={img.url}
-								target="_blank"
-								rel="noreferrer"
-								className="chat-user-image"
-							>
-								<img src={img.url} alt="attachment" />
-							</a>
-						))}
-					</div>
-				) : null}
-				{content ? <div className="chat-user-text">{content}</div> : null}
-			</div>
-		</div>
-	);
-}
-
-function AssistantBubble({ parts, isStreaming, label, onNavigate }) {
-	const empty = !parts?.length;
-	// Bind the custom link renderer to this bubble's navigation handler.
-	const mdComponents = useMemo(
-		() => ({ a: (props) => <VaultLink {...props} onNavigate={onNavigate} /> }),
-		[onNavigate],
-	);
-	return (
-		<div className="chat-assistant-row">
-			<span className="chat-role">{label}</span>
-			<div className="chat-assistant-body">
-				{empty && isStreaming ? (
-					<div className="chat-thinking">
-						<SpriteRunner pixelSize={2} />
-						<div className="chat-thinking-body">
-							<span className="chat-thinking-label">thinking…</span>
-							<span className="chat-thinking-dots" aria-hidden="true">
-								<i />
-								<i />
-								<i />
-							</span>
-						</div>
-					</div>
-				) : (
-					<>
-						{/* Text, tool runs, and mid-turn injections — in stream order. */}
-						{parts.map((p) => {
-							if (p.kind === "tools")
-								return <ToolList key={p.id} tools={p.tools} />;
-							if (p.kind === "inject")
-								return (
-									<div key={p.id} className="chat-inject">
-										<span className="chat-inject-label">you ↩</span>
-										<span className="chat-inject-text">{p.text}</span>
-									</div>
-								);
-							if (p.kind === "nav") {
-								const to = navTargetToPath({
-									target: p.target,
-									id: p.navId,
-									route: p.route,
-									url: p.url,
-								});
-								if (!to) return null;
-								const navLabel =
-									p.label || NAV_FALLBACK_LABEL[p.target] || "open";
-								return (
-									<button
-										key={p.id}
-										type="button"
-										className="chat-nav-action"
-										onClick={() => onNavigate?.(to)}
-										title={to}
-									>
-										<span className="chat-nav-action-icon" aria-hidden="true">
-											↗
-										</span>
-										<span className="chat-nav-action-label">
-											Go → {navLabel}
-										</span>
-									</button>
-								);
-							}
-							return (
-								<ReactMarkdown
-									key={p.id}
-									remarkPlugins={[remarkGfm]}
-									components={mdComponents}
-								>
-									{normalizeChatMarkdown(p.text)}
-								</ReactMarkdown>
-							);
-						})}
-						{isStreaming ? <span className="chat-cursor" /> : null}
-					</>
-				)}
-			</div>
-		</div>
-	);
-}
+// Replaces the trailing reply when dropped-stream recovery gives up.
+const RECOVER_TIMEOUT_TEXT =
+	"_The reply is taking a while. Reopen this chat to see it once it finishes._";
 
 // Embedded chat panel — runs on the agents API. Pick the agent (default set in
 // admin → Agents), stream the reply, and attach "locked" notes as context.
@@ -460,12 +109,12 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			// (e.g. /projects/piuma-vault/<uuid>) instead of the canonical
 			// /notes/<id>. Any internal path carrying a note UUID that isn't a known
 			// route IS a note. (Calendar/task carry their UUID in a query param, and
-			// start with /admin or /tasks, so they're excluded.)
+			// start with /settings or /tasks, so they're excluded.)
 			let path = to;
 			const uuid = path.match(
 				/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
 			);
-			if (uuid && !/^\/(notes|tasks|storage|admin)\b/.test(path)) {
+			if (uuid && !/^\/(notes|tasks|storage|settings)\b/.test(path)) {
 				path = `/notes/${uuid[0]}`;
 			}
 			const noteMatch = path.match(/^\/notes\/([^/?#]+)$/);
@@ -503,15 +152,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		() => localStorage.getItem(STORAGE_KEY) || null,
 	);
 	// The model bound to the active conversation (db_chat_conversations.model_id),
-	// or null when it hasn't been overridden — then the backend uses the default,
-	// so the model flagged is_default is the one actually in use.
+	// or null when it hasn't been overridden — then the backend uses the default.
 	const [modelId, setModelId] = useState(null);
-	// All enabled models (fetched once), so the composer can read the ACTIVE
-	// model's capabilities — chiefly `supports_vision` to gate image attach.
-	const [allModels, setAllModels] = useState([]);
-	// Images pasted/attached for the next turn, each:
-	// { id, localUrl, url, key, mediaType, name, w, h, status: "uploading"|"ready"|"error" }.
-	const [pendingImages, setPendingImages] = useState([]);
 	// Only restore when a stored conversation exists; a fresh panel (and any
 	// conversation created later this session) starts already-hydrated so the
 	// restore effect never clobbers live streaming state.
@@ -528,11 +170,10 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	// The currently-shown conversation, as a ref — so async writers (a detached
 	// stream, the recover poller) can bail if the user has switched away, instead
 	// of clobbering the conversation now on screen.
-	const conversationIdRef = useRef(conversationId);
+	const convRef = useRef(conversationId);
 	useEffect(() => {
-		conversationIdRef.current = conversationId;
+		convRef.current = conversationId;
 	}, [conversationId]);
-	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
 	const inputRef = useRef(null);
 	// Return focus to the composer after any picker/menu operation, so the whole
@@ -541,28 +182,33 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const focusInput = useCallback(() => {
 		requestAnimationFrame(() => inputRef.current?.focus());
 	}, []);
-	// Stick-to-bottom: only auto-follow new content while parked near the bottom.
-	// Scrolling up releases the lock (so streaming stops yanking you down) and
-	// reveals a jump-to-latest button.
-	const atBottomRef = useRef(true);
-	const [showJump, setShowJump] = useState(false);
-
-	const handleScroll = useCallback(() => {
-		const el = scrollRef.current;
-		if (!el) return;
-		const atBottom = el.scrollHeight - (el.scrollTop + el.clientHeight) < 80;
-		atBottomRef.current = atBottom;
-		setShowJump((p) => (p === !atBottom ? p : !atBottom));
-	}, []);
-
-	const scrollToBottom = useCallback(() => {
-		atBottomRef.current = true;
-		setShowJump(false);
-		const el = scrollRef.current;
-		if (el) el.scrollTop = el.scrollHeight;
-	}, []);
 	const slashActiveRef = useRef(null);
 	const overlayActiveRef = useRef(null);
+
+	// Editing an old user message (fork-on-send).
+	const [editingId, setEditingId] = useState(null);
+	const [editText, setEditText] = useState("");
+
+	// Shared engine pieces.
+	const { scrollRef, handleScroll, scrollToBottom, showJump } =
+		useChatScroll(messages);
+	const { visionEnabled, activeModelRef, modelLabelFor } =
+		useModelCatalog(modelId);
+	const {
+		pendingImages,
+		setPendingImages,
+		uploadingImages,
+		removePendingImage,
+		onPaste,
+		onDrop,
+	} = useImageUpload({ visionEnabled, convRef });
+	const { buildHandlers, reloadActivePath } = useChatStream({
+		convRef,
+		setMessages,
+		setIsStreaming,
+		activeModelRef,
+		recoverTimeoutText: RECOVER_TIMEOUT_TEXT,
+	});
 
 	// Restore the stored conversation once on mount.
 	useEffect(() => {
@@ -572,7 +218,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			.then((d) => {
 				if (cancelled) return;
 				setModelId(d.conversation?.model_id || null);
-				setMessages((d.messages || []).map(mapMsg));
+				setMessages((d.messages || []).map(mapServerMessage));
 				setHydrated(true);
 				setLoadingConv(false);
 			})
@@ -637,159 +283,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		[lockedContext],
 	);
 
-	// Load the model catalog once so the composer knows the active model's
-	// capabilities (vision). Refreshed lazily by the /models picker too.
-	useEffect(() => {
-		fetchAllModels()
-			.then(setAllModels)
-			.catch(() => {});
-	}, []);
-
-	// The model actually in use: the conversation's override, or the default.
-	const activeModel = useMemo(() => {
-		if (!allModels.length) return null;
-		return modelId
-			? allModels.find((m) => m.id === modelId)
-			: allModels.find((m) => m.is_default);
-	}, [allModels, modelId]);
-	const visionEnabled = !!activeModel?.supports_vision;
-	// Active model as a ref, so the stream's onDone can stamp the model onto the
-	// just-streamed reply without re-creating handlers.
-	const activeModelRef = useRef(activeModel);
-	useEffect(() => {
-		activeModelRef.current = activeModel;
-	}, [activeModel]);
-	// Resolve a message's stored model (`model_used`, a wire id) to a friendly
-	// display name via the catalog; fall back to the raw value.
-	const modelLabelFor = useCallback(
-		(m) => {
-			if (!m?.model) return null;
-			const hit = allModels.find(
-				(x) => x.model_id === m.model || x.id === m.model,
-			);
-			return hit?.display_name || m.model;
-		},
-		[allModels],
-	);
-	// Editing an old user message (fork-on-send).
-	const [editingId, setEditingId] = useState(null);
-	const [editText, setEditText] = useState("");
-
-	const uploadingImages = pendingImages.some((p) => p.status === "uploading");
-
-	const removePendingImage = useCallback((id) => {
-		setPendingImages((curr) => {
-			const hit = curr.find((p) => p.id === id);
-			if (hit?.localUrl) URL.revokeObjectURL(hit.localUrl);
-			return curr.filter((p) => p.id !== id);
-		});
-	}, []);
-
-	// Upload an image file to the disposable __temp/chat/ prefix, showing an
-	// optimistic local thumbnail immediately and swapping in the CDN URL when the
-	// upload lands. Gated on the active model supporting vision.
-	const addImageFile = useCallback(
-		(file) => {
-			if (!file?.type?.startsWith("image/")) return;
-			if (!visionEnabled) {
-				pvMessage.info(
-					"This model can't read images — switch to a vision model first.",
-				);
-				return;
-			}
-			const id = newMessageId();
-			const localUrl = URL.createObjectURL(file);
-			const probe = new Image();
-			probe.onload = () =>
-				setPendingImages((curr) =>
-					curr.map((p) =>
-						p.id === id
-							? { ...p, w: probe.naturalWidth, h: probe.naturalHeight }
-							: p,
-					),
-				);
-			probe.src = localUrl;
-			setPendingImages((curr) => [
-				...curr,
-				{
-					id,
-					localUrl,
-					url: null,
-					key: null,
-					mediaType: file.type || "image/png",
-					name: file.name || "image.png",
-					w: 0,
-					h: 0,
-					status: "uploading",
-				},
-			]);
-			uploadChatImage({ file, conversationId: conversationIdRef.current })
-				.then(({ key, publicUrl, media_type }) =>
-					setPendingImages((curr) =>
-						curr.map((p) =>
-							p.id === id
-								? {
-										...p,
-										url: publicUrl,
-										key,
-										mediaType: media_type || p.mediaType,
-										status: "ready",
-									}
-								: p,
-						),
-					),
-				)
-				.catch(() => {
-					pvMessage.error("Image upload failed");
-					removePendingImage(id);
-				});
-		},
-		[visionEnabled, removePendingImage],
-	);
-
-	// Paste handler: grab any image items off the clipboard.
-	const onPaste = useCallback(
-		(e) => {
-			const items = e.clipboardData?.items || [];
-			let handled = false;
-			for (const it of items) {
-				if (it.kind === "file" && it.type.startsWith("image/")) {
-					const f = it.getAsFile();
-					if (f) {
-						addImageFile(f);
-						handled = true;
-					}
-				}
-			}
-			if (handled) e.preventDefault();
-		},
-		[addImageFile],
-	);
-
-	const onDrop = useCallback(
-		(e) => {
-			const files = e.dataTransfer?.files;
-			if (!files?.length) return;
-			let handled = false;
-			for (const f of files) {
-				if (f.type.startsWith("image/")) {
-					addImageFile(f);
-					handled = true;
-				}
-			}
-			if (handled) e.preventDefault();
-		},
-		[addImageFile],
-	);
-
 	useEffect(() => () => abortRef.current?.abort(), []);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: scroll on new messages
-	useEffect(() => {
-		// Follow new content only when parked at the bottom; respect scroll-up.
-		if (!atBottomRef.current || !scrollRef.current) return;
-		scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-	}, [messages]);
 
 	const confirmClear = useCallback(() => {
 		abortRef.current?.abort();
@@ -811,160 +305,6 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		setIsStreaming(false);
 		if (conversationId) stopConversation(conversationId).catch(() => {});
 	}, [conversationId]);
-
-	// Recover from a dropped stream: the turn keeps running + is persisted
-	// server-side, so poll the conversation until the assistant message lands,
-	// then rebuild from server truth (what a manual reload does, automatically).
-	const recoverTurn = useCallback(async (convId) => {
-		for (let i = 0; i < 24; i++) {
-			await new Promise((r) => setTimeout(r, 2500)); // ~60s total
-			// Bail if the user switched away — don't overwrite another conversation.
-			if (conversationIdRef.current !== convId) return;
-			try {
-				const d = await fetchConversation(convId);
-				if (conversationIdRef.current !== convId) return;
-				const msgs = d.messages || [];
-				const last = msgs[msgs.length - 1];
-				if (last && last.role === "assistant") {
-					setMessages(msgs.map(mapMsg));
-					return;
-				}
-			} catch {
-				/* keep trying */
-			}
-		}
-		if (conversationIdRef.current !== convId) return;
-		setMessages((curr) => {
-			const updated = [...curr];
-			const last = updated[updated.length - 1];
-			if (last?.role === "assistant") {
-				updated[updated.length - 1] = {
-					...last,
-					content:
-						"_The reply is taking a while. Reopen this chat to see it once it finishes._",
-				};
-			}
-			return updated;
-		});
-	}, []);
-
-	// Refetch the active branch from the server and replace the message list —
-	// gives every message its real id + branch metadata after a turn.
-	const reloadActivePath = useCallback(async (convId) => {
-		if (!convId) return;
-		try {
-			const d = await fetchConversation(convId);
-			if (conversationIdRef.current !== convId) return;
-			setMessages((d.messages || []).map(mapMsg));
-		} catch {
-			/* ignore */
-		}
-	}, []);
-
-	// Stream callbacks for a turn (send / regenerate / fork). All writes target
-	// the trailing assistant message; onDone stamps the producing model.
-	const buildHandlers = useCallback(
-		(convId) => {
-			const appendText = (delta) =>
-				setMessages((curr) => {
-					const updated = [...curr];
-					const last = updated[updated.length - 1];
-					updated[updated.length - 1] = {
-						...last,
-						parts: appendTextPart(last.parts, delta),
-					};
-					return updated;
-				});
-			return {
-				onText: appendText,
-				onThinking: () => {},
-				onTool: (t) => {
-					if (t.name === "navigate") {
-						if (t.done) return;
-						setMessages((curr) => {
-							const updated = [...curr];
-							const last = { ...updated[updated.length - 1] };
-							const parts = [...(last.parts || [])];
-							const a = t.args || {};
-							parts.push({
-								kind: "nav",
-								id: `p${parts.length}`,
-								target: a.target,
-								navId: a.id,
-								route: a.route,
-								url: a.url,
-								label: a.label,
-							});
-							last.parts = parts;
-							updated[updated.length - 1] = last;
-							return updated;
-						});
-						return;
-					}
-					setMessages((curr) => {
-						const updated = [...curr];
-						const last = { ...updated[updated.length - 1] };
-						const parts = [...(last.parts || [])];
-						if (t.done) {
-							for (let i = parts.length - 1; i >= 0; i--) {
-								if (parts[i].kind !== "tools") continue;
-								const idx = parts[i].tools.findIndex((x) => x.id === t.id);
-								if (idx >= 0) {
-									const tools = [...parts[i].tools];
-									tools[idx] = {
-										...tools[idx],
-										label: t.label || tools[idx].label,
-										status: t.ok ? "done" : "error",
-									};
-									parts[i] = { ...parts[i], tools };
-									break;
-								}
-							}
-						} else {
-							let run = parts[parts.length - 1];
-							if (run?.kind !== "tools") {
-								run = { kind: "tools", id: `p${parts.length}`, tools: [] };
-								parts.push(run);
-							} else {
-								run = { ...run, tools: [...run.tools] };
-								parts[parts.length - 1] = run;
-							}
-							run.tools.push({
-								id: t.id,
-								name: t.name,
-								args: t.args,
-								status: "running",
-							});
-						}
-						last.parts = parts;
-						updated[updated.length - 1] = last;
-						return updated;
-					});
-				},
-				onError: (e) => {
-					if (e?.isTransport && convId) {
-						appendText("\n\n_(reconnecting…)_");
-						recoverTurn(convId);
-						return;
-					}
-					appendText(`\n\n**Error:** ${e.message}`);
-				},
-				onDone: () => {
-					const used = activeModelRef.current?.model_id || null;
-					if (used)
-						setMessages((curr) => {
-							const updated = [...curr];
-							const last = updated[updated.length - 1];
-							if (last?.role === "assistant")
-								updated[updated.length - 1] = { ...last, model: used };
-							return updated;
-						});
-					setIsStreaming(false);
-				},
-			};
-		},
-		[recoverTurn],
-	);
 
 	const sendMessage = useCallback(async () => {
 		const text = input.trim();
@@ -1098,6 +438,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		sentContextPaths,
 		sentContextIds,
 		pendingImages,
+		setPendingImages,
 		buildHandlers,
 		reloadActivePath,
 		scrollToBottom,
@@ -1201,8 +542,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			if (!convId || isStreaming || !messageId) return;
 			try {
 				const d = await switchBranch(convId, messageId);
-				if (conversationIdRef.current !== convId) return;
-				setMessages((d.messages || []).map(mapMsg));
+				if (convRef.current !== convId) return;
+				setMessages((d.messages || []).map(mapServerMessage));
 				scrollToBottom();
 			} catch {
 				pvMessage.error("Couldn't switch branch");
@@ -1334,7 +675,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		try {
 			const d = await fetchConversation(id);
 			setModelId(d.conversation?.model_id || null);
-			setMessages((d.messages || []).map(mapMsg));
+			setMessages((d.messages || []).map(mapServerMessage));
 		} catch {
 			/* ignore */
 		} finally {
@@ -1473,7 +814,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				}
 			}
 		},
-		[conversationId, focusInput],
+		[conversationId, focusInput, setPendingImages],
 	);
 
 	// Shared picker (sessions/models) keyboard nav. Used by both the composer
@@ -1644,145 +985,26 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				) : null}
 			</div>
 
-			<div className="chat-messages-viewport">
-				<div ref={scrollRef} className="chat-messages" onScroll={handleScroll}>
-					<div className="chat-messages-inner">
-						{loadingConv && messages.length === 0 ? (
-							<div className="chat-loading">
-								<SpriteRunner pixelSize={3} />
-								<span className="chat-loading-label">
-									loading conversation…
-								</span>
-							</div>
-						) : messages.length === 0 ? (
-							<div className="chat-empty">
-								<div className="chat-empty-title">{agentLabel} is ready.</div>
-								<div className="chat-empty-sub">
-									Ask anything — markdown, code, plans. Streams back token by
-									token.
-								</div>
-							</div>
-						) : (
-							messages.map((m, i) => {
-								const isLast = i === messages.length - 1;
-								const streamingThis =
-									isStreaming && isLast && m.role === "assistant";
-								const switcher =
-									m.branchCount > 1 ? (
-										<BranchSwitcher
-											index={m.branchIndex}
-											count={m.branchCount}
-											onPrev={() => switchTo(m.siblingIds?.[m.branchIndex - 2])}
-											onNext={() => switchTo(m.siblingIds?.[m.branchIndex])}
-										/>
-									) : null;
-								if (m.role === "user") {
-									return (
-										<div key={m.id} className="chatx-msg chatx-msg--user">
-											{editingId === m.id ? (
-												<div className="chatx-edit">
-													<textarea
-														className="chatx-edit-input"
-														value={editText}
-														onChange={(e) => setEditText(e.target.value)}
-														rows={3}
-														// biome-ignore lint/a11y/noAutofocus: focus the editor on open
-														autoFocus
-														onKeyDown={(e) => {
-															if (e.key === "Enter" && !e.shiftKey) {
-																e.preventDefault();
-																editAndFork(m.id, editText);
-															} else if (e.key === "Escape") {
-																setEditingId(null);
-																setEditText("");
-															}
-														}}
-													/>
-													<div className="chatx-edit-actions">
-														<button
-															type="button"
-															className="chatx-edit-btn"
-															onClick={() => {
-																setEditingId(null);
-																setEditText("");
-															}}
-														>
-															Cancel
-														</button>
-														<button
-															type="button"
-															className="chatx-edit-btn chatx-edit-send"
-															onClick={() => editAndFork(m.id, editText)}
-															disabled={!editText.trim()}
-														>
-															Send ↑
-														</button>
-													</div>
-												</div>
-											) : (
-												<>
-													<UserBubble
-														content={m.content}
-														context={m.context}
-														images={m.images}
-													/>
-													<div className="chatx-msg-actions chatx-msg-actions--user">
-														{switcher}
-														{!isStreaming ? (
-															<button
-																type="button"
-																className="chatx-msg-action"
-																title="Edit message"
-																aria-label="Edit message"
-																onClick={() => {
-																	setEditingId(m.id);
-																	setEditText(m.content || "");
-																}}
-															>
-																<EditOutlined />
-															</button>
-														) : null}
-													</div>
-												</>
-											)}
-										</div>
-									);
-								}
-								return (
-									<div key={m.id} className="chatx-msg">
-										<AssistantBubble
-											parts={m.parts}
-											isStreaming={streamingThis}
-											label={agentLabel}
-											onNavigate={goTo}
-										/>
-										{!streamingThis && m.parts?.length ? (
-											<MessageActions
-												text={partsToText(m.parts)}
-												modelLabel={modelLabelFor(m)}
-												canRetry={!isStreaming && !sending}
-												onRetry={() => regenerateAt(m.id)}
-												leading={switcher}
-											/>
-										) : null}
-									</div>
-								);
-							})
-						)}
-					</div>
-				</div>
-				{showJump ? (
-					<button
-						type="button"
-						className="chat-jump"
-						onClick={scrollToBottom}
-						title="Jump to latest"
-						aria-label="Jump to latest message"
-					>
-						↓
-					</button>
-				) : null}
-			</div>
+			<MessageList
+				messages={messages}
+				isStreaming={isStreaming}
+				sending={sending}
+				agentLabel={agentLabel}
+				loadingConv={loadingConv}
+				editingId={editingId}
+				editText={editText}
+				setEditingId={setEditingId}
+				setEditText={setEditText}
+				onNavigate={goTo}
+				onSwitchTo={switchTo}
+				onEditAndFork={editAndFork}
+				onRegenerate={regenerateAt}
+				modelLabelFor={modelLabelFor}
+				scrollRef={scrollRef}
+				onScroll={handleScroll}
+				showJump={showJump}
+				onJump={scrollToBottom}
+			/>
 
 			<div className="chat-composer">
 				<div className="chat-composer-inner">
@@ -1807,79 +1029,22 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 							))}
 						</div>
 					) : null}
-					{pendingImages.length > 0 ? (
-						<div className="chat-image-tags">
-							{pendingImages.map((img) => (
-								<div
-									key={img.id}
-									className={`chat-image-tag${img.status === "uploading" ? " is-uploading" : ""}${img.status === "error" ? " is-error" : ""}`}
-									title={img.name}
-								>
-									<img
-										className="chat-image-tag-thumb"
-										src={img.localUrl || img.url}
-										alt={img.name}
-									/>
-									<span className="chat-image-tag-meta">
-										<span className="chat-image-tag-name">{img.name}</span>
-										{img.w && img.h ? (
-											<span className="chat-image-tag-dim">
-												{img.w}×{img.h}
-											</span>
-										) : null}
-									</span>
-									{img.status === "uploading" ? (
-										<span className="chat-image-tag-spin" aria-hidden="true" />
-									) : (
-										<button
-											type="button"
-											className="chat-image-tag-remove"
-											onClick={() => removePendingImage(img.id)}
-											aria-label={`Remove ${img.name}`}
-										>
-											×
-										</button>
-									)}
-								</div>
-							))}
-						</div>
-					) : null}
+					<PendingImages images={pendingImages} onRemove={removePendingImage} />
 					<div className="chat-composer-fields">
-						{slashMatches.length > 0 ? (
-							<div className="slash-menu">
-								{slashMatches.map((c, i) => (
-									<button
-										key={`${c.kind}-${c.name}`}
-										type="button"
-										ref={i === slashActive ? slashActiveRef : null}
-										className={`slash-item${i === slashActive ? " is-active" : ""}${c.kind === "agent" ? " slash-item--agent" : ""}`}
-										onClick={() => runCommand(c)}
-										onMouseEnter={() => setSlashActive(i)}
-									>
-										<span className="slash-item-name">/{c.name}</span>
-										<span className="slash-item-desc">
-											{c.description}
-											{c.kind === "agent" ? " · agent" : ""}
-										</span>
-									</button>
-								))}
-							</div>
-						) : null}
+						<SlashMenu
+							items={slashItems(slashMatches)}
+							active={slashActive}
+							onPick={(_it, i) => runCommand(slashMatches[i])}
+							onHover={setSlashActive}
+							activeRef={slashActiveRef}
+						/>
 						{titleMenu ? (
-							<div className="slash-menu">
-								{TITLE_ACTIONS.map((a, i) => (
-									<button
-										key={a.key}
-										type="button"
-										className={`slash-item${i === titleActive ? " is-active" : ""}`}
-										onClick={() => runTitleAction(a.key)}
-										onMouseEnter={() => setTitleActive(i)}
-									>
-										<span className="slash-item-name">{a.label}</span>
-										<span className="slash-item-desc">{a.desc}</span>
-									</button>
-								))}
-							</div>
+							<SlashMenu
+								items={titleItems}
+								active={titleActive}
+								onPick={(it) => runTitleAction(it.key)}
+								onHover={setTitleActive}
+							/>
 						) : null}
 						{overlay ? (
 							<div className="picker-overlay">

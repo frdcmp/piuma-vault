@@ -33,7 +33,8 @@ const AppBreadcrumbs = () => {
 	const location = useLocation();
 	const segments = location.pathname.split("/").filter(Boolean);
 
-	const isProjectRoute = segments[0] === "admin" && segments[1] === "projects";
+	const isProjectRoute =
+		segments[0] === "settings" && segments[1] === "projects";
 	const projectUuid =
 		isProjectRoute && isUuid(segments[2]) ? segments[2] : null;
 	const batchUuid = projectUuid && isUuid(segments[3]) ? segments[3] : null;
@@ -42,11 +43,11 @@ const AppBreadcrumbs = () => {
 	// Build a flat list of { label, to? } crumbs.
 	const items = [{ label: <HomeOutlined />, to: "/notes" }];
 
-	if (segments[0] === "admin") {
+	if (segments[0] === "settings") {
 		items.push(
 			segments.length > 1
-				? { label: "Admin", to: "/admin" }
-				: { label: "Admin" },
+				? { label: "Settings", to: "/settings" }
+				: { label: "Settings" },
 		);
 	}
 
@@ -57,7 +58,7 @@ const AppBreadcrumbs = () => {
 				PAGE_LABELS[featureSegment] ?? titleCase(featureSegment);
 
 			if (segments.length > 2) {
-				items.push({ label: displayLabel, to: `/admin/${featureSegment}` });
+				items.push({ label: displayLabel, to: `/settings/${featureSegment}` });
 				for (let i = 2; i < segments.length; i++) {
 					const sub = titleCase(segments[i]);
 					if (i < segments.length - 1) {
@@ -76,17 +77,20 @@ const AppBreadcrumbs = () => {
 	} else if (!projectUuid) {
 		items.push({ label: "Projects" });
 	} else {
-		items.push({ label: "Projects", to: "/admin/projects" });
+		items.push({ label: "Projects", to: "/settings/projects" });
 		if (!batchUuid) {
 			items.push({ label: projectUuid });
 		} else {
-			items.push({ label: projectUuid, to: `/admin/projects/${projectUuid}` });
+			items.push({
+				label: projectUuid,
+				to: `/settings/projects/${projectUuid}`,
+			});
 			if (!fileUuid) {
 				items.push({ label: batchUuid });
 			} else {
 				items.push({
 					label: batchUuid,
-					to: `/admin/projects/${projectUuid}/${batchUuid}`,
+					to: `/settings/projects/${projectUuid}/${batchUuid}`,
 				});
 				items.push({ label: fileUuid });
 			}
