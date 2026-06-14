@@ -211,6 +211,3 @@ Copyright (C) 2026 Piuma Vault contributors.
 Piuma Vault is free software licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). You may use, modify, and redistribute it under the terms of that license. Crucially, if you run a modified version as a network service, you must make your modified source available to its users. See the [LICENSE](LICENSE) file for the full text.
 
 ---
-
-*Made with 💛 by open source contributors*
-
