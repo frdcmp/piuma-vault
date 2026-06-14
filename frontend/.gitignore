@@ -1,4 +1,13 @@
-# Logs
+# =============================================================================
+# Piuma Vault — frontend gitignore (React 19 + Vite)
+# =============================================================================
+
+# ---- Dependencies / build output ----
+node_modules
+dist
+dist-ssr
+
+# ---- Logs ----
 logs
 *.log
 npm-debug.log*
@@ -7,12 +16,10 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# ---- Local env ----
 *.local
 
-# Editor directories and files
+# ---- OS / editor ----
 .vscode/*
 !.vscode/extensions.json
 .idea

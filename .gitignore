@@ -1,92 +1,54 @@
+# =============================================================================
+# Piuma Vault — root gitignore
+# =============================================================================
+
+# ---- Dependencies / build output ----
+node_modules
+dist
+target
+
+# ---- Lockfiles (mobile's package-lock is intentionally tracked) ----
 package-lock.json
 !mobile/package-lock.json
-node_modules
-build
-__pycache__
-postgres_data
-db.sqlite3
-migrations
-\!\!\!OLD/
-OLD
-.env
-config.json
-database_dumps
-redis_data
-.rdb
 bun.lock
 Cargo.lock
-target
-examples
-data
-mobile_EXAMPLE
-EXAMPLE
 
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ---- Env & secrets ----
+.env
+.env*.local
+keys
+mobile/google-services.json
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
+# ---- Data / runtime (never commit DB data or dumps) ----
+postgres_data
+database_dumps
 
-# testing
-/coverage
-
-# production
-/build
-
-# misc
-.DS_Store
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
+# ---- Logs ----
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Nav config:
-# navigationConfig.json
+# ---- OS / editor ----
+.DS_Store
+.vscode/
 
-# Audio Files
+# ---- Audio files (except the bundled in-app alarm tone) ----
 *.mp3
 *.wav
 *.flac
 *.m4a
 *.aac
 *.ogg
-# …except the bundled in-app alarm tone, which must ship in the build.
-!mobile/assets/alarm.wav
 *.wma
 *.aiff
 *.mid
+!mobile/assets/alarm.wav
 
-/tts_clone_engine
-
-
-target
-
-# Monitoring runtime data (Prometheus TSDB and Grafana data)
-/monitoring/prometheus/data
-/monitoring/grafana/data
-
-# keys
-keys
-
-# Custom/Secret scripts and files
+# ---- Private docs / scripts / tooling (not for the public repo) ----
+CLAUDE.md
 md/
 update_servers.sh
-generate_keys.py
-generate_vapid.py
 .github/full-stack.instructions.md
-CLAUDE.md
-.vscode/
-
-# Tool/runtime directories
-.reasonix/
 .codegraph/
-
-# Firebase / Google services config (contains API key)
-mobile/google-services.json
 REASONIX.md
 reasonix.toml
