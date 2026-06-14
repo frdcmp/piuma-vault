@@ -20,9 +20,10 @@ keys
 # ---- Mobile app (private; not part of the public repo — rebuild your own) ----
 mobile/
 
-# ---- Data / runtime (never commit DB data or dumps) ----
+# ---- Data / runtime (never commit DB data, dumps, or local backups) ----
 postgres_data
 database_dumps
+data/
 
 # ---- Logs ----
 npm-debug.log*
