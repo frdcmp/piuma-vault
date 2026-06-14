@@ -105,13 +105,13 @@ export default function ProfileScreen({ navigation }) {
 								label="First name"
 								value={firstName}
 								onChangeText={setFirstName}
-								placeholder="User"
+								placeholder="First name"
 							/>
 							<Field
 								label="Last name"
 								value={lastName}
 								onChangeText={setLastName}
-								placeholder="User"
+								placeholder="Last name"
 							/>
 							<Field
 								label="Location"

@@ -67,3 +67,5 @@ web-push = { version = "0.10", default-features = false, features = ["hyper-clie
 [build-dependencies]
 rand = "0.8"
 rsa = { version = "0.9.10", features = ["pem"] }
+p256 = { version = "0.13", features = ["pem"] }
+base64 = "0.22"

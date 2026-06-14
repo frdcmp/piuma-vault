@@ -89,3 +89,4 @@ CLAUDE.md
 # Firebase / Google services config (contains API key)
 mobile/google-services.json
 REASONIX.md
+reasonix.toml

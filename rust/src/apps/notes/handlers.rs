@@ -914,7 +914,7 @@ pub async fn search_folders(
 
     // Collect distinct folders with their direct file counts. We expand to
     // every ancestor path in Rust so that a folder like "/projects" surfaces
-    // even when only "/projects/example/acp/plan" exists in notes.folder.
+    // even when only "/projects/foo/bar/plan" exists in notes.folder.
     let sql = "SELECT folder, COUNT(*)::BIGINT FROM notes \
                WHERE user_id = $1 AND deleted_at IS NULL AND folder IS NOT NULL AND folder <> '' \
                GROUP BY folder";

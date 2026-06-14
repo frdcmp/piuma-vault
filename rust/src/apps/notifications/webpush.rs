@@ -1,11 +1,12 @@
 //! Web Push (VAPID) dispatch. Sends an encrypted push to every browser
 //! subscription registered for a user, and prunes dead endpoints (404/410).
 //!
-//! VAPID keys come from the environment:
-//!   - `VAPID_PRIVATE_KEY_PEM`  (PEM contents) or `VAPID_PRIVATE_KEY_PATH`
-//!   - `VAPID_SUBJECT`          (e.g. `mailto:admin@example.com`)
-//! The matching base64url public key (`VAPID_PUBLIC_KEY`) is what the browser
-//! passes to `pushManager.subscribe`; generate the pair with `generate_vapid.py`.
+//! VAPID key material lives on disk in `src/keys/` (gitignored, like the JWT
+//! keys); `build.rs` auto-generates it when missing:
+//!   - `vapid_private.pem` — EC P-256 private key (SEC1 PEM), signs the pushes
+//!   - `vapid_public.txt`  — base64url application server key the browser passes
+//!                           to `pushManager.subscribe`
+//!   - `vapid_subject.txt` — the VAPID `sub` contact URI (`mailto:` or `https://`)
 
 use web_push::{
     ContentEncoding, HyperWebPushClient, SubscriptionInfo, VapidSignatureBuilder, WebPushClient,
@@ -14,29 +15,48 @@ use web_push::{
 
 use crate::db::db::DbPool;
 
-fn vapid_private_pem() -> Option<String> {
-    if let Ok(pem) = std::env::var("VAPID_PRIVATE_KEY_PEM") {
-        if !pem.trim().is_empty() {
-            return Some(pem);
-        }
-    }
-    if let Ok(path) = std::env::var("VAPID_PRIVATE_KEY_PATH") {
-        if let Ok(pem) = std::fs::read_to_string(path) {
-            return Some(pem);
-        }
-    }
-    None
+/// Directory holding the VAPID key files, relative to the crate working dir
+/// (`/app` in Docker) — mirrors how the JWT keys resolve.
+const KEYS_DIR: &str = "src/keys";
+
+fn read_key_file(name: &str) -> Option<String> {
+    std::fs::read_to_string(format!("{KEYS_DIR}/{name}"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// The EC P-256 private key PEM used to sign pushes.
+fn private_pem() -> Option<String> {
+    read_key_file("vapid_private.pem")
+}
+
+/// The base64url application server key the browser subscribes with.
+pub fn public_key() -> Option<String> {
+    read_key_file("vapid_public.txt")
+}
+
+/// The VAPID `sub` claim — a contact URI for the push service operator. Falls
+/// back to the canonical site URL (`SITE_URL`), then a generic placeholder.
+pub fn subject() -> String {
+    read_key_file("vapid_subject.txt")
+        .or_else(|| {
+            std::env::var("SITE_URL")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        })
+        .unwrap_or_else(|| "https://example.com".to_string())
 }
 
 /// Send `payload` (a JSON string consumed by the service worker) to all of the
 /// user's browser subscriptions. Returns the number of successful deliveries.
 pub async fn dispatch_web(pool: &DbPool, user_id: &str, payload: &str) -> usize {
-    let Some(pem) = vapid_private_pem() else {
+    let Some(pem) = private_pem() else {
         log::warn!("VAPID private key not configured; skipping web push");
         return 0;
     };
-    let subject =
-        std::env::var("VAPID_SUBJECT").unwrap_or_else(|_| "mailto:admin@example.com".to_string());
+    let subject = subject();
 
     let subs: Vec<(String, String, String)> = match sqlx::query_as(
         "SELECT endpoint, p256dh, auth FROM db_push_subscriptions WHERE user_id = $1",

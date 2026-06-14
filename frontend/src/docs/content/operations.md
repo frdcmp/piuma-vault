@@ -34,12 +34,13 @@ docker compose pull && docker compose up -d
 
 ## JWT keys
 
-The RSA key pair for signing JWTs resolves from configuration; if unset, the dev
-keys in `rust/src/keys/` are used and the build auto-generates a pair when the files
-are missing. To regenerate deliberately:
+The RSA key pair for signing JWTs (and the EC P-256 pair for Web Push / VAPID)
+resolves from `rust/src/keys/`; the build (`build.rs`) auto-generates whatever is
+missing. To rotate deliberately, delete the relevant key files and rebuild:
 
 ```bash
-python3 generate_keys.py
+rm rust/src/keys/jwt-*.pem    # or vapid_private.pem + vapid_public.txt
+# next build regenerates them
 ```
 
 ## Schema & backups
@@ -58,5 +59,4 @@ mobile/      Expo / React Native app
 nginx/       default.conf.template (edge proxy)
 md/          docs, plans, RESUME.md
 docker-compose.yml   service orchestration (profiles server-stack, db-stack)
-generate_keys.py     regenerate the JWT RSA key pair
 ```
