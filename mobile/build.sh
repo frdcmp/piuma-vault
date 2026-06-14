@@ -170,7 +170,7 @@ preflight() {
 	[ -f "$ENV_FILE" ] || { echo "missing $ENV_FILE"; return 1; }
 	[ -n "${EXPO_TOKEN:-}" ] || { echo "EXPO_TOKEN not set (env or $ENV_FILE)"; return 1; }
 	if [ "$DO_UPLOAD" -eq 1 ] && [ -z "${API_KEY:-}" ]; then
-		echo "FRDCMP_API_KEY not set (env or $ENV_FILE; needs storage.access). Add it or use --no-upload."
+		echo "VAULT_API_KEY not set (env or $ENV_FILE; needs storage.access). Add it or use --no-upload."
 		return 1
 	fi
 	echo "docker ok; token ok; target=$TARGET upload=$DO_UPLOAD"
@@ -292,7 +292,7 @@ bump_version() {
 # Run
 # ----------------------------------------------------------------------------
 EXPO_TOKEN="${EXPO_TOKEN:-$(read_env EXPO_TOKEN)}"
-API_KEY="${FRDCMP_API_KEY:-$(read_env FRDCMP_API_KEY)}"
+API_KEY="${VAULT_API_KEY:-$(read_env VAULT_API_KEY)}"
 
 # Bump before building so the artifact's versionName matches the manifest. Only
 # for apk builds (the distributed target that publishes a manifest).

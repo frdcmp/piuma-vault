@@ -1,15 +1,25 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# =============================================================================
+# Piuma Vault — mobile gitignore (Expo / React Native)
+# =============================================================================
 
-# dependencies
+# ---- Dependencies ----
 node_modules/
 
-# Expo
+# ---- Expo / Metro / generated native folders ----
 .expo/
 dist/
 web-build/
 expo-env.d.ts
+.metro-health-check*
+/ios
+/android
 
-# Native
+# ---- Env & secrets (keep .env.example tracked) ----
+.env
+.env*.local
+google-services.json
+
+# ---- Native signing / keys ----
 .kotlin/
 *.orig.*
 *.jks
@@ -17,32 +27,17 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+*.pem
 
-# Metro
-.metro-health-check*
-
-# debug
+# ---- Logs ----
 npm-debug.*
 yarn-debug.*
 yarn-error.*
 
-# macOS
+# ---- OS / TypeScript ----
 .DS_Store
-*.pem
-
-# local env files
-.env*.local
-
-# Firebase / Google services config (contains API key)
-google-services.json
-
-# typescript
 *.tsbuildinfo
 
-# generated native folders
-/ios
-/android
-
-# build artifacts (build-and-upload.sh outputs)
+# ---- Build artifacts (build.sh outputs) ----
 *.apk
 *.aab
