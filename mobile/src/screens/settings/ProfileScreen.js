@@ -77,7 +77,11 @@ export default function ProfileScreen({ navigation }) {
 
 	return (
 		<View style={styles.root}>
-			<SettingsHeader title="Profile" onBack={() => navigation.goBack()} />
+			<SettingsHeader
+				title="Profile"
+				icon="person-outline"
+				onBack={() => navigation.goBack()}
+			/>
 			{isLoading ? (
 				<View style={styles.center}>
 					<ActivityIndicator color={colors.accent} />

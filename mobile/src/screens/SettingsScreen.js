@@ -1,5 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useState } from "react";
 import {
+	ActivityIndicator,
+	Alert,
 	Linking,
 	Pressable,
 	ScrollView,
@@ -10,7 +13,10 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ProfileHeader from "../components/ProfileHeader";
 import SettingsHeader from "../components/SettingsHeader";
+import { toast } from "../components/Toast";
+import { CURRENT_VERSION, isNewer } from "../config/appUpdate";
 import { useUserMe } from "../queries/userQuery";
+import { openApkDownload, useAppUpdate } from "../query/useAppUpdate";
 import { colors } from "../utils/theme";
 
 // Admin link points at the web app's origin (the API URL without its "/api/v1"
@@ -76,9 +82,47 @@ const SECTIONS = [
 export default function SettingsScreen({ navigation }) {
 	const insets = useSafeAreaInsets();
 	const { data: user } = useUserMe();
+	// Manual update check — refetch the published manifest on tap and either offer
+	// the download (Android, newer build) or confirm we're up to date.
+	const { refetch: checkUpdate } = useAppUpdate({ enabled: false });
+	const [checking, setChecking] = useState(false);
+	const onCheckUpdate = async () => {
+		if (checking) return;
+		setChecking(true);
+		try {
+			const { data: latest } = await checkUpdate();
+			if (latest && isNewer(latest.version, CURRENT_VERSION)) {
+				Alert.alert(
+					`Update available — v${latest.version}`,
+					latest.notes ||
+						`You're on v${CURRENT_VERSION}. A newer build is ready to download.`,
+					[
+						{ text: "Later", style: "cancel" },
+						{
+							text: "Download",
+							onPress: () => openApkDownload(latest).catch(() => {}),
+						},
+					],
+				);
+			} else {
+				Alert.alert(
+					"Up to date",
+					`You're on the latest version (v${CURRENT_VERSION}).`,
+				);
+			}
+		} catch {
+			toast.error("Couldn't check for updates");
+		} finally {
+			setChecking(false);
+		}
+	};
 	return (
 		<View style={styles.root}>
-			<SettingsHeader title="Settings" onBack={() => navigation.goBack()} />
+			<SettingsHeader
+				title="Settings"
+				icon="settings-outline"
+				onBack={() => navigation.goBack()}
+			/>
 			<ScrollView
 				contentContainerStyle={[
 					styles.list,
@@ -108,6 +152,30 @@ export default function SettingsScreen({ navigation }) {
 						/>
 					</Pressable>
 				))}
+
+				{/* App version — tap to manually check for a newer build. */}
+				<Pressable
+					onPress={onCheckUpdate}
+					disabled={checking}
+					style={({ pressed }) => [
+						styles.version,
+						pressed && styles.rowPressed,
+					]}
+				>
+					<Text style={styles.versionText}>
+						pv vault · v{CURRENT_VERSION}
+					</Text>
+					<View style={styles.versionHint}>
+						{checking ? (
+							<ActivityIndicator size="small" color={colors.muted} />
+						) : (
+							<Ionicons name="refresh" size={13} color={colors.muted} />
+						)}
+						<Text style={styles.versionHintText}>
+							{checking ? "checking…" : "tap to check for updates"}
+						</Text>
+					</View>
+				</Pressable>
 			</ScrollView>
 		</View>
 	);
@@ -130,4 +198,8 @@ const styles = StyleSheet.create({
 	rowText: { flex: 1 },
 	rowLabel: { color: colors.text, fontSize: 16, fontWeight: "600" },
 	rowDesc: { color: colors.muted, fontSize: 13, marginTop: 2 },
+	version: { alignItems: "center", paddingVertical: 18, gap: 4 },
+	versionText: { color: colors.muted, fontSize: 13, fontWeight: "600" },
+	versionHint: { flexDirection: "row", alignItems: "center", gap: 5 },
+	versionHintText: { color: colors.muted, fontSize: 11 },
 });

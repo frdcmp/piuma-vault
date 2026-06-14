@@ -52,6 +52,7 @@ export default function TrashScreen({ navigation }) {
 		<View style={styles.root}>
 			<SettingsHeader
 				title="Trash"
+				icon="trash-outline"
 				onBack={() => navigation.goBack()}
 				right={
 					empty.isPending ? (

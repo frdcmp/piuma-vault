@@ -58,7 +58,11 @@ export default function SpritePickerScreen({ navigation }) {
 
 	return (
 		<View style={styles.root}>
-			<SettingsHeader title="Appearance" onBack={() => navigation.goBack()} />
+			<SettingsHeader
+				title="Appearance"
+				icon="color-palette-outline"
+				onBack={() => navigation.goBack()}
+			/>
 			{isLoading ? (
 				<View style={styles.center}>
 					<ActivityIndicator color={colors.accent} />

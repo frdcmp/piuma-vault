@@ -11,6 +11,7 @@ import {
 	deleteRecurringTask,
 	deleteTask,
 	fetchRecurringTasks,
+	fetchTask,
 	fetchTasks,
 	toggleTask,
 	updateRecurringTask,
@@ -22,6 +23,7 @@ export const taskKeys = {
 	all: ["tasks"],
 	list: (filter) => ["tasks", "list", filter ?? {}],
 	done: (filter) => ["tasks", "done", filter ?? {}],
+	detail: (id) => ["tasks", "detail", id],
 	recurring: () => ["tasks", "recurring"],
 };
 
@@ -39,6 +41,16 @@ export const useTasks = (filter = {}, options = {}) =>
 		queryFn: () => fetchTasks(filter),
 		keepPreviousData: true,
 		staleTime: 30_000,
+		...options,
+	});
+
+// Single task by id — the deep-link fallback so a chat link opens the task even
+// when it isn't in the loaded to-do page (e.g. a completed task).
+export const useTask = (id, options = {}) =>
+	useQuery({
+		queryKey: taskKeys.detail(id),
+		queryFn: () => fetchTask(id),
+		enabled: !!id,
 		...options,
 	});
 

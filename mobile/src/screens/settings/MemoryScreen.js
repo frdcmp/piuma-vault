@@ -188,7 +188,11 @@ export default function MemoryScreen({ navigation }) {
 
 	return (
 		<View style={styles.root}>
-			<SettingsHeader title="Memory" onBack={() => navigation.goBack()} />
+			<SettingsHeader
+				title="Memory"
+				icon="sparkles-outline"
+				onBack={() => navigation.goBack()}
+			/>
 			<FlatList
 				data={list}
 				keyExtractor={(item) => item.id}

@@ -635,7 +635,6 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	}, [allModels, modelId]);
 	const visionEnabled = !!activeModel?.supports_vision;
 
-	const fileInputRef = useRef(null);
 	const uploadingImages = pendingImages.some((p) => p.status === "uploading");
 
 	const removePendingImage = useCallback((id) => {
@@ -1084,6 +1083,10 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	// arms the floor; search refetches update the list in place.
 	const [sessionsLoading, setSessionsLoading] = useState(false);
 	const sessionsMinUntil = useRef(0);
+	// Same idea for the /models picker: open the overlay immediately and show the
+	// loader while fetchAllModels() is in flight, instead of waiting for the
+	// request before opening (which left the user with no feedback).
+	const [modelsLoading, setModelsLoading] = useState(false);
 
 	// Load the sessions list (debounced) whenever the picker is open and the
 	// search query changes. `q` matches conversation title or message text.
@@ -1253,12 +1256,18 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				return;
 			}
 			if (cmd.name === "models") {
+				// Open the picker right away with a loader, then fill it — so there's
+				// immediate feedback while the model list is fetched.
+				setPickList([]);
+				setOverlayActive(0);
+				setModelsLoading(true);
+				setOverlay("models");
 				try {
 					setPickList(await fetchAllModels());
-					setOverlayActive(0);
-					setOverlay("models");
 				} catch {
-					/* ignore */
+					/* ignore — empty list renders the "None" state */
+				} finally {
+					setModelsLoading(false);
 				}
 				return;
 			}
@@ -1656,7 +1665,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 									/>
 								) : null}
 								<div className="picker-list">
-									{overlay === "sessions" && sessionsLoading ? (
+									{(overlay === "sessions" && sessionsLoading) ||
+									(overlay === "models" && modelsLoading) ? (
 										<div className="picker-loading">
 											<SpriteRunner pixelSize={2} />
 											<span className="picker-loading-label">loading…</span>
@@ -1728,30 +1738,6 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 								if (visionEnabled) e.preventDefault();
 							}}
 						>
-							{visionEnabled ? (
-								<>
-									<input
-										ref={fileInputRef}
-										type="file"
-										accept="image/*"
-										multiple
-										hidden
-										onChange={(e) => {
-											for (const f of e.target.files || []) addImageFile(f);
-											e.target.value = "";
-										}}
-									/>
-									<button
-										type="button"
-										className="chat-attach"
-										onClick={() => fileInputRef.current?.click()}
-										title="Attach an image"
-										aria-label="Attach an image"
-									>
-										📎
-									</button>
-								</>
-							) : null}
 							<textarea
 								ref={inputRef}
 								className="chat-input"

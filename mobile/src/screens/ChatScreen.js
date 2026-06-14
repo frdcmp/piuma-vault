@@ -577,6 +577,9 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 	// Sessions list loading — show the pixel-Piuma loader, held a ~1s floor so the
 	// open doesn't flash "None" → list.
 	const [sessionsLoading, setSessionsLoading] = useState(false);
+	// Same idea for the model picker: open the overlay immediately with the loader
+	// sprite while fetchAllModels() runs, rather than waiting for it to resolve.
+	const [modelsLoading, setModelsLoading] = useState(false);
 	const sessionsMinUntil = useRef(0);
 	// The open note is attached as context by default; tapping the chip toggles
 	// it off for the next send. Mobile keeps it to a single note (no tabs, no
@@ -711,18 +714,25 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		[addImageFile],
 	);
 
-	// Open the model picker overlay (same as the /models command).
+	// Open the model picker overlay (same as the /models command). Open right away
+	// with the loader sprite, then fill it — so there's instant feedback while the
+	// model list is fetched.
 	const openModelPicker = useCallback(async () => {
+		setPickList([]);
+		setModelsLoading(true);
+		setOverlay("models");
 		try {
 			setPickList(await fetchAllModels());
-			setOverlay("models");
 		} catch {
-			/* ignore */
+			/* ignore — empty list renders the "None" state */
+		} finally {
+			setModelsLoading(false);
 		}
 	}, []);
 
 	const scrollRef = useRef(null);
 	const abortRef = useRef(null);
+	const inputRef = useRef(null);
 	// Stick-to-bottom: only auto-follow new content while the user is already
 	// parked near the bottom. Scrolling up releases the lock (so streaming tokens
 	// stop yanking the view down) and reveals a "jump to latest" button.
@@ -1040,11 +1050,15 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				return;
 			}
 			if (cmd.name === "models") {
+				setPickList([]);
+				setModelsLoading(true);
+				setOverlay("models");
 				try {
 					setPickList(await fetchAllModels());
-					setOverlay("models");
 				} catch {
-					/* ignore */
+					/* ignore — empty list renders the "None" state */
+				} finally {
+					setModelsLoading(false);
 				}
 				return;
 			}
@@ -1545,6 +1559,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 						) : null}
 						{/* Row 1 — full-width text input. */}
 						<TextInput
+							ref={inputRef}
 							style={[
 								styles.input,
 								{
@@ -1583,6 +1598,21 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 									size={20}
 									color={visionEnabled ? colors.accent2 : colors.muted}
 								/>
+							</Pressable>
+							{/* Opens the slash-command menu by seeding the input with "/"
+							   (same as typing it) — models, sessions, agent macros… */}
+							<Pressable
+								onPress={() => {
+									setInput("/");
+									inputRef.current?.focus();
+								}}
+								style={({ pressed }) => [
+									styles.iconBtn,
+									pressed && styles.sendBtnPressed,
+								]}
+								accessibilityLabel="Open the command menu"
+							>
+								<Text style={styles.slashIcon}>/</Text>
 							</Pressable>
 							<View style={{ flex: 1 }} />
 							<Pressable
@@ -1711,7 +1741,8 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 									</Pressable>
 								</View>
 							</View>
-						) : overlay === "sessions" && sessionsLoading ? (
+						) : (overlay === "sessions" && sessionsLoading) ||
+							(overlay === "models" && modelsLoading) ? (
 							<View style={styles.overlayLoading}>
 								<SpriteRunner pixelSize={2} />
 								<Text style={styles.overlayLoadingLabel}>loading…</Text>
@@ -2297,6 +2328,13 @@ const styles = StyleSheet.create({
 		borderColor: colors.borderStrong,
 	},
 	// Model switcher chip — shows the active model, opens the /models picker.
+	slashIcon: {
+		color: colors.accent2,
+		fontFamily: MONO,
+		fontSize: 20,
+		fontWeight: "700",
+		lineHeight: 22,
+	},
 	modelSwitch: {
 		flexDirection: "row",
 		alignItems: "center",

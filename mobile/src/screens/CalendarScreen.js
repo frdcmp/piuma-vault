@@ -1,13 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, {
-	runOnJS,
-	useAnimatedStyle,
-	useSharedValue,
-	withTiming,
-} from "react-native-reanimated";
 import {
 	ActivityIndicator,
 	Dimensions,
@@ -19,13 +12,20 @@ import {
 	TextInput,
 	View,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+	runOnJS,
+	useAnimatedStyle,
+	useSharedValue,
+	withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AlertsField from "../components/AlertsField";
 import BottomSheet from "../components/BottomSheet";
 import DateTimePickerField from "../components/DateTimePickerField";
 import ManageBucketsSheet from "../components/ManageBucketsSheet";
+import ScreenHeader from "../components/ScreenHeader";
 import TagPicker from "../components/TagPicker";
-import { TaskSheet } from "./TasksScreen";
 import {
 	useCalendarEvent,
 	useCalendarEvents,
@@ -48,6 +48,7 @@ import { syncLocalAlerts } from "../utils/notifications";
 import { expandRecurrence } from "../utils/recurrence";
 import { tagColor } from "../utils/tagColor";
 import { colors } from "../utils/theme";
+import { TaskSheet } from "./TasksScreen";
 
 const ALL = { key: "all", names: null, label: "all" };
 
@@ -528,25 +529,26 @@ export default function CalendarScreen({ navigation, route }) {
 	}, []);
 
 	return (
-		<View style={[s.root, { paddingTop: insets.top }]}>
-			<View style={s.header}>
-				<Pressable onPress={() => navigation.goBack()} hitSlop={10}>
-					<Ionicons name="chevron-back" size={22} color={colors.text} />
-				</Pressable>
-				<Text style={s.title}>{headerTitle}</Text>
-				<View style={s.headerRight}>
-					<Pressable onPress={() => setFilterOpen((o) => !o)} hitSlop={8}>
-						<Ionicons
-							name={sel.key === "all" ? "filter-outline" : "filter"}
-							size={18}
-							color={sel.key === "all" ? colors.muted : colors.accent2}
-						/>
-					</Pressable>
-					<Pressable onPress={goToday} hitSlop={8}>
-						<Text style={s.today}>today</Text>
-					</Pressable>
-				</View>
-			</View>
+		<View style={s.root}>
+			<ScreenHeader
+				title={headerTitle}
+				icon="calendar-outline"
+				onBack={() => navigation.goBack()}
+				right={
+					<>
+						<Pressable onPress={() => setFilterOpen((o) => !o)} hitSlop={8}>
+							<Ionicons
+								name={sel.key === "all" ? "filter-outline" : "filter"}
+								size={18}
+								color={sel.key === "all" ? colors.muted : colors.accent2}
+							/>
+						</Pressable>
+						<Pressable onPress={goToday} hitSlop={8}>
+							<Text style={s.today}>today</Text>
+						</Pressable>
+					</>
+				}
+			/>
 
 			{filterOpen ? (
 				<View style={s.filterBar}>
@@ -649,7 +651,10 @@ export default function CalendarScreen({ navigation, route }) {
 							{[pageIndex - 1, pageIndex, pageIndex + 1].map((index) => (
 								<View
 									key={index}
-									style={[s.page, { transform: [{ translateX: index * SCREEN_W }] }]}
+									style={[
+										s.page,
+										{ transform: [{ translateX: index * SCREEN_W }] },
+									]}
 								>
 									<AgendaView
 										days={daysForIndex(index)}
@@ -975,10 +980,7 @@ function AgendaView({
 									const key = `o${occ.template.id}-${occ.date}`;
 									const busy = pendingKey === key;
 									return (
-										<View
-											key={key}
-											style={[s.item, s.itemTask]}
-										>
+										<View key={key} style={[s.item, s.itemTask]}>
 											<Pressable
 												hitSlop={8}
 												disabled={busy}

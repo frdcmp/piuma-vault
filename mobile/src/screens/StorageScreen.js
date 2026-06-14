@@ -21,7 +21,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import BottomSheet, { BottomSheetItem } from "../components/BottomSheet";
 import FolderShareSheet from "../components/FolderShareSheet";
-import { BottomBar, useTopInset } from "../components/SystemBars";
+import ScreenHeader from "../components/ScreenHeader";
+import { BottomBar } from "../components/SystemBars";
 import {
 	useStorageBulkDelete,
 	useStorageDeleteFolder,
@@ -93,7 +94,6 @@ const fmtDate = (iso) => {
 
 export default function StorageScreen({ navigation }) {
 	const insets = useSafeAreaInsets();
-	const topInset = useTopInset();
 	const [prefix, setPrefix] = useState("");
 	const [newFolderOpen, setNewFolderOpen] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
@@ -531,113 +531,106 @@ export default function StorageScreen({ navigation }) {
 	};
 
 	return (
-		<View
-			style={[styles.root, { paddingTop: topInset }]}
-			{...edgeSwipe.panHandlers}
-		>
+		<View style={styles.root} {...edgeSwipe.panHandlers}>
 			{/* Header — swaps to a selection action bar while in select mode. */}
 			{selectMode ? (
-				<View style={styles.header}>
-					<TouchableOpacity
-						onPress={exitSelect}
-						style={styles.headerBtn}
-						hitSlop={10}
-					>
-						<Ionicons name="close" size={22} color={colors.text} />
-					</TouchableOpacity>
-					<Text style={[styles.title, { flex: 1 }]}>
-						{selected.size} selected
-					</Text>
-					<TouchableOpacity
-						onPress={selectAll}
-						style={styles.headerBtn}
-						hitSlop={10}
-					>
-						<Ionicons
-							name="checkmark-done-outline"
-							size={22}
-							color={colors.text}
-						/>
-					</TouchableOpacity>
-					<TouchableOpacity
-						onPress={downloadSelection}
-						style={styles.headerBtn}
-						hitSlop={10}
-						disabled={selected.size === 0}
-					>
-						<Ionicons
-							name="download-outline"
-							size={22}
-							color={colors.accent2}
-						/>
-					</TouchableOpacity>
-					<TouchableOpacity
-						onPress={() =>
-							selected.size > 0 && setPendingDelete({ bulk: true })
-						}
-						style={styles.headerBtn}
-						hitSlop={10}
-						disabled={selected.size === 0}
-					>
-						<Ionicons name="trash-outline" size={22} color={colors.accent3} />
-					</TouchableOpacity>
-				</View>
-			) : (
-				<View style={styles.header}>
-					<TouchableOpacity
-						onPress={handleBack}
-						style={styles.headerBtn}
-						hitSlop={10}
-					>
-						<Ionicons name="arrow-back" size={22} color={colors.text} />
-					</TouchableOpacity>
-					<View style={{ flex: 1 }}>
-						<Text style={styles.title}>Storage</Text>
-						<Text style={styles.subtitle}>bunny · zone pv</Text>
-					</View>
-					{/* Manual refresh — also reachable when a folder is empty (no
-					    FlatList pull-to-refresh there). Bunny's listing is eventually
-					    consistent, so a re-fetch after a write may be needed. */}
-					<TouchableOpacity
-						onPress={() => list.refetch()}
-						style={styles.headerBtn}
-						hitSlop={10}
-						disabled={list.isFetching}
-					>
-						{list.isFetching ? (
-							<ActivityIndicator size="small" color={colors.muted} />
-						) : (
-							<Ionicons name="refresh" size={20} color={colors.text} />
-						)}
-					</TouchableOpacity>
-					<TouchableOpacity
-						onPress={() => setNewFolderOpen(true)}
-						style={styles.folderBtn}
-						hitSlop={10}
-					>
-						<Ionicons name="folder-outline" size={16} color={colors.accent} />
-						<Text style={styles.folderBtnPlus}>+</Text>
-					</TouchableOpacity>
-					<TouchableOpacity
-						onPress={pickAndUpload}
-						style={styles.uploadBtn}
-						hitSlop={10}
-						disabled={upload.isPending}
-					>
-						{upload.isPending ? (
-							<ActivityIndicator size="small" color={colors.accent2} />
-						) : (
-							<>
+				<ScreenHeader
+					leftIcon="close"
+					onBack={exitSelect}
+					title={`${selected.size} selected`}
+					right={
+						<>
+							<TouchableOpacity onPress={selectAll} hitSlop={10}>
 								<Ionicons
-									name="cloud-upload-outline"
-									size={16}
+									name="checkmark-done-outline"
+									size={22}
+									color={colors.text}
+								/>
+							</TouchableOpacity>
+							<TouchableOpacity
+								onPress={downloadSelection}
+								hitSlop={10}
+								disabled={selected.size === 0}
+							>
+								<Ionicons
+									name="download-outline"
+									size={22}
 									color={colors.accent2}
 								/>
-								<Text style={styles.uploadText}>UPLOAD</Text>
-							</>
-						)}
-					</TouchableOpacity>
-				</View>
+							</TouchableOpacity>
+							<TouchableOpacity
+								onPress={() =>
+									selected.size > 0 && setPendingDelete({ bulk: true })
+								}
+								hitSlop={10}
+								disabled={selected.size === 0}
+							>
+								<Ionicons
+									name="trash-outline"
+									size={22}
+									color={colors.accent3}
+								/>
+							</TouchableOpacity>
+						</>
+					}
+				/>
+			) : (
+				<ScreenHeader
+					onBack={handleBack}
+					title="Storage"
+					icon="folder-outline"
+					subtitle="bunny · zone pv"
+					right={
+						<>
+							{/* Manual refresh — also reachable when a folder is empty (no
+							    FlatList pull-to-refresh there). Bunny's listing is
+							    eventually consistent, so a re-fetch after a write may
+							    be needed. */}
+							<TouchableOpacity
+								onPress={() => list.refetch()}
+								hitSlop={10}
+								disabled={list.isFetching}
+							>
+								{list.isFetching ? (
+									<ActivityIndicator size="small" color={colors.muted} />
+								) : (
+									<Ionicons name="refresh" size={20} color={colors.text} />
+								)}
+							</TouchableOpacity>
+							<TouchableOpacity
+								onPress={() => setNewFolderOpen(true)}
+								style={styles.folderBtn}
+								hitSlop={10}
+							>
+								<Ionicons
+									name="folder-outline"
+									size={16}
+									color={colors.accent}
+								/>
+								<Text style={styles.folderBtnPlus}>+</Text>
+							</TouchableOpacity>
+							<TouchableOpacity
+								onPress={pickAndUpload}
+								style={styles.uploadBtn}
+								hitSlop={10}
+								disabled={upload.isPending}
+							>
+								{upload.isPending ? (
+									<ActivityIndicator size="small" color={colors.accent2} />
+								) : (
+									<>
+										<Ionicons
+											name="cloud-upload-outline"
+											size={16}
+											color={colors.accent2}
+										/>
+										<Text style={styles.uploadText}>UPLOAD</Text>
+									</>
+								)}
+							</TouchableOpacity>
+						</>
+					}
+				/>
 			)}
 
 			{/* Breadcrumb */}

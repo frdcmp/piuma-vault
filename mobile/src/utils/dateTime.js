@@ -41,6 +41,19 @@ export const formatDateTime = (value) => ({
 	time: formatTime(value),
 });
 
+// Classify a task's due date relative to the device's local "today":
+// "overdue" (a previous calendar day), "today", or "upcoming" (a future day).
+// Returns null when there's no due date. Used to group the to-do list.
+export const dueBucket = (value) => {
+	const d = parseUtc(value);
+	if (!d) return null;
+	const day = d.format("YYYY-MM-DD");
+	const today = dayjs().format("YYYY-MM-DD");
+	if (day < today) return "overdue";
+	if (day === today) return "today";
+	return "upcoming";
+};
+
 // Relative time ("in 4 hours", "3 days ago"). Hand-rolled so it needs no Intl
 // and no dayjs plugin — matches the web's en-GB phrasing closely enough.
 export const timeAgo = (value) => {

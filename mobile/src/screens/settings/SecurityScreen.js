@@ -162,7 +162,11 @@ export default function SecurityScreen({ navigation }) {
 
 	return (
 		<View style={styles.root}>
-			<SettingsHeader title="Security" onBack={() => navigation.goBack()} />
+			<SettingsHeader
+				title="Security"
+				icon="lock-closed-outline"
+				onBack={() => navigation.goBack()}
+			/>
 			<ScrollView
 				contentContainerStyle={[
 					styles.scroll,

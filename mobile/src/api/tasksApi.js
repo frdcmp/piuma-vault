@@ -7,6 +7,11 @@ export const fetchTasks = async (params = {}) => {
 	return data;
 };
 
+export const fetchTask = async (id) => {
+	const { data } = await axiosInstance.get(`/admin/tasks/${id}`);
+	return data;
+};
+
 export const createTask = async (payload) => {
 	const { data } = await axiosInstance.post("/admin/tasks", payload);
 	return data;

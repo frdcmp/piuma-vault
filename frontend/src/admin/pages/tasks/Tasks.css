@@ -360,6 +360,39 @@
 .task-due {
 	color: var(--accent);
 }
+/* Overdue due-dates (and the Overdue group heading) read in the alert colour. */
+.task-due.is-overdue {
+	color: var(--accent-3);
+	font-weight: 600;
+}
+
+/* Due-date groups (Overdue / Due today / Next due / To do) within the to-do
+   panel. */
+.tasks-group {
+	margin-top: 14px;
+}
+.tasks-group:first-of-type {
+	margin-top: 0;
+}
+.tasks-group-title {
+	margin: 0 0 6px;
+	font-size: 0.72rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--muted);
+}
+.tasks-group-title.is-overdue {
+	color: var(--accent-3);
+}
+
+/* Non-draggable rows (dated groups) keep the drag column's width so the check
+   marks line up with the draggable To-do rows. */
+.task-drag.is-static {
+	display: inline-block;
+	width: calc(0.9rem + 4px);
+	cursor: default;
+}
 
 /* Bell shown when a task has one or more alerts configured. */
 .task-alert {

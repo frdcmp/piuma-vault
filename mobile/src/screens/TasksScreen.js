@@ -17,6 +17,7 @@ import AlertsField from "../components/AlertsField";
 import BottomSheet from "../components/BottomSheet";
 import DateTimePickerField from "../components/DateTimePickerField";
 import ManageBucketsSheet from "../components/ManageBucketsSheet";
+import ScreenHeader from "../components/ScreenHeader";
 import SpriteLoader from "../components/SpriteLoader";
 import TagPicker from "../components/TagPicker";
 import TimeAgo from "../components/TimeAgo";
@@ -32,12 +33,13 @@ import {
 	useDeleteTask,
 	useDoneTasks,
 	useRecurringTasks,
+	useTask,
 	useTasks,
 	useTasksLiveUpdates,
 	useToggleTask,
 	useUpdateTask,
 } from "../queries/tasksQuery";
-import { formatDate } from "../utils/dateTime";
+import { dueBucket, formatDate } from "../utils/dateTime";
 import { rankBefore, rankBetween } from "../utils/rank";
 import { tagColor } from "../utils/tagColor";
 import { colors, mono as MONO } from "../utils/theme";
@@ -77,6 +79,11 @@ const buildRrule = (freq, byday) => {
 
 const ALL = { key: "all", names: null, label: "all" };
 
+// Sentinel row that renders the "DONE · N" divider between the to-do and
+// completed sections. Lives in the list data (not a footer) so the completed
+// rows below it are virtualized and scroll/​paginate correctly.
+const DONE_HEADER_ID = "__done_header__";
+
 // `alerts` arrives as a JSON array of { offset_minutes, channels? } objects.
 const hasAlerts = (t) => Array.isArray(t.alerts) && t.alerts.length > 0;
 
@@ -102,19 +109,21 @@ export default function TasksScreen({ navigation, route }) {
 	const [recSheet, setRecSheet] = useState(false);
 	const [manageSheet, setManageSheet] = useState(false);
 
-	// Deep-link: a Tasks route param `taskId` (set by a chat link/Go action) opens
-	// that task's sheet. The full task list is loaded, so resolve it locally, then
-	// clear the param so it doesn't reopen on the next focus.
+	// Deep-link: a Tasks route param `taskId` (chat link / "Go" action) opens that
+	// task's sheet AND filters the list to its bucket + tags, so it shows in
+	// context. Resolve from the loaded to-do list, else fetch by id (covers
+	// completed tasks, which aren't in the to-do page). Clear the param after.
 	const deepTaskId = route?.params?.taskId;
+	const { data: fetchedDeepTask } = useTask(
+		deepTaskId && !tasks.some((t) => t.id === deepTaskId) ? deepTaskId : null,
+	);
 	useEffect(() => {
 		if (!deepTaskId) return;
-		const task = tasks.find((t) => t.id === deepTaskId);
-		if (!task) return;
+		const task = tasks.find((t) => t.id === deepTaskId) || fetchedDeepTask;
+		if (!task) return; // wait for the list or the fallback fetch to resolve
 		setTaskSheet({ task });
-		// Pre-filter the list to the task's bucket so it opens in context (to-do
-		// view, tag cleared, so the task is guaranteed visible).
 		setShowRecurring(false);
-		setTags([]);
+		setTags(task.tags ?? []);
 		if (task.bucket_id) {
 			const b = buckets.find((x) => x.id === task.bucket_id);
 			setBucketSel(
@@ -124,7 +133,7 @@ export default function TasksScreen({ navigation, route }) {
 			setBucketSel({ key: "nobucket", label: "no bucket" });
 		}
 		navigation.setParams({ taskId: undefined });
-	}, [deepTaskId, tasks, buckets, navigation]);
+	}, [deepTaskId, fetchedDeepTask, tasks, buckets, navigation]);
 	// Bucket + tag filter independently and combine (AND). `bucketSel` is the
 	// bucket constraint (all / nobucket / a specific bucket); `tags` is the active
 	// tag (single, kept as an array so it composes with the bucket). "all" resets
@@ -177,7 +186,6 @@ export default function TasksScreen({ navigation, route }) {
 	// PUT round-trips.
 	const serverPending = visible.filter((t) => !t.done);
 
-	const byId = new Map(serverPending.map((t) => [t.id, t]));
 	const [pending, setPending] = useState([]);
 	// Re-sync to the server order only when the *set* of pending tasks changes
 	// (add / remove / complete / filter switch) — not on reorder, so an
@@ -211,19 +219,67 @@ export default function TasksScreen({ navigation, route }) {
 		if (hasNextPage && !isFetchingNextPage) fetchNextPage();
 	};
 
-	// Drop handler: optimistically apply the new order, then mint a key strictly
-	// between the new neighbours and persist it.
+	// Group the to-do rows by due date: OVERDUE → DUE TODAY → NEXT DUE (each
+	// sorted by due date), then TO DO (no due date, kept in manual/drag order).
+	// Only the dateless TO DO group is reorderable.
+	const byDueAsc = (a, b) => new Date(a.due_at) - new Date(b.due_at);
+	const overdue = pending
+		.filter((t) => dueBucket(t.due_at) === "overdue")
+		.sort(byDueAsc);
+	const dueToday = pending
+		.filter((t) => dueBucket(t.due_at) === "today")
+		.sort(byDueAsc);
+	const upcoming = pending
+		.filter((t) => dueBucket(t.due_at) === "upcoming")
+		.sort(byDueAsc);
+	const noDate = pending.filter((t) => !t.due_at); // manual (rank) order
+
+	// Section divider as a list row (so the rows under it stay virtualized).
+	const hdr = (key, label, count) => ({
+		id: `__hdr_${key}`,
+		__header: true,
+		label,
+		count,
+	});
+
+	// One flat list: grouped to-do rows, then a DONE divider, then the
+	// (virtualized, paginated) completed rows. Rendering completed tasks as real
+	// items — not footer content — is what lets the list size and scroll to the
+	// very bottom and fire onEndReached reliably.
+	const showDoneSection = done.length > 0 || doneLoading;
+	const listData = [
+		...(overdue.length
+			? [hdr("overdue", "OVERDUE", overdue.length), ...overdue]
+			: []),
+		...(dueToday.length
+			? [hdr("today", "DUE TODAY", dueToday.length), ...dueToday]
+			: []),
+		...(upcoming.length
+			? [hdr("upcoming", "NEXT DUE", upcoming.length), ...upcoming]
+			: []),
+		...(noDate.length ? [hdr("todo", "TO DO", noDate.length), ...noDate] : []),
+		...(showDoneSection
+			? [{ id: DONE_HEADER_ID, __header: true }, ...done]
+			: []),
+	];
+
+	// Drop handler: only the dateless TO DO group is reorderable. Rebuild that
+	// group's order from the dragged result (ignoring headers, dated rows and
+	// completed rows), then mint a key strictly between the moved row's new
+	// neighbours and persist it. Dated rows keep their (date) order regardless.
 	const onDragEnd = ({ data, to }) => {
-		setPending(data);
 		const moved = data[to];
-		if (!moved) return;
-		const before = byId.get(data[to - 1]?.id)?.rank ?? null;
-		const after = byId.get(data[to + 1]?.id)?.rank ?? null;
+		if (!moved || moved.__header || moved.done || moved.due_at) return;
+		const newNoDate = data.filter((t) => !t.__header && !t.done && !t.due_at);
+		setPending([...pending.filter((t) => t.due_at), ...newNoDate]);
+		const pos = newNoDate.findIndex((t) => t.id === moved.id);
+		const before = newNoDate[pos - 1]?.rank ?? null;
+		const after = newNoDate[pos + 1]?.rank ?? null;
 		updateTask.mutate({ id: moved.id, rank: rankBetween(before, after) });
 	};
 
-	// Rank that drops a brand-new task at the top of the current list.
-	const newTaskRank = () => rankBefore(pending[0]?.rank);
+	// Rank that drops a brand-new (dateless) task at the top of the TO DO group.
+	const newTaskRank = () => rankBefore(noDate[0]?.rank);
 
 	// The id of the task whose toggle is in flight, so we can spin just its box.
 	const togglingId = toggleTask.isPending ? toggleTask.variables : null;
@@ -265,33 +321,38 @@ export default function TasksScreen({ navigation, route }) {
 		.join(" + ");
 
 	return (
-		<View style={[s.root, { paddingTop: insets.top }]}>
-			<View style={s.header}>
-				<Pressable onPress={() => navigation.goBack()} hitSlop={10}>
-					<Ionicons name="chevron-back" size={22} color={colors.text} />
-				</Pressable>
-				<Text style={s.title}>☑ Tasks</Text>
-				<View style={s.headerRight}>
-					<Pressable onPress={() => setManageSheet(true)} hitSlop={10}>
-						<Ionicons name="pricetags-outline" size={20} color={colors.muted} />
-					</Pressable>
-					<Pressable
-						onPress={() =>
-							setTaskSheet({
-								defaultTags: tags,
-								defaultBucket: bucketSel.key.startsWith("bucket:")
-									? bucketSel.bucketId
-									: null,
-								// New tasks land at the top of the list.
-								newRank: newTaskRank(),
-							})
-						}
-						hitSlop={10}
-					>
-						<Ionicons name="add" size={24} color={colors.accent} />
-					</Pressable>
-				</View>
-			</View>
+		<View style={s.root}>
+			<ScreenHeader
+				title="Tasks"
+				icon="checkbox-outline"
+				onBack={() => navigation.goBack()}
+				right={
+					<>
+						<Pressable onPress={() => setManageSheet(true)} hitSlop={10}>
+							<Ionicons
+								name="pricetags-outline"
+								size={20}
+								color={colors.muted}
+							/>
+						</Pressable>
+						<Pressable
+							onPress={() =>
+								setTaskSheet({
+									defaultTags: tags,
+									defaultBucket: bucketSel.key.startsWith("bucket:")
+										? bucketSel.bucketId
+										: null,
+									// New tasks land at the top of the list.
+									newRank: newTaskRank(),
+								})
+							}
+							hitSlop={10}
+						>
+							<Ionicons name="add" size={24} color={colors.accent} />
+						</Pressable>
+					</>
+				}
+			/>
 
 			<View style={s.chipBar}>
 				{/* Tag-search field — hidden until the search chip is tapped. */}
@@ -400,6 +461,7 @@ export default function TasksScreen({ navigation, route }) {
 				<SpriteLoader message="Loading tasks" />
 			) : showRecurring ? (
 				<ScrollView
+					style={s.listFlex}
 					contentContainerStyle={[
 						s.scroll,
 						{ paddingBottom: insets.bottom + 48 },
@@ -444,75 +506,91 @@ export default function TasksScreen({ navigation, route }) {
 				   block ride along as header/footer rather than nesting in a
 				   ScrollView. */
 				<DraggableFlatList
-					data={pending}
+					data={listData}
 					onDragEnd={onDragEnd}
 					keyExtractor={(t) => t.id}
-					contentContainerStyle={[
-						s.scroll,
-						{ paddingBottom: insets.bottom + 48 },
-					]}
+					// flex:1 on the OUTER container is what gives the list a bounded
+					// scroll viewport. Without it the dragger sizes to content and the
+					// tail (last rows + the pager/spinner) spills off-screen under the
+					// nav bar, and onEndReached never fires.
+					containerStyle={s.listContainer}
+					style={s.listFlex}
+					// Bottom clearance comes from the footer spacer below.
+					contentContainerStyle={[s.scroll, { paddingBottom: 0 }]}
 					activationDistance={12}
 					onEndReached={loadMoreDone}
 					onEndReachedThreshold={0.4}
 					ListHeaderComponent={
 						<>
-							<Text style={s.section}>
-								{filterLabel ? `${filterLabel} · ` : "TO DO · "}
-								{pending.length}
-							</Text>
+							{filterLabel ? (
+								<Text style={s.filterHeading}>{filterLabel}</Text>
+							) : null}
 							{pending.length === 0 ? (
 								<Text style={s.empty}>Nothing to do. Piuma approves.</Text>
 							) : null}
 						</>
 					}
 					ListFooterComponent={
-						done.length > 0 || doneLoading ? (
-							<>
-								<Text style={s.section}>
-									DONE · {done.length}
-									{hasNextPage ? "+" : ""}
-								</Text>
-								{done.map((t) => (
-									<View key={t.id} style={[s.taskRow, s.dim]}>
-										<Pressable
-											onPress={() => toggleTask.mutate(t.id)}
-											hitSlop={8}
-											disabled={togglingId === t.id}
-										>
-											{togglingId === t.id ? (
-												<ActivityIndicator
-													size="small"
-													color={colors.accent2}
-													style={s.checkSpin}
-												/>
-											) : (
-												<Text style={s.check}>☑</Text>
-											)}
-										</Pressable>
-										<Pressable
-											style={s.taskMain}
-											onPress={() => setTaskSheet({ task: t })}
-										>
-											<Text style={[s.taskTitle, s.strike]}>{t.title}</Text>
-										</Pressable>
-									</View>
-								))}
-								{/* Auto-loads on scroll (onEndReached); the row doubles as a
-								   manual tap target and a loading indicator. */}
-								{hasNextPage ? (
-									<Pressable style={s.loadMore} onPress={loadMoreDone}>
-										<ActivityIndicator size="small" color={colors.muted} />
-										<Text style={s.loadMoreText}>
-											{isFetchingNextPage ? "Loading…" : "Show more completed"}
-										</Text>
-									</Pressable>
-								) : null}
-							</>
-						) : null
+						/* Always rendered so the last row clears the Android nav bar
+						   (a real list item the dragger can't mis-measure); holds the
+						   pager when more completed tasks remain. */
+						<View style={{ paddingBottom: insets.bottom + 56 }}>
+							{hasNextPage ? (
+								<Pressable style={s.loadMore} onPress={loadMoreDone}>
+									<ActivityIndicator size="small" color={colors.muted} />
+									<Text style={s.loadMoreText}>
+										{isFetchingNextPage ? "Loading…" : "Show more completed"}
+									</Text>
+								</Pressable>
+							) : null}
+						</View>
 					}
 					renderItem={({ item: t, drag, isActive }) => {
+						// Section divider rows (OVERDUE / DUE TODAY / NEXT DUE / TO DO,
+						// and the DONE divider which also shows the "+more" hint).
+						if (t.__header) {
+							return (
+								<Text style={s.section}>
+									{t.id === DONE_HEADER_ID
+										? `DONE · ${done.length}${hasNextPage ? "+" : ""}`
+										: `${t.label} · ${t.count}`}
+								</Text>
+							);
+						}
+						// Completed row — non-draggable, dimmed, strikethrough.
+						if (t.done) {
+							return (
+								<View style={[s.taskRow, s.dim]}>
+									<Pressable
+										onPress={() => toggleTask.mutate(t.id)}
+										hitSlop={8}
+										disabled={togglingId === t.id}
+									>
+										{togglingId === t.id ? (
+											<ActivityIndicator
+												size="small"
+												color={colors.accent2}
+												style={s.checkSpin}
+											/>
+										) : (
+											<Text style={s.check}>☑</Text>
+										)}
+									</Pressable>
+									<Pressable
+										style={s.taskMain}
+										onPress={() => setTaskSheet({ task: t })}
+									>
+										<Text style={[s.taskTitle, s.strike]}>{t.title}</Text>
+									</Pressable>
+								</View>
+							);
+						}
 						const bucket = bucketById.get(t.bucket_id);
 						const tagsOf = t.tags || [];
+						// Only dateless TO DO rows are draggable; dated rows are ordered
+						// by their due date, so dragging them is disabled.
+						const canDrag = !t.due_at;
+						const overdueDue = dueBucket(t.due_at) === "overdue";
 						return (
 							<ScaleDecorator>
 								<View
@@ -549,7 +627,7 @@ export default function TasksScreen({ navigation, route }) {
 									<Pressable
 										style={s.taskMain}
 										onPress={() => setTaskSheet({ task: t })}
-										onLongPress={drag}
+										onLongPress={canDrag ? drag : undefined}
 										delayLongPress={200}
 									>
 										{/* Title fills the row (priority shows via the card's left
@@ -586,7 +664,12 @@ export default function TasksScreen({ navigation, route }) {
 														<Text style={[s.meta, s.metaSep]}>·</Text>
 													) : null}
 													{t.due_at ? (
-														<Text style={[s.meta, s.due]}>
+														<Text
+															style={[
+																s.meta,
+																overdueDue ? s.dueOverdue : s.due,
+															]}
+														>
 															due <TimeAgo value={t.due_at} />
 														</Text>
 													) : null}
@@ -619,18 +702,20 @@ export default function TasksScreen({ navigation, route }) {
 											</View>
 										) : null}
 									</Pressable>
-									{/* Grab handle — long-press to start dragging. */}
-									<Pressable
-										onLongPress={drag}
-										delayLongPress={200}
-										hitSlop={8}
-									>
-										<Ionicons
-											name="reorder-three"
-											size={20}
-											color={colors.muted}
-										/>
-									</Pressable>
+									{/* Grab handle — only the dateless TO DO group reorders. */}
+									{canDrag ? (
+										<Pressable
+											onLongPress={drag}
+											delayLongPress={200}
+											hitSlop={8}
+										>
+											<Ionicons
+												name="reorder-three"
+												size={20}
+												color={colors.muted}
+											/>
+										</Pressable>
+									) : null}
 								</View>
 							</ScaleDecorator>
 						);
@@ -1098,6 +1183,10 @@ const s = StyleSheet.create({
 	},
 	chipTextOn: { color: colors.accent2 },
 	chipCount: { color: colors.muted, fontFamily: MONO, fontSize: 11 },
+	// The dragger's outer container must fill the space left under the header +
+	// chip bar so its FlatList scrolls within bounds (see usage comment).
+	listContainer: { flex: 1 },
+	listFlex: { flex: 1 },
 	scroll: { padding: 16, paddingBottom: 48 },
 	// Footer button revealing the next page of completed tasks.
 	loadMore: {
@@ -1123,6 +1212,16 @@ const s = StyleSheet.create({
 		textTransform: "uppercase",
 		marginTop: 16,
 		marginBottom: 8,
+	},
+	// Active bucket/tag filter shown above the groups.
+	filterHeading: {
+		color: colors.accent2,
+		fontFamily: MONO,
+		fontSize: 12,
+		fontWeight: "700",
+		letterSpacing: 0.5,
+		marginTop: 4,
+		marginBottom: 2,
 	},
 	recHead: {
 		flexDirection: "row",
@@ -1198,6 +1297,8 @@ const s = StyleSheet.create({
 	},
 	meta: { fontFamily: MONO, fontSize: 11, letterSpacing: 0.3 },
 	due: { color: colors.accent },
+	// Overdue due-date text reads in the alert colour.
+	dueOverdue: { color: colors.accent3, fontWeight: "700" },
 	// Bell shown when a task has one or more alerts configured.
 	alertIcon: { marginLeft: 2 },
 	tag: { color: colors.accent2 },

@@ -87,7 +87,11 @@ export default function TokenUsageScreen({ navigation }) {
 
 	return (
 		<View style={styles.root}>
-			<SettingsHeader title="Token usage" onBack={() => navigation.goBack()} />
+			<SettingsHeader
+				title="Token usage"
+				icon="stats-chart-outline"
+				onBack={() => navigation.goBack()}
+			/>
 			<ScrollView
 				contentContainerStyle={[
 					styles.scroll,

@@ -1,12 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRecorderStream } from "../audio/useRecorderStream";
 import PixelStarfield from "../components/PixelStarfield";
 import BlackHole from "../components/recorder/BlackHole";
 import PostStopModal from "../components/recorder/PostStopModal";
 import Waveform from "../components/recorder/Waveform";
+import ScreenHeader from "../components/ScreenHeader";
 import { toast } from "../components/Toast";
 import {
 	useAppendRecording,
@@ -40,7 +40,6 @@ const PHASE_COLOR = {
 };
 
 export default function RecorderScreen({ navigation }) {
-	const insets = useSafeAreaInsets();
 	const {
 		phase,
 		lines,
@@ -124,25 +123,24 @@ export default function RecorderScreen({ navigation }) {
 
 	return (
 		<View style={styles.root}>
-			<View style={[styles.bar, { paddingTop: insets.top + 12 }]}>
-				<Pressable onPress={() => navigation.goBack()} hitSlop={10}>
-					<Ionicons name="chevron-back" size={22} color={colors.text} />
-				</Pressable>
-				<View style={styles.titleWrap}>
-					<Text style={styles.title}>Recorder</Text>
-					<Text style={[styles.phase, { color: PHASE_COLOR[phase] }]}>
-						{PHASE_TAG[phase] || "READY"}
-					</Text>
-				</View>
-				<Pressable
-					onPress={() => navigation.navigate("RecorderSessions")}
-					hitSlop={10}
-					style={styles.sessionsBtn}
-				>
-					<Ionicons name="albums-outline" size={16} color={colors.accent4} />
-					<Text style={styles.sessionsText}>sessions</Text>
-				</Pressable>
-			</View>
+			<ScreenHeader
+				title="Recorder"
+				icon="mic-outline"
+				subtitle={PHASE_TAG[phase] || "READY"}
+				subtitleColor={PHASE_COLOR[phase]}
+				onBack={() => navigation.goBack()}
+				style={styles.headerLift}
+				right={
+					<Pressable
+						onPress={() => navigation.navigate("RecorderSessions")}
+						hitSlop={10}
+						style={styles.sessionsBtn}
+					>
+						<Ionicons name="albums-outline" size={16} color={colors.accent4} />
+						<Text style={styles.sessionsText}>sessions</Text>
+					</Pressable>
+				}
+			/>
 
 			<View
 				style={styles.scene}
@@ -237,26 +235,8 @@ export default function RecorderScreen({ navigation }) {
 
 const styles = StyleSheet.create({
 	root: { flex: 1, backgroundColor: "#0b0c10" },
-	bar: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		paddingHorizontal: 16,
-		paddingBottom: 12,
-		borderBottomWidth: 1,
-		borderBottomColor: colors.border,
-		backgroundColor: "#0b0c10",
-		zIndex: 2,
-	},
-	titleWrap: { flex: 1, marginLeft: 12 },
-	title: { color: colors.text, fontSize: 17, fontWeight: "600" },
-	phase: {
-		fontFamily: mono,
-		fontSize: 10,
-		fontWeight: "700",
-		letterSpacing: 1,
-		marginTop: 1,
-	},
+	// Keep the shared header above the starfield scene that renders below it.
+	headerLift: { zIndex: 2 },
 	sessionsBtn: {
 		flexDirection: "row",
 		alignItems: "center",
