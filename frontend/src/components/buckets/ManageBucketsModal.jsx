@@ -34,6 +34,15 @@ export default function ManageBucketsModal({ onClose }) {
 
 	const [newBucket, setNewBucket] = useState("");
 	const [tagFilter, setTagFilter] = useState("");
+	// The bucket pending deletion (drives the confirm popup). null = no prompt.
+	const [pendingDelete, setPendingDelete] = useState(null);
+
+	const confirmDeleteBucket = () => {
+		if (!pendingDelete || deleteBucket.isPending) return;
+		deleteBucket.mutate(pendingDelete.id, {
+			onSuccess: () => setPendingDelete(null),
+		});
+	};
 
 	const shownTags = tagFilter.trim()
 		? tags.filter((t) => t.name.includes(tagFilter.trim().toLowerCase()))
@@ -62,7 +71,10 @@ export default function ManageBucketsModal({ onClose }) {
 			open
 			title="Manage buckets & tags"
 			confirmText="Done"
-			onConfirm={onClose}
+			// While the delete-confirm popup is up, drop this modal's Enter→confirm
+			// so a keystroke confirms the delete (its own popup) without also
+			// closing the manager underneath.
+			onConfirm={pendingDelete ? undefined : onClose}
 			onCancel={onClose}
 			className="mbm"
 		>
@@ -101,11 +113,15 @@ export default function ManageBucketsModal({ onClose }) {
 								<button
 									type="button"
 									className="mbm-del"
-									onClick={() => deleteBucket.mutate(b.id)}
+									onClick={() => setPendingDelete(b)}
 									aria-label={`Delete ${b.name}`}
 									title="Delete bucket (its tasks fall back to no bucket)"
 								>
-									✕
+									{deleteBucket.isPending && deleteBucket.variables === b.id ? (
+										<span className="mbm-spin" aria-hidden="true" />
+									) : (
+										"✕"
+									)}
 								</button>
 							</li>
 						))}
@@ -160,6 +176,33 @@ export default function ManageBucketsModal({ onClose }) {
 					</p>
 				</section>
 			</div>
+
+			{pendingDelete ? (
+				<PvModal
+					open
+					title="Delete bucket"
+					danger
+					confirmText={
+						deleteBucket.isPending ? (
+							<span className="mbm-confirm-busy">
+								<span className="mbm-spin" aria-hidden="true" /> Deleting…
+							</span>
+						) : (
+							"Delete"
+						)
+					}
+					cancelText="Cancel"
+					onConfirm={confirmDeleteBucket}
+					onCancel={() => {
+						if (!deleteBucket.isPending) setPendingDelete(null);
+					}}
+				>
+					<p className="mbm-confirm-text">
+						Delete the bucket <strong>{pendingDelete.name}</strong>? Its tasks
+						aren't deleted — they fall back to no bucket.
+					</p>
+				</PvModal>
+			) : null}
 		</PvModal>
 	);
 }

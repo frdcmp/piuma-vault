@@ -100,6 +100,12 @@ function ModelsList({ providerId, providerKind }) {
 	const suggestions = available.filter((id) =>
 		id.toLowerCase().includes(modelId.trim().toLowerCase()),
 	);
+	// Show the spinner not just while fetching, but across the whole gap between
+	// opening the picker and the first result landing — the lazy query (enabled:
+	// false) hasn't flipped `isFetching` yet on the first render, which would
+	// otherwise flash an empty "No models returned" before the request starts.
+	const catalogPending =
+		catalogLoading || (picker && !catalogFetched && !catalogError);
 
 	const openPicker = () => {
 		setPicker(true);
@@ -228,41 +234,40 @@ function ModelsList({ providerId, providerKind }) {
 						/>
 						{picker && (
 							<div className="ag-combo-menu">
-								{catalogLoading && (
-									<div className="ag-combo-note">Loading models…</div>
-								)}
-								{catalogError && (
+								{catalogPending ? (
+									<div className="ag-combo-note ag-combo-loading">
+										<span className="ag-spinner" aria-hidden="true" />
+										Loading models…
+									</div>
+								) : catalogError ? (
 									<div className="ag-combo-note ag-error" style={{ margin: 0 }}>
 										{errMsg(catalogErr, "Couldn't list models")}
 									</div>
+								) : suggestions.length ? (
+									suggestions.map((id) => (
+										<button
+											type="button"
+											key={id}
+											className="ag-combo-item"
+											// mouse-down fires before the input's blur, so the
+											// pick lands before the menu closes.
+											onMouseDown={(e) => {
+												e.preventDefault();
+												pick(id);
+											}}
+											disabled={existingIds.has(id)}
+										>
+											{id}
+											{existingIds.has(id) && (
+												<span className="ag-muted">added</span>
+											)}
+										</button>
+									))
+								) : (
+									<div className="ag-combo-note">
+										{available.length ? "No match" : "No models returned"}
+									</div>
 								)}
-								{!catalogLoading &&
-									!catalogError &&
-									(suggestions.length ? (
-										suggestions.map((id) => (
-											<button
-												type="button"
-												key={id}
-												className="ag-combo-item"
-												// mouse-down fires before the input's blur, so the
-												// pick lands before the menu closes.
-												onMouseDown={(e) => {
-													e.preventDefault();
-													pick(id);
-												}}
-												disabled={existingIds.has(id)}
-											>
-												{id}
-												{existingIds.has(id) && (
-													<span className="ag-muted">added</span>
-												)}
-											</button>
-										))
-									) : (
-										<div className="ag-combo-note">
-											{available.length ? "No match" : "No models returned"}
-										</div>
-									))}
 							</div>
 						)}
 					</div>

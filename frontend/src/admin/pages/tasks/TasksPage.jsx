@@ -38,7 +38,7 @@ import {
 	useToggleTask,
 	useUpdateTask,
 } from "../../../queries";
-import { formatDate } from "../../../utils/dateTime";
+import { dueBucket, formatDate } from "../../../utils/dateTime";
 import { rankBefore, rankBetween } from "../../../utils/rank";
 import { tagColor } from "../../../utils/tagColor";
 import { PvButton, pvMessage } from "../../components/ui";
@@ -159,13 +159,85 @@ function SortableTaskRow({
 	);
 }
 
+// A dated task row (Overdue / Due today / Next due groups). Same layout as
+// SortableTaskRow but not draggable — those groups are ordered by due date —
+// so there's no drag handle (an empty cell keeps the columns aligned). Overdue
+// due-dates read in the alert colour.
+function StaticTaskRow({
+	t,
+	bucket,
+	toggling,
+	onToggle,
+	onOpen,
+	onSelectTag,
+	tagColorOf,
+	overdue,
+}) {
+	return (
+		<li
+			className={`task-row${t.priority ? ` prio-${t.priority}` : ""}`}
+			title={t.priority ? `${PRIORITY[t.priority]} priority` : undefined}
+		>
+			<span className="task-drag is-static" aria-hidden="true" />
+			<button
+				type="button"
+				className="task-check"
+				style={{ color: PRIORITY_COLOR[t.priority] }}
+				onClick={() => onToggle(t.id)}
+				disabled={toggling}
+				aria-label="Complete task"
+			>
+				{toggling ? <span className="task-spin" aria-hidden="true" /> : "☐"}
+			</button>
+			{bucket ? (
+				<span
+					className="task-bucket"
+					style={{ color: bucket.color || undefined }}
+				>
+					{bucket.name}
+				</span>
+			) : null}
+			<button type="button" className="task-main" onClick={() => onOpen(t)}>
+				<span className="task-title">{t.title}</span>
+				<span className="task-meta">
+					<span className={`task-due${overdue ? " is-overdue" : ""}`}>
+						due <TimeAgo value={t.due_at} />
+					</span>
+					{hasAlerts(t) ? (
+						<BellOutlined
+							className="task-alert"
+							title="Has alerts set"
+							aria-label="Has alerts set"
+						/>
+					) : null}
+				</span>
+			</button>
+			{t.tags?.length ? (
+				<span className="task-tags">
+					{t.tags.map((tag) => (
+						<button
+							type="button"
+							key={tag}
+							className="task-tag"
+							style={{ color: tagColorOf(tag) }}
+							onClick={() => onSelectTag(tag)}
+						>
+							#{tag}
+						</button>
+					))}
+				</span>
+			) : null}
+		</li>
+	);
+}
+
 export default function TasksPage() {
 	const navigate = useNavigate();
 	useTasksLiveUpdates(); // refetch when tasks change in another tab/device
 	useTagsLiveUpdates("tasks"); // keep the tag tree + counts fresh
 	const { data: tasks = [] } = useTasks();
 	const { data: recurring = [] } = useRecurringTasks();
-	const { data: buckets = [] } = useBuckets();
+	const { data: buckets = [], isSuccess: bucketsReady } = useBuckets();
 	const { data: tagRegistry = [] } = useTagRegistry();
 	const toggleTask = useToggleTask();
 	const updateTask = useUpdateTask();
@@ -190,6 +262,9 @@ export default function TasksPage() {
 	const [bucketSel, setBucketSel] = useState(ALL); // { key, bucketId, label }
 	const [tags, setTags] = useState([]); // active tag names
 	const [showRecurring, setShowRecurring] = useState(false); // sidebar view toggle
+	// True once the filter has been hydrated from the URL — gates the state→URL
+	// sync so the initial (default) state doesn't wipe incoming query params.
+	const [hydrated, setHydrated] = useState(false);
 
 	// Deep-link: /tasks?task=<id> opens that task's modal (e.g. from a chat link).
 	// Prefer the already-loaded list; fall back to fetching by id. Clear the param
@@ -214,10 +289,9 @@ export default function TasksPage() {
 	useEffect(() => {
 		if (!(deepTaskId && deepTask)) return;
 		setTaskModal({ task: deepTask });
-		// Pre-filter the list to the task's bucket so it opens in context (the
-		// to-do view, tag filter cleared, so the task is guaranteed visible).
+		// Pre-filter the list to the task's bucket + tags so it opens in context.
 		setShowRecurring(false);
-		setTags([]);
+		setTags(deepTask.tags ?? []);
 		if (deepTask.bucket_id) {
 			const b = buckets.find((x) => x.id === deepTask.bucket_id);
 			setBucketSel(
@@ -233,6 +307,52 @@ export default function TasksPage() {
 			clearTaskParam();
 		}
 	}, [deepTaskId, taskErr, clearTaskParam]);
+
+	// Hydrate the filter (bucket / tags / recurring view) from the URL once, after
+	// buckets load — so a shared/bookmarked link like
+	// /tasks?bucket=<id>&tags=a,b&recurring=1 restores the same view.
+	useEffect(() => {
+		if (hydrated || !bucketsReady) return;
+		const b = searchParams.get("bucket");
+		if (b === "none") {
+			setBucketSel({ key: "nobucket", label: "no bucket" });
+		} else if (b) {
+			const bk = buckets.find((x) => x.id === b);
+			if (bk)
+				setBucketSel({
+					key: `bucket:${bk.id}`,
+					bucketId: bk.id,
+					label: bk.name,
+				});
+		}
+		const t = searchParams.get("tags");
+		if (t) setTags(t.split(",").filter(Boolean));
+		if (searchParams.get("recurring") === "1") setShowRecurring(true);
+		setHydrated(true);
+	}, [hydrated, bucketsReady, buckets, searchParams]);
+
+	// Mirror the active filter back into the URL (replace, so it doesn't spam
+	// history) so the view is shareable and survives reloads. Preserves the
+	// transient `task` deep-link param. Held until hydration so it can't clobber
+	// the params we're about to read.
+	useEffect(() => {
+		if (!hydrated) return;
+		setSearchParams(
+			(prev) => {
+				const next = new URLSearchParams(prev);
+				if (bucketSel.key === "nobucket") next.set("bucket", "none");
+				else if (bucketSel.key.startsWith("bucket:"))
+					next.set("bucket", bucketSel.bucketId);
+				else next.delete("bucket");
+				if (tags.length) next.set("tags", tags.join(","));
+				else next.delete("tags");
+				if (showRecurring) next.set("recurring", "1");
+				else next.delete("recurring");
+				return next;
+			},
+			{ replace: true },
+		);
+	}, [hydrated, bucketSel, tags, showRecurring, setSearchParams]);
 
 	// Per-tag colour from the registry (falls back to the derived hue).
 	const tagColorOf = (name) =>
@@ -274,15 +394,32 @@ export default function TasksPage() {
 	}, [setSig]);
 
 	const pending = order.map((id) => byId.get(id)).filter(Boolean);
-	const pendingIds = pending.map((t) => t.id);
+
+	// Group the to-do list by due date: Overdue → Due today → Next due (each
+	// sorted by due date), then To do (no due date, in manual/drag order). Only
+	// the dateless "To do" group is reorderable.
+	const byDueAsc = (a, b) => new Date(a.due_at) - new Date(b.due_at);
+	const overdue = pending
+		.filter((t) => dueBucket(t.due_at) === "overdue")
+		.sort(byDueAsc);
+	const dueToday = pending
+		.filter((t) => dueBucket(t.due_at) === "today")
+		.sort(byDueAsc);
+	const upcoming = pending
+		.filter((t) => dueBucket(t.due_at) === "upcoming")
+		.sort(byDueAsc);
+	const noDate = pending.filter((t) => !t.due_at);
+	const noDateIds = noDate.map((t) => t.id);
 
 	const onDragEnd = ({ active, over }) => {
 		if (!over || active.id === over.id) return;
-		const from = pendingIds.indexOf(active.id);
-		const to = pendingIds.indexOf(over.id);
+		const from = noDateIds.indexOf(active.id);
+		const to = noDateIds.indexOf(over.id);
 		if (from < 0 || to < 0) return;
-		const next = arrayMove(pendingIds, from, to);
-		setOrder(next); // optimistic
+		const next = arrayMove(noDateIds, from, to);
+		// Optimistic: dated rows keep their (date) order, so only the dateless
+		// portion of `order` needs to reflect the drag.
+		setOrder((prev) => [...prev.filter((id) => byId.get(id)?.due_at), ...next]);
 		// Mint a key strictly between the new neighbours.
 		const before = byId.get(next[to - 1])?.rank ?? null;
 		const after = byId.get(next[to + 1])?.rank ?? null;
@@ -353,7 +490,7 @@ export default function TasksPage() {
 								defaultTags,
 								defaultBucket,
 								// New tasks land at the top of the list.
-								newRank: rankBefore(pending[0]?.rank),
+								newRank: rankBefore(noDate[0]?.rank),
 							})
 						}
 					>
@@ -422,40 +559,91 @@ export default function TasksPage() {
 							{/* ── To-do ── */}
 							<section className="tasks-panel">
 								<h2 className="tasks-panel-title">
-									{filterLabel ? `${filterLabel} · ` : "To do · "}
+									{filterLabel ? `${filterLabel} · ` : "Tasks · "}
 									{pending.length}
 								</h2>
-								<DndContext
-									sensors={sensors}
-									collisionDetection={closestCenter}
-									modifiers={[restrictToVerticalAxis, restrictToParentElement]}
-									onDragEnd={onDragEnd}
-								>
-									<SortableContext
-										items={pendingIds}
-										strategy={verticalListSortingStrategy}
-									>
-										<ul className="tasks-list">
-											{pending.map((t) => (
-												<SortableTaskRow
-													key={t.id}
-													t={t}
-													bucket={bucketById.get(t.bucket_id)}
-													toggling={togglingId === t.id}
-													onToggle={(id) => toggleTask.mutate(id)}
-													onOpen={(task) => setTaskModal({ task })}
-													onSelectTag={selectTag}
-													tagColorOf={tagColorOf}
-												/>
-											))}
-											{pending.length === 0 ? (
-												<li className="tasks-empty">
-													Nothing to do. Piuma approves.
-												</li>
-											) : null}
-										</ul>
-									</SortableContext>
-								</DndContext>
+
+								{/* Dated groups — ordered by due date, not draggable. */}
+								{[
+									{
+										key: "overdue",
+										label: "Overdue",
+										rows: overdue,
+										over: true,
+									},
+									{ key: "today", label: "Due today", rows: dueToday },
+									{ key: "next", label: "Next due", rows: upcoming },
+								].map((g) =>
+									g.rows.length ? (
+										<div className="tasks-group" key={g.key}>
+											<h3
+												className={`tasks-group-title${g.over ? " is-overdue" : ""}`}
+											>
+												{g.label} · {g.rows.length}
+											</h3>
+											<ul className="tasks-list">
+												{g.rows.map((t) => (
+													<StaticTaskRow
+														key={t.id}
+														t={t}
+														bucket={bucketById.get(t.bucket_id)}
+														toggling={togglingId === t.id}
+														onToggle={(id) => toggleTask.mutate(id)}
+														onOpen={(task) => setTaskModal({ task })}
+														onSelectTag={selectTag}
+														tagColorOf={tagColorOf}
+														overdue={g.over}
+													/>
+												))}
+											</ul>
+										</div>
+									) : null,
+								)}
+
+								{/* To do — no due date, draggable to reorder. */}
+								{noDate.length || pending.length === 0 ? (
+									<div className="tasks-group">
+										{noDate.length ? (
+											<h3 className="tasks-group-title">
+												To do · {noDate.length}
+											</h3>
+										) : null}
+										<DndContext
+											sensors={sensors}
+											collisionDetection={closestCenter}
+											modifiers={[
+												restrictToVerticalAxis,
+												restrictToParentElement,
+											]}
+											onDragEnd={onDragEnd}
+										>
+											<SortableContext
+												items={noDateIds}
+												strategy={verticalListSortingStrategy}
+											>
+												<ul className="tasks-list">
+													{noDate.map((t) => (
+														<SortableTaskRow
+															key={t.id}
+															t={t}
+															bucket={bucketById.get(t.bucket_id)}
+															toggling={togglingId === t.id}
+															onToggle={(id) => toggleTask.mutate(id)}
+															onOpen={(task) => setTaskModal({ task })}
+															onSelectTag={selectTag}
+															tagColorOf={tagColorOf}
+														/>
+													))}
+													{pending.length === 0 ? (
+														<li className="tasks-empty">
+															Nothing to do. Piuma approves.
+														</li>
+													) : null}
+												</ul>
+											</SortableContext>
+										</DndContext>
+									</div>
+								) : null}
 
 								{done.length ? (
 									<details className="tasks-done">

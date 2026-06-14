@@ -246,6 +246,33 @@
 	color: var(--accent-3, #ff6b6b);
 }
 
+/* Delete-confirm popup: spinner on the Delete button + while a row deletes. */
+.mbm-confirm-text {
+	margin: 0;
+	font-size: 0.9rem;
+	line-height: 1.5;
+}
+.mbm-confirm-busy {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.mbm-spin {
+	display: inline-block;
+	width: 11px;
+	height: 11px;
+	border: 2px solid var(--border-strong, #3a4150);
+	border-top-color: var(--accent-3, #ff6b6b);
+	border-radius: 50%;
+	animation: mbm-spin 0.7s linear infinite;
+	vertical-align: -1px;
+}
+@keyframes mbm-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
 .mbm-empty {
 	color: var(--muted);
 	font-size: 0.78rem;

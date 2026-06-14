@@ -92,6 +92,27 @@ export const formatDateTime = (value) => {
 };
 
 /**
+ * Classify a task's due date relative to the user's local "today":
+ * "overdue" (a previous calendar day), "today", or "upcoming" (a future day).
+ * Returns null when there's no due date. Used to group the to-do list.
+ *
+ * @param {string|Date|null|undefined} value
+ * @returns {"overdue"|"today"|"upcoming"|null}
+ */
+export const dueBucket = (value) => {
+	const d = parseUtc(value);
+	if (!d) return null;
+	// en-CA renders YYYY-MM-DD, so day strings compare lexicographically.
+	const fmt = (date) =>
+		new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(date);
+	const day = fmt(d);
+	const today = fmt(new Date());
+	if (day < today) return "overdue";
+	if (day === today) return "today";
+	return "upcoming";
+};
+
+/**
  * Relative time from a UTC value (e.g. "2 hours ago", "in 5 minutes").
  * Uses the browser locale for natural-language output.
  *

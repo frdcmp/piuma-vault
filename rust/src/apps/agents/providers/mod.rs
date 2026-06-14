@@ -12,11 +12,67 @@ pub mod gemini;
 pub mod minimax;
 pub mod openai;
 
+use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use bytes::Bytes;
 use futures::channel::mpsc::UnboundedSender;
 use serde_json::{json, Value};
 
 pub type SseSender = UnboundedSender<Result<Bytes, actix_web::Error>>;
+
+/// Local OpenAI-compatible servers (LM Studio, Ollama) won't fetch a remote
+/// image URL — their `/chat/completions` requires the image inlined as a
+/// `data:<mime>;base64,…` URL. Cloud OpenAI accepts an http(s) URL, so we only
+/// do this for the local kinds. Walks every block-array message and rewrites any
+/// `{type:"image", url: "http(s)://…"}` block's `url` to a base64 data URL by
+/// fetching the bytes. Data URLs and unfetchable images pass through unchanged
+/// (best-effort — a failed fetch degrades to the prior behaviour, with a log).
+async fn inline_images(messages: &[Value]) -> Vec<Value> {
+    let client = reqwest::Client::new();
+    let mut out = Vec::with_capacity(messages.len());
+    for m in messages {
+        let mut m = m.clone();
+        if let Some(blocks) = m.get_mut("content").and_then(|c| c.as_array_mut()) {
+            for b in blocks.iter_mut() {
+                if b.get("type").and_then(|t| t.as_str()) != Some("image") {
+                    continue;
+                }
+                let Some(url) = b.get("url").and_then(|u| u.as_str()) else {
+                    continue;
+                };
+                if !url.starts_with("http://") && !url.starts_with("https://") {
+                    continue; // already a data URL (or inline) — leave it
+                }
+                match client.get(url).send().await.and_then(|r| r.error_for_status()) {
+                    Ok(resp) => {
+                        // Prefer the block's declared media type, else the
+                        // response content-type, else a safe default.
+                        let mime = b
+                            .get("media_type")
+                            .and_then(|m| m.as_str())
+                            .map(str::to_string)
+                            .or_else(|| {
+                                resp.headers()
+                                    .get(reqwest::header::CONTENT_TYPE)
+                                    .and_then(|v| v.to_str().ok())
+                                    .map(|s| s.split(';').next().unwrap_or(s).trim().to_string())
+                            })
+                            .unwrap_or_else(|| "image/png".to_string());
+                        match resp.bytes().await {
+                            Ok(bytes) => {
+                                let data = B64.encode(&bytes);
+                                b["url"] = json!(format!("data:{mime};base64,{data}"));
+                            }
+                            Err(e) => log::warn!("inline_images: read body failed for {url}: {e}"),
+                        }
+                    }
+                    Err(e) => log::warn!("inline_images: fetch failed for {url}: {e}"),
+                }
+            }
+        }
+        out.push(m);
+    }
+    out
+}
 
 /// Inside the Docker backend, `localhost`/`127.0.0.1` in a provider base URL
 /// means the container itself — not the host where LM Studio / Ollama run. We
@@ -173,8 +229,12 @@ pub async fn call(
     tx: &SseSender,
 ) -> Result<CallResult, String> {
     match kind {
-        "openai" | "lmstudio" | "ollama" => {
-            openai::call(api_key, base_url, model, messages, tools, tx).await
+        "openai" => openai::call(api_key, base_url, model, messages, tools, tx).await,
+        // LM Studio / Ollama can't fetch remote image URLs — inline them as
+        // base64 data URLs first, then use the shared OpenAI wire format.
+        "lmstudio" | "ollama" => {
+            let inlined = inline_images(messages).await;
+            openai::call(api_key, base_url, model, &inlined, tools, tx).await
         }
         "minimax" => minimax::call(api_key, base_url, model, messages, tools, tx).await,
         "anthropic" => anthropic::call(api_key, base_url, model, messages, tools, tx).await,
