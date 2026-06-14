@@ -82,8 +82,10 @@ pub static DEF: AgentDef = AgentDef {
         // Web (server-side, provider-agnostic)
         "web_search",
         "web_fetch",
-        // Email (SMTP) — owner BCC'd, rate-limited + audited. Mainly for cron.
+        // Email — send (SMTP, owner BCC'd, rate-limited + audited; mainly for
+        // cron) + read (IMAP). Both no-op gracefully when unconfigured.
         "send_email",
+        "read_email",
         // GitHub (token from admin → Services) — read
         "github_list_repos",
         "github_search_repos",

@@ -16,6 +16,7 @@ export {
 export * from "./calendarQuery";
 export * from "./cronQuery";
 export * from "./dbDumpQuery";
+export * from "./emailAccountsQuery";
 export * from "./folderSharesQuery";
 export * from "./healthQuery";
 export * from "./memoryQuery";

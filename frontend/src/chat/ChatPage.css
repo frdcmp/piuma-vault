@@ -1184,3 +1184,163 @@ button.chat-context-tag-main {
 		transform: translateY(0);
 	}
 }
+
+/* ── Per-message chrome: action row, fork switcher, edit-fork editor ──────────
+   Shared by the standalone /chat page AND the chat dock (both import this file).
+   Tokens resolve from the nearest themed ancestor (.chat-root or .chatx-page). */
+.chatx-msg {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.chatx-msg-actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	opacity: 0.35;
+	transition: opacity 0.12s ease;
+}
+.chatx-msg:hover .chatx-msg-actions,
+.chatx-msg-actions:focus-within {
+	opacity: 1;
+}
+.chatx-msg-action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	box-sizing: border-box;
+	background: var(--bg-soft);
+	border: 1px solid var(--border-strong);
+	color: var(--muted);
+	font-size: 11pt;
+	cursor: pointer;
+}
+.chatx-msg-action:hover {
+	border-color: var(--accent-2);
+	color: var(--accent-2);
+}
+.chatx-msg-model {
+	margin-left: 4px;
+	color: var(--muted);
+	font-size: 8.5pt;
+	letter-spacing: 0.3px;
+	white-space: nowrap;
+}
+/* User messages: keep children full-width (so the bubble's own max-width/
+   right-alignment governs wrapping — NOT a shrunk column). The action row
+   right-aligns itself. */
+.chatx-msg--user {
+	align-items: stretch;
+}
+.chatx-msg-actions--user {
+	justify-content: flex-end;
+}
+
+/* ‹ n/n › fork switcher. */
+.chatx-branch {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	color: var(--muted);
+	font-size: 8.5pt;
+}
+.chatx-branch-arrow {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	background: none;
+	border: 0;
+	color: var(--muted);
+	font-size: 9pt;
+	cursor: pointer;
+}
+.chatx-branch-arrow:hover:not(:disabled) {
+	color: var(--accent-2);
+}
+.chatx-branch-arrow:disabled {
+	opacity: 0.3;
+	cursor: default;
+}
+.chatx-branch-count {
+	min-width: 26px;
+	text-align: center;
+	font-weight: 700;
+	letter-spacing: 0.3px;
+}
+
+/* Inline editor for forking an old user message. Mirrors the user bubble width. */
+.chatx-edit {
+	width: 100%;
+	max-width: 82%;
+	margin-left: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px;
+	background: var(--panel);
+	border: 1px solid var(--border-strong);
+}
+.chatx-edit:focus-within {
+	border-color: var(--accent-2);
+}
+.chatx-edit-input {
+	width: 100%;
+	box-sizing: border-box;
+	resize: vertical;
+	min-height: 60px;
+	background: var(--bg);
+	border: 1px solid var(--border-strong);
+	padding: 8px 10px;
+	color: var(--text);
+	font-family: inherit;
+	font-size: 11pt;
+	line-height: 1.45;
+	outline: none;
+}
+.chatx-edit-input:focus {
+	border-color: var(--accent-2);
+}
+.chatx-edit-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+.chatx-edit-btn {
+	padding: 6px 14px;
+	background: var(--bg-soft);
+	border: 2px solid var(--border-strong);
+	color: var(--text);
+	font-family: inherit;
+	font-weight: 700;
+	font-size: 9.5pt;
+	cursor: pointer;
+}
+.chatx-edit-btn:hover {
+	border-color: var(--accent-2);
+}
+.chatx-edit-send {
+	border-color: var(--accent-2);
+	color: var(--accent-2);
+	text-transform: uppercase;
+	letter-spacing: 0.6px;
+}
+.chatx-edit-send:disabled {
+	border-color: var(--border-strong);
+	color: var(--muted);
+	cursor: not-allowed;
+}
+
+/* Capability glyphs in the model pickers (reasoning / vision / tools). */
+.model-caps {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: 6px;
+	color: var(--muted);
+	font-size: 9.5pt;
+}

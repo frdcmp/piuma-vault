@@ -261,9 +261,10 @@ pub async fn model_meta(
 
 /// All enabled models across providers — for the `/models` chat command picker.
 pub async fn list_all_models(_user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
-    let rows: Vec<(Uuid, String, String, bool, String, f64, f64, f64, bool)> = sqlx::query_as(
+    let rows: Vec<(Uuid, String, String, bool, String, f64, f64, f64, bool, bool, bool)> = sqlx::query_as(
         "SELECT m.id, m.model_id, m.display_name, m.is_default, p.display_name, \
-                m.price_input, m.price_output, m.price_cached, m.supports_vision \
+                m.price_input, m.price_output, m.price_cached, \
+                m.supports_vision, m.supports_thinking, m.supports_tools \
          FROM db_llm_models m JOIN db_llm_providers p ON p.id = m.provider_id \
          WHERE m.enabled AND p.enabled ORDER BY p.display_name, m.display_name",
     )
@@ -272,8 +273,8 @@ pub async fn list_all_models(_user: AuthenticatedUser, pool: web::Data<DbPool>) 
     .unwrap_or_default();
     let models: Vec<serde_json::Value> = rows
         .into_iter()
-        .map(|(id, model_id, display_name, is_default, provider, price_input, price_output, price_cached, supports_vision)| {
-            json!({ "id": id, "model_id": model_id, "display_name": display_name, "is_default": is_default, "provider": provider, "price_input": price_input, "price_output": price_output, "price_cached": price_cached, "supports_vision": supports_vision })
+        .map(|(id, model_id, display_name, is_default, provider, price_input, price_output, price_cached, supports_vision, supports_thinking, supports_tools)| {
+            json!({ "id": id, "model_id": model_id, "display_name": display_name, "is_default": is_default, "provider": provider, "price_input": price_input, "price_output": price_output, "price_cached": price_cached, "supports_vision": supports_vision, "supports_thinking": supports_thinking, "supports_tools": supports_tools })
         })
         .collect();
     HttpResponse::Ok().json(models)

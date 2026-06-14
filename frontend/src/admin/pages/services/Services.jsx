@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+	useEmailAccounts,
 	useServices,
 	useTestEmbedding,
 	useTestGithub,
@@ -17,6 +18,7 @@ import {
 } from "../../components/ui";
 import "../../vault-pixel.css";
 import "./services.css";
+import EmailAccounts from "./EmailAccounts";
 
 const EMPTY = {
 	azure_embedding_url: "",
@@ -49,6 +51,7 @@ const TABS = [
 	{ id: "transcription", label: "Transcription" },
 	{ id: "storage", label: "Storage" },
 	{ id: "github", label: "GitHub" },
+	{ id: "email", label: "Email" },
 ];
 
 // Streaming-transcription providers we ship adapters for (see apps::transcription).
@@ -141,6 +144,7 @@ const BUNNY_DEFAULTS = {
 
 const Services = () => {
 	const { data, isLoading, error } = useServices();
+	const { data: emailAccounts } = useEmailAccounts();
 	const update = useUpdateServices();
 	const testEmb = useTestEmbedding();
 	const testS3 = useTestStorage();
@@ -432,6 +436,9 @@ const Services = () => {
 						transcription: trAnySet,
 						storage: !!data.s3_secret_access_key_set,
 						github: !!data.github_token_set,
+						email: !!emailAccounts?.some(
+							(a) => a.send_enabled || a.read_enabled,
+						),
 					};
 					return (
 						<div className="vp-stack">
@@ -843,15 +850,22 @@ const Services = () => {
 								</PvPanel>
 							)}
 
-							<div className="vp-row" style={{ justifyContent: "flex-end" }}>
-								<PvButton
-									variant="primary"
-									onClick={handleSave}
-									disabled={update.isPending}
-								>
-									{update.isPending ? "Saving…" : "Save changes"}
-								</PvButton>
-							</div>
+							{/* Email accounts — self-contained multi-account CRUD. */}
+							{activeTab === "email" && <EmailAccounts />}
+
+							{/* The shared "Save changes" persists the single-form tabs; the
+								Email tab saves per account, so it's hidden there. */}
+							{activeTab !== "email" && (
+								<div className="vp-row" style={{ justifyContent: "flex-end" }}>
+									<PvButton
+										variant="primary"
+										onClick={handleSave}
+										disabled={update.isPending}
+									>
+										{update.isPending ? "Saving…" : "Save changes"}
+									</PvButton>
+								</div>
+							)}
 						</div>
 					);
 				})()}

@@ -898,6 +898,38 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_cron_runs_job ON db_cron_runs USING btree (job_id, started_at DESC)",
         ],
     },
+    // User-managed email accounts (Services → Email). Replaces the EMAIL_* env
+    // vars. Each account can independently enable SMTP send and/or IMAP read;
+    // exactly one row is the system sender (partial unique on is_default).
+    // Passwords are encrypted at rest (apps::shares::crypto).
+    TableDefinition {
+        name: "email_accounts",
+        sql: r#"
+            CREATE TABLE email_accounts (
+                id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                label         TEXT NOT NULL,
+                email_address TEXT NOT NULL,
+                send_enabled  BOOLEAN NOT NULL DEFAULT false,
+                smtp_host     TEXT NOT NULL DEFAULT '',
+                smtp_port     INTEGER NOT NULL DEFAULT 587,
+                smtp_security TEXT NOT NULL DEFAULT 'starttls',
+                smtp_username TEXT NOT NULL DEFAULT '',
+                smtp_password TEXT NOT NULL DEFAULT '',
+                read_enabled  BOOLEAN NOT NULL DEFAULT false,
+                imap_host     TEXT NOT NULL DEFAULT '',
+                imap_port     INTEGER NOT NULL DEFAULT 993,
+                imap_security TEXT NOT NULL DEFAULT 'ssl',
+                imap_username TEXT NOT NULL DEFAULT '',
+                imap_password TEXT NOT NULL DEFAULT '',
+                is_default    BOOLEAN NOT NULL DEFAULT false,
+                created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_email_accounts_one_default ON email_accounts (is_default) WHERE is_default",
+        ],
+    },
     // Audit log + rate-limit source for the agent `send_email` tool. Every send
     // (incl. scheduled/cron sends) writes a row; the tool refuses once the 24h
     // count exceeds its cap.

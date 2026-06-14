@@ -296,8 +296,9 @@ pub async fn register(
         log::error!("Failed to insert verification token: {}", e);
     } else {
         let email_addr = item.email.clone();
+        let pool_c = pool.get_ref().clone();
         tokio::spawn(async move {
-            if let Err(e) = crate::apps::email::service::send_verification_email(&email_addr, &token, &frontend_base).await {
+            if let Err(e) = crate::apps::email::service::send_verification_email(&pool_c, &email_addr, &token, &frontend_base).await {
                 log::error!("Failed to send verification email to {}: {}", &email_addr, e);
             }
         });
@@ -587,8 +588,9 @@ pub async fn request_password_reset(
         .execute(pool.get_ref()).await;
 
         let email_addr = item.email.clone();
+        let pool_c = pool.get_ref().clone();
         tokio::spawn(async move {
-            if let Err(e) = crate::apps::email::service::send_password_reset_email(&email_addr, &token, &frontend_base).await {
+            if let Err(e) = crate::apps::email::service::send_password_reset_email(&pool_c, &email_addr, &token, &frontend_base).await {
                 log::error!("Failed to send password reset email to {}: {}", &email_addr, e);
             }
         });
@@ -730,8 +732,9 @@ pub async fn resend_verification(
         .bind(&token).bind(&user_id).bind(expires_at)
         .execute(pool.get_ref()).await {
             let email_addr = item.email.clone();
+            let pool_c = pool.get_ref().clone();
             tokio::spawn(async move {
-                if let Err(e) = crate::apps::email::service::send_verification_email(&email_addr, &token, &frontend_base).await {
+                if let Err(e) = crate::apps::email::service::send_verification_email(&pool_c, &email_addr, &token, &frontend_base).await {
                     log::error!("Failed to resend verification email to {}: {}", &email_addr, e);
                 }
             });
