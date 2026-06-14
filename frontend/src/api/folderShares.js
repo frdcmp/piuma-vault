@@ -3,7 +3,7 @@ import axiosInstance from "./axiosInstance";
 // ── Admin: manage folder shares (authed) ──────────────────────────
 
 // Create a public share for a storage folder. `prefix` is the folder key
-// (e.g. "projects/pv/"); access is "view" or "edit".
+// (e.g. "projects/example/"); access is "view" or "edit".
 export const createFolderShare = async ({
 	prefix,
 	accessLevel = "view",

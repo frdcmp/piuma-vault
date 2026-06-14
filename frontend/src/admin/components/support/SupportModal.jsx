@@ -7,8 +7,8 @@ const supportOptions = [
 		icon: <GithubOutlined />,
 		title: "GitHub",
 		description: "Open an issue or reach out on GitHub",
-		contact: "pv",
-		href: "https://github.com/pv",
+		contact: "your-org",
+		href: "https://github.com/your-org",
 	},
 ];
 

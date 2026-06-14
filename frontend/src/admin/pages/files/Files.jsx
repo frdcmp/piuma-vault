@@ -318,7 +318,7 @@ const Files = () => {
 					<div>
 						<h1 className="vp-page-title">File Storage</h1>
 						<p className="vp-page-subtitle">
-							Bunny S3-compatible storage (zone: pv)
+							Bunny S3-compatible storage (zone: your-zone)
 						</p>
 					</div>
 					<div className="vp-row vp-row--wrap">

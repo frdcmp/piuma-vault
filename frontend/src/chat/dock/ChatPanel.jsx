@@ -84,7 +84,7 @@ const titleItems = TITLE_ACTIONS.map((a) => ({
 }));
 
 // Persists the active conversation so the panel restores it across mounts.
-const STORAGE_KEY = "pv:agents-active-conv";
+const STORAGE_KEY = "piuma:agents-active-conv";
 
 // Replaces the trailing reply when dropped-stream recovery gives up.
 const RECOVER_TIMEOUT_TEXT =

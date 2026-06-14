@@ -200,7 +200,7 @@ Deep architectural specifications, database schemas, local development steps, an
 
 *   **Interactive Documentation:** Access `/docs` directly on your running vault instance for a comprehensive guide.
 *   **Local development:** Run the frontend dev server with `cd frontend && bun run dev` (proxies `/api` to nginx); tail the backend with `docker compose logs -f rust`.
-*   **Mobile app:** Build instructions live in `mobile/md/BUILD.md`.
+*   **Mobile app:** The companion Expo/React Native app is maintained separately and is not included in this repository — the backend exposes the same API it consumes, so you can build your own client against it.
 
 ---
 

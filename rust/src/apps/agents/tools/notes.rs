@@ -41,7 +41,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
             "List the notes and immediate subfolders inside a folder path.",
             json!({
                 "type": "object",
-                "properties": { "path": { "type": "string", "description": "folder path, e.g. /projects/pv" } },
+                "properties": { "path": { "type": "string", "description": "folder path, e.g. /projects/example" } },
                 "required": ["path"]
             }),
         ),

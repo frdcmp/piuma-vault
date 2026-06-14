@@ -84,7 +84,7 @@ cd frontend && bun run dev`,
 		key: "db",
 		label: "Database",
 		code: `# Local Postgres container: db_piuma-vault on host port 5500
-PGPASSWORD=*** psql -h localhost -p 5500 -U user -d db_piuma-vault -c "SELECT count(*) FROM notes;"`,
+PGPASSWORD=*** psql -h localhost -p 5500 -U dbuser -d piuma_vault -c "SELECT count(*) FROM notes;"`,
 	},
 	{
 		key: "checks",

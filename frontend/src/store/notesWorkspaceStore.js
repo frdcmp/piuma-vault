@@ -11,8 +11,8 @@ import { create } from "zustand";
 //
 // Replaces the old noteTabsStore + noteContextStore. The editor-toolbar bridge
 // (noteControlsStore) stays separate — different lifecycle, no shared data.
-const TABS_KEY = "pv:notes-open-tabs";
-const LOCK_KEY = "pv:notes-locked-context";
+const TABS_KEY = "piuma:notes-open-tabs";
+const LOCK_KEY = "piuma:notes-locked-context";
 
 const loadList = (key) => {
 	try {

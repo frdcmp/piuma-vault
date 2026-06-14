@@ -15,8 +15,8 @@ export const CHAT_MIN = 220;
 export const CHAT_MAX = 860;
 export const CHAT_DEFAULT = 360;
 
-const OPEN_KEY = "pv:chat-open";
-const WIDTH_KEY = "pv:chat-width";
+const OPEN_KEY = "piuma:chat-open";
+const WIDTH_KEY = "piuma:chat-width";
 
 export const clampWidth = (n) =>
 	Math.min(CHAT_MAX, Math.max(CHAT_MIN, Math.round(n)));
