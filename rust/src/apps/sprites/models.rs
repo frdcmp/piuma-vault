@@ -111,15 +111,14 @@ pub struct SetActiveRequest {
     pub key: String,
 }
 
+/// Kick off async AI generation. The LLM call is too slow to hold an HTTP
+/// request open, so the handler validates these, spawns the work, and returns
+/// 202; the finished sprite is saved under `key`/`name` and announced over SSE.
 #[derive(Debug, Deserialize)]
 pub struct GenerateSpriteRequest {
+    pub key: String,
+    pub name: String,
     pub prompt: String,
-}
-
-/// AI-generated definition, returned for review in the editor (not persisted).
-#[derive(Debug, Serialize)]
-pub struct GenerateSpriteResponse {
-    pub definition: SpriteDefinition,
 }
 
 #[derive(Debug, Serialize)]

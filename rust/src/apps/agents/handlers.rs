@@ -581,6 +581,71 @@ pub async fn create_conversation(
     }
 }
 
+/// Branch metadata for one message: its 1-based position among its siblings
+/// (children sharing the same parent), the sibling count, and their ids in order
+/// — what the client needs to draw the `‹ n/n ›` switcher.
+async fn branch_meta(
+    pool: &DbPool,
+    conv_id: Uuid,
+    parent: Option<Uuid>,
+    msg_id: Uuid,
+) -> (i64, i64, Vec<Uuid>) {
+    let ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM db_chat_messages \
+         WHERE conversation_id = $1 AND parent_id IS NOT DISTINCT FROM $2 \
+         ORDER BY created_at, id",
+    )
+    .bind(conv_id)
+    .bind(parent)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let count = ids.len() as i64;
+    let index = ids
+        .iter()
+        .position(|x| *x == msg_id)
+        .map(|p| p as i64 + 1)
+        .unwrap_or(1);
+    (index, count, ids)
+}
+
+/// Build the `{ conversation, messages }` payload for a conversation's ACTIVE
+/// branch — the root→active_leaf path through the message tree — annotating each
+/// message with `branch_index` / `branch_count` / `sibling_ids` for the switcher.
+async fn active_path_json(pool: &DbPool, conv: &ConversationRow) -> serde_json::Value {
+    let msgs: Vec<MessageRow> = if let Some(leaf) = conv.active_leaf_id {
+        sqlx::query_as::<_, MessageRow>(
+            "WITH RECURSIVE path AS ( \
+                 SELECT *, 0 AS depth FROM db_chat_messages WHERE id = $1 \
+                 UNION ALL \
+                 SELECT m.*, p.depth + 1 FROM db_chat_messages m JOIN path p ON m.id = p.parent_id \
+             ) \
+             SELECT id, conversation_id, parent_id, role, content, model_used, provider_kind, \
+                    tokens_input, tokens_output, tokens_cached, stop_reason, metadata, created_at \
+             FROM path ORDER BY depth DESC",
+        )
+        .bind(leaf)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    let mut out = Vec::with_capacity(msgs.len());
+    for m in &msgs {
+        let (index, count, siblings) = branch_meta(pool, conv.id, m.parent_id, m.id).await;
+        let mut v = serde_json::to_value(m).unwrap_or_else(|_| json!({}));
+        if let Some(obj) = v.as_object_mut() {
+            obj.insert("branch_index".into(), json!(index));
+            obj.insert("branch_count".into(), json!(count));
+            obj.insert("sibling_ids".into(), json!(siblings));
+        }
+        out.push(v);
+    }
+    json!({ "conversation": conv, "messages": out })
+}
+
 pub async fn get_conversation(
     _user: AuthenticatedUser,
     pool: web::Data<DbPool>,
@@ -598,17 +663,68 @@ pub async fn get_conversation(
         Ok(None) => return HttpResponse::NotFound().json(ApiError::new("conversation not found")),
         Err(e) => return db_err(e),
     };
-    let messages = match sqlx::query_as::<_, MessageRow>(
-        "SELECT * FROM db_chat_messages WHERE conversation_id = $1 ORDER BY created_at",
+    HttpResponse::Ok().json(active_path_json(pool.get_ref(), &conv).await)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SwitchBranchReq {
+    /// The sibling message to switch to. The active leaf is moved to that
+    /// sibling's subtree, descending the most-recent child at each fork.
+    pub message_id: Uuid,
+}
+
+pub async fn switch_branch(
+    _user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    path: web::Path<Uuid>,
+    body: web::Json<SwitchBranchReq>,
+) -> impl Responder {
+    let conv_id = path.into_inner();
+    let target = body.into_inner().message_id;
+    // Guard: the message must belong to this conversation.
+    let belongs: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM db_chat_messages WHERE id = $1 AND conversation_id = $2",
     )
-    .bind(id)
-    .fetch_all(pool.get_ref())
+    .bind(target)
+    .bind(conv_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    .ok()
+    .flatten();
+    if belongs.is_none() {
+        return HttpResponse::NotFound().json(ApiError::new("message not found"));
+    }
+    // Descend to the leaf of the chosen branch (most-recent child each step).
+    let mut cur = target;
+    loop {
+        let child: Option<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM db_chat_messages WHERE parent_id = $1 \
+             ORDER BY created_at DESC, id DESC LIMIT 1",
+        )
+        .bind(cur)
+        .fetch_optional(pool.get_ref())
+        .await
+        .ok()
+        .flatten();
+        match child {
+            Some(c) => cur = c,
+            None => break,
+        }
+    }
+    let conv = match sqlx::query_as::<_, ConversationRow>(
+        "UPDATE db_chat_conversations SET active_leaf_id = $2, updated_at = updated_at \
+         WHERE id = $1 RETURNING *",
+    )
+    .bind(conv_id)
+    .bind(cur)
+    .fetch_optional(pool.get_ref())
     .await
     {
-        Ok(m) => m,
+        Ok(Some(c)) => c,
+        Ok(None) => return HttpResponse::NotFound().json(ApiError::new("conversation not found")),
         Err(e) => return db_err(e),
     };
-    HttpResponse::Ok().json(json!({ "conversation": conv, "messages": messages }))
+    HttpResponse::Ok().json(active_path_json(pool.get_ref(), &conv).await)
 }
 
 pub async fn update_conversation(

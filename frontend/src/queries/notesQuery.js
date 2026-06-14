@@ -16,6 +16,11 @@ import {
 	searchFolders,
 	updateNote,
 } from "../api/notesApi";
+import { isLocalEcho, markLocalChange } from "./liveUpdates";
+
+// SSE channel note mutations broadcast on. Marked at request start so the echo
+// of a local change is suppressed (see liveUpdates `markLocalChange`).
+const NOTES_SSE_PATH = "/admin/notes/events";
 
 export const notesKeys = {
 	all: ["notes"],
@@ -25,6 +30,53 @@ export const notesKeys = {
 	folders: () => ["notes", "folders"],
 	browse: (path) => ["notes", "browse", path],
 	trash: () => ["notes", "trash"],
+};
+
+// ── Surgical cache reconciliation (note updates) ──────────────────────────────
+//
+// An update (the frequent auto-save) only changes a note's summary fields, so
+// patch it into the loaded list rows in place instead of refetching. The list
+// is `{ data: NoteListItem[], total, … }` ordered by updated_at DESC. Search
+// caches can't be re-ranked client-side, so they fall back to a refetch. The
+// folder-tree sidebar (browse/folders) only changes when the title or folder
+// changes — refresh it only then.
+const byUpdatedDesc = (a, b) =>
+	new Date(b.updated_at ?? 0) - new Date(a.updated_at ?? 0);
+
+export const reconcileNoteUpdate = (qc, note) => {
+	if (!note?.id) return;
+	const prev = qc.getQueryData(notesKeys.detail(note.id));
+	qc.setQueryData(notesKeys.detail(note.id), note);
+
+	for (const q of qc.getQueryCache().findAll({ queryKey: ["notes", "list"] })) {
+		const params = q.queryKey[2] ?? {};
+		if (params.search) {
+			// Relevance ranking can't be re-derived locally — let it refetch.
+			qc.invalidateQueries({ queryKey: q.queryKey });
+			continue;
+		}
+		qc.setQueryData(q.queryKey, (old) => {
+			if (!old?.data) return old;
+			const i = old.data.findIndex((n) => n.id === note.id);
+			if (i === -1) return old; // not in this list — leave it untouched
+			const data = [...old.data];
+			data[i] = {
+				...data[i],
+				title: note.title,
+				tags: note.tags,
+				folder: note.folder,
+				updated_at: note.updated_at,
+			};
+			data.sort(byUpdatedDesc);
+			return { ...old, data };
+		});
+	}
+
+	// Title or folder change alters the file-tree sidebar; refresh it only then.
+	if (!prev || prev.title !== note.title || prev.folder !== note.folder) {
+		qc.invalidateQueries({ queryKey: ["notes", "browse"] });
+		qc.invalidateQueries({ queryKey: notesKeys.folders() });
+	}
 };
 
 // ── List ──────────────────────────────────────────────────────────────────
@@ -57,8 +109,10 @@ export const useCreateNote = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: createNote,
+		onMutate: () => markLocalChange(NOTES_SSE_PATH),
 		onSuccess: (data) => {
-			// Pre-populate the cache for this newly created note
+			// Pre-populate the cache for this newly created note; a new note is a
+			// structural change (new list/tree entry), so refresh the family.
 			qc.setQueryData(notesKeys.detail(data.id), data);
 			qc.invalidateQueries({ queryKey: notesKeys.all });
 		},
@@ -71,13 +125,10 @@ export const useUpdateNote = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: updateNote,
-		onSuccess: (data) => {
-			// Update cache for the specific note
-			qc.setQueryData(notesKeys.detail(data.id), data);
-			// Invalidate all notes queries (list + browse tree) so renames
-			// and other edits show up in the file explorer immediately.
-			qc.invalidateQueries({ queryKey: notesKeys.all });
-		},
+		onMutate: () => markLocalChange(NOTES_SSE_PATH),
+		// Patch the list/detail caches in place (see reconcileNoteUpdate) instead
+		// of refetching the whole family on every auto-save.
+		onSuccess: (data) => reconcileNoteUpdate(qc, data),
 	});
 };
 
@@ -87,6 +138,7 @@ export const useDeleteNote = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: deleteNote,
+		onMutate: () => markLocalChange(NOTES_SSE_PATH),
 		onSuccess: (_data, id) => {
 			// Soft delete — drop the detail cache and refresh lists + trash.
 			qc.removeQueries({ queryKey: notesKeys.detail(id) });
@@ -233,33 +285,51 @@ export const useNotesLiveUpdates = (activeNoteId) => {
 			}
 		};
 
-		const handleNoteEvent = (evt) => {
-			let payload;
-			try {
-				payload = JSON.parse(evt.data);
-			} catch {
-				return;
-			}
-
+		const refreshStructural = () => {
 			qc.invalidateQueries({ queryKey: ["notes", "list"] });
 			// The sidebar tree is driven by browse(path) queries — invalidate
 			// the whole browse family so create/rename/move/delete refresh it.
 			qc.invalidateQueries({ queryKey: ["notes", "browse"] });
 			// A delete/restore/purge anywhere changes the trash too.
 			qc.invalidateQueries({ queryKey: notesKeys.trash() });
+		};
 
-			if (!payload?.id) return;
+		const handleNoteEvent = async (evt) => {
+			let payload;
+			try {
+				payload = JSON.parse(evt.data);
+			} catch {
+				return;
+			}
+			// Drop the echo of a change this tab just made — its mutation already
+			// patched the cache. (Reconnect catch-up bypasses this handler.)
+			if (isLocalEcho(NOTES_SSE_PATH)) return;
 
+			if (!payload?.id) {
+				refreshStructural();
+				return;
+			}
 			if (payload.action === "deleted") {
 				qc.removeQueries({ queryKey: notesKeys.detail(payload.id) });
-			} else if (activeNoteId && payload.id === activeNoteId) {
-				qc.invalidateQueries({ queryKey: notesKeys.detail(payload.id) });
-			} else {
-				qc.invalidateQueries({
-					queryKey: notesKeys.detail(payload.id),
-					refetchType: "none",
-				});
+				refreshStructural();
+				return;
 			}
+			if (payload.action === "created") {
+				refreshStructural();
+				return;
+			}
+			// updated → patch in place from the fetched row (also refreshes the
+			// open editor if this is the active note); fall back to structural.
+			try {
+				const note = await fetchNote(payload.id);
+				if (note?.id) {
+					reconcileNoteUpdate(qc, note);
+					return;
+				}
+			} catch {
+				/* fall through */
+			}
+			refreshStructural();
 		};
 
 		const connect = () => {

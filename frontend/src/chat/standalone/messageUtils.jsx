@@ -90,6 +90,21 @@ export const blocksToParts = (content) => {
 	return parts;
 };
 
+// Normalize a server message (from get_conversation / switch-branch) into the
+// client shape, carrying the tree/branch fields used by the fork UI.
+export const mapServerMessage = (m) => ({
+	id: m.id,
+	role: m.role,
+	content: blocksToText(m.content),
+	parts: blocksToParts(m.content),
+	images: blocksToImages(m.content),
+	model: m.model_used || null,
+	parentId: m.parent_id ?? null,
+	branchIndex: m.branch_index ?? 1,
+	branchCount: m.branch_count ?? 1,
+	siblingIds: m.sibling_ids ?? [],
+});
+
 // Flatten the renderable parts back to plain text — the text segments joined in
 // order (tool runs / nav actions are dropped). Used for copy-to-clipboard.
 export const partsToText = (parts) =>

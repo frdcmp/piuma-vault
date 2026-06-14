@@ -219,6 +219,7 @@ pub struct ConversationRow {
     pub identity: String,
     pub metadata: Json,
     pub archived_at: Option<DateTime<Utc>>,
+    pub active_leaf_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -243,6 +244,7 @@ pub struct UpdateConversationReq {
 pub struct MessageRow {
     pub id: Uuid,
     pub conversation_id: Uuid,
+    pub parent_id: Option<Uuid>,
     pub role: String,
     pub content: Json,
     pub model_used: Option<String>,
@@ -287,11 +289,22 @@ pub struct ChatTurnReq {
     /// (e.g. "2026-06-05T14:52:00+02:00").
     #[serde(default)]
     pub client_now: Option<String>,
-    /// "Try again": re-run the last user turn. The last assistant message is
-    /// dropped and NO new user message is inserted — `message` is the existing
-    /// last user text (used for retrieval/context). Default false = normal turn.
+    /// "Try again": create a NEW assistant reply as a sibling of the current one
+    /// (a branch) instead of appending. No user message is inserted; `parent_id`
+    /// is the user message to hang the new reply under. Default false.
     #[serde(default)]
     pub regenerate: bool,
+    /// Fork point. For a normal send this is ignored (the new user message is
+    /// appended under the conversation's active leaf). For an EDITED user message
+    /// (a fork) it's the edited message's parent, so the new user message becomes
+    /// a sibling branch. For `regenerate` it's the user message to reply under.
+    #[serde(default)]
+    pub parent_id: Option<Uuid>,
+    /// True when `parent_id` is authoritative (an edit/fork), so the new user
+    /// message attaches there even when `parent_id` is null (fork at the root).
+    /// Distinguishes "fork at root" from "append at active leaf".
+    #[serde(default)]
+    pub fork: bool,
 }
 
 // ── Agent listing (registry + profile) ──────────────────────────────────────

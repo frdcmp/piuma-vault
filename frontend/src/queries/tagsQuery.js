@@ -19,10 +19,17 @@ export const tagKeys = {
 	list: () => ["tags", "list"],
 };
 
-// Buckets/tags are shared by tasks + calendar. A bucket/tag change can rewrite
-// task/event tag arrays and shift usage counts, so refresh all three families.
-const invalidateAll = (qc) => {
-	qc.invalidateQueries({ queryKey: tagKeys.all });
+// Invalidation is scoped to what actually changed, since refetching every task
+// and event on a colour tweak is wasteful:
+//   - Buckets are referenced by tasks via `bucket_id` and resolved to a name +
+//     colour client-side, so create/update only need the buckets list. Events
+//     have no bucket, so calendar is never affected. A *delete* clears
+//     `bucket_id` on tasks, so it also refreshes tasks.
+//   - Tags are stored on tasks/events as *names*, so a rename or delete rewrites
+//     those arrays → refresh tasks + calendar. A colour-only change resolves
+//     client-side from the registry → registry alone.
+const invalidateTags = (qc) => qc.invalidateQueries({ queryKey: tagKeys.all });
+const invalidateTasksAndCalendar = (qc) => {
 	qc.invalidateQueries({ queryKey: taskKeys.all });
 	qc.invalidateQueries({ queryKey: calendarKeys.all });
 };
@@ -53,7 +60,8 @@ export const useCreateBucket = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: createBucket,
-		onSuccess: () => invalidateAll(qc),
+		// A new bucket is referenced by no task yet — only the buckets list changes.
+		onSuccess: () => invalidateTags(qc),
 	});
 };
 
@@ -61,7 +69,9 @@ export const useUpdateBucket = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: updateBucket,
-		onSuccess: () => invalidateAll(qc),
+		// Tasks resolve bucket name + colour by id at render, so a bucket edit only
+		// needs the buckets list refreshed — not every task.
+		onSuccess: () => invalidateTags(qc),
 	});
 };
 
@@ -69,7 +79,11 @@ export const useDeleteBucket = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: deleteBucket,
-		onSuccess: () => invalidateAll(qc),
+		// Deleting a bucket clears `bucket_id` on its tasks → refresh tasks too.
+		onSuccess: () => {
+			invalidateTags(qc);
+			qc.invalidateQueries({ queryKey: taskKeys.all });
+		},
 	});
 };
 
@@ -77,7 +91,8 @@ export const useCreateTag = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: createTag,
-		onSuccess: () => invalidateAll(qc),
+		// A new tag is on no task/event yet — only the registry changes.
+		onSuccess: () => invalidateTags(qc),
 	});
 };
 
@@ -85,7 +100,18 @@ export const useUpdateTag = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: updateTag,
-		onSuccess: () => invalidateAll(qc),
+		onSuccess: (_data, vars) => {
+			invalidateTags(qc);
+			// A rename rewrites the tag-name arrays on tasks + events; a colour-only
+			// change is resolved client-side from the registry. Only refetch
+			// tasks/calendar when the name actually changed (or the old tag is
+			// unknown, so we can't be sure).
+			const old = (qc.getQueryData(tagKeys.list()) || []).find(
+				(t) => t.id === vars.id,
+			);
+			if (vars.name !== undefined && (!old || vars.name !== old.name))
+				invalidateTasksAndCalendar(qc);
+		},
 	});
 };
 
@@ -93,7 +119,11 @@ export const useDeleteTag = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: deleteTag,
-		onSuccess: () => invalidateAll(qc),
+		// Removing a tag strips it from every task/event's tag array.
+		onSuccess: () => {
+			invalidateTags(qc);
+			invalidateTasksAndCalendar(qc);
+		},
 	});
 };
 

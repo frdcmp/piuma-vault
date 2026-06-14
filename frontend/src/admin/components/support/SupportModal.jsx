@@ -1,21 +1,14 @@
-import { MailOutlined, MessageOutlined } from "@ant-design/icons";
+import { GithubOutlined } from "@ant-design/icons";
 import PvModal from "../ui/PvModal";
 import "../../vault-pixel.css";
 
 const supportOptions = [
 	{
-		icon: <MailOutlined />,
-		title: "Email Support",
-		description: "Get in touch via email for detailed inquiries",
-		contact: "user.user@protonmail.com",
-		href: "mailto:user.user@protonmail.com",
-	},
-	{
-		icon: <MessageOutlined />,
-		title: "Microsoft Teams",
-		description: "Chat directly for quick responses",
-		contact: "Piuma Vault",
-		href: null,
+		icon: <GithubOutlined />,
+		title: "GitHub",
+		description: "Open an issue or reach out on GitHub",
+		contact: "pv",
+		href: "https://github.com/pv",
 	},
 ];
 

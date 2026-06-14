@@ -672,6 +672,10 @@ const TABLES: &[TableDefinition] = &[
                 identity TEXT NOT NULL,
                 metadata JSONB NOT NULL DEFAULT '{}',
                 archived_at TIMESTAMPTZ,
+                -- Active leaf of the message tree (the currently-shown branch). The
+                -- real FK to db_chat_messages(id) is added out-of-band in the DB;
+                -- it's omitted here because that table is created after this one.
+                active_leaf_id UUID,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
@@ -690,6 +694,7 @@ const TABLES: &[TableDefinition] = &[
             CREATE TABLE db_chat_messages (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 conversation_id UUID NOT NULL REFERENCES db_chat_conversations(id) ON DELETE CASCADE,
+                parent_id UUID REFERENCES db_chat_messages(id) ON DELETE CASCADE,
                 role TEXT NOT NULL,
                 content JSONB NOT NULL DEFAULT '[]',
                 content_text TEXT,
@@ -707,6 +712,7 @@ const TABLES: &[TableDefinition] = &[
         "#,
         indices: &[
             "CREATE INDEX IF NOT EXISTS idx_chat_msg_conv ON db_chat_messages USING btree (conversation_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_chat_msg_parent ON db_chat_messages USING btree (parent_id)",
             "CREATE INDEX IF NOT EXISTS idx_chat_msg_content_tsv ON db_chat_messages USING gin (content_tsv) WHERE role IN ('user', 'assistant')",
         ],
     },
