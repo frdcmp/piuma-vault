@@ -44,6 +44,7 @@ export default function BottomSheet({
 	onClosed,
 	title,
 	subtitle,
+	dividerless,
 	children,
 }) {
 	const insets = useSafeAreaInsets();
@@ -155,7 +156,13 @@ export default function BottomSheet({
 							},
 						]}
 					>
-						<View style={styles.grabZone} {...pan.panHandlers}>
+						<View
+							style={[
+								styles.grabZone,
+								(!title || dividerless) && styles.grabZoneBare,
+							]}
+							{...pan.panHandlers}
+						>
 							<View style={styles.handle} />
 							{title ? (
 								<Text style={styles.title} numberOfLines={1}>
@@ -224,6 +231,8 @@ const styles = StyleSheet.create({
 		borderBottomColor: colors.border,
 		marginBottom: 2,
 	},
+	// Title-less sheets (e.g. the task detail) drop the divider under the handle.
+	grabZoneBare: { borderBottomWidth: 0, paddingBottom: 0 },
 	handle: {
 		alignSelf: "center",
 		width: 40,

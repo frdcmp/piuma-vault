@@ -78,7 +78,9 @@ export default function AlertsField({ value = [], onChange }) {
 				})}
 			</View>
 
-			<View style={s.customRow}>
+			{/* One chip: number + tappable unit, then the +Add action — so it reads
+			    as a single custom-offset control, not three separate boxes. */}
+			<View style={s.customChip}>
 				<TextInput
 					style={s.customInput}
 					value={customN}
@@ -90,10 +92,11 @@ export default function AlertsField({ value = [], onChange }) {
 					style={s.unitBtn}
 					onPress={() => setUnitIdx((i) => (i + 1) % UNITS.length)}
 				>
-					<Text style={s.chipText}>{UNITS[unitIdx].label}</Text>
+					<Text style={s.unitText}>{UNITS[unitIdx].label} ▾</Text>
 				</Pressable>
+				<View style={s.customSep} />
 				<Pressable style={s.addBtn} onPress={addCustom}>
-					<Text style={s.chipText}>+ Add</Text>
+					<Text style={s.addText}>+ Add</Text>
 				</Pressable>
 			</View>
 
@@ -131,30 +134,32 @@ const s = StyleSheet.create({
 	chipOn: { backgroundColor: colors.accent4, borderColor: colors.accent4 },
 	chipText: { color: colors.text, fontSize: 13 },
 	chipTextOn: { color: "#0b0b0b", fontWeight: "600" },
-	customRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+	// Single pill grouping the number, its unit, and the +Add action.
+	customChip: {
+		flexDirection: "row",
+		alignItems: "center",
+		alignSelf: "flex-start",
+		borderWidth: 1,
+		borderColor: colors.border,
+		borderRadius: 6,
+		overflow: "hidden",
+	},
 	customInput: {
-		width: 64,
+		width: 48,
 		color: colors.text,
-		borderWidth: 1,
-		borderColor: colors.border,
-		borderRadius: 6,
-		paddingVertical: 4,
-		paddingHorizontal: 8,
+		textAlign: "center",
+		paddingVertical: 5,
+		paddingHorizontal: 6,
 	},
-	unitBtn: {
-		paddingVertical: 4,
-		paddingHorizontal: 10,
-		borderRadius: 6,
-		borderWidth: 1,
-		borderColor: colors.border,
-	},
+	unitBtn: { paddingVertical: 5, paddingHorizontal: 8 },
+	unitText: { color: colors.muted, fontSize: 13 },
+	customSep: { width: 1, alignSelf: "stretch", backgroundColor: colors.border },
 	addBtn: {
-		paddingVertical: 4,
-		paddingHorizontal: 10,
-		borderRadius: 6,
-		borderWidth: 1,
-		borderColor: colors.borderStrong,
+		paddingVertical: 5,
+		paddingHorizontal: 12,
+		backgroundColor: colors.bgSoft,
 	},
+	addText: { color: colors.text, fontSize: 13, fontWeight: "600" },
 	tagWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
 	tag: {
 		paddingVertical: 3,
