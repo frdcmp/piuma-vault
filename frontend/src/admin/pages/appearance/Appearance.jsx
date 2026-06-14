@@ -22,11 +22,13 @@ import "./appearance.css";
 
 const errMsg = (e, fallback) => e?.response?.data?.error || fallback;
 
-// "Generating…" placeholders survive a refresh for a couple of minutes so the
-// feedback isn't lost if the admin reloads while the LLM works. Stored locally
-// with a start time; entries past the TTL (or whose sprite has arrived) drop.
+// "Generating…" placeholders survive a refresh so the feedback isn't lost if the
+// admin reloads while the LLM works. Stored locally with a start time; entries
+// past the TTL (or whose sprite has arrived) drop. The TTL must comfortably
+// exceed real generation time: the two-pass reasoning flow (draft + self-
+// critique) runs ~5-8 min, so we keep the card up for 12.
 const PENDING_KEY = "vault.sprite_pending";
-const PENDING_TTL = 2 * 60 * 1000;
+const PENDING_TTL = 12 * 60 * 1000;
 
 const loadPending = () => {
 	try {

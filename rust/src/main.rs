@@ -121,6 +121,7 @@ async fn main() -> io::Result<()> {
             .configure(apps::storage::routes::configure_routes)
             .configure(apps::storage_shares::routes::configure_routes)
             .configure(apps::settings::routes::configure_routes)
+            .configure(apps::email::routes::configure_routes)
             .configure(apps::recorder::routes::configure_routes)
             .configure(apps::sprites::routes::configure_routes)
             .configure(apps::db_dump::routes::configure_routes)

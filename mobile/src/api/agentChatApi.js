@@ -40,6 +40,15 @@ export const fetchAllModels = async () =>
 export const stopConversation = async (id) =>
 	(await axiosInstance.post(`/agents/conversations/${id}/stop`)).data;
 
+// Switch the active branch: move the conversation's active leaf into the chosen
+// sibling's subtree. Returns the new active path { conversation, messages }.
+export const switchBranch = async (id, messageId) =>
+	(
+		await axiosInstance.post(`/agents/conversations/${id}/switch-branch`, {
+			message_id: messageId,
+		})
+	).data;
+
 // INJECT — queue a message into the running turn (consumed next round). Resolves
 // `{ queued: true }`; a 409 means no turn is active (send via /chat instead).
 export const injectMessage = async (id, message) =>
@@ -72,8 +81,10 @@ const buildChatRequest = (
 	contextNoteIds,
 	images,
 	signal,
+	branch,
 ) => {
 	const token = useAuthStore.getState().token;
+	const { regenerate, parentId, fork } = branch || {};
 	return fetch(`${BASE_PATH}/agents/conversations/${conversationId}/chat`, {
 		method: "POST",
 		headers: {
@@ -86,6 +97,9 @@ const buildChatRequest = (
 			images: images || [],
 			timezone: localTimezone(),
 			client_now: localNowIso(),
+			regenerate: !!regenerate,
+			fork: !!fork,
+			...(parentId != null ? { parent_id: parentId } : {}),
 		}),
 		signal,
 	});
@@ -101,6 +115,7 @@ export async function streamChat({
 	contextNoteIds,
 	images,
 	signal,
+	branch,
 	onText,
 	onThinking,
 	onTool,
@@ -114,6 +129,7 @@ export async function streamChat({
 			contextNoteIds,
 			images,
 			signal,
+			branch,
 		);
 		if (resp.status === 401 && useAuthStore.getState().refreshToken) {
 			try {
@@ -124,6 +140,7 @@ export async function streamChat({
 					contextNoteIds,
 					images,
 					signal,
+					branch,
 				);
 			} catch (refreshErr) {
 				await useAuthStore.getState().logout();

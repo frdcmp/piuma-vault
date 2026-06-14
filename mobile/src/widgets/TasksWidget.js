@@ -1,11 +1,8 @@
-import {
-	FlexWidget,
-	ListWidget,
-	TextWidget,
-} from "react-native-android-widget";
+import { FlexWidget, ListWidget } from "react-native-android-widget";
 import { colors } from "../utils/theme";
 import { DEEP_LINK_TASKS } from "./constants";
 import { taskWhenLabel } from "./format";
+import { EmptyState, FRAME_STYLE, Header, OverflowRow, Row } from "./shared";
 
 const MAX_ROWS = 8;
 
@@ -17,79 +14,6 @@ function priorityColor(priority) {
 	return colors.muted;
 }
 
-const rootStyle = {
-	height: "match_parent",
-	width: "match_parent",
-	flexDirection: "column",
-	backgroundColor: colors.bg,
-	borderRadius: 16,
-	padding: 12,
-};
-
-function Header({ count }) {
-	return (
-		<FlexWidget
-			style={{
-				flexDirection: "row",
-				alignItems: "center",
-				justifyContent: "space-between",
-				width: "match_parent",
-				marginBottom: 8,
-			}}
-		>
-			<TextWidget
-				text="Tasks"
-				style={{ fontSize: 15, fontWeight: "700", color: colors.text }}
-			/>
-			<TextWidget
-				text={count > 0 ? String(count) : ""}
-				style={{ fontSize: 13, fontWeight: "600", color: colors.accent2 }}
-			/>
-		</FlexWidget>
-	);
-}
-
-function TaskRow({ task }) {
-	return (
-		<FlexWidget
-			clickAction="OPEN_URI"
-			clickActionData={{ uri: `${DEEP_LINK_TASKS}?id=${task.id}` }}
-			style={{
-				flexDirection: "row",
-				alignItems: "center",
-				width: "match_parent",
-				paddingVertical: 5,
-			}}
-		>
-			<FlexWidget
-				style={{
-					height: 8,
-					width: 8,
-					borderRadius: 4,
-					marginRight: 8,
-					backgroundColor: priorityColor(task.priority),
-				}}
-			/>
-			<FlexWidget style={{ flex: 1, flexDirection: "column" }}>
-				<TextWidget
-					text={task.title}
-					maxLines={1}
-					truncate="END"
-					style={{
-						fontSize: 13,
-						color: task.overdue ? colors.accent3 : colors.text,
-					}}
-				/>
-			</FlexWidget>
-			<TextWidget
-				text={taskWhenLabel(task)}
-				maxLines={1}
-				style={{ fontSize: 11, color: colors.muted, marginLeft: 8 }}
-			/>
-		</FlexWidget>
-	);
-}
-
 // Renders the Tasks widget. `summary` is the /widgets/summary payload (or null
 // when logged out / never fetched). Whole-widget tap opens the Tasks screen.
 export function TasksWidget({ summary }) {
@@ -98,33 +22,30 @@ export function TasksWidget({ summary }) {
 	const overflow = tasks.length - rows.length;
 
 	return (
-		<FlexWidget clickAction="OPEN_URI" clickActionData={{ uri: DEEP_LINK_TASKS }} style={rootStyle}>
-			<Header count={tasks.length} />
+		<FlexWidget
+			clickAction="OPEN_URI"
+			clickActionData={{ uri: DEEP_LINK_TASKS }}
+			style={FRAME_STYLE}
+		>
+			<Header title="Tasks" count={tasks.length} tint={colors.accent} />
 			{rows.length === 0 ? (
-				<FlexWidget
-					style={{
-						flex: 1,
-						alignItems: "center",
-						justifyContent: "center",
-						width: "match_parent",
-					}}
-				>
-					<TextWidget
-						text={summary ? "Nothing due" : "Open the app to sign in"}
-						style={{ fontSize: 13, color: colors.muted }}
-					/>
-				</FlexWidget>
+				<EmptyState
+					text={summary ? "Nothing due" : "Open the app to sign in"}
+				/>
 			) : (
 				<ListWidget style={{ flex: 1, width: "match_parent" }}>
 					{rows.map((task) => (
-						<TaskRow key={`${task.id}-${task.occurrence_date ?? "once"}`} task={task} />
-					))}
-					{overflow > 0 ? (
-						<TextWidget
-							text={`+${overflow} more`}
-							style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}
+						<Row
+							key={`${task.id}-${task.occurrence_date ?? "once"}`}
+							uri={`${DEEP_LINK_TASKS}?id=${task.id}`}
+							dotColor={priorityColor(task.priority)}
+							title={task.title}
+							titleColor={task.overdue ? colors.accent3 : colors.text}
+							when={taskWhenLabel(task)}
+							whenColor={task.overdue ? colors.accent3 : colors.muted}
 						/>
-					) : null}
+					))}
+					<OverflowRow count={overflow} />
 				</ListWidget>
 			)}
 		</FlexWidget>

@@ -647,6 +647,7 @@ export default function MarkdownView({
   scrollRef,
   onMatchCountChange,
   textStyle,
+  bodyStyle,
   onLinkPress,
 }) {
   const blockYMap = useRef(new Map()).current;
@@ -711,5 +712,5 @@ export default function MarkdownView({
   }, [activeMatchIndex, scrollRef, blockYMap]);
 
   if (!source) return null;
-  return <View style={styles.body}>{body}</View>;
+  return <View style={[styles.body, bodyStyle]}>{body}</View>;
 }

@@ -149,6 +149,7 @@ pub async fn dispatch(
         "web_search" => web::web_search(pool, args).await,
         "web_fetch" => web::web_fetch(args).await,
         "send_email" => email::send_email(pool, user_id, args).await,
+        "read_email" => email::read_email(pool, user_id, args).await,
         // ── GitHub (token from admin → Services) ──
         "github_list_repos" => github::list_repos(pool, args).await,
         "github_search_repos" => github::search_repos(pool, args).await,

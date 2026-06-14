@@ -63,11 +63,6 @@ services:
       - DB_PORT=${DB_PORT}
       # boot-time schema-drift verifier (db_init stays as-is).
       - DB_VERIFY_SCHEMA=${DB_VERIFY_SCHEMA:-0}
-      # Email
-      - EMAIL_HOST=${EMAIL_HOST}
-      - EMAIL_PORT=${EMAIL_PORT}
-      - EMAIL_HOST_USER=${EMAIL_HOST_USER}
-      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD}
       # Registration (set to true to enable user signups)
       - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-false}
       # Canonical site URL (also used as the OTP / 2FA issuer label)
@@ -121,11 +116,8 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_PORT=${DB_PORT}
-      # Email (send_email tool) + Web Push (VAPID) for completion notifications.
-      - EMAIL_HOST=${EMAIL_HOST}
-      - EMAIL_PORT=${EMAIL_PORT}
-      - EMAIL_HOST_USER=${EMAIL_HOST_USER}
-      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD}
+      # Email (send_email tool) now lives in the DB — Services → Email.
+      # Web Push (VAPID) for completion notifications.
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-}
       - VAPID_PRIVATE_KEY_PATH=${VAPID_PRIVATE_KEY_PATH:-}

@@ -80,3 +80,22 @@
 .vp-svc-result.is-err {
 	color: var(--vp-accent-3);
 }
+
+/* Email accounts — one bordered card per mailbox. */
+.vp-email-card {
+	border: 2px solid var(--vp-border);
+	border-radius: 6px;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.vp-email-section {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 12px;
+	border-left: 2px dashed var(--vp-border);
+	margin-left: 4px;
+}

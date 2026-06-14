@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
+import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -36,9 +37,11 @@ import {
 	retitleConversation,
 	stopConversation,
 	streamChat,
+	switchBranch,
 	updateConversation,
 } from "../api/agentChatApi";
 import { uploadChatImage } from "../api/storageApi";
+import BottomSheet from "../components/BottomSheet";
 import MarkdownView from "../components/MarkdownView";
 import SpriteAvatar from "../components/SpriteAvatar";
 import SpriteRunner from "../components/SpriteRunner";
@@ -234,6 +237,22 @@ const appendTextPart = (parts, text) => {
 	return next;
 };
 
+// Normalise a server message into the screen's shape, carrying the model + tree
+// fields used by the per-message actions and the fork (n/n) switcher.
+const mapMsg = (m) => ({
+	id: m.id,
+	role: m.role,
+	content: blocksToText(m.content),
+	...(m.role === "assistant"
+		? { parts: blocksToParts(m.content) }
+		: { images: blocksToImages(m.content) }),
+	model: m.model_used || null,
+	parentId: m.parent_id ?? null,
+	branchIndex: m.branch_index ?? 1,
+	branchCount: m.branch_count ?? 1,
+	siblingIds: m.sibling_ids ?? [],
+});
+
 // Map a `navigate`-tool intent to an in-app path (mirrors the web scheme). The
 // path is then resolved to a screen by `goTo` in the screen component.
 const navTargetToPath = ({ target, id, route, url } = {}) => {
@@ -292,6 +311,9 @@ const toolSummary = (tools) => {
 // MarkdownView's body styles are sans-serif by default (to match the note
 // editor look). The chat is a terminal — force monospace everywhere.
 const chatMarkdownTextStyle = { fontFamily: MONO };
+// Drop MarkdownView's default 24px bottom padding in chat — the per-message
+// action row sits right under the reply, so that gap reads as dead space.
+const chatMarkdownBodyStyle = { paddingBottom: 0 };
 
 function UserBubble({ content, context, images }) {
 	return (
@@ -406,6 +428,7 @@ function AssistantTextPart({ text, onLinkPress }) {
 		<MarkdownView
 			source={visible}
 			textStyle={chatMarkdownTextStyle}
+			bodyStyle={chatMarkdownBodyStyle}
 			onLinkPress={onLinkPress}
 		/>
 	);
@@ -475,6 +498,78 @@ function AssistantBubble({ parts, isStreaming, onNavigate }) {
 				);
 			})}
 			{isStreaming ? <StreamingCursor /> : null}
+		</View>
+	);
+}
+
+// Compact ‹ n/n › fork switcher — shown on any message at a branch point.
+function BranchNav({ index, count, onPrev, onNext }) {
+	if (!count || count < 2) return null;
+	return (
+		<View style={styles.branch}>
+			<Pressable
+				onPress={onPrev}
+				disabled={index <= 1}
+				hitSlop={8}
+				style={styles.branchArrow}
+			>
+				<Ionicons
+					name="chevron-back"
+					size={13}
+					color={index <= 1 ? colors.borderStrong : colors.muted}
+				/>
+			</Pressable>
+			<Text style={styles.branchCount}>
+				{index}/{count}
+			</Text>
+			<Pressable
+				onPress={onNext}
+				disabled={index >= count}
+				hitSlop={8}
+				style={styles.branchArrow}
+			>
+				<Ionicons
+					name="chevron-forward"
+					size={13}
+					color={index >= count ? colors.borderStrong : colors.muted}
+				/>
+			</Pressable>
+		</View>
+	);
+}
+
+// Compact action row under a finished assistant reply: copy, try again, the
+// model used, plus an optional leading branch switcher.
+function MsgActions({ onCopy, onRetry, modelLabel, leading }) {
+	const [copied, setCopied] = useState(false);
+	return (
+		<View style={styles.msgActions}>
+			{leading}
+			<Pressable
+				onPress={() => {
+					onCopy?.();
+					setCopied(true);
+					setTimeout(() => setCopied(false), 1400);
+				}}
+				hitSlop={8}
+				style={styles.msgAction}
+			>
+				<Ionicons
+					name={copied ? "checkmark" : "copy-outline"}
+					size={14}
+					color={copied ? colors.accent2 : colors.muted}
+				/>
+			</Pressable>
+			{onRetry ? (
+				<Pressable onPress={onRetry} hitSlop={8} style={styles.msgAction}>
+					<Ionicons name="refresh-outline" size={14} color={colors.muted} />
+				</Pressable>
+			) : null}
+			{modelLabel ? (
+				<Text style={styles.msgModel} numberOfLines={1}>
+					{modelLabel}
+				</Text>
+			) : null}
 		</View>
 	);
 }
@@ -611,6 +706,26 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			: allModels.find((m) => m.is_default)
 		: null;
 	const visionEnabled = !!activeModel?.supports_vision;
+	// Active model as a ref so the stream's onDone can stamp it onto the reply.
+	const activeModelRef = useRef(activeModel);
+	useEffect(() => {
+		activeModelRef.current = activeModel;
+	}, [activeModel]);
+	// Resolve a message's stored model (wire id) → friendly name via the catalog.
+	const modelLabelFor = useCallback(
+		(m) => {
+			if (!m?.model) return null;
+			const hit = allModels.find(
+				(x) => x.model_id === m.model || x.id === m.model,
+			);
+			return hit?.display_name || m.model;
+		},
+		[allModels],
+	);
+	// Editing an old user message (long-press → fork-on-send).
+	const [editId, setEditId] = useState(null);
+	const [editText, setEditText] = useState("");
+	const editParentRef = useRef(null);
 
 	const removePendingImage = useCallback((id) => {
 		setPendingImages((curr) => curr.filter((p) => p.id !== id));
@@ -818,16 +933,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				if (cancelled) return;
 				setConversationId(stored);
 				setModelId(data.conversation?.model_id ?? null);
-				setMessages(
-					(data.messages || []).map((m) => ({
-						id: m.id,
-						role: m.role,
-						content: blocksToText(m.content),
-						...(m.role === "assistant"
-							? { parts: blocksToParts(m.content) }
-							: { images: blocksToImages(m.content) }),
-					})),
-				);
+				setMessages((data.messages || []).map(mapMsg));
 			} catch {
 				await AsyncStorage.removeItem(CONV_STORAGE_KEY);
 			} finally {
@@ -908,16 +1014,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			await AsyncStorage.setItem(CONV_STORAGE_KEY, id);
 			const d = await fetchConversation(id);
 			setModelId(d.conversation?.model_id ?? null);
-			setMessages(
-				(d.messages || []).map((m) => ({
-					id: m.id,
-					role: m.role,
-					content: blocksToText(m.content),
-					...(m.role === "assistant"
-						? { parts: blocksToParts(m.content) }
-						: { images: blocksToImages(m.content) }),
-				})),
-			);
+			setMessages((d.messages || []).map(mapMsg));
 		} catch {
 			/* ignore */
 		} finally {
@@ -1098,16 +1195,7 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 				const msgs = d.messages || [];
 				const last = msgs[msgs.length - 1];
 				if (last && last.role === "assistant") {
-					setMessages(
-						msgs.map((m) => ({
-							id: m.id,
-							role: m.role,
-							content: blocksToText(m.content),
-							...(m.role === "assistant"
-								? { parts: blocksToParts(m.content) }
-								: { images: blocksToImages(m.content) }),
-						})),
-					);
+					setMessages(msgs.map(mapMsg));
 					return;
 				}
 			} catch {
@@ -1129,6 +1217,94 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 			return updated;
 		});
 	}, []);
+
+	// Refetch the active branch and replace the message list — gives every message
+	// its real id + branch metadata after a turn (for later edit / regenerate).
+	const reloadActivePath = useCallback(async (convId) => {
+		if (!convId) return;
+		try {
+			const d = await fetchConversation(convId);
+			if (conversationIdRef.current !== convId) return;
+			setMessages((d.messages || []).map(mapMsg));
+		} catch {
+			/* ignore */
+		}
+	}, []);
+
+	// Stream callbacks for a turn (send / regenerate / fork). All writes target
+	// the trailing assistant message; onDone stamps the producing model.
+	const buildHandlers = useCallback(
+		(convId) => {
+			const appendText = (delta) =>
+				setMessages((curr) => {
+					const updated = [...curr];
+					const last = updated[updated.length - 1];
+					updated[updated.length - 1] = {
+						...last,
+						parts: appendTextPart(last.parts, delta),
+					};
+					return updated;
+				});
+			return {
+				onText: appendText,
+				onThinking: () => {},
+				onTool: (evt) => {
+					if (evt.name === "navigate") {
+						if (evt.done) return;
+						setMessages((curr) => {
+							const updated = [...curr];
+							const last = { ...updated[updated.length - 1] };
+							const parts = [...(last.parts || [])];
+							const a = evt.args || {};
+							parts.push({
+								kind: "nav",
+								id: `p${parts.length}`,
+								target: a.target,
+								navId: a.id,
+								route: a.route,
+								url: a.url,
+								label: a.label,
+							});
+							last.parts = parts;
+							updated[updated.length - 1] = last;
+							return updated;
+						});
+						return;
+					}
+					setMessages((curr) => {
+						const updated = [...curr];
+						const last = updated[updated.length - 1];
+						updated[updated.length - 1] = {
+							...last,
+							parts: applyToolEventToParts(last.parts, evt),
+						};
+						return updated;
+					});
+				},
+				onError: (e) => {
+					if (e?.isTransport && convId) {
+						appendText("\n\n_(reconnecting…)_");
+						recoverTurn(convId);
+						return;
+					}
+					appendText(`\n\n**Error:** ${e.message}`);
+				},
+				onDone: () => {
+					const used = activeModelRef.current?.model_id || null;
+					if (used)
+						setMessages((curr) => {
+							const updated = [...curr];
+							const last = updated[updated.length - 1];
+							if (last?.role === "assistant")
+								updated[updated.length - 1] = { ...last, model: used };
+							return updated;
+						});
+					setIsStreaming(false);
+				},
+			};
+		},
+		[recoverTurn],
+	);
 
 	const sendMessage = useCallback(async () => {
 		const text = input.trim();
@@ -1236,18 +1412,6 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		const controller = new AbortController();
 		abortRef.current = controller;
 
-		// Append text to the streaming assistant message's ordered parts.
-		const appendText = (delta) =>
-			setMessages((curr) => {
-				const updated = [...curr];
-				const last = updated[updated.length - 1];
-				updated[updated.length - 1] = {
-					...last,
-					parts: appendTextPart(last.parts, delta),
-				};
-				return updated;
-			});
-
 		try {
 			await streamChat({
 				conversationId: convId,
@@ -1259,61 +1423,14 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 					media_type: p.mediaType,
 				})),
 				signal: controller.signal,
-				onText: appendText,
-				onThinking: () => {},
-				onTool: (evt) => {
-					// `navigate` renders a "Go" action, not a tool chip — handle it up
-					// front (only on announce; ignore the nameless `done` frame).
-					if (evt.name === "navigate") {
-						if (evt.done) return;
-						setMessages((curr) => {
-							const updated = [...curr];
-							const last = { ...updated[updated.length - 1] };
-							const parts = [...(last.parts || [])];
-							const a = evt.args || {};
-							parts.push({
-								kind: "nav",
-								id: `p${parts.length}`,
-								target: a.target,
-								navId: a.id,
-								route: a.route,
-								url: a.url,
-								label: a.label,
-							});
-							last.parts = parts;
-							updated[updated.length - 1] = last;
-							return updated;
-						});
-						return;
-					}
-					setMessages((curr) => {
-						const updated = [...curr];
-						const last = updated[updated.length - 1];
-						updated[updated.length - 1] = {
-							...last,
-							parts: applyToolEventToParts(last.parts, evt),
-						};
-						return updated;
-					});
-				},
-				onError: (e) => {
-					// A transport drop (stream reset / connection abort) doesn't mean
-					// the turn failed — it keeps running and is persisted server-side.
-					// Show a soft "reconnecting" note and refetch until it lands,
-					// instead of a hard error.
-					if (e?.isTransport && convId) {
-						appendText("\n\n_(reconnecting…)_");
-						recoverTurn(convId);
-						return;
-					}
-					appendText(`\n\n**Error:** ${e.message}`);
-				},
-				onDone: () => setIsStreaming(false),
+				...buildHandlers(convId),
 			});
 		} finally {
 			setIsStreaming(false);
 			setSending(false);
 			abortRef.current = null;
+			// Sync to server truth: real ids + branch metadata for later edits.
+			await reloadActivePath(convId);
 		}
 	}, [
 		input,
@@ -1326,9 +1443,128 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 		scrollToBottom,
 		modelId,
 		pendingImages,
-		recoverTurn,
+		buildHandlers,
+		reloadActivePath,
 		sending,
 	]);
+
+	// Regenerate ANY assistant reply as a sibling branch (same user parent).
+	const regenerateAt = useCallback(
+		async (msgId) => {
+			if (isStreaming || sending) return;
+			const convId = conversationId;
+			if (!convId) return;
+			const idx = messages.findIndex((m) => m.id === msgId);
+			if (idx < 0 || messages[idx].role !== "assistant") return;
+			const parentId = messages[idx].parentId ?? null;
+			if (!parentId) return;
+			const userText = messages[idx - 1]?.content || "";
+			const assistantMsg = { id: newMessageId(), role: "assistant", parts: [] };
+			setMessages((curr) => [...curr.slice(0, idx), assistantMsg]);
+			setIsStreaming(true);
+			scrollToBottom(true);
+			const controller = new AbortController();
+			abortRef.current = controller;
+			try {
+				await streamChat({
+					conversationId: convId,
+					message: userText,
+					contextNoteIds: [],
+					images: [],
+					branch: { regenerate: true, parentId },
+					signal: controller.signal,
+					...buildHandlers(convId),
+				});
+			} finally {
+				setIsStreaming(false);
+				abortRef.current = null;
+				await reloadActivePath(convId);
+			}
+		},
+		[
+			isStreaming,
+			sending,
+			conversationId,
+			messages,
+			buildHandlers,
+			reloadActivePath,
+			scrollToBottom,
+		],
+	);
+
+	// Edit an old user message and send → FORK (new sibling under its parent).
+	const editAndFork = useCallback(
+		async (msgId, newText) => {
+			const text = (newText || "").trim();
+			if (!text || isStreaming || sending) return;
+			const convId = conversationId;
+			if (!convId) return;
+			const idx = messages.findIndex((m) => m.id === msgId);
+			if (idx < 0 || messages[idx].role !== "user") return;
+			const parentId = messages[idx].parentId ?? null;
+			const userMsg = { id: newMessageId(), role: "user", content: text };
+			const assistantMsg = { id: newMessageId(), role: "assistant", parts: [] };
+			setMessages((curr) => [...curr.slice(0, idx), userMsg, assistantMsg]);
+			setIsStreaming(true);
+			scrollToBottom(true);
+			const controller = new AbortController();
+			abortRef.current = controller;
+			try {
+				await streamChat({
+					conversationId: convId,
+					message: text,
+					contextNoteIds: [],
+					images: [],
+					branch: { fork: true, parentId },
+					signal: controller.signal,
+					...buildHandlers(convId),
+				});
+			} finally {
+				setIsStreaming(false);
+				abortRef.current = null;
+				await reloadActivePath(convId);
+			}
+		},
+		[
+			isStreaming,
+			sending,
+			conversationId,
+			messages,
+			buildHandlers,
+			reloadActivePath,
+			scrollToBottom,
+		],
+	);
+
+	// Switch which sibling branch is active at a fork; replace the shown path.
+	const switchTo = useCallback(
+		async (messageId) => {
+			const convId = conversationId;
+			if (!convId || isStreaming || !messageId) return;
+			try {
+				const d = await switchBranch(convId, messageId);
+				if (conversationIdRef.current !== convId) return;
+				setMessages((d.messages || []).map(mapMsg));
+				scrollToBottom(true);
+			} catch {
+				toast.error("Couldn't switch branch");
+			}
+		},
+		[conversationId, isStreaming, scrollToBottom],
+	);
+
+	// Long-press a user bubble → open the edit sheet seeded with its text.
+	const openEdit = useCallback((m) => {
+		editParentRef.current = m;
+		setEditId(m.id);
+		setEditText(m.content || "");
+	}, []);
+	const submitEdit = useCallback(() => {
+		const m = editParentRef.current;
+		const text = editText;
+		setEditId(null);
+		if (m) editAndFork(m.id, text);
+	}, [editText, editAndFork]);
 
 	// Composer button is state-driven: STOP while streaming with an empty box,
 	// otherwise SEND (which injects when streaming, sends a new turn when idle).
@@ -1427,20 +1663,57 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 									const isLast = i === messages.length - 1;
 									const isStreamingThis =
 										isStreaming && isLast && m.role === "assistant";
-									return m.role === "user" ? (
-										<UserBubble
-											key={m.id}
-											content={m.content}
-											context={m.context}
-											images={m.images}
-										/>
-									) : (
-										<AssistantBubble
-											key={m.id}
-											parts={m.parts}
-											isStreaming={isStreamingThis}
-											onNavigate={goTo}
-										/>
+									const switcher =
+										m.branchCount > 1 ? (
+											<BranchNav
+												index={m.branchIndex}
+												count={m.branchCount}
+												onPrev={() =>
+													switchTo(m.siblingIds?.[m.branchIndex - 2])
+												}
+												onNext={() => switchTo(m.siblingIds?.[m.branchIndex])}
+											/>
+										) : null;
+									if (m.role === "user") {
+										return (
+											<View key={m.id}>
+												<Pressable
+													onLongPress={() => !isStreaming && openEdit(m)}
+													delayLongPress={300}
+												>
+													<UserBubble
+														content={m.content}
+														context={m.context}
+														images={m.images}
+													/>
+												</Pressable>
+												{switcher ? (
+													<View style={styles.userActions}>{switcher}</View>
+												) : null}
+											</View>
+										);
+									}
+									return (
+										<View key={m.id}>
+											<AssistantBubble
+												parts={m.parts}
+												isStreaming={isStreamingThis}
+												onNavigate={goTo}
+											/>
+											{!isStreamingThis && m.parts?.length ? (
+												<MsgActions
+													leading={switcher}
+													modelLabel={modelLabelFor(m)}
+													onCopy={async () => {
+														await Clipboard.setStringAsync(m.content || "");
+														toast.success("Copied");
+													}}
+													onRetry={
+														isStreaming ? undefined : () => regenerateAt(m.id)
+													}
+												/>
+											) : null}
+										</View>
 									);
 								})
 							)}
@@ -1775,9 +2048,37 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 															]}
 														>
 															<View style={styles.overlayRowHead}>
-																<Text style={styles.overlayRowText}>
-																	{m.display_name}
-																</Text>
+																<View style={styles.modelNameWrap}>
+																	<Text
+																		style={styles.overlayRowText}
+																		numberOfLines={1}
+																	>
+																		{m.display_name}
+																	</Text>
+																	<View style={styles.modelCaps}>
+																		{m.supports_thinking ? (
+																			<Ionicons
+																				name="bulb-outline"
+																				size={13}
+																				color={colors.muted}
+																			/>
+																		) : null}
+																		{m.supports_vision ? (
+																			<Ionicons
+																				name="eye-outline"
+																				size={13}
+																				color={colors.muted}
+																			/>
+																		) : null}
+																		{m.supports_tools ? (
+																			<Ionicons
+																				name="construct-outline"
+																				size={13}
+																				color={colors.muted}
+																			/>
+																		) : null}
+																	</View>
+																</View>
 																{inUse ? (
 																	<Text style={styles.overlayRowCheck}>
 																		✓ in use
@@ -1886,6 +2187,45 @@ export default function ChatScreen({ onClose, notePath, noteId }) {
 						</Pressable>
 					</Pressable>
 				</Modal>
+
+				{/* Edit a user message → fork on send (long-press a user bubble). */}
+				<BottomSheet
+					visible={!!editId}
+					onClose={() => setEditId(null)}
+					title="Edit message"
+					subtitle="Sending forks the conversation"
+				>
+					<TextInput
+						style={styles.editInput}
+						value={editText}
+						onChangeText={setEditText}
+						multiline
+						autoFocus
+						placeholder="Edit your message…"
+						placeholderTextColor={colors.muted}
+					/>
+					<View style={styles.editActions}>
+						<Pressable
+							style={styles.editBtn}
+							onPress={() => setEditId(null)}
+							hitSlop={6}
+						>
+							<Text style={styles.editBtnText}>Cancel</Text>
+						</Pressable>
+						<Pressable
+							style={[
+								styles.editBtn,
+								styles.editSend,
+								!editText.trim() && styles.editSendOff,
+							]}
+							onPress={submitEdit}
+							disabled={!editText.trim()}
+							hitSlop={6}
+						>
+							<Text style={styles.editSendText}>Send ↑</Text>
+						</Pressable>
+					</View>
+				</BottomSheet>
 			</SafeAreaView>
 		</KeyboardAvoidingView>
 	);
@@ -1898,20 +2238,21 @@ const styles = StyleSheet.create({
 	header: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 10,
+		gap: 8,
 		paddingHorizontal: 12,
-		paddingVertical: 8,
+		paddingVertical: 5,
 		borderBottomWidth: 2,
 		borderBottomColor: colors.borderStrong,
 		borderStyle: "dashed",
 		backgroundColor: colors.panel,
 	},
+	// All header controls share one height + border so they line up cleanly.
 	backBtn: {
-		width: 30,
-		height: 30,
+		width: 28,
+		height: 28,
 		backgroundColor: colors.bgSoft,
-		borderWidth: 2,
-		borderColor: colors.borderStrong,
+		borderWidth: 1,
+		borderColor: colors.border,
 		alignItems: "center",
 		justifyContent: "center",
 	},
@@ -1932,18 +2273,18 @@ const styles = StyleSheet.create({
 		letterSpacing: 0.5,
 	},
 	headerStatus: {
+		height: 28,
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 6,
 		paddingHorizontal: 8,
-		paddingVertical: 4,
 		borderWidth: 1,
 		borderColor: colors.border,
 		backgroundColor: colors.bgSoft,
 	},
 	clearBtn: {
-		width: 30,
-		height: 30,
+		width: 28,
+		height: 28,
 		alignItems: "center",
 		justifyContent: "center",
 		borderWidth: 1,
@@ -2529,6 +2870,17 @@ const styles = StyleSheet.create({
 		justifyContent: "space-between",
 		gap: 8,
 	},
+	modelNameWrap: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		flexShrink: 1,
+	},
+	modelCaps: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+	},
 	overlayRowCheck: {
 		color: colors.accent2,
 		fontFamily: MONO,
@@ -2667,4 +3019,98 @@ const styles = StyleSheet.create({
 		fontWeight: "700",
 	},
 	confirmBtnTextDanger: { color: colors.accent3 },
+
+	// ── Per-message chrome (compact): action row, fork switcher, edit sheet ──
+	msgActions: {
+		flexDirection: "row",
+		alignItems: "center",
+		flexWrap: "wrap",
+		gap: 4,
+		marginTop: 4,
+		marginBottom: 2,
+		opacity: 0.85,
+	},
+	msgAction: {
+		width: 26,
+		height: 26,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	msgModel: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 10,
+		marginLeft: 2,
+		flexShrink: 1,
+	},
+	// User action row hugs the right (the bubble is right-aligned).
+	userActions: {
+		flexDirection: "row",
+		justifyContent: "flex-end",
+		marginTop: 2,
+	},
+	branch: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 2,
+	},
+	branchArrow: {
+		width: 22,
+		height: 24,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	branchCount: {
+		color: colors.muted,
+		fontFamily: MONO,
+		fontSize: 10,
+		fontWeight: "700",
+		minWidth: 24,
+		textAlign: "center",
+	},
+	editInput: {
+		minHeight: 90,
+		maxHeight: 220,
+		backgroundColor: colors.bg,
+		borderWidth: 1,
+		borderColor: colors.borderStrong,
+		borderRadius: 4,
+		paddingHorizontal: 12,
+		paddingVertical: 10,
+		marginTop: 10,
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 14,
+		lineHeight: 21,
+		textAlignVertical: "top",
+	},
+	editActions: {
+		flexDirection: "row",
+		justifyContent: "flex-end",
+		gap: 10,
+		marginTop: 12,
+	},
+	editBtn: {
+		paddingHorizontal: 16,
+		paddingVertical: 9,
+		borderWidth: 2,
+		borderColor: colors.borderStrong,
+		backgroundColor: colors.bgSoft,
+	},
+	editBtnText: {
+		color: colors.text,
+		fontFamily: MONO,
+		fontSize: 12,
+		fontWeight: "700",
+	},
+	editSend: { borderColor: colors.accent2 },
+	editSendOff: { borderColor: colors.borderStrong, opacity: 0.5 },
+	editSendText: {
+		color: colors.accent2,
+		fontFamily: MONO,
+		fontSize: 12,
+		fontWeight: "800",
+		letterSpacing: 0.6,
+		textTransform: "uppercase",
+	},
 });

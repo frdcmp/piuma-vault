@@ -1,7 +1,11 @@
 import {
+	BulbOutlined,
 	DeleteOutlined,
+	EditOutlined,
 	ExpandAltOutlined,
+	EyeOutlined,
 	FormOutlined,
+	ToolOutlined,
 } from "@ant-design/icons";
 import {
 	useCallback,
@@ -26,11 +30,14 @@ import {
 	retitleConversation,
 	stopConversation,
 	streamChat,
+	switchBranch,
 	updateConversation,
 } from "../api/agentChatApi";
 import { uploadChatImage } from "../api/storage";
 import { useAgentList, useDefaultAgent } from "../queries";
+import { BranchSwitcher, MessageActions } from "./MessageActions";
 import { normalizeChatMarkdown } from "./markdown";
+import { partsToText } from "./standalone/messageUtils";
 
 // Universal client commands (same for every agent). Agent-specific commands are
 // the prompt macros from db_agent_profiles.commands, merged in at render time.
@@ -156,6 +163,21 @@ const appendTextPart = (parts, text) => {
 	else next.push({ kind: "text", id: `p${next.length}`, text });
 	return next;
 };
+
+// Normalise a server message into the panel's shape, carrying the model + tree
+// fields used by the per-message actions and the fork (‹n/n›) switcher.
+const mapMsg = (m) => ({
+	id: m.id,
+	role: m.role,
+	content: blocksToText(m.content),
+	parts: blocksToParts(m.content),
+	images: blocksToImages(m.content),
+	model: m.model_used || null,
+	parentId: m.parent_id ?? null,
+	branchIndex: m.branch_index ?? 1,
+	branchCount: m.branch_count ?? 1,
+	siblingIds: m.sibling_ids ?? [],
+});
 
 // Map a `navigate`-tool intent to an in-app path (or pass through an external
 // URL). Returns null for anything we don't recognise, so the action is dropped
@@ -550,15 +572,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			.then((d) => {
 				if (cancelled) return;
 				setModelId(d.conversation?.model_id || null);
-				setMessages(
-					(d.messages || []).map((m) => ({
-						id: m.id,
-						role: m.role,
-						content: blocksToText(m.content),
-						parts: blocksToParts(m.content),
-						images: blocksToImages(m.content),
-					})),
-				);
+				setMessages((d.messages || []).map(mapMsg));
 				setHydrated(true);
 				setLoadingConv(false);
 			})
@@ -639,6 +653,27 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			: allModels.find((m) => m.is_default);
 	}, [allModels, modelId]);
 	const visionEnabled = !!activeModel?.supports_vision;
+	// Active model as a ref, so the stream's onDone can stamp the model onto the
+	// just-streamed reply without re-creating handlers.
+	const activeModelRef = useRef(activeModel);
+	useEffect(() => {
+		activeModelRef.current = activeModel;
+	}, [activeModel]);
+	// Resolve a message's stored model (`model_used`, a wire id) to a friendly
+	// display name via the catalog; fall back to the raw value.
+	const modelLabelFor = useCallback(
+		(m) => {
+			if (!m?.model) return null;
+			const hit = allModels.find(
+				(x) => x.model_id === m.model || x.id === m.model,
+			);
+			return hit?.display_name || m.model;
+		},
+		[allModels],
+	);
+	// Editing an old user message (fork-on-send).
+	const [editingId, setEditingId] = useState(null);
+	const [editText, setEditText] = useState("");
 
 	const uploadingImages = pendingImages.some((p) => p.status === "uploading");
 
@@ -791,15 +826,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				const msgs = d.messages || [];
 				const last = msgs[msgs.length - 1];
 				if (last && last.role === "assistant") {
-					setMessages(
-						msgs.map((m) => ({
-							id: m.id,
-							role: m.role,
-							content: blocksToText(m.content),
-							parts: blocksToParts(m.content),
-							images: blocksToImages(m.content),
-						})),
-					);
+					setMessages(msgs.map(mapMsg));
 					return;
 				}
 			} catch {
@@ -820,6 +847,124 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			return updated;
 		});
 	}, []);
+
+	// Refetch the active branch from the server and replace the message list —
+	// gives every message its real id + branch metadata after a turn.
+	const reloadActivePath = useCallback(async (convId) => {
+		if (!convId) return;
+		try {
+			const d = await fetchConversation(convId);
+			if (conversationIdRef.current !== convId) return;
+			setMessages((d.messages || []).map(mapMsg));
+		} catch {
+			/* ignore */
+		}
+	}, []);
+
+	// Stream callbacks for a turn (send / regenerate / fork). All writes target
+	// the trailing assistant message; onDone stamps the producing model.
+	const buildHandlers = useCallback(
+		(convId) => {
+			const appendText = (delta) =>
+				setMessages((curr) => {
+					const updated = [...curr];
+					const last = updated[updated.length - 1];
+					updated[updated.length - 1] = {
+						...last,
+						parts: appendTextPart(last.parts, delta),
+					};
+					return updated;
+				});
+			return {
+				onText: appendText,
+				onThinking: () => {},
+				onTool: (t) => {
+					if (t.name === "navigate") {
+						if (t.done) return;
+						setMessages((curr) => {
+							const updated = [...curr];
+							const last = { ...updated[updated.length - 1] };
+							const parts = [...(last.parts || [])];
+							const a = t.args || {};
+							parts.push({
+								kind: "nav",
+								id: `p${parts.length}`,
+								target: a.target,
+								navId: a.id,
+								route: a.route,
+								url: a.url,
+								label: a.label,
+							});
+							last.parts = parts;
+							updated[updated.length - 1] = last;
+							return updated;
+						});
+						return;
+					}
+					setMessages((curr) => {
+						const updated = [...curr];
+						const last = { ...updated[updated.length - 1] };
+						const parts = [...(last.parts || [])];
+						if (t.done) {
+							for (let i = parts.length - 1; i >= 0; i--) {
+								if (parts[i].kind !== "tools") continue;
+								const idx = parts[i].tools.findIndex((x) => x.id === t.id);
+								if (idx >= 0) {
+									const tools = [...parts[i].tools];
+									tools[idx] = {
+										...tools[idx],
+										label: t.label || tools[idx].label,
+										status: t.ok ? "done" : "error",
+									};
+									parts[i] = { ...parts[i], tools };
+									break;
+								}
+							}
+						} else {
+							let run = parts[parts.length - 1];
+							if (run?.kind !== "tools") {
+								run = { kind: "tools", id: `p${parts.length}`, tools: [] };
+								parts.push(run);
+							} else {
+								run = { ...run, tools: [...run.tools] };
+								parts[parts.length - 1] = run;
+							}
+							run.tools.push({
+								id: t.id,
+								name: t.name,
+								args: t.args,
+								status: "running",
+							});
+						}
+						last.parts = parts;
+						updated[updated.length - 1] = last;
+						return updated;
+					});
+				},
+				onError: (e) => {
+					if (e?.isTransport && convId) {
+						appendText("\n\n_(reconnecting…)_");
+						recoverTurn(convId);
+						return;
+					}
+					appendText(`\n\n**Error:** ${e.message}`);
+				},
+				onDone: () => {
+					const used = activeModelRef.current?.model_id || null;
+					if (used)
+						setMessages((curr) => {
+							const updated = [...curr];
+							const last = updated[updated.length - 1];
+							if (last?.role === "assistant")
+								updated[updated.length - 1] = { ...last, model: used };
+							return updated;
+						});
+					setIsStreaming(false);
+				},
+			};
+		},
+		[recoverTurn],
+	);
 
 	const sendMessage = useCallback(async () => {
 		const text = input.trim();
@@ -923,18 +1068,6 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		const controller = new AbortController();
 		abortRef.current = controller;
 
-		// Append text to the streaming assistant message's ordered parts.
-		const appendText = (delta) =>
-			setMessages((curr) => {
-				const updated = [...curr];
-				const last = updated[updated.length - 1];
-				updated[updated.length - 1] = {
-					...last,
-					parts: appendTextPart(last.parts, delta),
-				};
-				return updated;
-			});
-
 		try {
 			await streamChat({
 				conversationId: convId,
@@ -946,94 +1079,15 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 					media_type: p.mediaType,
 				})),
 				signal: controller.signal,
-				onText: appendText,
-				onThinking: () => {},
-				// Tools land in stream order: a new call opens (or extends) the
-				// trailing tool-run part; its completion flips that chip's status.
-				// The `navigate` tool is special — it renders a "Go" action, not a
-				// chip — so it's handled up front (only on announce; ignore `done`).
-				onTool: (t) => {
-					if (t.name === "navigate") {
-						if (t.done) return;
-						setMessages((curr) => {
-							const updated = [...curr];
-							const last = { ...updated[updated.length - 1] };
-							const parts = [...(last.parts || [])];
-							const a = t.args || {};
-							parts.push({
-								kind: "nav",
-								id: `p${parts.length}`,
-								target: a.target,
-								navId: a.id,
-								route: a.route,
-								url: a.url,
-								label: a.label,
-							});
-							last.parts = parts;
-							updated[updated.length - 1] = last;
-							return updated;
-						});
-						return;
-					}
-					setMessages((curr) => {
-						const updated = [...curr];
-						const last = { ...updated[updated.length - 1] };
-						const parts = [...(last.parts || [])];
-						if (t.done) {
-							for (let i = parts.length - 1; i >= 0; i--) {
-								if (parts[i].kind !== "tools") continue;
-								const idx = parts[i].tools.findIndex((x) => x.id === t.id);
-								if (idx >= 0) {
-									const tools = [...parts[i].tools];
-									tools[idx] = {
-										...tools[idx],
-										label: t.label || tools[idx].label,
-										status: t.ok ? "done" : "error",
-									};
-									parts[i] = { ...parts[i], tools };
-									break;
-								}
-							}
-						} else {
-							let run = parts[parts.length - 1];
-							if (run?.kind !== "tools") {
-								run = { kind: "tools", id: `p${parts.length}`, tools: [] };
-								parts.push(run);
-							} else {
-								run = { ...run, tools: [...run.tools] };
-								parts[parts.length - 1] = run;
-							}
-							run.tools.push({
-								id: t.id,
-								name: t.name,
-								args: t.args,
-								status: "running",
-							});
-						}
-						last.parts = parts;
-						updated[updated.length - 1] = last;
-						return updated;
-					});
-				},
-				onError: (e) => {
-					// A transport drop (stream reset / connection abort) doesn't mean
-					// the turn failed — it keeps running and is persisted server-side.
-					// Show a soft "reconnecting" note and refetch until it lands,
-					// instead of a hard error.
-					if (e?.isTransport && convId) {
-						appendText("\n\n_(reconnecting…)_");
-						recoverTurn(convId);
-						return;
-					}
-					appendText(`\n\n**Error:** ${e.message}`);
-				},
-				onDone: () => setIsStreaming(false),
+				...buildHandlers(convId),
 			});
 		} finally {
 			// Always re-enable the composer, even if the stream throws.
 			setIsStreaming(false);
 			setSending(false);
 			abortRef.current = null;
+			// Sync to server truth: real ids + branch metadata for later edits.
+			await reloadActivePath(convId);
 		}
 	}, [
 		input,
@@ -1044,9 +1098,118 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		sentContextPaths,
 		sentContextIds,
 		pendingImages,
-		recoverTurn,
+		buildHandlers,
+		reloadActivePath,
 		scrollToBottom,
 	]);
+
+	// Regenerate ANY assistant reply as a sibling branch (under the same user
+	// message); reload after so the ‹n/n› switcher reflects the new sibling.
+	const regenerateAt = useCallback(
+		async (msgId) => {
+			if (isStreaming || sending) return;
+			const convId = conversationId;
+			if (!convId) return;
+			const idx = messages.findIndex((m) => m.id === msgId);
+			if (idx < 0 || messages[idx].role !== "assistant") return;
+			const parentId = messages[idx].parentId ?? null;
+			if (!parentId) return;
+			const userText = messages[idx - 1]?.content || "";
+			const assistantMsg = { id: newMessageId(), role: "assistant", parts: [] };
+			setMessages((curr) => [...curr.slice(0, idx), assistantMsg]);
+			setIsStreaming(true);
+			scrollToBottom();
+			const controller = new AbortController();
+			abortRef.current = controller;
+			try {
+				await streamChat({
+					conversationId: convId,
+					message: userText,
+					contextNoteIds: [],
+					images: [],
+					branch: { regenerate: true, parentId },
+					signal: controller.signal,
+					...buildHandlers(convId),
+				});
+			} finally {
+				setIsStreaming(false);
+				abortRef.current = null;
+				await reloadActivePath(convId);
+			}
+		},
+		[
+			isStreaming,
+			sending,
+			conversationId,
+			messages,
+			buildHandlers,
+			reloadActivePath,
+			scrollToBottom,
+		],
+	);
+
+	// Edit an old user message and send → FORK (new sibling under its parent).
+	const editAndFork = useCallback(
+		async (msgId, newText) => {
+			const text = (newText || "").trim();
+			if (!text || isStreaming || sending) return;
+			const convId = conversationId;
+			if (!convId) return;
+			const idx = messages.findIndex((m) => m.id === msgId);
+			if (idx < 0 || messages[idx].role !== "user") return;
+			const parentId = messages[idx].parentId ?? null;
+			setEditingId(null);
+			setEditText("");
+			const userMsg = { id: newMessageId(), role: "user", content: text };
+			const assistantMsg = { id: newMessageId(), role: "assistant", parts: [] };
+			setMessages((curr) => [...curr.slice(0, idx), userMsg, assistantMsg]);
+			setIsStreaming(true);
+			scrollToBottom();
+			const controller = new AbortController();
+			abortRef.current = controller;
+			try {
+				await streamChat({
+					conversationId: convId,
+					message: text,
+					contextNoteIds: [],
+					images: [],
+					branch: { fork: true, parentId },
+					signal: controller.signal,
+					...buildHandlers(convId),
+				});
+			} finally {
+				setIsStreaming(false);
+				abortRef.current = null;
+				await reloadActivePath(convId);
+			}
+		},
+		[
+			isStreaming,
+			sending,
+			conversationId,
+			messages,
+			buildHandlers,
+			reloadActivePath,
+			scrollToBottom,
+		],
+	);
+
+	// Switch which sibling branch is active at a fork; replace the shown path.
+	const switchTo = useCallback(
+		async (messageId) => {
+			const convId = conversationId;
+			if (!convId || isStreaming || !messageId) return;
+			try {
+				const d = await switchBranch(convId, messageId);
+				if (conversationIdRef.current !== convId) return;
+				setMessages((d.messages || []).map(mapMsg));
+				scrollToBottom();
+			} catch {
+				pvMessage.error("Couldn't switch branch");
+			}
+		},
+		[conversationId, isStreaming, scrollToBottom],
+	);
 
 	// Slash commands: client commands + the active agent's macros, filtered by
 	// the typed token (active only while the input is a single `/word`).
@@ -1171,15 +1334,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		try {
 			const d = await fetchConversation(id);
 			setModelId(d.conversation?.model_id || null);
-			setMessages(
-				(d.messages || []).map((m) => ({
-					id: m.id,
-					role: m.role,
-					content: blocksToText(m.content),
-					parts: blocksToParts(m.content),
-					images: blocksToImages(m.content),
-				})),
-			);
+			setMessages((d.messages || []).map(mapMsg));
 		} catch {
 			/* ignore */
 		} finally {
@@ -1512,21 +1667,105 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 								const isLast = i === messages.length - 1;
 								const streamingThis =
 									isStreaming && isLast && m.role === "assistant";
-								return m.role === "user" ? (
-									<UserBubble
-										key={m.id}
-										content={m.content}
-										context={m.context}
-										images={m.images}
-									/>
-								) : (
-									<AssistantBubble
-										key={m.id}
-										parts={m.parts}
-										isStreaming={streamingThis}
-										label={agentLabel}
-										onNavigate={goTo}
-									/>
+								const switcher =
+									m.branchCount > 1 ? (
+										<BranchSwitcher
+											index={m.branchIndex}
+											count={m.branchCount}
+											onPrev={() => switchTo(m.siblingIds?.[m.branchIndex - 2])}
+											onNext={() => switchTo(m.siblingIds?.[m.branchIndex])}
+										/>
+									) : null;
+								if (m.role === "user") {
+									return (
+										<div key={m.id} className="chatx-msg chatx-msg--user">
+											{editingId === m.id ? (
+												<div className="chatx-edit">
+													<textarea
+														className="chatx-edit-input"
+														value={editText}
+														onChange={(e) => setEditText(e.target.value)}
+														rows={3}
+														// biome-ignore lint/a11y/noAutofocus: focus the editor on open
+														autoFocus
+														onKeyDown={(e) => {
+															if (e.key === "Enter" && !e.shiftKey) {
+																e.preventDefault();
+																editAndFork(m.id, editText);
+															} else if (e.key === "Escape") {
+																setEditingId(null);
+																setEditText("");
+															}
+														}}
+													/>
+													<div className="chatx-edit-actions">
+														<button
+															type="button"
+															className="chatx-edit-btn"
+															onClick={() => {
+																setEditingId(null);
+																setEditText("");
+															}}
+														>
+															Cancel
+														</button>
+														<button
+															type="button"
+															className="chatx-edit-btn chatx-edit-send"
+															onClick={() => editAndFork(m.id, editText)}
+															disabled={!editText.trim()}
+														>
+															Send ↑
+														</button>
+													</div>
+												</div>
+											) : (
+												<>
+													<UserBubble
+														content={m.content}
+														context={m.context}
+														images={m.images}
+													/>
+													<div className="chatx-msg-actions chatx-msg-actions--user">
+														{switcher}
+														{!isStreaming ? (
+															<button
+																type="button"
+																className="chatx-msg-action"
+																title="Edit message"
+																aria-label="Edit message"
+																onClick={() => {
+																	setEditingId(m.id);
+																	setEditText(m.content || "");
+																}}
+															>
+																<EditOutlined />
+															</button>
+														) : null}
+													</div>
+												</>
+											)}
+										</div>
+									);
+								}
+								return (
+									<div key={m.id} className="chatx-msg">
+										<AssistantBubble
+											parts={m.parts}
+											isStreaming={streamingThis}
+											label={agentLabel}
+											onNavigate={goTo}
+										/>
+										{!streamingThis && m.parts?.length ? (
+											<MessageActions
+												text={partsToText(m.parts)}
+												modelLabel={modelLabelFor(m)}
+												canRetry={!isStreaming && !sending}
+												onRetry={() => regenerateAt(m.id)}
+												leading={switcher}
+											/>
+										) : null}
+									</div>
 								);
 							})
 						)}
@@ -1709,6 +1948,17 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 													<span className="picker-item-meta">
 														{m.provider}
 														{m.is_default ? " · default" : ""}
+													</span>
+													<span className="model-caps" aria-hidden="true">
+														{m.supports_thinking ? (
+															<BulbOutlined title="Reasoning" />
+														) : null}
+														{m.supports_vision ? (
+															<EyeOutlined title="Vision" />
+														) : null}
+														{m.supports_tools ? (
+															<ToolOutlined title="Tools" />
+														) : null}
 													</span>
 												</button>
 											);
