@@ -502,6 +502,10 @@ pub struct ListConvQuery {
     pub agent: Option<String>,
     /// Free-text filter: matches conversation title or any message's text.
     pub q: Option<String>,
+    /// Page size. Omitted → no limit (return everything, legacy behaviour).
+    pub limit: Option<i64>,
+    /// Rows to skip (for paging through the list). Omitted → 0.
+    pub offset: Option<i64>,
 }
 
 pub async fn list_conversations(
@@ -513,6 +517,11 @@ pub async fn list_conversations(
     // Both treat absent/blank as "no filter" via the `$n IS NULL` guards.
     let agent = q.agent.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let search = q.q.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    // Pagination is opt-in: a NULL limit means "no LIMIT" so existing callers
+    // (e.g. the chat dock's session picker) keep getting the full list. A limit
+    // is clamped to a sane ceiling; offset defaults to 0.
+    let limit = q.limit.map(|n| n.clamp(1, 200));
+    let offset = q.offset.unwrap_or(0).max(0);
     let res = sqlx::query_as::<_, ConversationRow>(
         "SELECT * FROM db_chat_conversations c \
          WHERE c.archived_at IS NULL \
@@ -522,10 +531,13 @@ pub async fn list_conversations(
                 OR EXISTS (SELECT 1 FROM db_chat_messages m \
                            WHERE m.conversation_id = c.id \
                              AND m.content::text ILIKE '%' || $2 || '%')) \
-         ORDER BY c.updated_at DESC",
+         ORDER BY c.updated_at DESC \
+         LIMIT $3 OFFSET $4",
     )
     .bind(agent)
     .bind(search)
+    .bind(limit)
+    .bind(offset)
     .fetch_all(pool.get_ref())
     .await;
     match res {

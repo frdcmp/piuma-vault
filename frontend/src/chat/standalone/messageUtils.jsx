@@ -90,6 +90,15 @@ export const blocksToParts = (content) => {
 	return parts;
 };
 
+// Flatten the renderable parts back to plain text — the text segments joined in
+// order (tool runs / nav actions are dropped). Used for copy-to-clipboard.
+export const partsToText = (parts) =>
+	(parts || [])
+		.filter((p) => p.kind === "text")
+		.map((p) => p.text)
+		.join("\n\n")
+		.trim();
+
 // Append text to a parts array, extending the trailing text segment or adding a
 // new one. Returns a new array (immutable update for setMessages).
 export const appendTextPart = (parts, text) => {

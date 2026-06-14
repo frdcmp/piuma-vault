@@ -4,16 +4,20 @@ import {
 	PlusOutlined,
 	SearchOutlined,
 } from "@ant-design/icons";
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchConversations } from "../../api/agentChatApi";
 import { timeAgo } from "../../utils/dateTime";
 import SpriteRunner from "../SpriteRunner";
 
+// How many conversations to fetch per page (backend LIMIT/OFFSET).
+const PAGE_SIZE = 25;
+
 // Left rail: new-chat button, a search box that filters by title OR message
-// text (server-side `q`), and the conversation list. Selecting a row lifts its
-// id to the page; the active row is highlighted.
+// text (server-side `q`), and the conversation list. The list is paginated —
+// only the first page loads up front, and more pages lazy-load as the user
+// scrolls toward the bottom. Selecting a row lifts its id to the page.
 export default function ChatSessionList({
 	activeId,
 	onSelect,
@@ -29,11 +33,32 @@ export default function ChatSessionList({
 		return () => clearTimeout(t);
 	}, [raw]);
 
-	const { data: sessions = [], isLoading } = useQuery({
-		queryKey: ["agents", "conversations", null, q || ""],
-		queryFn: () => fetchConversations(undefined, q || undefined),
-		keepPreviousData: true,
-	});
+	const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } =
+		useInfiniteQuery({
+			queryKey: ["agents", "conversations", null, q || ""],
+			queryFn: ({ pageParam = 0 }) =>
+				fetchConversations(undefined, q || undefined, {
+					limit: PAGE_SIZE,
+					offset: pageParam,
+				}),
+			initialPageParam: 0,
+			// A short last page means we've hit the end; otherwise advance the offset.
+			getNextPageParam: (lastPage, allPages) =>
+				lastPage.length === PAGE_SIZE ? allPages.length * PAGE_SIZE : undefined,
+		});
+
+	const sessions = data?.pages.flat() ?? [];
+
+	// Load the next page when the list is scrolled near its bottom.
+	const onListScroll = useCallback(
+		(e) => {
+			if (!hasNextPage || isFetchingNextPage) return;
+			const el = e.currentTarget;
+			if (el.scrollHeight - el.scrollTop - el.clientHeight < 240)
+				fetchNextPage();
+		},
+		[hasNextPage, isFetchingNextPage, fetchNextPage],
+	);
 
 	return (
 		<aside className="chatx-sidebar">
@@ -81,7 +106,7 @@ export default function ChatSessionList({
 				) : null}
 			</div>
 
-			<div className="chatx-session-list">
+			<div className="chatx-session-list" onScroll={onListScroll}>
 				{isLoading ? (
 					<div className="chatx-session-loading">
 						<SpriteRunner pixelSize={2} />
@@ -92,36 +117,43 @@ export default function ChatSessionList({
 						{q ? "No matches." : "No conversations yet."}
 					</div>
 				) : (
-					sessions.map((c) => (
-						<div
-							key={c.id}
-							className={`chatx-session${c.id === activeId ? " is-active" : ""}`}
-						>
-							<button
-								type="button"
-								className="chatx-session-main"
-								onClick={() => onSelect(c.id)}
+					<>
+						{sessions.map((c) => (
+							<div
+								key={c.id}
+								className={`chatx-session${c.id === activeId ? " is-active" : ""}`}
 							>
-								<span className="chatx-session-title">
-									{c.title || "Untitled"}
-								</span>
-								{c.updated_at || c.created_at ? (
-									<span className="chatx-session-time">
-										{timeAgo(c.updated_at || c.created_at)}
+								<button
+									type="button"
+									className="chatx-session-main"
+									onClick={() => onSelect(c.id)}
+								>
+									<span className="chatx-session-title">
+										{c.title || "Untitled"}
 									</span>
-								) : null}
-							</button>
-							<button
-								type="button"
-								className="chatx-session-del"
-								onClick={() => onDelete(c.id)}
-								aria-label="Delete conversation"
-								title="Delete conversation"
-							>
-								<DeleteOutlined />
-							</button>
-						</div>
-					))
+									{c.updated_at || c.created_at ? (
+										<span className="chatx-session-time">
+											{timeAgo(c.updated_at || c.created_at)}
+										</span>
+									) : null}
+								</button>
+								<button
+									type="button"
+									className="chatx-session-del"
+									onClick={() => onDelete(c.id)}
+									aria-label="Delete conversation"
+									title="Delete conversation"
+								>
+									<DeleteOutlined />
+								</button>
+							</div>
+						))}
+						{isFetchingNextPage ? (
+							<div className="chatx-session-more">
+								<SpriteRunner pixelSize={2} />
+							</div>
+						) : null}
+					</>
 				)}
 			</div>
 		</aside>

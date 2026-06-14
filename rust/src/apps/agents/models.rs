@@ -287,6 +287,11 @@ pub struct ChatTurnReq {
     /// (e.g. "2026-06-05T14:52:00+02:00").
     #[serde(default)]
     pub client_now: Option<String>,
+    /// "Try again": re-run the last user turn. The last assistant message is
+    /// dropped and NO new user message is inserted — `message` is the existing
+    /// last user text (used for retrieval/context). Default false = normal turn.
+    #[serde(default)]
+    pub regenerate: bool,
 }
 
 // ── Agent listing (registry + profile) ──────────────────────────────────────
