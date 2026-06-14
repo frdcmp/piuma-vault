@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { useGenerateSprite } from "@/queries";
 import { PvButton } from "../ui";
 import PixelCanvas from "./PixelCanvas";
 import { AnimatedPreview, SpritePreview } from "./pixelRender";
@@ -42,8 +41,10 @@ export default function SpriteEditor({
 	initial,
 	isNew,
 	onSave,
+	onGenerate,
 	onCancel,
 	saving,
+	generating,
 }) {
 	const [name, setName] = useState(initial.name);
 	const [key, setKey] = useState(initial.key);
@@ -57,27 +58,27 @@ export default function SpriteEditor({
 	const [error, setError] = useState("");
 	const [aiPrompt, setAiPrompt] = useState("");
 	const [aiError, setAiError] = useState("");
-	const generate = useGenerateSprite();
 
 	const patch = (p) => setDef((d) => ({ ...d, ...p }));
 
-	// Ask the LLM for a fresh definition and load it into the editor for review.
-	// Leaves name/key untouched — the admin keeps naming control.
+	// Fire off server-side AI generation for a brand-new sprite. Generation runs
+	// for minutes, so the parent kicks off the job, closes this modal, and the
+	// finished sprite arrives live over SSE — we only validate name/key/prompt.
 	const handleGenerate = () => {
 		const prompt = aiPrompt.trim();
-		if (!prompt || generate.isPending) return;
+		const nm = name.trim();
+		const k = slugify(key);
+		if (!prompt || generating) return;
+		if (!nm) {
+			setAiError("Name is required");
+			return;
+		}
+		if (!k) {
+			setAiError("Key is required");
+			return;
+		}
 		setAiError("");
-		generate.mutate(prompt, {
-			onSuccess: ({ definition }) => {
-				setDef(definition);
-				setPaint(Object.keys(definition.palette)[0] || ".");
-				setTab("standing");
-				setWalkIdx(0);
-				setGallopIdx(0);
-			},
-			onError: (e) =>
-				setAiError(e?.response?.data?.error || "Generation failed"),
-		});
+		onGenerate({ name: nm, key: k, prompt });
 	};
 
 	// The 2 leg rows the bottom of the canvas currently binds to.
@@ -189,27 +190,32 @@ export default function SpriteEditor({
 				</label>
 			</div>
 
-			{/* AI generate — produces a definition to review/tweak before saving */}
-			<div className="vp-sprite-ai">
-				<input
-					className="vp-input"
-					value={aiPrompt}
-					onChange={(e) => setAiPrompt(e.target.value)}
-					onKeyDown={(e) => {
-						if (e.key === "Enter") handleGenerate();
-					}}
-					placeholder="Describe a creature — e.g. a small purple owl"
-					disabled={generate.isPending}
-				/>
-				<PvButton
-					size="sm"
-					onClick={handleGenerate}
-					disabled={generate.isPending || !aiPrompt.trim()}
-				>
-					{generate.isPending ? "Generating…" : "✨ AI generate"}
-				</PvButton>
-			</div>
-			{aiError && <p className="vp-text vp-sprite-error">{aiError}</p>}
+			{/* AI generate — kicks off a server-side job that creates a new sprite.
+			    Needs a fresh name/key, so it's only offered for new sprites. */}
+			{isNew && (
+				<>
+					<div className="vp-sprite-ai">
+						<input
+							className="vp-input"
+							value={aiPrompt}
+							onChange={(e) => setAiPrompt(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") handleGenerate();
+							}}
+							placeholder="Describe a creature — e.g. a small purple owl"
+							disabled={generating}
+						/>
+						<PvButton
+							size="sm"
+							onClick={handleGenerate}
+							disabled={generating || !aiPrompt.trim()}
+						>
+							{generating ? "Starting…" : "✨ AI generate"}
+						</PvButton>
+					</div>
+					{aiError && <p className="vp-text vp-sprite-error">{aiError}</p>}
+				</>
+			)}
 
 			<div className="vp-sprite-editor-grid">
 				{/* ── Canvas ── */}

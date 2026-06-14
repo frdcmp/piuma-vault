@@ -2,7 +2,10 @@ import {
 	CheckOutlined,
 	CopyOutlined,
 	DownOutlined,
+	EditOutlined,
+	LeftOutlined,
 	ReloadOutlined,
+	RightOutlined,
 } from "@ant-design/icons";
 import {
 	useCallback,
@@ -23,6 +26,7 @@ import {
 	retitleConversation,
 	stopConversation,
 	streamChat,
+	switchBranch,
 	updateConversation,
 } from "../../api/agentChatApi";
 import { uploadChatImage } from "../../api/storage";
@@ -32,9 +36,7 @@ import SpriteRunner from "../SpriteRunner";
 import {
 	AssistantBubble,
 	appendTextPart,
-	blocksToImages,
-	blocksToParts,
-	blocksToText,
+	mapServerMessage,
 	newMessageId,
 	partsToText,
 	UserBubble,
@@ -63,7 +65,7 @@ const TITLE_ACTIONS = [
 // ChatGPT-style action row under each finished assistant message: copy the reply
 // to the clipboard, "try again" (regenerate — last message only), and the model
 // that produced it for visibility.
-function MessageActions({ text, modelLabel, canRetry, onRetry }) {
+function MessageActions({ text, modelLabel, canRetry, onRetry, leading }) {
 	const [copied, setCopied] = useState(false);
 	const copy = useCallback(async () => {
 		try {
@@ -76,6 +78,7 @@ function MessageActions({ text, modelLabel, canRetry, onRetry }) {
 	}, [text]);
 	return (
 		<div className="chatx-msg-actions">
+			{leading}
 			<button
 				type="button"
 				className="chatx-msg-action"
@@ -102,6 +105,39 @@ function MessageActions({ text, modelLabel, canRetry, onRetry }) {
 				</span>
 			) : null}
 		</div>
+	);
+}
+
+// ‹ n/n › fork switcher, shown on any message whose parent has more than one
+// child (i.e. a branch point). Steps through siblings by id.
+function BranchSwitcher({ index, count, onPrev, onNext }) {
+	if (!count || count < 2) return null;
+	return (
+		<span className="chatx-branch">
+			<button
+				type="button"
+				className="chatx-branch-arrow"
+				onClick={onPrev}
+				disabled={index <= 1}
+				aria-label="Previous branch"
+				title="Previous version"
+			>
+				<LeftOutlined />
+			</button>
+			<span className="chatx-branch-count">
+				{index}/{count}
+			</span>
+			<button
+				type="button"
+				className="chatx-branch-arrow"
+				onClick={onNext}
+				disabled={index >= count}
+				aria-label="Next branch"
+				title="Next version"
+			>
+				<RightOutlined />
+			</button>
+		</span>
 	);
 }
 
@@ -145,6 +181,10 @@ export default function ChatConversation({
 	const [slashActive, setSlashActive] = useState(0);
 	const [titleMenu, setTitleMenu] = useState(false);
 	const [titleActive, setTitleActive] = useState(0);
+
+	// Which user message is being edited (for fork-on-send), and its draft text.
+	const [editingId, setEditingId] = useState(null);
+	const [editText, setEditText] = useState("");
 
 	// The conversation actually loaded/displayed, as a ref. Async writers bail if
 	// the user switched away, and the load effect uses it to tell an EXTERNAL
@@ -206,16 +246,7 @@ export default function ChatConversation({
 					created_at: d.conversation?.created_at || null,
 					updated_at: d.conversation?.updated_at || null,
 				});
-				setMessages(
-					(d.messages || []).map((m) => ({
-						id: m.id,
-						role: m.role,
-						content: blocksToText(m.content),
-						parts: blocksToParts(m.content),
-						images: blocksToImages(m.content),
-						model: m.model_used || null,
-					})),
-				);
+				setMessages((d.messages || []).map(mapServerMessage));
 			})
 			.catch(() => {})
 			.finally(() => {
@@ -415,16 +446,7 @@ export default function ChatConversation({
 				const msgs = d.messages || [];
 				const last = msgs[msgs.length - 1];
 				if (last && last.role === "assistant") {
-					setMessages(
-						msgs.map((m) => ({
-							id: m.id,
-							role: m.role,
-							content: blocksToText(m.content),
-							parts: blocksToParts(m.content),
-							images: blocksToImages(m.content),
-							model: m.model_used || null,
-						})),
-					);
+					setMessages(msgs.map(mapServerMessage));
 					return;
 				}
 			} catch {
@@ -540,6 +562,20 @@ export default function ChatConversation({
 		[recoverTurn],
 	);
 
+	// Refetch the conversation's active branch from the server and replace the
+	// message list — gives every message its real id + branch metadata after a
+	// turn (so edit/regenerate/switch all have correct tree pointers).
+	const reloadActivePath = useCallback(async (convId) => {
+		if (!convId) return;
+		try {
+			const d = await fetchConversation(convId);
+			if (convRef.current !== convId) return;
+			setMessages((d.messages || []).map(mapServerMessage));
+		} catch {
+			/* ignore */
+		}
+	}, []);
+
 	// ── Send ─────────────────────────────────────────────────────────────────
 	const sendMessage = useCallback(async () => {
 		const text = input.trim();
@@ -650,7 +686,10 @@ export default function ChatConversation({
 			setIsStreaming(false);
 			setSending(false);
 			abortRef.current = null;
-			// First turn usually mints a title server-side — refresh the rail.
+			// Sync with server truth: real message ids + branch metadata (so a later
+			// edit/regenerate has correct tree pointers). First turn also mints a
+			// title server-side — refresh the rail.
+			await reloadActivePath(convId);
 			if (created) onConversationsChanged?.();
 		}
 	}, [
@@ -662,62 +701,128 @@ export default function ChatConversation({
 		pendingImages,
 		buildHandlers,
 		scrollToBottom,
+		reloadActivePath,
 		onConversationCreated,
 		onConversationsChanged,
 	]);
 
-	// "Try again": re-run the last user turn. The last message must be an
-	// assistant reply preceded by a user message; we reset that bubble to empty
-	// and stream a regenerate turn (the backend drops the old assistant message).
-	const regenerateLast = useCallback(async () => {
-		if (isStreaming || sending) return;
-		const convId = conversationId;
-		if (!convId) return;
-		const n = messages.length;
-		const last = messages[n - 1];
-		const prev = messages[n - 2];
-		if (!last || last.role !== "assistant" || !prev || prev.role !== "user")
-			return;
-		const userText = prev.content || "";
-		if (!userText) return;
-		// Reset the assistant bubble in place so it re-streams into the same slot.
-		setMessages((curr) => {
-			const updated = [...curr];
-			updated[updated.length - 1] = {
-				...updated[updated.length - 1],
-				parts: [],
-				model: null,
-			};
-			return updated;
-		});
-		setIsStreaming(true);
-		scrollToBottom();
-		const controller = new AbortController();
-		abortRef.current = controller;
-		try {
-			await streamChat({
-				conversationId: convId,
-				message: userText,
-				contextNoteIds: [],
-				images: [],
-				regenerate: true,
-				signal: controller.signal,
-				...buildHandlers(convId),
-			});
-		} finally {
-			setIsStreaming(false);
-			abortRef.current = null;
-			onConversationsChanged?.();
-		}
-	}, [
-		isStreaming,
-		sending,
-		conversationId,
-		messages,
-		buildHandlers,
-		scrollToBottom,
-		onConversationsChanged,
-	]);
+	// "Try again" on ANY assistant message: create a NEW reply as a sibling under
+	// the same user message (a branch). Everything from this reply onward is
+	// replaced by the fresh branch; reload after so the ‹n/n› switcher updates.
+	const regenerateAt = useCallback(
+		async (msgId) => {
+			if (isStreaming || sending) return;
+			const convId = conversationId;
+			if (!convId) return;
+			const idx = messages.findIndex((m) => m.id === msgId);
+			if (idx < 0 || messages[idx].role !== "assistant") return;
+			const parentId = messages[idx].parentId ?? null;
+			if (!parentId) return; // need the user message to reply under
+			// Retrieval still wants the prompting user message's text.
+			const userText = messages[idx - 1]?.content || "";
+			// Truncate to everything before this reply, then a fresh empty bubble.
+			const assistantMsg = { id: newMessageId(), role: "assistant", parts: [] };
+			setMessages((curr) => [...curr.slice(0, idx), assistantMsg]);
+			setIsStreaming(true);
+			scrollToBottom();
+			const controller = new AbortController();
+			abortRef.current = controller;
+			try {
+				await streamChat({
+					conversationId: convId,
+					message: userText,
+					contextNoteIds: [],
+					images: [],
+					branch: { regenerate: true, parentId },
+					signal: controller.signal,
+					...buildHandlers(convId),
+				});
+			} finally {
+				setIsStreaming(false);
+				abortRef.current = null;
+				await reloadActivePath(convId);
+				onConversationsChanged?.();
+			}
+		},
+		[
+			isStreaming,
+			sending,
+			conversationId,
+			messages,
+			buildHandlers,
+			scrollToBottom,
+			reloadActivePath,
+			onConversationsChanged,
+		],
+	);
+
+	// Edit an old user message and send → FORK. The new user message is attached
+	// as a sibling of the edited one (under its parent); everything from the edit
+	// point onward is replaced by the new branch. Reload after to get branch meta.
+	const editAndFork = useCallback(
+		async (msgId, newText) => {
+			const text = (newText || "").trim();
+			if (!text || isStreaming || sending) return;
+			const convId = conversationId;
+			if (!convId) return;
+			const idx = messages.findIndex((m) => m.id === msgId);
+			if (idx < 0 || messages[idx].role !== "user") return;
+			const parentId = messages[idx].parentId ?? null;
+			setEditingId(null);
+			setEditText("");
+			// Optimistic: keep everything before the edit, then the new turn.
+			const userMsg = { id: newMessageId(), role: "user", content: text };
+			const assistantMsg = { id: newMessageId(), role: "assistant", parts: [] };
+			setMessages((curr) => [...curr.slice(0, idx), userMsg, assistantMsg]);
+			setIsStreaming(true);
+			scrollToBottom();
+			const controller = new AbortController();
+			abortRef.current = controller;
+			try {
+				await streamChat({
+					conversationId: convId,
+					message: text,
+					contextNoteIds: [],
+					images: [],
+					branch: { fork: true, parentId },
+					signal: controller.signal,
+					...buildHandlers(convId),
+				});
+			} finally {
+				setIsStreaming(false);
+				abortRef.current = null;
+				await reloadActivePath(convId);
+				onConversationsChanged?.();
+			}
+		},
+		[
+			isStreaming,
+			sending,
+			conversationId,
+			messages,
+			buildHandlers,
+			scrollToBottom,
+			reloadActivePath,
+			onConversationsChanged,
+		],
+	);
+
+	// Switch which sibling branch is active at a fork; replace the shown path.
+	const switchTo = useCallback(
+		async (messageId) => {
+			const convId = conversationId;
+			if (!convId || isStreaming || !messageId) return;
+			try {
+				const d = await switchBranch(convId, messageId);
+				if (convRef.current !== convId) return;
+				setMessages((d.messages || []).map(mapServerMessage));
+				scrollToBottom();
+			} catch {
+				pvMessage.error("Couldn't switch branch");
+			}
+		},
+		[conversationId, isStreaming, scrollToBottom],
+	);
 
 	const pickModel = useCallback(
 		async (m) => {
@@ -1028,13 +1133,85 @@ export default function ChatConversation({
 								const isLast = i === messages.length - 1;
 								const streamingThis =
 									isStreaming && isLast && m.role === "assistant";
-								return m.role === "user" ? (
-									<UserBubble
-										key={m.id}
-										content={m.content}
-										images={m.images}
-									/>
-								) : (
+								// Branch nav: step to the previous/next sibling by id.
+								const switcher =
+									m.branchCount > 1 ? (
+										<BranchSwitcher
+											index={m.branchIndex}
+											count={m.branchCount}
+											onPrev={() => switchTo(m.siblingIds?.[m.branchIndex - 2])}
+											onNext={() => switchTo(m.siblingIds?.[m.branchIndex])}
+										/>
+									) : null;
+								if (m.role === "user") {
+									return (
+										<div key={m.id} className="chatx-msg chatx-msg--user">
+											{editingId === m.id ? (
+												<div className="chatx-edit">
+													<textarea
+														className="chatx-edit-input"
+														value={editText}
+														onChange={(e) => setEditText(e.target.value)}
+														rows={3}
+														// biome-ignore lint/a11y/noAutofocus: focus the editor on open
+														autoFocus
+														onKeyDown={(e) => {
+															if (e.key === "Enter" && !e.shiftKey) {
+																e.preventDefault();
+																editAndFork(m.id, editText);
+															} else if (e.key === "Escape") {
+																setEditingId(null);
+																setEditText("");
+															}
+														}}
+													/>
+													<div className="chatx-edit-actions">
+														<button
+															type="button"
+															className="chatx-edit-btn"
+															onClick={() => {
+																setEditingId(null);
+																setEditText("");
+															}}
+														>
+															Cancel
+														</button>
+														<button
+															type="button"
+															className="chatx-edit-btn chatx-edit-send"
+															onClick={() => editAndFork(m.id, editText)}
+															disabled={!editText.trim()}
+														>
+															Send ↑
+														</button>
+													</div>
+												</div>
+											) : (
+												<>
+													<UserBubble content={m.content} images={m.images} />
+													<div className="chatx-msg-actions chatx-msg-actions--user">
+														{switcher}
+														{!isStreaming ? (
+															<button
+																type="button"
+																className="chatx-msg-action"
+																title="Edit message"
+																aria-label="Edit message"
+																onClick={() => {
+																	setEditingId(m.id);
+																	setEditText(m.content || "");
+																}}
+															>
+																<EditOutlined />
+															</button>
+														) : null}
+													</div>
+												</>
+											)}
+										</div>
+									);
+								}
+								return (
 									<div key={m.id} className="chatx-msg">
 										<AssistantBubble
 											parts={m.parts}
@@ -1046,8 +1223,9 @@ export default function ChatConversation({
 											<MessageActions
 												text={partsToText(m.parts)}
 												modelLabel={modelLabelFor(m)}
-												canRetry={isLast && !isStreaming && !sending}
-												onRetry={regenerateLast}
+												canRetry={!isStreaming && !sending}
+												onRetry={() => regenerateAt(m.id)}
+												leading={switcher}
 											/>
 										) : null}
 									</div>

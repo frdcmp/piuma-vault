@@ -8,6 +8,7 @@ import {
 	setActiveSprite,
 	updateSprite,
 } from "../api/sprites";
+import { useResourceLiveUpdates } from "./liveUpdates";
 
 export const spriteKeys = {
 	all: ["sprites"],
@@ -63,7 +64,18 @@ export const useSetActiveSprite = () => {
 	});
 };
 
-// AI generation returns an unsaved definition — no cache invalidation; the
-// caller loads the result into the editor.
+// AI generation is async: this only kicks off the job (returns 202). The
+// finished sprite arrives over SSE and `useSpritesLiveUpdates` invalidates the
+// list — no direct cache work here.
 export const useGenerateSprite = () =>
 	useMutation({ mutationFn: generateSprite });
+
+// Live updates — a freshly AI-generated sprite is broadcast from the backend
+// when it finishes saving. No surgical handler: a full family invalidate
+// re-fetches the list (and the active mascot) so the new sprite appears.
+export const useSpritesLiveUpdates = () =>
+	useResourceLiveUpdates({
+		path: "/admin/sprites/events",
+		event: "sprite",
+		queryKey: spriteKeys.all,
+	});

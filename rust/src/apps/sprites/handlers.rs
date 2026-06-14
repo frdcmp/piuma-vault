@@ -1,13 +1,16 @@
+use super::events::SpritesEventBus;
 use super::generate;
 use super::models::{
     ActiveSpriteResponse, CreateSpriteRequest, ErrorResponse, GenerateSpriteRequest,
-    GenerateSpriteResponse, SetActiveRequest, SpriteResponse, SpriteRow, UpdateSpriteRequest,
+    SetActiveRequest, SpriteResponse, SpriteRow, UpdateSpriteRequest,
 };
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
+use crate::apps::realtime::ResourceAction;
 use crate::apps::settings::store;
 use crate::db::db::DbPool;
 use actix_web::{web, HttpResponse, Responder};
+use uuid::Uuid;
 
 /// `app_settings` key holding the active mascot's sprite key.
 pub const ACTIVE_KEY: &str = "active_sprite";
@@ -103,19 +106,110 @@ pub async fn list_sprites(user: AuthenticatedUser, pool: web::Data<DbPool>) -> i
     }
 }
 
-// ── Admin: AI generate (returns an unsaved definition for the editor) ──
-
+// ── Admin: AI generate (async — kicks off a background job, returns 202) ──
+//
+// LLM sprite generation routinely runs minutes on a reasoning model, well past
+// sane HTTP timeouts. So we validate the request (including a synchronous
+// key-availability check so the admin gets immediate feedback), hand the slow
+// generate-and-save off to a background task, and return 202 right away. When
+// the new sprite lands in the DB the worker publishes a `sprite` SSE event;
+// connected admins re-fetch and it pops into the grid live.
 pub async fn generate_sprite(
     user: AuthenticatedUser,
     pool: web::Data<DbPool>,
+    bus: web::Data<SpritesEventBus>,
     body: web::Json<GenerateSpriteRequest>,
 ) -> impl Responder {
     if !check_permission(&user, "admin_access") {
         return forbidden();
     }
-    match generate::generate_sprite(pool.get_ref(), &body.prompt).await {
-        Ok(definition) => HttpResponse::Ok().json(GenerateSpriteResponse { definition }),
-        Err(e) => HttpResponse::BadRequest().json(ErrorResponse { error: e }),
+    let req = body.into_inner();
+    let key = req.key.trim().to_lowercase();
+    let name = req.name.trim().to_string();
+    let prompt = req.prompt.trim().to_string();
+
+    if name.is_empty() {
+        return HttpResponse::BadRequest().json(ErrorResponse {
+            error: "name is required".to_string(),
+        });
+    }
+    if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return HttpResponse::BadRequest().json(ErrorResponse {
+            error: "key must be a non-empty slug (a-z, 0-9, -, _)".to_string(),
+        });
+    }
+    if prompt.is_empty() {
+        return HttpResponse::BadRequest().json(ErrorResponse {
+            error: "prompt is required".to_string(),
+        });
+    }
+
+    // Reject a taken key now rather than letting the background insert fail
+    // silently minutes later.
+    match sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM sprites WHERE key = $1)")
+        .bind(&key)
+        .fetch_one(pool.get_ref())
+        .await
+    {
+        Ok(true) => {
+            return HttpResponse::Conflict().json(ErrorResponse {
+                error: "a sprite with that key already exists".to_string(),
+            })
+        }
+        Ok(false) => {}
+        Err(e) => return server_error(e, "check sprite key"),
+    }
+
+    let pool = pool.get_ref().clone();
+    let bus = bus.get_ref().clone();
+    tokio::spawn(async move {
+        run_generation(pool, bus, key, name, prompt).await;
+    });
+
+    HttpResponse::Accepted().json(serde_json::json!({ "status": "generating" }))
+}
+
+/// Background worker: generate a definition from the prompt, persist it as a new
+/// sprite, and broadcast a `sprite` event so connected admins see it appear.
+/// Errors are logged — no client is waiting on this call.
+async fn run_generation(
+    pool: DbPool,
+    bus: SpritesEventBus,
+    key: String,
+    name: String,
+    prompt: String,
+) {
+    let definition = match generate::generate_sprite(&pool, &prompt).await {
+        Ok(d) => d,
+        Err(e) => {
+            log::error!("sprites: generation failed for key={key}: {e}");
+            return;
+        }
+    };
+    let definition = match serde_json::to_value(&definition) {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("sprites: serialize generated definition for key={key}: {e}");
+            return;
+        }
+    };
+
+    let inserted: Result<Uuid, sqlx::Error> = sqlx::query_scalar(
+        "INSERT INTO sprites (key, name, definition, is_builtin) \
+         VALUES ($1, $2, $3, FALSE) RETURNING id",
+    )
+    .bind(&key)
+    .bind(&name)
+    .bind(&definition)
+    .fetch_one(&pool)
+    .await;
+
+    match inserted {
+        Ok(id) => {
+            log::info!("sprites: AI-generated sprite saved (key={key})");
+            bus.publish(ResourceAction::Created, id);
+        }
+        Err(e) => log::error!("sprites: insert generated sprite key={key}: {e:?}"),
     }
 }
 

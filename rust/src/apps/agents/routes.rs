@@ -114,6 +114,11 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             web::resource("/agents/conversations/{id}/messages")
                 .route(web::delete().to(handlers::clear_conversation)),
         )
+        // SWITCH-BRANCH — move the active leaf to a chosen sibling's subtree.
+        .service(
+            web::resource("/agents/conversations/{id}/switch-branch")
+                .route(web::post().to(handlers::switch_branch)),
+        )
         .service(
             web::resource("/agents/conversations/{id}/retitle")
                 .route(web::post().to(handlers::retitle_conversation)),

@@ -1,6 +1,29 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
+// ── Self-echo suppression ────────────────────────────────────────────────────
+//
+// A mutation on THIS tab invalidates its query family directly (in the
+// mutation's onSuccess), and the backend then broadcasts the same change back
+// over SSE — including to the tab that made it. Without suppression that echo
+// triggers a SECOND full refetch round right after the first, doubling every
+// request on a local edit. Each mutation hook calls `markLocalChange(path)` in
+// its `onMutate` (request start — the echo can arrive BEFORE onSuccess), so the
+// matching echo arriving within SELF_ECHO_MS is dropped; the direct invalidation
+// already covered it. Echoes from OTHER tabs/devices have no local marker and
+// still refetch normally.
+const SELF_ECHO_MS = 2500;
+const lastLocalChange = new Map(); // sse path -> timestamp (ms)
+
+export function markLocalChange(path) {
+	lastLocalChange.set(path, Date.now());
+}
+
+export function isLocalEcho(path) {
+	const t = lastLocalChange.get(path);
+	return t !== undefined && Date.now() - t < SELF_ECHO_MS;
+}
+
 // Generic SSE live-update subscription, used by tasks and calendar so a change
 // made elsewhere (another tab, the mobile app, an x-api-key integration) shows
 // up without a manual refresh. Generalizes the notes implementation in
@@ -12,9 +35,11 @@ import { useEffect } from "react";
 //    with exponential backoff, invalidating on each reconnect to catch up on
 //    events missed during the gap.
 //
-// `queryKey` is the broad family key (e.g. ["tasks"]) — every event invalidates
-// it, matching how the mutation hooks already invalidate the whole family.
-export function useResourceLiveUpdates({ path, event, queryKey }) {
+// `queryKey` is the broad family key (e.g. ["tasks"]) — the blunt fallback used
+// on a reconnect gap. Pass `onEvent(qc, action, id)` to handle live events
+// surgically (patch caches in place) instead; it falls back to invalidating
+// `queryKey` if it throws.
+export function useResourceLiveUpdates({ path, event, queryKey, onEvent }) {
 	const qc = useQueryClient();
 
 	useEffect(() => {
@@ -50,9 +75,27 @@ export function useResourceLiveUpdates({ path, event, queryKey }) {
 		};
 
 		const handleEvent = (evt) => {
-			// We don't act on the {action, id} payload — the lists are keyed by
-			// filter/range, so any change just refetches the family.
 			if (evt?.data === undefined) return;
+			// Drop the echo of a change this tab just made — its mutation already
+			// patched the cache. Reconnect catch-up (the "open" handler) bypasses
+			// this, so events missed while disconnected aren't lost.
+			if (isLocalEcho(path)) return;
+			// Surgical handler patches caches from the {action,id}; on any failure,
+			// or with no handler, fall back to a blunt family invalidate.
+			if (onEvent) {
+				let payload = null;
+				try {
+					payload = JSON.parse(evt.data);
+				} catch {
+					/* malformed — fall through to invalidate */
+				}
+				if (payload?.id) {
+					Promise.resolve(onEvent(qc, payload.action, payload.id)).catch(
+						invalidate,
+					);
+					return;
+				}
+			}
 			invalidate();
 		};
 
@@ -101,7 +144,8 @@ export function useResourceLiveUpdates({ path, event, queryKey }) {
 			if (reconnectTimer) clearTimeout(reconnectTimer);
 			if (es) es.close();
 		};
-		// `queryKey` is a module-level constant array (e.g. taskKeys.all), so its
-		// reference is stable across renders — safe to depend on directly.
-	}, [qc, path, event, queryKey]);
+		// `queryKey` is a module-level constant array (e.g. taskKeys.all) and
+		// `onEvent` a module-level fn (e.g. applyTaskEvent), so both references are
+		// stable across renders — safe to depend on directly.
+	}, [qc, path, event, queryKey, onEvent]);
 }

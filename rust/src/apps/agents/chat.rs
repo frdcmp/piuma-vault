@@ -225,6 +225,8 @@ pub async fn chat(
     let timezone = req.timezone;
     let client_now = req.client_now;
     let regenerate = req.regenerate;
+    let parent_id = req.parent_id;
+    let fork = req.fork;
     let db = pool.get_ref();
 
     let conv = match sqlx::query_as::<_, ConversationRow>("SELECT * FROM db_chat_conversations WHERE id = $1")
@@ -317,39 +319,67 @@ pub async fn chat(
     let user_content = Value::Array(user_blocks);
     let user_text = blocks_to_text(&user_content);
     let user_emb = crate::apps::embeddings::embed(db, &user_text, 1536, "embedding:chat").await.ok();
-    // Regenerate ("try again"): drop the last assistant message so the turn
-    // re-runs from the existing last user message; don't insert a new user
-    // message (it's already there — `msg` is just its text for retrieval).
-    if regenerate {
-        let _ = sqlx::query(
-            "DELETE FROM db_chat_messages WHERE id = ( \
-                 SELECT id FROM db_chat_messages \
-                 WHERE conversation_id = $1 AND role = 'assistant' \
-                 ORDER BY created_at DESC LIMIT 1)",
-        )
-        .bind(conv_id)
-        .execute(db)
-        .await;
-    } else if let Err(e) = if let Some(ref emb) = user_emb {
-        let pg_vec = pgvector::Vector::from(emb.clone());
-        sqlx::query("INSERT INTO db_chat_messages (conversation_id, role, content, content_text, embedding) VALUES ($1, 'user', $2, $3, $4)")
+
+    // ── Branching: place this turn in the message tree ──
+    // `context_leaf` is the node the NEW assistant reply hangs under (its parent);
+    // history is the root→context_leaf path. How we get there depends on mode:
+    //   • normal send  → insert a user message under the active leaf; that's the leaf.
+    //   • fork (edit)  → insert a user message under `parent_id` (the edited
+    //                    message's parent — may be None for a root-level fork).
+    //   • regenerate   → no user message; reply as a sibling under the existing
+    //                    user message (`parent_id`, or the active leaf's parent).
+    let active_leaf = conv.active_leaf_id;
+    let context_leaf: Option<Uuid> = if regenerate {
+        match parent_id {
+            Some(p) => Some(p),
+            None => match active_leaf {
+                Some(leaf) => sqlx::query_scalar::<_, Option<Uuid>>(
+                    "SELECT parent_id FROM db_chat_messages WHERE id = $1",
+                )
+                .bind(leaf)
+                .fetch_optional(db)
+                .await
+                .ok()
+                .flatten()
+                .flatten(),
+                None => None,
+            },
+        }
+    } else {
+        let user_parent = if fork { parent_id } else { active_leaf };
+        let inserted = if let Some(ref emb) = user_emb {
+            let pg_vec = pgvector::Vector::from(emb.clone());
+            sqlx::query_scalar::<_, Uuid>(
+                "INSERT INTO db_chat_messages (conversation_id, parent_id, role, content, content_text, embedding) \
+                 VALUES ($1, $2, 'user', $3, $4, $5) RETURNING id",
+            )
             .bind(conv_id)
+            .bind(user_parent)
             .bind(&user_content)
             .bind(&user_text)
             .bind(&pg_vec)
-            .execute(db)
+            .fetch_one(db)
             .await
-    } else {
-        sqlx::query("INSERT INTO db_chat_messages (conversation_id, role, content, content_text) VALUES ($1, 'user', $2, $3)")
+        } else {
+            sqlx::query_scalar::<_, Uuid>(
+                "INSERT INTO db_chat_messages (conversation_id, parent_id, role, content, content_text) \
+                 VALUES ($1, $2, 'user', $3, $4) RETURNING id",
+            )
             .bind(conv_id)
+            .bind(user_parent)
             .bind(&user_content)
             .bind(&user_text)
-            .execute(db)
+            .fetch_one(db)
             .await
-    } {
-        log::error!("chat: persist user msg: {e}");
-        return HttpResponse::InternalServerError().json(ApiError::new("database error"));
-    }
+        };
+        match inserted {
+            Ok(id) => Some(id),
+            Err(e) => {
+                log::error!("chat: persist user msg: {e}");
+                return HttpResponse::InternalServerError().json(ApiError::new("database error"));
+            }
+        }
+    };
     // First turn: set a cheap fallback title now; an AI title replaces it once
     // the exchange completes (see end of the stream task).
     let first_turn = conv.title.as_deref().unwrap_or("").is_empty();
@@ -362,14 +392,27 @@ pub async fn chat(
             .await;
     }
 
-    // Build OpenAI-shaped messages: system + capped history.
-    let rows: Vec<(String, Value)> = sqlx::query_as(
-        "SELECT role, content FROM db_chat_messages WHERE conversation_id = $1 ORDER BY created_at",
-    )
-    .bind(conv_id)
-    .fetch_all(db)
-    .await
-    .unwrap_or_default();
+    // Build OpenAI-shaped messages: system + capped history. History is the
+    // ACTIVE BRANCH only — the root→context_leaf path through the message tree —
+    // so forked/abandoned branches never leak into the prompt.
+    let rows: Vec<(String, Value)> = if let Some(leaf) = context_leaf {
+        sqlx::query_as(
+            "WITH RECURSIVE path AS ( \
+                 SELECT id, parent_id, role, content, created_at, 0 AS depth \
+                 FROM db_chat_messages WHERE id = $1 \
+                 UNION ALL \
+                 SELECT m.id, m.parent_id, m.role, m.content, m.created_at, p.depth + 1 \
+                 FROM db_chat_messages m JOIN path p ON m.id = p.parent_id \
+             ) \
+             SELECT role, content FROM path ORDER BY depth DESC",
+        )
+        .bind(leaf)
+        .fetch_all(db)
+        .await
+        .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let mut hist: Vec<(String, Value)> = rows
         .into_iter()
         .filter(|(role, _)| role == "user" || role == "assistant")
@@ -481,6 +524,11 @@ pub async fn chat(
     let api_key = provider.api_key.clone();
     let base_url = provider.base_url.clone();
     let model = model_row.model_id.clone();
+    // The tree parent for the assistant reply we're about to stream (the new user
+    // message, or — on regenerate — the existing user message). Set on insert so
+    // the reply is a proper child/sibling; the conversation's active leaf is then
+    // moved to it.
+    let assistant_parent = context_leaf;
 
     actix_web::rt::spawn(async move {
         // Drop guard: clears this turn's cancel token + injection mailbox however
@@ -659,10 +707,11 @@ pub async fn chat(
             let content = Value::Array(display);
             let msg_id: Option<Uuid> = sqlx::query_scalar(
                 "INSERT INTO db_chat_messages \
-                   (conversation_id, role, content, content_text, model_used, provider_kind, tokens_input, tokens_output, tokens_cached, stop_reason) \
-                 VALUES ($1, 'assistant', $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
+                   (conversation_id, parent_id, role, content, content_text, model_used, provider_kind, tokens_input, tokens_output, tokens_cached, stop_reason) \
+                 VALUES ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id",
             )
             .bind(conv_id)
+            .bind(assistant_parent)
             .bind(&content)
             .bind(blocks_to_text(&content))
             .bind(&model_label)
@@ -675,6 +724,17 @@ pub async fn chat(
             .await
             .ok()
             .flatten();
+            // Advance the conversation's active leaf to this new reply, so the
+            // shown branch is the one we just produced (send / fork / regenerate).
+            if let Some(aid) = msg_id {
+                let _ = sqlx::query(
+                    "UPDATE db_chat_conversations SET active_leaf_id = $2 WHERE id = $1",
+                )
+                .bind(conv_id)
+                .bind(aid)
+                .execute(&pool2)
+                .await;
+            }
             // Token-usage ledger row for the admin analytics page (chat spend).
             if tin + tout + tcached + tcache_write > 0 {
                 let _ = sqlx::query(

@@ -1,12 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
 	useCreateSprite,
 	useDeleteSprite,
+	useGenerateSprite,
 	useSetActiveSprite,
 	useSprites,
+	useSpritesLiveUpdates,
 	useUpdateSprite,
 } from "../../../queries";
-import { SpritePreview } from "../../components/appearance/pixelRender";
+import {
+	AnimatedPreview,
+	SpritePreview,
+} from "../../components/appearance/pixelRender";
 import SpriteEditor, {
 	NEW_TEMPLATE,
 } from "../../components/appearance/SpriteEditor";
@@ -17,16 +22,77 @@ import "./appearance.css";
 
 const errMsg = (e, fallback) => e?.response?.data?.error || fallback;
 
+// "Generating…" placeholders survive a refresh for a couple of minutes so the
+// feedback isn't lost if the admin reloads while the LLM works. Stored locally
+// with a start time; entries past the TTL (or whose sprite has arrived) drop.
+const PENDING_KEY = "vault.sprite_pending";
+const PENDING_TTL = 2 * 60 * 1000;
+
+const loadPending = () => {
+	try {
+		const raw = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]");
+		const now = Date.now();
+		return Array.isArray(raw)
+			? raw.filter((p) => p?.key && now - (p.startedAt || 0) < PENDING_TTL)
+			: [];
+	} catch {
+		return [];
+	}
+};
+
+const savePending = (list) => {
+	try {
+		localStorage.setItem(PENDING_KEY, JSON.stringify(list));
+	} catch {
+		/* storage unavailable — placeholders just won't persist */
+	}
+};
+
 export default function Appearance() {
 	const { data: sprites = [], isLoading } = useSprites();
 	const setActive = useSetActiveSprite();
 	const createSprite = useCreateSprite();
 	const updateSprite = useUpdateSprite();
 	const deleteSprite = useDeleteSprite();
+	const generate = useGenerateSprite();
+	useSpritesLiveUpdates(); // new AI-generated sprites stream in here when ready
 
 	// { initial, isNew } while the editor modal is open, else null.
 	const [editing, setEditing] = useState(null);
 	const [confirmDelete, setConfirmDelete] = useState(null); // sprite key
+	// Sprites being AI-generated server-side — [{ key, name, startedAt }].
+	// Rendered as galloping placeholder cards; persisted so a refresh keeps them.
+	const [pending, setPending] = useState(loadPending);
+
+	// Drop a placeholder as soon as its sprite shows up in the refetched list.
+	useEffect(() => {
+		setPending((prev) => {
+			const next = prev.filter((p) => !sprites.some((s) => s.key === p.key));
+			if (next.length !== prev.length) savePending(next);
+			return next;
+		});
+	}, [sprites]);
+
+	// Expire placeholders the LLM never delivered, so a stuck card clears itself
+	// at the TTL instead of spinning forever.
+	useEffect(() => {
+		if (!pending.length) return;
+		const id = setInterval(() => {
+			setPending((prev) => {
+				const now = Date.now();
+				const next = prev.filter((p) => now - (p.startedAt || 0) < PENDING_TTL);
+				if (next.length !== prev.length) savePending(next);
+				return next;
+			});
+		}, 5000);
+		return () => clearInterval(id);
+	}, [pending.length]);
+
+	// A built-in sprite (or any) to animate inside the "generating" cards.
+	const loader = sprites.find((s) => s.is_builtin) || sprites[0];
+	const pendingCards = pending.filter(
+		(p) => !sprites.some((s) => s.key === p.key),
+	);
 
 	const onSetActive = (key) => {
 		setActive.mutate(key, {
@@ -46,6 +112,31 @@ export default function Appearance() {
 			},
 			onError: (e) => pvMessage.error(errMsg(e, "Failed to save sprite")),
 		});
+	};
+
+	// Kick off async AI generation. The job runs server-side for minutes, so we
+	// fire it, tell the user it's cooking, and close the modal — the finished
+	// sprite arrives live via SSE (useSpritesLiveUpdates).
+	const onGenerate = ({ name, key, prompt }) => {
+		generate.mutate(
+			{ name, key, prompt },
+			{
+				onSuccess: () => {
+					pvMessage.info(
+						"Sprite generating… it'll appear here when it's ready.",
+					);
+					setPending((prev) => {
+						const next = [...prev, { key, name, startedAt: Date.now() }];
+						savePending(next);
+						return next;
+					});
+					setEditing(null);
+				},
+				// Keep the modal open on failure (e.g. key taken) so the admin can fix it.
+				onError: (e) =>
+					pvMessage.error(errMsg(e, "Failed to start generation")),
+			},
+		);
 	};
 
 	const onDelete = () => {
@@ -86,6 +177,32 @@ export default function Appearance() {
 					<p className="vp-text vp-muted">Loading sprites…</p>
 				) : (
 					<div className="vp-sprite-cards">
+						{pendingCards.map((p) => (
+							<div
+								key={`pending-${p.key}`}
+								className="vp-sprite-card vp-sprite-card--pending"
+							>
+								<div className="vp-sprite-card-art">
+									{loader ? (
+										<AnimatedPreview
+											body={loader.definition.body}
+											frames={loader.definition.gallopLegs}
+											frameMs={loader.definition.gallopFrameMs}
+											palette={loader.definition.palette}
+											pixelSize={6}
+										/>
+									) : (
+										<div className="vp-sprite-spinner" />
+									)}
+								</div>
+								<div className="vp-sprite-card-head">
+									<span className="vp-sprite-card-name">{p.name}</span>
+									<span className="vp-sprite-badge vp-sprite-badge--muted">
+										generating…
+									</span>
+								</div>
+							</div>
+						))}
 						{sprites.map((s) => (
 							<div
 								key={s.key}
@@ -176,7 +293,9 @@ export default function Appearance() {
 						initial={editing.initial}
 						isNew={editing.isNew}
 						saving={saving}
+						generating={generate.isPending}
 						onSave={onSave}
+						onGenerate={onGenerate}
 						onCancel={() => setEditing(null)}
 					/>
 				)}

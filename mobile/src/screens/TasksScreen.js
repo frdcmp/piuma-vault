@@ -152,11 +152,20 @@ export default function TasksScreen({ navigation, route }) {
 	const serverPending = visible.filter((t) => !t.done);
 
 	const [pending, setPending] = useState([]);
-	// Re-sync to the server order only when the *set* of pending tasks changes
-	// (add / remove / complete / filter switch) — not on reorder, so an
-	// optimistic drag isn't clobbered by the refetch it triggers.
-	const setSig = [...serverPending.map((t) => t.id)].sort().join(",");
-	// biome-ignore lint/correctness/useExhaustiveDependencies: re-sync keyed on the id-set, not order
+	// Re-sync from the server when the set OR the displayed CONTENT of the
+	// pending tasks changes (add / remove / complete / filter switch / field
+	// edit) — but NOT on a pure reorder, so an optimistic drag isn't clobbered by
+	// the refetch it triggers. The signature is order-independent (sorted by id)
+	// and hashes the fields a row renders, so editing e.g. a due date refreshes
+	// the list while dragging (same ids + fields, new order) does not.
+	const setSig = serverPending
+		.map(
+			(t) =>
+				`${t.id}:${t.title}:${t.due_at}:${t.priority}:${t.bucket_id}:${(t.tags || []).join("|")}`,
+		)
+		.sort()
+		.join(",");
+	// biome-ignore lint/correctness/useExhaustiveDependencies: re-sync keyed on the content signature, not order
 	useEffect(() => {
 		setPending(serverPending);
 	}, [setSig]);
