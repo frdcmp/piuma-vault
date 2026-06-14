@@ -31,37 +31,37 @@ import "../../vault-pixel.css";
 import "./layout.css";
 
 const NAVIGATION = [
-	{ key: "/admin", icon: <HomeOutlined />, label: "Home" },
-	{ key: "/admin/shares", icon: <ShareAltOutlined />, label: "Shares" },
-	{ key: "/admin/about", icon: <AppstoreOutlined />, label: "About" },
+	{ key: "/settings", icon: <HomeOutlined />, label: "Home" },
+	{ key: "/settings/shares", icon: <ShareAltOutlined />, label: "Shares" },
+	{ key: "/settings/about", icon: <AppstoreOutlined />, label: "About" },
 ];
 
 const AI = [
-	{ key: "/admin/agents", icon: <RobotOutlined />, label: "Agents" },
-	{ key: "/admin/memory", icon: <GoldOutlined />, label: "Memory" },
-	{ key: "/admin/cron", icon: <ClockCircleOutlined />, label: "Scheduled" },
+	{ key: "/settings/agents", icon: <RobotOutlined />, label: "Agents" },
+	{ key: "/settings/memory", icon: <GoldOutlined />, label: "Memory" },
+	{ key: "/settings/cron", icon: <ClockCircleOutlined />, label: "Scheduled" },
 	{
-		key: "/admin/token-usage",
+		key: "/settings/token-usage",
 		icon: <BarChartOutlined />,
 		label: "Token Usage",
 	},
 ];
 
 const PERSONALIZE = [
-	{ key: "/admin/appearance", icon: <SmileOutlined />, label: "Appearance" },
-	{ key: "/admin/profile", icon: <UserOutlined />, label: "Profile" },
-	{ key: "/admin/security", icon: <LockOutlined />, label: "Security" },
+	{ key: "/settings/appearance", icon: <SmileOutlined />, label: "Appearance" },
+	{ key: "/settings/profile", icon: <UserOutlined />, label: "Profile" },
+	{ key: "/settings/security", icon: <LockOutlined />, label: "Security" },
 ];
 
 const SYSTEM = [
-	{ key: "/admin/services", icon: <ApiOutlined />, label: "Services" },
-	{ key: "/admin/api-keys", icon: <KeyOutlined />, label: "API Keys" },
-	{ key: "/admin/files", icon: <FileOutlined />, label: "Files" },
-	{ key: "/admin/trash", icon: <DeleteOutlined />, label: "Trash" },
-	{ key: "/admin/db-backups", icon: <DatabaseOutlined />, label: "Backups" },
-	{ key: "/admin/health", icon: <HeartOutlined />, label: "Health" },
-	{ key: "/admin/projects", icon: <ProjectOutlined />, label: "Projects" },
-	{ key: "/admin/test", icon: <ThunderboltOutlined />, label: "API Test" },
+	{ key: "/settings/services", icon: <ApiOutlined />, label: "Services" },
+	{ key: "/settings/api-keys", icon: <KeyOutlined />, label: "API Keys" },
+	{ key: "/settings/files", icon: <FileOutlined />, label: "Files" },
+	{ key: "/settings/trash", icon: <DeleteOutlined />, label: "Trash" },
+	{ key: "/settings/db-backups", icon: <DatabaseOutlined />, label: "Backups" },
+	{ key: "/settings/health", icon: <HeartOutlined />, label: "Health" },
+	{ key: "/settings/projects", icon: <ProjectOutlined />, label: "Projects" },
+	{ key: "/settings/test", icon: <ThunderboltOutlined />, label: "API Test" },
 ];
 
 const NavItem = ({ item, active, onNavigate }) => (

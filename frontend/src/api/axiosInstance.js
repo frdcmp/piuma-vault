@@ -182,7 +182,7 @@ axiosInstance.interceptors.response.use(
 						refreshError,
 					);
 					const currentPath = window.location.pathname + window.location.search;
-					window.location.href = `${import.meta.env.BASE_URL}admin/login?redirectTo=${encodeURIComponent(currentPath)}`;
+					window.location.href = `${import.meta.env.BASE_URL}settings/login?redirectTo=${encodeURIComponent(currentPath)}`;
 					return Promise.reject(refreshError);
 				}
 			} else {
@@ -192,7 +192,7 @@ axiosInstance.interceptors.response.use(
 					`[Axios][NoRefreshToken][${originalRequest._requestId}] redirecting to login from ${from}`,
 				);
 				const currentPath = window.location.pathname + window.location.search;
-				window.location.href = `${import.meta.env.BASE_URL}admin/login?redirectTo=${encodeURIComponent(currentPath)}`;
+				window.location.href = `${import.meta.env.BASE_URL}settings/login?redirectTo=${encodeURIComponent(currentPath)}`;
 			}
 		}
 

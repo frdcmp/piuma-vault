@@ -42,7 +42,7 @@ const VerifyEmail = () => {
 						Your account is now active. You can log in to continue.
 					</p>
 					<div className="vp-auth-actions">
-						<PvButton variant="primary" to="/admin/login">
+						<PvButton variant="primary" to="/settings/login">
 							Go to Login
 						</PvButton>
 					</div>
@@ -63,7 +63,7 @@ const VerifyEmail = () => {
 					{typeof errorMsg === "string" ? errorMsg : "Something went wrong."}
 				</p>
 				<p className="vp-text vp-muted vp-auth-footnote">
-					<Link className="vp-link" to="/admin/login">
+					<Link className="vp-link" to="/settings/login">
 						Back to login
 					</Link>
 				</p>

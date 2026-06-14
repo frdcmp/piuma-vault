@@ -9,9 +9,9 @@ const PUBLIC_PREFIXES = [
 	"/share/",
 	"/s/",
 	"/docs",
-	"/admin/login",
-	"/admin/forgot-password",
-	"/admin/verify-email",
+	"/settings/login",
+	"/settings/forgot-password",
+	"/settings/verify-email",
 ];
 
 const ACTIVITY_EVENTS = [

@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	Animated,
 	BackHandler,
@@ -11,12 +11,14 @@ import {
 	TouchableOpacity,
 	View,
 } from "react-native";
-import EmptyState from "../components/EmptyState";
+import HomeMenu from "../components/HomeMenu";
+import { MenuSwitcher } from "../components/home";
 import NoteEditor from "../components/NoteEditor";
 import NotesListPanel from "../components/NotesListPanel";
 import { useTopInset } from "../components/SystemBars";
 import { useNote, useNotesLiveUpdates } from "../queries/notesQuery";
 import { useAuthStore } from "../stores/authStore";
+import { usePrefsStore } from "../stores/prefsStore";
 import { colors } from "../utils/theme";
 import ChatScreen from "./ChatScreen";
 
@@ -45,13 +47,38 @@ const formatNotePath = (note) => {
 	return `${note.folder}/${title}`;
 };
 
-function EmptyHeader({ onMenu, onChat }) {
+function HomeHeader({ onMenu, onChat, switcherShown, onReveal }) {
 	const topInset = useTopInset();
+	const menuStyle = usePrefsStore((s) => s.menuStyle);
+	const setMenuStyle = usePrefsStore((s) => s.setMenuStyle);
+	// Fade the switcher in/out (kept mounted so it animates both ways).
+	const fade = useRef(new Animated.Value(0)).current;
+	useEffect(() => {
+		Animated.timing(fade, {
+			toValue: switcherShown ? 1 : 0,
+			duration: 200,
+			useNativeDriver: true,
+		}).start();
+	}, [switcherShown, fade]);
+
 	return (
-		<View style={[styles.emptyHeader, { paddingTop: topInset + 6 }]}>
+		<View style={[styles.homeHeader, { paddingTop: topInset + 6 }]}>
 			<TouchableOpacity onPress={onMenu} style={styles.headerCol} hitSlop={10}>
 				<Ionicons name="menu" size={24} color={colors.text} />
 			</TouchableOpacity>
+			<Animated.View
+				style={[styles.headerCenter, { opacity: fade }]}
+				pointerEvents={switcherShown ? "auto" : "none"}
+			>
+				<MenuSwitcher
+					value={menuStyle}
+					onChange={(key) => {
+						setMenuStyle(key);
+						// Interacting keeps it alive — restart the auto-hide timer.
+						onReveal?.();
+					}}
+				/>
+			</Animated.View>
 			<TouchableOpacity onPress={onChat} style={styles.headerCol} hitSlop={10}>
 				<Ionicons
 					name="chatbubble-ellipses-outline"
@@ -84,6 +111,24 @@ export default function VaultHomeScreen({ navigation, route }) {
 	// the pan responder callbacks (which capture stale state otherwise).
 	const [openDrawer, setOpenDrawer] = useState(null); // null | 'left' | 'right'
 	const openDrawerRef = useRef(null);
+
+	// Layout switcher (in the header) is hidden until the mascot is tapped, then
+	// auto-hides after a few seconds of inactivity.
+	const [switcherShown, setSwitcherShown] = useState(false);
+	const hideTimerRef = useRef(null);
+	const revealSwitcher = useCallback(() => {
+		setSwitcherShown(true);
+		if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+		hideTimerRef.current = setTimeout(() => setSwitcherShown(false), 4000);
+	}, []);
+	useEffect(() => () => clearTimeout(hideTimerRef.current), []);
+
+	// Mirrors "are we on the home screen?" for synchronous reads in the pan
+	// responder, which decides whether horizontal swipes open the drawers.
+	const onHomeRef = useRef(true);
+	useEffect(() => {
+		onHomeRef.current = selection.id == null;
+	}, [selection.id]);
 
 	const leftX = useRef(new Animated.Value(LEFT_CLOSED)).current;
 	const rightX = useRef(new Animated.Value(RIGHT_CLOSED)).current;
@@ -209,6 +254,12 @@ export default function VaultHomeScreen({ navigation, route }) {
 			}
 			return false;
 		}
+		// Closed state: a swipe would open a drawer. On the home screen the
+		// non-classic layouts use horizontal drags for their own gestures (spin
+		// the dial/orbit), so don't hijack swipes to open notes/chat there.
+		if (onHomeRef.current && usePrefsStore.getState().menuStyle !== "classic") {
+			return false;
+		}
 		if (g.dx > 0) {
 			gestureSideRef.current = "left";
 			return true;
@@ -295,8 +346,13 @@ export default function VaultHomeScreen({ navigation, route }) {
 					/>
 				) : (
 					<View style={styles.emptyMain}>
-						<EmptyHeader onMenu={openLeft} onChat={openRight} />
-						<EmptyState
+						<HomeHeader
+							onMenu={openLeft}
+							onChat={openRight}
+							switcherShown={switcherShown}
+							onReveal={revealSwitcher}
+						/>
+						<HomeMenu
 							onFiles={openLeft}
 							onChat={openRight}
 							onStorage={() => navigation.navigate("Storage")}
@@ -305,6 +361,7 @@ export default function VaultHomeScreen({ navigation, route }) {
 							onRecorder={() => navigation.navigate("Recorder")}
 							onSettings={() => navigation.navigate("Settings")}
 							onLogout={logout}
+							onMascotTap={revealSwitcher}
 						/>
 					</View>
 				)}
@@ -356,7 +413,7 @@ const styles = StyleSheet.create({
 	root: { flex: 1, backgroundColor: colors.bg, overflow: "hidden" },
 	main: { flex: 1 },
 	emptyMain: { flex: 1, backgroundColor: colors.bg },
-	emptyHeader: {
+	homeHeader: {
 		flexDirection: "row",
 		alignItems: "flex-start",
 		justifyContent: "space-between",
@@ -367,6 +424,11 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		paddingHorizontal: 8,
 		paddingVertical: 6,
+	},
+	headerCenter: {
+		flex: 1,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 	scrim: {
 		...StyleSheet.absoluteFillObject,

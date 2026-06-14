@@ -18,7 +18,7 @@ const ARCHITECTURE = [
 	{
 		icon: <FileTextOutlined />,
 		title: "Frontend",
-		body: "React 19 + Vite + Ant Design. The vault (notes) is served at the app root /; admin tools live under /admin. Built to frontend/dist and served by Nginx.",
+		body: "React 19 + Vite + Ant Design. The vault (notes) is served at the app root /; settings live under /settings. Built to frontend/dist and served by Nginx.",
 	},
 	{
 		icon: <ThunderboltOutlined />,

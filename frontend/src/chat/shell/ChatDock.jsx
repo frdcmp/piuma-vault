@@ -1,7 +1,10 @@
 import { useEffect } from "react";
-import useChatDockStore, { CHAT_MAX, CHAT_MIN } from "../store/chatDockStore";
-import useUiStore from "../store/uiStore";
-import ChatPanel from "./ChatPanel";
+import useChatDockStore, {
+	CHAT_MAX,
+	CHAT_MIN,
+} from "../../store/chatDockStore";
+import useUiStore from "../../store/uiStore";
+import ChatPanel from "../dock/ChatPanel";
 import "./ChatDock.css";
 
 // The shared right-side chat column, rendered as the last child of a

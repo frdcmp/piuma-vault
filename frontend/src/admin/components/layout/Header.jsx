@@ -51,9 +51,9 @@ const HeaderComponent = ({ onSidebarToggle, showSidebarToggle = false }) => {
 							<button
 								type="button"
 								className="vp-icon-btn"
-								title="Admin"
-								onClick={() => navigate("/admin")}
-								aria-label="Admin"
+								title="Settings"
+								onClick={() => navigate("/settings")}
+								aria-label="Settings"
 							>
 								<SettingOutlined />
 							</button>

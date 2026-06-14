@@ -34,8 +34,8 @@ import TasksPage from "./admin/pages/tasks/TasksPage";
 import TokenUsage from "./admin/pages/token-usage/TokenUsage";
 import TrashPage from "./admin/pages/trash";
 import { queryClient } from "./api/queryClient";
-import ChatPage from "./chat/standalone/ChatPage";
-import WorkspaceLayout from "./chat/WorkspaceLayout";
+import ChatPage from "./chat/page/ChatPage";
+import WorkspaceLayout from "./chat/shell/WorkspaceLayout";
 import PixelLoader from "./components/PixelLoader";
 import { ScreenLockGate } from "./components/screenLock";
 import SharedFolderPage from "./share/SharedFolderPage";
@@ -175,14 +175,14 @@ function AppContent() {
 					/>
 				</Route>
 
-				{/* Admin auth routes (no layout) */}
-				<Route path="/admin/login" element={<Login />} />
-				<Route path="/admin/forgot-password" element={<ForgotPassword />} />
-				<Route path="/admin/verify-email" element={<VerifyEmail />} />
+				{/* Settings auth routes (no layout) */}
+				<Route path="/settings/login" element={<Login />} />
+				<Route path="/settings/forgot-password" element={<ForgotPassword />} />
+				<Route path="/settings/verify-email" element={<VerifyEmail />} />
 
-				{/* Admin app routes (with PageLayout) */}
+				{/* Settings app routes (with PageLayout) */}
 				<Route
-					path="/admin"
+					path="/settings"
 					element={
 						<ProtectedRoute requiredPermission="admin_access">
 							<PageLayout />
