@@ -7,9 +7,8 @@ node_modules
 dist
 target
 
-# ---- Lockfiles (mobile's package-lock is intentionally tracked) ----
+# ---- Lockfiles ----
 package-lock.json
-!mobile/package-lock.json
 bun.lock
 Cargo.lock
 
@@ -17,7 +16,9 @@ Cargo.lock
 .env
 .env*.local
 keys
-mobile/google-services.json
+
+# ---- Mobile app (private; not part of the public repo — rebuild your own) ----
+mobile/
 
 # ---- Data / runtime (never commit DB data or dumps) ----
 postgres_data
@@ -32,7 +33,7 @@ yarn-error.log*
 .DS_Store
 .vscode/
 
-# ---- Audio files (except the bundled in-app alarm tone) ----
+# ---- Audio files ----
 *.mp3
 *.wav
 *.flac
@@ -42,7 +43,6 @@ yarn-error.log*
 *.wma
 *.aiff
 *.mid
-!mobile/assets/alarm.wav
 
 # ---- Private docs / scripts / tooling (not for the public repo) ----
 CLAUDE.md

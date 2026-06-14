@@ -14,7 +14,7 @@ import "./NotesSidebar.css";
 const SIDEBAR_MIN = 220;
 const SIDEBAR_MAX = 560;
 const SIDEBAR_DEFAULT = 320;
-const SIDEBAR_STORAGE_KEY = "pv:notes-sidebar-width";
+const SIDEBAR_STORAGE_KEY = "piuma:notes-sidebar-width";
 
 const clampWidth = (n, min, max) => Math.min(max, Math.max(min, Math.round(n)));
 

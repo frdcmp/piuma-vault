@@ -368,7 +368,7 @@ export default function StorageTree({
 							</button>
 							<div>
 								<h3 className="notes-sidebar-title">Storage</h3>
-								<div className="storage-sidebar-sub">bunny · zone pv</div>
+								<div className="storage-sidebar-sub">bunny · zone your-zone</div>
 							</div>
 						</div>
 					</div>

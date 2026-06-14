@@ -27,7 +27,7 @@ use super::otp;
 // site's canonical identity), falling back to a default. A full URL is trimmed
 // to a clean host label (e.g. `https://vault.example.com/` → `vault.example.com`).
 fn otp_issuer() -> String {
-    let raw = std::env::var("SITE_URL").unwrap_or_else(|_| "pv".to_string());
+    let raw = std::env::var("SITE_URL").unwrap_or_else(|_| "Piuma Vault".to_string());
     let label = raw
         .trim()
         .trim_start_matches("https://")
@@ -38,7 +38,7 @@ fn otp_issuer() -> String {
         .unwrap_or("")
         .trim();
     if label.is_empty() {
-        "pv".to_string()
+        "Piuma Vault".to_string()
     } else {
         label.to_string()
     }

@@ -95,14 +95,14 @@ const SecuritySettings = () => {
 		if (!backupCodes?.length) return;
 		const blob = new Blob(
 			[
-				`pv two-factor backup codes\n\nEach code can be used once. Store somewhere safe.\n\n${backupCodes.join("\n")}\n`,
+				`Piuma Vault two-factor backup codes\n\nEach code can be used once. Store somewhere safe.\n\n${backupCodes.join("\n")}\n`,
 			],
 			{ type: "text/plain;charset=utf-8" },
 		);
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement("a");
 		a.href = url;
-		a.download = "pv-backup-codes.txt";
+		a.download = "piuma-backup-codes.txt";
 		a.click();
 		URL.revokeObjectURL(url);
 	};

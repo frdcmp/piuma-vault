@@ -136,7 +136,7 @@ pub(crate) async fn download_url(
 }
 
 // Storage key of the mobile update manifest published by `mobile/build.sh -p apk`.
-const UPDATE_MANIFEST_KEY: &str = "expo/pv/apk/latest.json";
+const UPDATE_MANIFEST_KEY: &str = "expo/piuma/apk/latest.json";
 
 // GET /storage/app-update-manifest — read the mobile update manifest straight
 // from storage and return it as JSON. Proxied server-side rather than handed out
