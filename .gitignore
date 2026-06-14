@@ -85,3 +85,7 @@ CLAUDE.md
 # Tool/runtime directories
 .reasonix/
 .codegraph/
+
+# Firebase / Google services config (contains API key)
+mobile/google-services.json
+REASONIX.md
