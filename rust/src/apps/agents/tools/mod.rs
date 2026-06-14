@@ -17,6 +17,7 @@ mod agenda;
 mod buckets;
 mod calendar;
 pub mod conversations;
+mod db_backup;
 mod email;
 pub mod github;
 mod navigation;
@@ -47,6 +48,7 @@ fn all_defs() -> Vec<(&'static str, &'static str, Value)> {
     defs.extend(github::defs());
     defs.extend(navigation::defs());
     defs.extend(recordings::defs());
+    defs.extend(db_backup::defs());
     defs
 }
 
@@ -169,6 +171,8 @@ pub async fn dispatch(
         "list_recordings" => recordings::list_recordings(pool, user_id, args).await,
         "get_recording" => recordings::get_recording(pool, user_id, args).await,
         "start_recording" => recordings::start_recording(pool, user_id, args).await,
+        // ── Database backup (full DB dump → S3; non-destructive) ──
+        "backup_database" => db_backup::backup_database(pool, args).await,
         other => Err(format!("unknown tool: {other}")),
     }
 }

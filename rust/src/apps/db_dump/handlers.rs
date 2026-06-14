@@ -139,29 +139,26 @@ async fn build_dump(pool: &DbPool) -> Result<(Vec<u8>, usize, i64), String> {
     Ok((out, table_count, total_rows))
 }
 
-// ── Handlers ──────────────────────────────────────────────────────────────
+// ── Dump + upload (reusable) ────────────────────────────────────────────────
 
-/// POST /admin/db-dump/create — dump the whole DB and upload it to `dump/`.
-pub async fn create_dump(user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
-    if !check_permission(&user, REQUIRED_PERM) {
-        return forbidden();
-    }
-    let (client, bucket) = match s3_client(pool.get_ref()).await {
-        Ok(v) => v,
-        Err(e) => return server_err(format!("S3 not configured: {e}")),
-    };
+/// Build a full DB dump and upload it to the S3 `dump/` prefix. Self-contained
+/// (only needs the pool) so both the HTTP handler and the agent's
+/// `backup_database` tool can drive a backup. Errors are returned as strings.
+pub async fn run_dump(pool: &DbPool) -> Result<CreateDumpResponse, String> {
+    let (client, bucket) = s3_client(pool)
+        .await
+        .map_err(|e| format!("S3 not configured: {e}"))?;
 
-    let (data, tables, rows) = match build_dump(pool.get_ref()).await {
-        Ok(v) => v,
-        Err(e) => return server_err(format!("dump failed: {e}")),
-    };
+    let (data, tables, rows) = build_dump(pool)
+        .await
+        .map_err(|e| format!("dump failed: {e}"))?;
 
     let now = chrono::Utc::now();
     let filename = format!("piuma-vault_{}.sql", now.format("%Y%m%d_%H%M%S"));
     let key = format!("{DUMP_PREFIX}{filename}");
     let size = data.len() as i64;
 
-    if let Err(e) = client
+    client
         .put_object()
         .bucket(&bucket)
         .key(&key)
@@ -169,11 +166,9 @@ pub async fn create_dump(user: AuthenticatedUser, pool: web::Data<DbPool>) -> im
         .content_type("application/sql")
         .send()
         .await
-    {
-        return server_err(format!("upload failed: {e}"));
-    }
+        .map_err(|e| format!("upload failed: {e}"))?;
 
-    HttpResponse::Ok().json(CreateDumpResponse {
+    Ok(CreateDumpResponse {
         key,
         filename,
         size,
@@ -181,6 +176,19 @@ pub async fn create_dump(user: AuthenticatedUser, pool: web::Data<DbPool>) -> im
         tables,
         rows,
     })
+}
+
+// ── Handlers ──────────────────────────────────────────────────────────────
+
+/// POST /admin/db-dump/create — dump the whole DB and upload it to `dump/`.
+pub async fn create_dump(user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
+    if !check_permission(&user, REQUIRED_PERM) {
+        return forbidden();
+    }
+    match run_dump(pool.get_ref()).await {
+        Ok(resp) => HttpResponse::Ok().json(resp),
+        Err(e) => server_err(e),
+    }
 }
 
 /// GET /admin/db-dump/list — list backups under `dump/`, newest first.
