@@ -102,5 +102,7 @@ pub static DEF: AgentDef = AgentDef {
         "github_create_pull_request",
         // Navigation — agent-initiated "Go" actions (note/event/task/view/url)
         "navigate",
+        // Database backup — full DB dump → S3 (non-destructive; mainly for cron)
+        "backup_database",
     ],
 };
