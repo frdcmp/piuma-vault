@@ -146,7 +146,13 @@ fn translate_messages(messages: &[Value]) -> (String, Vec<Value>) {
                         let parsed: Value =
                             serde_json::from_str(args).unwrap_or_else(|_| json!({}));
                         call_names.insert(id.to_string(), name.to_string());
-                        parts.push(json!({ "functionCall": { "name": name, "args": parsed } }));
+                        let mut part = json!({ "functionCall": { "name": name, "args": parsed } });
+                        // Echo Gemini 3's thoughtSignature back on the same part,
+                        // exactly as received — required for the next round to validate.
+                        if let Some(sig) = tc.get("thought_signature").and_then(|s| s.as_str()) {
+                            part["thoughtSignature"] = json!(sig);
+                        }
+                        parts.push(part);
                     }
                 }
                 if parts.is_empty() {
@@ -312,10 +318,18 @@ pub async fn call(
                         if let Some(fc) = p.get("functionCall") {
                             let name = fc.get("name").and_then(|n| n.as_str()).unwrap_or("");
                             let args = fc.get("args").cloned().unwrap_or_else(|| json!({}));
+                            // Gemini 3 attaches an opaque thoughtSignature to the
+                            // functionCall part; it must be echoed back verbatim
+                            // when this call is replayed in the next round's history.
+                            let sig = p
+                                .get("thoughtSignature")
+                                .and_then(|s| s.as_str())
+                                .map(str::to_string);
                             out.tool_calls.push(ToolCall {
                                 id: format!("call-{}", out.tool_calls.len()),
                                 name: name.to_string(),
                                 arguments: args.to_string(),
+                                thought_signature: sig,
                             });
                         } else if let Some(t) = p.get("text").and_then(|t| t.as_str()) {
                             if t.is_empty() {

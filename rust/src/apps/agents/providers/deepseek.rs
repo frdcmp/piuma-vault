@@ -191,6 +191,7 @@ pub async fn call(
                                     id: String::new(),
                                     name: String::new(),
                                     arguments: String::new(),
+                                    thought_signature: None,
                                 });
                             }
                             let slot = &mut tc_acc[idx];

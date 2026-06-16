@@ -392,6 +392,7 @@ pub async fn call(
             } else {
                 t.args
             },
+            thought_signature: None,
         })
         .collect();
     if out.finish.is_empty() {
