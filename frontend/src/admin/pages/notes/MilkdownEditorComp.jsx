@@ -7,11 +7,15 @@ import {
 	rootCtx,
 } from "@milkdown/kit/core";
 import { clipboard } from "@milkdown/kit/plugin/clipboard";
-import { cursor } from "@milkdown/kit/plugin/cursor";
+import { cursor, dropCursorConfig } from "@milkdown/kit/plugin/cursor";
 import { history } from "@milkdown/kit/plugin/history";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { trailing } from "@milkdown/kit/plugin/trailing";
-import { commonmark, imageSchema } from "@milkdown/kit/preset/commonmark";
+import {
+	codeBlockSchema,
+	commonmark,
+	imageSchema,
+} from "@milkdown/kit/preset/commonmark";
 import { gfm } from "@milkdown/kit/preset/gfm";
 import { Plugin, PluginKey } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
@@ -22,9 +26,11 @@ import { useEffect, useRef, useState } from "react";
 import {
 	attachmentMeta,
 	isAttachmentUrl,
+	stripQueryWidth,
 	widthFromUrl,
 	withWidth,
 } from "../../../utils/attachments";
+import { renderMermaid } from "../../../utils/mermaid";
 import "./MilkdownEditorComp.css";
 
 const searchPluginKey = new PluginKey("search-plugin");
@@ -314,7 +320,10 @@ function MilkdownEditor({
 				dom.append(img, handle);
 
 				const applyAttrs = (n) => {
-					img.src = n.attrs.src || "";
+					// Strip any legacy `?w=` from the query — it breaks token-auth
+					// CDNs. Width now lives in the fragment (`#w=`), which the
+					// browser never sends, so it's safe to keep on the src.
+					img.src = stripQueryWidth(n.attrs.src || "");
 					img.alt = n.attrs.alt || "";
 					if (n.attrs.title) img.title = n.attrs.title;
 					const w = widthFromUrl(n.attrs.src || "");
@@ -383,10 +392,137 @@ function MilkdownEditor({
 			},
 		);
 
+		// Code-block node view: ```mermaid fences render the diagram, with a
+		// per-block toggle (top-right) to switch between the rendered diagram
+		// (view) and the editable source (edit) — not both at once. Non-mermaid
+		// code blocks keep the default `<pre><code>` look. Mermaid is lazy-loaded.
+		let cbViewSeq = 0;
+		const mermaidCodeView = $view(codeBlockSchema.node, () => (node) => {
+			cbViewSeq += 1;
+			const viewId = cbViewSeq;
+			const dom = document.createElement("div");
+			dom.className = "pv-codeblock";
+			const toggle = document.createElement("button");
+			toggle.type = "button";
+			toggle.className = "pv-mermaid-toggle";
+			toggle.contentEditable = "false";
+			const pre = document.createElement("pre");
+			const code = document.createElement("code");
+			pre.appendChild(code);
+			const preview = document.createElement("div");
+			preview.className = "pv-mermaid";
+			preview.contentEditable = "false";
+			dom.append(toggle, pre, preview);
+
+			const isMermaid = (n) =>
+				(n.attrs.language || "").trim().toLowerCase() === "mermaid";
+
+			// New/empty mermaid blocks open in edit mode; ones with content open
+			// in view mode. State is per-block and sticky until the user toggles.
+			let editing = isMermaid(node) && node.textContent.trim() === "";
+			let curNode = node;
+			let timer = null;
+			let lastChart = null;
+
+			// Render the SVG (debounced). Caller guarantees mermaid + view mode.
+			// Bail when the content is unchanged so repeated `update()` calls (from
+			// selection/decoration churn) don't perpetually reset the debounce and
+			// starve the render.
+			const renderPreview = (n) => {
+				const chart = n.textContent;
+				if (chart === lastChart) return;
+				lastChart = chart;
+				if (timer) clearTimeout(timer);
+				timer = setTimeout(() => {
+					const src = chart.trim();
+					if (!src) {
+						preview.innerHTML = "";
+						return;
+					}
+					renderMermaid(`cb-${viewId}`, src)
+						.then((svg) => {
+							preview.innerHTML = svg;
+						})
+						.catch((e) => {
+							preview.innerHTML = "";
+							const err = document.createElement("div");
+							err.className = "pv-mermaid-error";
+							err.textContent = e?.message || String(e);
+							preview.appendChild(err);
+						});
+				}, 250);
+			};
+
+			// Show source vs diagram based on `editing`; non-mermaid is always source.
+			const applyMode = (n) => {
+				const mer = isMermaid(n);
+				dom.classList.toggle("pv-codeblock--mermaid", mer);
+				toggle.style.display = mer ? "" : "none";
+				if (!mer) {
+					pre.style.display = "";
+					preview.style.display = "none";
+					return;
+				}
+				if (editing) {
+					pre.style.display = "";
+					preview.style.display = "none";
+					toggle.textContent = "view";
+					toggle.title = "Show rendered diagram";
+				} else {
+					pre.style.display = "none";
+					preview.style.display = "";
+					toggle.textContent = "edit";
+					toggle.title = "Edit diagram source";
+					renderPreview(n);
+				}
+			};
+
+			// Toggle on `mousedown` (not click): preventDefault + stopPropagation
+			// keep ProseMirror from swallowing it as an editor selection, so the
+			// switch fires reliably.
+			toggle.addEventListener("mousedown", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				editing = !editing;
+				applyMode(curNode);
+			});
+
+			applyMode(node);
+
+			return {
+				dom,
+				contentDOM: code,
+				// Only real edits to the source <code> should make ProseMirror
+				// re-read the DOM. Everything else — our toggle/preview chrome AND
+				// the `pre`/preview style changes from applyMode — must be ignored,
+				// otherwise PM rebuilds the whole node view on each toggle and
+				// resets the view/edit state.
+				ignoreMutation: (m) => !code.contains(m.target),
+				update: (updated) => {
+					if (updated.type.name !== "code_block") return false;
+					curNode = updated;
+					applyMode(updated);
+					return true;
+				},
+				destroy: () => {
+					if (timer) clearTimeout(timer);
+				},
+			};
+		});
+
 		const editor = Editor.make()
 			.config((ctx) => {
 				ctx.set(rootCtx, root);
 				ctx.set(defaultValueCtx, initialMarkdownRef.current || "");
+				// Make the drag-and-drop position indicator visible: Milkdown's
+				// default `color: false` leaves the indicator with no background,
+				// so it's invisible on the dark theme. Set a bright accent + width
+				// so you can see exactly which line a dropped image will land on.
+				ctx.set(dropCursorConfig.key, {
+					width: 3,
+					color: "#f7c948",
+					class: "milkdown-drop-indicator",
+				});
 				ctx.update(editorViewOptionsCtx, (prev) => ({
 					...prev,
 					attributes: {
@@ -408,6 +544,7 @@ function MilkdownEditor({
 			.use(listener)
 			.use(searchHighlightPlugin)
 			.use(imageResizeView)
+			.use(mermaidCodeView)
 			.use(attachmentViewPlugin);
 
 		editorRef.current = editor;

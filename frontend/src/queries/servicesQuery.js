@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	getServices,
+	imagegenModels,
 	testEmbedding,
 	testGithub,
+	testImagegen,
 	testStorage,
 	testTranscription,
 	testWebsearch,
@@ -40,3 +42,8 @@ export const useTestGithub = () => useMutation({ mutationFn: testGithub });
 
 export const useTestTranscription = () =>
 	useMutation({ mutationFn: testTranscription });
+
+export const useTestImagegen = () => useMutation({ mutationFn: testImagegen });
+
+export const useImagegenModels = () =>
+	useMutation({ mutationFn: imagegenModels });

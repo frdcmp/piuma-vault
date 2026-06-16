@@ -1,6 +1,7 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { fetchConversation } from "../../api/agentChatApi";
 import { appendTextPart, mapServerMessage } from "./messageModel";
+import { createTextSmoother } from "./textSmoother";
 
 // The streaming machinery shared by every turn (send / regenerate / fork): the
 // stream callback factory, dropped-stream recovery, and the post-turn reload to
@@ -19,6 +20,26 @@ export default function useChatStream({
 	activeModelRef,
 	recoverTimeoutText = null,
 }) {
+	// The typewriter smoothing the active turn's text (one per turn). Held in a
+	// ref so the post-turn reload can wait for it to finish painting, and an abort
+	// can stop it mid-flight.
+	const smootherRef = useRef(null);
+
+	// Append literal text to the trailing assistant message (the smoother's sink).
+	const commitText = useCallback(
+		(delta) =>
+			setMessages((curr) => {
+				const updated = [...curr];
+				const last = updated[updated.length - 1];
+				updated[updated.length - 1] = {
+					...last,
+					parts: appendTextPart(last.parts, delta),
+				};
+				return updated;
+			}),
+		[setMessages],
+	);
+
 	// Poll the conversation until the assistant message lands, then rebuild from
 	// server truth (what a manual reload does, automatically).
 	const recoverTurn = useCallback(
@@ -60,6 +81,12 @@ export default function useChatStream({
 	// gives every message its real id + branch metadata after a turn.
 	const reloadActivePath = useCallback(
 		async (convId) => {
+			// Let the typewriter finish painting what it already received, then
+			// reconcile to server truth — so the swap is seamless (no end-of-message
+			// snap). On abort the smoother is already cancelled, so this resolves at
+			// once.
+			await (smootherRef.current?.finish() ?? Promise.resolve());
+			smootherRef.current = null;
 			if (!convId) return;
 			try {
 				const d = await fetchConversation(convId);
@@ -75,21 +102,22 @@ export default function useChatStream({
 	// Stream callbacks for a turn. onText/onTool append to the trailing assistant
 	// message; onDone stamps the producing model and clears the streaming flag.
 	const buildHandlers = useCallback(
-		(convId) => {
-			const appendText = (delta) =>
-				setMessages((curr) => {
-					const updated = [...curr];
-					const last = updated[updated.length - 1];
-					updated[updated.length - 1] = {
-						...last,
-						parts: appendTextPart(last.parts, delta),
-					};
-					return updated;
-				});
+		(convId, signal) => {
+			// Fresh typewriter for this turn; abandon any previous one.
+			smootherRef.current?.cancel();
+			const smoother = createTextSmoother(commitText);
+			smootherRef.current = smoother;
+			// Stop (kill the turn) / switch conversations aborts the fetch — halt the
+			// typewriter too so it doesn't keep typing into a stale message.
+			signal?.addEventListener("abort", () => smoother.cancel(), {
+				once: true,
+			});
 			return {
-				onText: appendText,
+				onText: (delta) => smoother.push(delta),
 				onThinking: () => {},
 				onTool: (t) => {
+					// Paint any buffered text before this non-text part so order holds.
+					smoother.flush();
 					if (t.name === "navigate") {
 						if (t.done) return;
 						setMessages((curr) => {
@@ -153,12 +181,14 @@ export default function useChatStream({
 					});
 				},
 				onError: (e) => {
+					// Drain buffered text first, then append the notice after it.
+					smoother.flush();
 					if (e?.isTransport && convId) {
-						appendText("\n\n_(reconnecting…)_");
+						commitText("\n\n_(reconnecting…)_");
 						recoverTurn(convId);
 						return;
 					}
-					appendText(`\n\n**Error:** ${e.message}`);
+					commitText(`\n\n**Error:** ${e.message}`);
 				},
 				onDone: () => {
 					const used = activeModelRef.current?.model_id || null;
@@ -174,7 +204,7 @@ export default function useChatStream({
 				},
 			};
 		},
-		[recoverTurn, setMessages, setIsStreaming, activeModelRef],
+		[commitText, recoverTurn, setMessages, setIsStreaming, activeModelRef],
 	);
 
 	return { buildHandlers, recoverTurn, reloadActivePath };

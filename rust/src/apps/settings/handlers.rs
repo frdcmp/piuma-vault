@@ -1,8 +1,8 @@
 use actix_web::{web, HttpResponse, Responder};
 
 use super::models::{
-    ServiceConfigResponse, TestEmbeddingRequest, TestGithubRequest, TestStorageRequest,
-    TestTranscriptionRequest, TestWebsearchRequest, UpdateServiceConfig,
+    ServiceConfigResponse, TestEmbeddingRequest, TestGithubRequest, TestImagegenRequest,
+    TestStorageRequest, TestTranscriptionRequest, TestWebsearchRequest, UpdateServiceConfig,
 };
 use super::store;
 use crate::apps::auth::middleware::check_permission;
@@ -49,6 +49,21 @@ async fn current_config(pool: &DbPool) -> ServiceConfigResponse {
         transcription_deepgram_api_key_set: store::get(pool, store::TRANSCRIPTION_DEEPGRAM_API_KEY).await.is_some(),
         github_api_base: store::get(pool, store::GITHUB_API_BASE).await.unwrap_or_default(),
         github_token_set: store::get(pool, store::GITHUB_TOKEN).await.is_some(),
+        imagegen_provider: store::get(pool, store::IMAGEGEN_PROVIDER)
+            .await
+            .unwrap_or_else(|| "openai".to_string()),
+        imagegen_openai_model: store::get(pool, store::IMAGEGEN_OPENAI_MODEL)
+            .await
+            .unwrap_or_default(),
+        imagegen_openai_base: store::get(pool, store::IMAGEGEN_OPENAI_BASE)
+            .await
+            .unwrap_or_default(),
+        imagegen_gemini_model: store::get(pool, store::IMAGEGEN_GEMINI_MODEL)
+            .await
+            .unwrap_or_default(),
+        imagegen_openai_api_key_set: store::get(pool, store::IMAGEGEN_OPENAI_API_KEY).await.is_some(),
+        imagegen_gemini_api_key_set: store::get(pool, store::IMAGEGEN_GEMINI_API_KEY).await.is_some(),
+        imagegen_stability_api_key_set: store::get(pool, store::IMAGEGEN_STABILITY_API_KEY).await.is_some(),
     }
 }
 
@@ -96,6 +111,13 @@ pub async fn update_services(
         (store::TRANSCRIPTION_DEEPGRAM_API_KEY, body.transcription_deepgram_api_key),
         (store::GITHUB_API_BASE, body.github_api_base),
         (store::GITHUB_TOKEN, body.github_token),
+        (store::IMAGEGEN_PROVIDER, body.imagegen_provider),
+        (store::IMAGEGEN_OPENAI_API_KEY, body.imagegen_openai_api_key),
+        (store::IMAGEGEN_OPENAI_MODEL, body.imagegen_openai_model),
+        (store::IMAGEGEN_OPENAI_BASE, body.imagegen_openai_base),
+        (store::IMAGEGEN_GEMINI_API_KEY, body.imagegen_gemini_api_key),
+        (store::IMAGEGEN_GEMINI_MODEL, body.imagegen_gemini_model),
+        (store::IMAGEGEN_STABILITY_API_KEY, body.imagegen_stability_api_key),
     ];
 
     for (key, maybe_value) in updates {
@@ -270,5 +292,44 @@ pub async fn test_storage(
     {
         Ok(msg) => test_result(true, msg),
         Err(e) => test_result(false, e),
+    }
+}
+
+/// POST /admin/settings/services/test/imagegen — generate one throwaway image to
+/// verify the provider key. An optional body lets the dashboard test an unsaved
+/// provider/key; blank fields fall back to saved config.
+pub async fn test_imagegen(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    body: Option<web::Json<TestImagegenRequest>>,
+) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden();
+    }
+    let req = body.map(|b| b.into_inner()).unwrap_or_default();
+    match crate::apps::image_gen::test(pool.get_ref(), req.provider, req.api_key, req.model).await {
+        Ok((message, image)) => {
+            HttpResponse::Ok().json(serde_json::json!({ "ok": true, "message": message, "image": image }))
+        }
+        Err(e) => test_result(false, e),
+    }
+}
+
+/// POST /admin/settings/services/imagegen/models — list the image-capable models
+/// the configured provider exposes for its key (mirrors the LLM model picker).
+/// An optional body supplies an unsaved provider/key; blank fields fall back to
+/// saved config.
+pub async fn imagegen_models(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    body: Option<web::Json<TestImagegenRequest>>,
+) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden();
+    }
+    let req = body.map(|b| b.into_inner()).unwrap_or_default();
+    match crate::apps::image_gen::list_models(pool.get_ref(), req.provider, req.api_key).await {
+        Ok(models) => HttpResponse::Ok().json(serde_json::json!({ "models": models })),
+        Err(e) => HttpResponse::Ok().json(serde_json::json!({ "models": [], "error": e })),
     }
 }

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+/* biome-ignore-all lint/security/noDangerouslySetInnerHtml: mermaid SVG is rendered from the note owner's own content (same trust as the note body). */
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useParams, useSearchParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
@@ -7,9 +8,63 @@ import {
 	attachmentMeta,
 	fileNameFromUrl,
 	isAttachmentUrl,
+	stripQueryWidth,
 	widthFromUrl,
 } from "../utils/attachments";
+import { renderMermaid } from "../utils/mermaid";
 import "./SharedNotePage.css";
+
+// A ```mermaid block on the public share page: renders the diagram, with a
+// per-block toggle (top-right) to flip to the raw source and back (read-only).
+function MermaidBlock({ chart }) {
+	const id = useId();
+	const [showSource, setShowSource] = useState(false);
+	const [svg, setSvg] = useState("");
+	const [error, setError] = useState(null);
+
+	useEffect(() => {
+		if (showSource) return;
+		let cancelled = false;
+		renderMermaid(id, chart)
+			.then((s) => {
+				if (!cancelled) {
+					setSvg(s);
+					setError(null);
+				}
+			})
+			.catch((e) => {
+				if (!cancelled) setError(e?.message || String(e));
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [chart, id, showSource]);
+
+	return (
+		<div className="shared-mermaid">
+			<button
+				type="button"
+				className="shared-mermaid-toggle"
+				onClick={() => setShowSource((s) => !s)}
+				title={showSource ? "Show rendered diagram" : "Show diagram source"}
+			>
+				{showSource ? "diagram" : "source"}
+			</button>
+			{showSource ? (
+				<pre className="shared-mermaid-src">
+					<code>{chart}</code>
+				</pre>
+			) : error ? (
+				<div className="shared-mermaid-error">{error}</div>
+			) : (
+				<div
+					className="shared-mermaid-svg"
+					dangerouslySetInnerHTML={{ __html: svg }}
+				/>
+			)}
+		</div>
+	);
+}
 
 // Render note attachments richly: images inline, every other uploaded file as
 // a download/open box. Non-attachment links/images fall through to defaults.
@@ -72,11 +127,34 @@ const markdownComponents = {
 		return (
 			<img
 				className="shared-note-img"
-				src={src}
+				// Strip a legacy `?w=` from the query (it breaks token-auth CDNs);
+				// width now lives in the fragment, which the browser never sends.
+				src={stripQueryWidth(src)}
 				alt={alt || ""}
 				loading="lazy"
 				style={w ? { width: w } : undefined}
 			/>
+		);
+	},
+	// Unwrap the <pre> around a ```mermaid block so the diagram isn't nested in a
+	// code element; non-mermaid code keeps its <pre>.
+	pre({ children, ...props }) {
+		const child = Array.isArray(children) ? children[0] : children;
+		const cn = child?.props?.className || "";
+		if (/language-mermaid/.test(cn)) return <>{children}</>;
+		return <pre {...props}>{children}</pre>;
+	},
+	code({ className, children, ...props }) {
+		if (/language-mermaid/.test(className || "")) {
+			const chart = (
+				Array.isArray(children) ? children.join("") : String(children ?? "")
+			).trim();
+			return <MermaidBlock chart={chart} />;
+		}
+		return (
+			<code className={className} {...props}>
+				{children}
+			</code>
 		);
 	},
 };

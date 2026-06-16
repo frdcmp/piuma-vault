@@ -36,5 +36,13 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     .service(
         web::resource("/admin/settings/services/test/github")
             .route(web::post().to(handlers::test_github)),
+    )
+    .service(
+        web::resource("/admin/settings/services/test/imagegen")
+            .route(web::post().to(handlers::test_imagegen)),
+    )
+    .service(
+        web::resource("/admin/settings/services/imagegen/models")
+            .route(web::post().to(handlers::imagegen_models)),
     );
 }

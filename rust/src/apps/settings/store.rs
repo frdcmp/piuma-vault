@@ -33,6 +33,16 @@ pub const TRANSCRIPTION_DEEPGRAM_API_KEY: &str = "transcription_deepgram_api_key
 // optional API base lets the same tools target a GitHub Enterprise host.
 pub const GITHUB_TOKEN: &str = "github_token";
 pub const GITHUB_API_BASE: &str = "github_api_base";
+// Image generation — pick a provider, set its key (+ optional model/base). See
+// `apps::image_gen`. The active provider is `imagegen_provider`; each provider's
+// key/model lives in its own `imagegen_<provider>_*` setting.
+pub const IMAGEGEN_PROVIDER: &str = "imagegen_provider";
+pub const IMAGEGEN_OPENAI_API_KEY: &str = "imagegen_openai_api_key";
+pub const IMAGEGEN_OPENAI_MODEL: &str = "imagegen_openai_model";
+pub const IMAGEGEN_OPENAI_BASE: &str = "imagegen_openai_base";
+pub const IMAGEGEN_GEMINI_API_KEY: &str = "imagegen_gemini_api_key";
+pub const IMAGEGEN_GEMINI_MODEL: &str = "imagegen_gemini_model";
+pub const IMAGEGEN_STABILITY_API_KEY: &str = "imagegen_stability_api_key";
 // Screen lock — idle PIN lock for the web app. Config is global (single-tenant).
 // The PIN is stored only as an argon2 hash; it is never returned to the client.
 pub const SCREEN_LOCK_ENABLED: &str = "screen_lock_enabled"; // "true" / "false"

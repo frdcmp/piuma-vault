@@ -125,6 +125,7 @@ async fn main() -> io::Result<()> {
             .configure(apps::recorder::routes::configure_routes)
             .configure(apps::sprites::routes::configure_routes)
             .configure(apps::db_dump::routes::configure_routes)
+            .configure(apps::image_gen::routes::configure_routes)
             .configure(apps::widgets::routes::configure_routes)
     })
     .workers(num_cpus::get() * 2)  // 2 workers per CPU core for high concurrency

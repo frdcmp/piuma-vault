@@ -326,7 +326,7 @@ export default function ChatConversation({
 					media_type: p.mediaType,
 				})),
 				signal: controller.signal,
-				...buildHandlers(convId),
+				...buildHandlers(convId, controller.signal),
 			});
 		} finally {
 			setIsStreaming(false);
@@ -382,7 +382,7 @@ export default function ChatConversation({
 					images: [],
 					branch: { regenerate: true, parentId },
 					signal: controller.signal,
-					...buildHandlers(convId),
+					...buildHandlers(convId, controller.signal),
 				});
 			} finally {
 				setIsStreaming(false);
@@ -433,7 +433,7 @@ export default function ChatConversation({
 					images: [],
 					branch: { fork: true, parentId },
 					signal: controller.signal,
-					...buildHandlers(convId),
+					...buildHandlers(convId, controller.signal),
 				});
 			} finally {
 				setIsStreaming(false);

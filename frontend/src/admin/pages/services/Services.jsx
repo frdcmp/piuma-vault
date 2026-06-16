@@ -1,21 +1,18 @@
 import { useEffect, useState } from "react";
 import {
 	useEmailAccounts,
+	useImagegenModels,
 	useServices,
 	useTestEmbedding,
 	useTestGithub,
+	useTestImagegen,
 	useTestStorage,
 	useTestTranscription,
 	useTestWebsearch,
 	useUpdateServices,
 } from "../../../queries";
 import { PageContent } from "../../components/layout/PageLayout";
-import {
-	PvButton,
-	PvModal,
-	PvPanel,
-	pvMessage,
-} from "../../components/ui";
+import { PvButton, PvModal, PvPanel, pvMessage } from "../../components/ui";
 import "../../vault-pixel.css";
 import "./services.css";
 import EmailAccounts from "./EmailAccounts";
@@ -41,6 +38,13 @@ const EMPTY = {
 	transcription_deepgram_api_key: "",
 	github_api_base: "",
 	github_token: "",
+	imagegen_provider: "openai",
+	imagegen_openai_api_key: "",
+	imagegen_openai_model: "",
+	imagegen_openai_base: "",
+	imagegen_gemini_api_key: "",
+	imagegen_gemini_model: "",
+	imagegen_stability_api_key: "",
 };
 
 // Service tabs. Each maps to one panel below; the form state is shared, so a
@@ -50,8 +54,37 @@ const TABS = [
 	{ id: "search", label: "Search" },
 	{ id: "transcription", label: "Transcription" },
 	{ id: "storage", label: "Storage" },
+	{ id: "images", label: "Images" },
 	{ id: "github", label: "GitHub" },
 	{ id: "email", label: "Email" },
+];
+
+// Image-generation providers we ship adapters for (see apps::image_gen). Each
+// has its own key (+ optional model/base) setting.
+const IMAGEGEN_PROVIDERS = [
+	{
+		id: "openai",
+		label: "OpenAI",
+		key: "imagegen_openai_api_key",
+		model: "imagegen_openai_model",
+		base: "imagegen_openai_base",
+		modelPh: "gpt-image-1",
+		hint: "platform.openai.com — gpt-image-1 / dall-e-3",
+	},
+	{
+		id: "gemini",
+		label: "Google Imagen",
+		key: "imagegen_gemini_api_key",
+		model: "imagegen_gemini_model",
+		modelPh: "gemini-2.5-flash-image (Nano Banana) or imagen-4.0-…",
+		hint: "ai.google.dev — Imagen + Gemini image models (Nano Banana) via the Gemini API",
+	},
+	{
+		id: "stability",
+		label: "Stability AI",
+		key: "imagegen_stability_api_key",
+		hint: "platform.stability.ai — Stable Image Core",
+	},
 ];
 
 // Streaming-transcription providers we ship adapters for (see apps::transcription).
@@ -151,12 +184,16 @@ const Services = () => {
 	const testWs = useTestWebsearch();
 	const testTr = useTestTranscription();
 	const testGh = useTestGithub();
+	const testImg = useTestImagegen();
+	const fetchImgModels = useImagegenModels();
 	const [form, setForm] = useState(EMPTY);
 	const [embResult, setEmbResult] = useState(null);
 	const [s3Result, setS3Result] = useState(null);
 	const [wsResult, setWsResult] = useState(null);
 	const [trResult, setTrResult] = useState(null);
 	const [ghResult, setGhResult] = useState(null);
+	const [imgResult, setImgResult] = useState(null);
+	const [imgModels, setImgModels] = useState([]);
 	const [vendor, setVendor] = useState("aws");
 	const [activeTab, setActiveTab] = useState("embeddings");
 	const v = VENDORS[vendor];
@@ -191,6 +228,10 @@ const Services = () => {
 				websearch_provider: data.websearch_provider || "brave",
 				transcription_provider: data.transcription_provider || "speechmatics",
 				github_api_base: data.github_api_base || "",
+				imagegen_provider: data.imagegen_provider || "openai",
+				imagegen_openai_model: data.imagegen_openai_model || "",
+				imagegen_openai_base: data.imagegen_openai_base || "",
+				imagegen_gemini_model: data.imagegen_gemini_model || "",
 			}));
 		}
 	}, [data]);
@@ -219,6 +260,10 @@ const Services = () => {
 			websearch_provider: form.websearch_provider || "brave",
 			transcription_provider: form.transcription_provider || "speechmatics",
 			github_api_base: form.github_api_base.trim(),
+			imagegen_provider: form.imagegen_provider || "openai",
+			imagegen_openai_model: form.imagegen_openai_model.trim(),
+			imagegen_openai_base: form.imagegen_openai_base.trim(),
+			imagegen_gemini_model: form.imagegen_gemini_model.trim(),
 		};
 		if (form.github_token.trim())
 			payload.github_token = form.github_token.trim();
@@ -234,6 +279,10 @@ const Services = () => {
 		}
 		// Any transcription key the admin typed (for any provider).
 		for (const p of TRANSCRIPTION_PROVIDERS) {
+			if (form[p.key].trim()) payload[p.key] = form[p.key].trim();
+		}
+		// Any image-generation key the admin typed (for any provider).
+		for (const p of IMAGEGEN_PROVIDERS) {
 			if (form[p.key].trim()) payload[p.key] = form[p.key].trim();
 		}
 
@@ -252,12 +301,13 @@ const Services = () => {
 				transcription_assemblyai_api_key: "",
 				transcription_deepgram_api_key: "",
 				github_token: "",
+				imagegen_openai_api_key: "",
+				imagegen_gemini_api_key: "",
+				imagegen_stability_api_key: "",
 			}));
 			pvMessage.success("Services saved");
 		} catch (err) {
-			pvMessage.error(
-				err?.response?.data?.error || "Failed to save services",
-			);
+			pvMessage.error(err?.response?.data?.error || "Failed to save services");
 		}
 	};
 
@@ -375,6 +425,42 @@ const Services = () => {
 		return p;
 	};
 
+	// Active image-generation provider + its key field/flag.
+	const imgProvider = form.imagegen_provider || "openai";
+	const imgMeta =
+		IMAGEGEN_PROVIDERS.find((p) => p.id === imgProvider) ||
+		IMAGEGEN_PROVIDERS[0];
+	const imgKeySet = data?.[`${imgMeta.key}_set`];
+
+	const imgTestPayload = () => {
+		const p = { provider: imgProvider };
+		if (form[imgMeta.key].trim()) p.api_key = form[imgMeta.key].trim();
+		if (imgMeta.model && form[imgMeta.model].trim())
+			p.model = form[imgMeta.model].trim();
+		return p;
+	};
+
+	// Switch provider and drop any models fetched for the previous one.
+	const selectImgProvider = (e) => {
+		setImgModels([]);
+		set("imagegen_provider")(e);
+	};
+
+	// Fetch the provider's image-capable models (uses the typed or saved key).
+	const loadImgModels = async () => {
+		try {
+			const r = await fetchImgModels.mutateAsync(imgTestPayload());
+			const models = r?.models || [];
+			setImgModels(models);
+			if (!models.length)
+				pvMessage.info(
+					r?.error || "No image models returned for this provider/key",
+				);
+		} catch (err) {
+			pvMessage.error(err?.response?.data?.error || "Failed to fetch models");
+		}
+	};
+
 	const secretPlaceholder = (isSet) =>
 		isSet ? "•••• configured — leave blank to keep" : "not set";
 
@@ -430,11 +516,15 @@ const Services = () => {
 					const trAnySet = TRANSCRIPTION_PROVIDERS.some(
 						(p) => data[`${p.key}_set`],
 					);
+					const imgAnySet = IMAGEGEN_PROVIDERS.some(
+						(p) => data[`${p.key}_set`],
+					);
 					const configured = {
 						embeddings: !!data.azure_embedding_api_key_set,
 						search: wsAnySet,
 						transcription: trAnySet,
 						storage: !!data.s3_secret_access_key_set,
+						images: imgAnySet,
 						github: !!data.github_token_set,
 						email: !!emailAccounts?.some(
 							(a) => a.send_enabled || a.read_enabled,
@@ -788,6 +878,159 @@ const Services = () => {
 										}
 										result={s3Result}
 									/>
+								</PvPanel>
+							)}
+
+							{/* Image generation (agent generate_image tool) — pick a
+								provider + key (+ optional model/base). */}
+							{activeTab === "images" && (
+								<PvPanel title="images · generation">
+									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
+										Powers the agent's <code>generate_image</code> tool. Pick a
+										provider and set its API key. Generated images are stored in
+										your S3 bucket and returned as a CDN URL. Swap providers
+										anytime without touching the agent.
+									</p>
+									<div className="vp-field">
+										<span className="vp-label">Provider</span>
+										<select
+											className="vp-input"
+											value={imgProvider}
+											onChange={selectImgProvider}
+										>
+											{IMAGEGEN_PROVIDERS.map((p) => (
+												<option key={p.id} value={p.id}>
+													{p.label}
+												</option>
+											))}
+										</select>
+									</div>
+									<div className="vp-field">
+										<span className="vp-label">
+											{imgMeta.label} API Key{" "}
+											{imgKeySet ? (
+												<span className="vp-tag vp-tag--green vp-svc-chip">
+													set
+												</span>
+											) : (
+												<span className="vp-tag vp-tag--red vp-svc-chip">
+													unset
+												</span>
+											)}
+										</span>
+										<input
+											className="vp-input"
+											type="password"
+											autoComplete="new-password"
+											placeholder={secretPlaceholder(imgKeySet)}
+											value={form[imgMeta.key]}
+											onChange={set(imgMeta.key)}
+										/>
+										<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
+											{imgMeta.hint}
+										</span>
+									</div>
+									{imgMeta.model && (
+										<div className="vp-field">
+											<span className="vp-label">
+												Model{" "}
+												<span className="vp-muted vp-svc-chip">optional</span>
+											</span>
+											<input
+												className="vp-input"
+												type="text"
+												spellCheck={false}
+												placeholder={imgMeta.modelPh}
+												value={form[imgMeta.model]}
+												onChange={set(imgMeta.model)}
+												list="imagegen-model-suggestions"
+											/>
+											{imgModels.length > 0 && (
+												<datalist id="imagegen-model-suggestions">
+													{imgModels.map((m) => (
+														<option key={m} value={m} />
+													))}
+												</datalist>
+											)}
+											<div className="vp-svc-test">
+												<PvButton
+													size="sm"
+													onClick={loadImgModels}
+													disabled={fetchImgModels.isPending}
+												>
+													{fetchImgModels.isPending
+														? "Fetching…"
+														: "Fetch models"}
+												</PvButton>
+												{imgModels.length > 0 && (
+													<select
+														className="vp-input"
+														value=""
+														onChange={(e) => {
+															if (e.target.value)
+																setForm((f) => ({
+																	...f,
+																	[imgMeta.model]: e.target.value,
+																}));
+														}}
+													>
+														<option value="">
+															{imgModels.length} models — pick one…
+														</option>
+														{imgModels.map((m) => (
+															<option key={m} value={m}>
+																{m}
+															</option>
+														))}
+													</select>
+												)}
+											</div>
+										</div>
+									)}
+									{imgMeta.base && (
+										<div className="vp-field" style={{ marginBottom: 0 }}>
+											<span className="vp-label">
+												API Base{" "}
+												<span className="vp-muted vp-svc-chip">optional</span>
+											</span>
+											<input
+												className="vp-input"
+												type="text"
+												spellCheck={false}
+												placeholder="https://api.openai.com (override for a proxy)"
+												value={form[imgMeta.base]}
+												onChange={set(imgMeta.base)}
+											/>
+										</div>
+									)}
+									<TestRow
+										pending={testImg.isPending}
+										onTest={() =>
+											runTest(testImg, setImgResult, imgTestPayload())
+										}
+										onClear={() =>
+											requestClear(
+												[imgMeta.key],
+												setImgResult,
+												`${imgMeta.label} image generation`,
+											)
+										}
+										result={imgResult}
+									/>
+									{imgResult?.image && (
+										<div style={{ marginTop: 12 }}>
+											<img
+												src={imgResult.image}
+												alt="Generated preview"
+												style={{
+													maxWidth: "100%",
+													maxHeight: 320,
+													borderRadius: 8,
+													border: "1px solid var(--vp-border, #333)",
+												}}
+											/>
+										</div>
+									)}
 								</PvPanel>
 							)}
 

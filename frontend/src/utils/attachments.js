@@ -95,24 +95,55 @@ export const attachmentMarkdown = (name, url) => {
 // Display width (px) for an image, stored as a `w` query param on its URL.
 // Returns null when absent/invalid. Aspect ratio is never stored — only the
 // width — so the natural form factor is always preserved at render time.
+// Width is stored in the URL *fragment* (`#w=NNN`), never the query string:
+// token-authenticated CDNs (e.g. Bunny) fold query params into the signature, so
+// adding `?w=` there would invalidate the token (403). The fragment is never
+// sent to the server, so the signed request is unaffected. We still read a
+// legacy `?w=`/`&w=` value for back-compat with previously-saved URLs.
 export const widthFromUrl = (url) => {
-	const m = typeof url === "string" && url.match(/[?&]w=(\d+)/);
+	if (typeof url !== "string") return null;
+	const m = url.match(/[#?&]w=(\d+)/);
 	const n = m ? Number.parseInt(m[1], 10) : Number.NaN;
 	return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-// Returns `url` with the `w` query param set to `w` (or removed when falsy),
-// leaving any other query params and the hash intact.
+// Returns `url` with the width recorded in the fragment as `#w=NNN` (or removed
+// when falsy). Strips any `w` from BOTH the fragment and the query (migrating
+// legacy `?w=` URLs), leaving all other query params and the rest of the hash
+// intact.
 export const withWidth = (url, w) => {
 	if (typeof url !== "string") return url;
 	const [main, hash = ""] = url.split("#");
 	const qIdx = main.indexOf("?");
 	const path = qIdx === -1 ? main : main.slice(0, qIdx);
 	const query = qIdx === -1 ? "" : main.slice(qIdx + 1);
-	const parts = query
+	// Drop any legacy `w=` from the query (it would break a signed CDN token).
+	const queryParts = query
 		? query.split("&").filter((p) => p && !/^w=/.test(p))
 		: [];
-	if (w && w > 0) parts.push(`w=${Math.round(w)}`);
+	const qs = queryParts.length ? `?${queryParts.join("&")}` : "";
+	// Keep any non-`w` fragment pieces, then append the new width.
+	const hashParts = hash
+		? hash.split("&").filter((p) => p && !/^w=/.test(p))
+		: [];
+	if (w && w > 0) hashParts.push(`w=${Math.round(w)}`);
+	const frag = hashParts.length ? `#${hashParts.join("&")}` : "";
+	return `${path}${qs}${frag}`;
+};
+
+// Strips a legacy `w=` from a URL's *query string* (leaving the fragment and all
+// other params intact). Used when setting an <img> src so previously-saved
+// `?w=`/`&w=` URLs — which break token-authenticated CDNs — still load.
+export const stripQueryWidth = (url) => {
+	if (typeof url !== "string") return url;
+	const [main, hash] = url.split("#");
+	const qIdx = main.indexOf("?");
+	if (qIdx === -1) return url;
+	const path = main.slice(0, qIdx);
+	const parts = main
+		.slice(qIdx + 1)
+		.split("&")
+		.filter((p) => p && !/^w=/.test(p));
 	const qs = parts.length ? `?${parts.join("&")}` : "";
-	return `${path}${qs}${hash ? `#${hash}` : ""}`;
+	return `${path}${qs}${hash != null ? `#${hash}` : ""}`;
 };

@@ -20,6 +20,7 @@ pub mod conversations;
 mod db_backup;
 mod email;
 pub mod github;
+mod image;
 mod navigation;
 pub mod memory;
 mod notes;
@@ -49,6 +50,7 @@ fn all_defs() -> Vec<(&'static str, &'static str, Value)> {
     defs.extend(navigation::defs());
     defs.extend(recordings::defs());
     defs.extend(db_backup::defs());
+    defs.extend(image::defs());
     defs
 }
 
@@ -173,6 +175,8 @@ pub async fn dispatch(
         "start_recording" => recordings::start_recording(pool, user_id, args).await,
         // ── Database backup (full DB dump → S3; non-destructive) ──
         "backup_database" => db_backup::backup_database(pool, args).await,
+        // ── Image generation (provider from admin → Services; result stored in S3) ──
+        "generate_image" => image::generate_image(pool, user_id, args).await,
         other => Err(format!("unknown tool: {other}")),
     }
 }
