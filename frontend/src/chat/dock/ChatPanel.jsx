@@ -419,7 +419,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 					media_type: p.mediaType,
 				})),
 				signal: controller.signal,
-				...buildHandlers(convId),
+				...buildHandlers(convId, controller.signal),
 			});
 		} finally {
 			// Always re-enable the composer, even if the stream throws.
@@ -470,7 +470,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 					images: [],
 					branch: { regenerate: true, parentId },
 					signal: controller.signal,
-					...buildHandlers(convId),
+					...buildHandlers(convId, controller.signal),
 				});
 			} finally {
 				setIsStreaming(false);
@@ -516,7 +516,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 					images: [],
 					branch: { fork: true, parentId },
 					signal: controller.signal,
-					...buildHandlers(convId),
+					...buildHandlers(convId, controller.signal),
 				});
 			} finally {
 				setIsStreaming(false);

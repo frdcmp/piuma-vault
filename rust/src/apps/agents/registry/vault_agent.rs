@@ -104,5 +104,7 @@ pub static DEF: AgentDef = AgentDef {
         "navigate",
         // Database backup — full DB dump → S3 (non-destructive; mainly for cron)
         "backup_database",
+        // Image generation — provider from admin → Services; result stored in S3
+        "generate_image",
     ],
 };

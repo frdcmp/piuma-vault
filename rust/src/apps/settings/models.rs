@@ -31,6 +31,15 @@ pub struct ServiceConfigResponse {
     // GitHub: the API base (plain) + a `*_set` flag for the secret token.
     pub github_api_base: String,
     pub github_token_set: bool,
+    // Image generation: the active provider + per-provider model (plain) and a
+    // `*_set` flag per provider key.
+    pub imagegen_provider: String,
+    pub imagegen_openai_model: String,
+    pub imagegen_openai_base: String,
+    pub imagegen_gemini_model: String,
+    pub imagegen_openai_api_key_set: bool,
+    pub imagegen_gemini_api_key_set: bool,
+    pub imagegen_stability_api_key_set: bool,
 }
 
 /// Partial update. Any omitted field is left unchanged; a secret sent as an
@@ -57,6 +66,22 @@ pub struct UpdateServiceConfig {
     pub transcription_deepgram_api_key: Option<String>,
     pub github_api_base: Option<String>,
     pub github_token: Option<String>,
+    pub imagegen_provider: Option<String>,
+    pub imagegen_openai_api_key: Option<String>,
+    pub imagegen_openai_model: Option<String>,
+    pub imagegen_openai_base: Option<String>,
+    pub imagegen_gemini_api_key: Option<String>,
+    pub imagegen_gemini_model: Option<String>,
+    pub imagegen_stability_api_key: Option<String>,
+}
+
+/// Optional image-generation overrides for a "try now" check. Blank fields fall
+/// back to saved config.
+#[derive(Debug, Default, Deserialize)]
+pub struct TestImagegenRequest {
+    pub provider: Option<String>,
+    pub api_key: Option<String>,
+    pub model: Option<String>,
 }
 
 /// Screen-lock config returned to the client. The PIN itself is never returned —

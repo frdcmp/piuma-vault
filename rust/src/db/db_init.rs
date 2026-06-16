@@ -939,6 +939,31 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_email_log_user_time ON db_email_log USING btree (user_id, created_at DESC)",
         ],
     },
+    // Generated-image history (see apps::image_gen). The image bytes live in S3
+    // under `generated/{user_id}/{id}.{ext}`; this row is the queryable index +
+    // a stable CDN URL. `source` distinguishes the HTTP API from the agent tool.
+    TableDefinition {
+        name: "db_generated_images",
+        sql: r#"
+            CREATE TABLE db_generated_images (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL REFERENCES db_users(id) ON DELETE CASCADE,
+                prompt TEXT NOT NULL,
+                revised_prompt TEXT,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL DEFAULT '',
+                size TEXT NOT NULL DEFAULT '1024x1024',
+                storage_key TEXT NOT NULL,
+                cdn_url TEXT NOT NULL,
+                mime TEXT NOT NULL DEFAULT 'image/png',
+                source TEXT NOT NULL DEFAULT 'api',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_gen_images_user ON db_generated_images USING btree (user_id, created_at DESC)",
+        ],
+    },
 ];
 
 pub async fn init_db(pool: &DbPool) -> Result<InitResult, sqlx::Error> {

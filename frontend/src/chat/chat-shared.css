@@ -802,6 +802,15 @@ button.chat-context-tag-main {
 	display: block;
 }
 
+/* Images the agent embeds in its reply (e.g. generate_image markdown) must never
+   overflow the chat column — cap to the body width, keep aspect ratio. */
+.chat-assistant-body img {
+	max-width: 100%;
+	height: auto;
+	border-radius: 4px;
+	display: block;
+}
+
 /* Slash-command menu — keyboard + mouse navigable. Pixel-styled to match the
    vault design language (sharp corners, 2px border, hard offset shadow). */
 .slash-menu {

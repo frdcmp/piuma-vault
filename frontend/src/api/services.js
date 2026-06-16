@@ -54,3 +54,21 @@ export const testTranscription = async (payload) => {
 	);
 	return data;
 };
+
+export const testImagegen = async (payload) => {
+	const { data } = await axiosInstance.post(
+		"/admin/settings/services/test/imagegen",
+		payload,
+	);
+	return data;
+};
+
+// Lists the image-capable models the configured provider exposes for its key.
+// Resolves to { models: string[], error? }.
+export const imagegenModels = async (payload) => {
+	const { data } = await axiosInstance.post(
+		"/admin/settings/services/imagegen/models",
+		payload,
+	);
+	return data;
+};
