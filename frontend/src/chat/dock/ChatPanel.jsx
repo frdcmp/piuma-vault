@@ -83,9 +83,6 @@ const titleItems = TITLE_ACTIONS.map((a) => ({
 	desc: a.desc,
 }));
 
-// Persists the active conversation so the panel restores it across mounts.
-const STORAGE_KEY = "piuma:agents-active-conv";
-
 // Replaces the trailing reply when dropped-stream recovery gives up.
 const RECOVER_TIMEOUT_TEXT =
 	"_The reply is taking a while. Reopen this chat to see it once it finishes._";
@@ -148,25 +145,19 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const [sessionQuery, setSessionQuery] = useState(""); // sessions search box
 	const [titleMenu, setTitleMenu] = useState(false); // /title two-option menu
 	const [titleActive, setTitleActive] = useState(0); // highlighted title option
-	const [conversationId, setConversationId] = useState(
-		() => localStorage.getItem(STORAGE_KEY) || null,
-	);
+	const [conversationId, setConversationId] = useState(null);
 	// The model bound to the active conversation (db_chat_conversations.model_id),
 	// or null when it hasn't been overridden — then the backend uses the default.
 	const [modelId, setModelId] = useState(null);
-	// Only restore when a stored conversation exists; a fresh panel (and any
-	// conversation created later this session) starts already-hydrated so the
-	// restore effect never clobbers live streaming state.
-	const [hydrated, setHydrated] = useState(
-		() => !localStorage.getItem(STORAGE_KEY),
-	);
-	// True while a conversation's history is being fetched (restore on mount or a
+	// On mount we open the most recently edited conversation (see the effect
+	// below). Until that resolves the panel is unhydrated; once it (or any
+	// conversation created later this session) lands, hydrated stays true so the
+	// open effect never clobbers live streaming state.
+	const [hydrated, setHydrated] = useState(false);
+	// True while a conversation's history is being fetched (the initial open or a
 	// /sessions switch) — drives the pixel-Piuma loader so the panel doesn't read
-	// as "empty" mid-load and then pop. Seeded true when there's a stored
-	// conversation to restore.
-	const [loadingConv, setLoadingConv] = useState(
-		() => !!localStorage.getItem(STORAGE_KEY),
-	);
+	// as "empty" mid-load and then pop. Seeded true for the initial open.
+	const [loadingConv, setLoadingConv] = useState(true);
 	// The currently-shown conversation, as a ref — so async writers (a detached
 	// stream, the recover poller) can bail if the user has switched away, instead
 	// of clobbering the conversation now on screen.
@@ -210,28 +201,39 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		recoverTimeoutText: RECOVER_TIMEOUT_TEXT,
 	});
 
-	// Restore the stored conversation once on mount.
+	// On mount, open the most recently edited conversation. The list is ordered
+	// by updated_at DESC server-side, so the first row is the latest; a fresh
+	// vault with no conversations stays blank. Runs once — afterwards streaming
+	// owns local state.
 	useEffect(() => {
-		if (hydrated || !conversationId) return;
+		if (hydrated) return;
 		let cancelled = false;
-		fetchConversation(conversationId)
-			.then((d) => {
-				if (cancelled) return;
-				setModelId(d.conversation?.model_id || null);
-				setMessages((d.messages || []).map(mapServerMessage));
-				setHydrated(true);
-				setLoadingConv(false);
-			})
-			.catch(() => {
-				localStorage.removeItem(STORAGE_KEY);
-				setConversationId(null);
-				setHydrated(true);
-				setLoadingConv(false);
-			});
+		(async () => {
+			try {
+				const list = await fetchConversations(undefined, undefined, {
+					limit: 1,
+				});
+				const latest = Array.isArray(list) ? list[0] : null;
+				if (latest) {
+					const d = await fetchConversation(latest.id);
+					if (cancelled) return;
+					setConversationId(latest.id);
+					setModelId(d.conversation?.model_id || null);
+					setMessages((d.messages || []).map(mapServerMessage));
+				}
+			} catch {
+				/* leave the panel blank */
+			} finally {
+				if (!cancelled) {
+					setHydrated(true);
+					setLoadingConv(false);
+				}
+			}
+		})();
 		return () => {
 			cancelled = true;
 		};
-	}, [conversationId, hydrated]);
+	}, [hydrated]);
 
 	// Swap to a shorter placeholder when the panel is narrow.
 	useEffect(() => {
@@ -293,7 +295,6 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		setMessages([]);
 		setConversationId(null);
 		setModelId(null);
-		localStorage.removeItem(STORAGE_KEY);
 		setConfirmClearOpen(false);
 	}, []);
 
@@ -381,7 +382,6 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				convId = conv.id;
 				setConversationId(conv.id);
 				setModelId(conv.model_id || null);
-				localStorage.setItem(STORAGE_KEY, conv.id);
 			} catch {
 				// Surface the failure in the assistant bubble we already showed.
 				setMessages((curr) => {
@@ -634,7 +634,6 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		setMessages([]);
 		setConversationId(null);
 		setModelId(null);
-		localStorage.removeItem(STORAGE_KEY);
 		setInput("");
 		setTitleMenu(false);
 	}, []);
@@ -671,7 +670,6 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		setConversationId(id);
 		setMessages([]);
 		setLoadingConv(true);
-		localStorage.setItem(STORAGE_KEY, id);
 		try {
 			const d = await fetchConversation(id);
 			setModelId(d.conversation?.model_id || null);

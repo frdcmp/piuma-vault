@@ -84,11 +84,16 @@ pub(crate) fn reach_host(url: &str) -> String {
         .replace("://127.0.0.1", "://host.docker.internal")
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
     pub arguments: String,
+    /// Gemini 3 returns an opaque `thoughtSignature` on each `functionCall`
+    /// part and *requires* it echoed back when the call is replayed in history,
+    /// else the next round 400s ("Function call is missing a thought_signature").
+    /// Only the Gemini adapter sets/reads this; other providers leave it `None`.
+    pub thought_signature: Option<String>,
 }
 
 /// One model round's accumulated output, normalised across providers.

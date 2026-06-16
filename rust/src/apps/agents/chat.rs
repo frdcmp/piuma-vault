@@ -607,7 +607,7 @@ pub async fn chat(
                     let tcs: Vec<Value> = res
                         .tool_calls
                         .iter()
-                        .map(|t| json!({ "id": t.id, "type": "function", "function": { "name": t.name, "arguments": t.arguments } }))
+                        .map(|t| json!({ "id": t.id, "type": "function", "function": { "name": t.name, "arguments": t.arguments }, "thought_signature": t.thought_signature }))
                         .collect();
                     messages.push(json!({
                         "role": "assistant",
