@@ -378,10 +378,18 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		let convId = conversationId;
 		if (!convId) {
 			try {
-				const conv = await createConversation({ agent: effectiveAgent });
+				// Pin the model the user picked for this (still conversation-less)
+				// chat. Without this the new conversation is created with the global
+				// default and the first turn ignores the selection.
+				const conv = await createConversation({
+					agent: effectiveAgent,
+					...(modelId ? { model_id: modelId } : {}),
+				});
 				convId = conv.id;
 				setConversationId(conv.id);
-				setModelId(conv.model_id || null);
+				// Reflect what the server actually pinned, but don't drop a selection
+				// we just sent (the response echoes it back anyway).
+				setModelId(conv.model_id || modelId || null);
 			} catch {
 				// Surface the failure in the assistant bubble we already showed.
 				setMessages((curr) => {
@@ -434,6 +442,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		isStreaming,
 		sending,
 		conversationId,
+		modelId,
 		effectiveAgent,
 		sentContextPaths,
 		sentContextIds,
