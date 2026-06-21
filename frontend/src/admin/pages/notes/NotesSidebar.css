@@ -404,6 +404,8 @@
 	overflow-x: hidden;
 	position: relative;
 	z-index: 1;
+	/* Allow row contents to react to the tree's own width (resizable sidebar) */
+	container-type: inline-size;
 }
 
 .notes-sidebar-status {
@@ -591,6 +593,18 @@
 	font-size: 10px;
 	margin-left: 8px;
 	flex-shrink: 0;
+}
+
+/* Give the title the full row on hover */
+.ftree-row:hover .ftree-date {
+	display: none;
+}
+
+/* When the sidebar is narrow, drop the date entirely so titles aren't squeezed */
+@container (max-width: 240px) {
+	.ftree-date {
+		display: none;
+	}
 }
 
 .ftree-delete {
