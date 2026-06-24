@@ -51,26 +51,8 @@ pub async fn web_search(pool: &DbPool, args: &Value) -> Result<Value, String> {
 pub async fn web_fetch(args: &Value) -> Result<Value, String> {
     let raw = req_str(args, "url")?;
     let url = reqwest::Url::parse(&raw).map_err(|_| "invalid URL".to_string())?;
-    if !matches!(url.scheme(), "http" | "https") {
-        return Err("only http(s) URLs are allowed".into());
-    }
-    let host = url.host_str().ok_or("URL has no host")?.to_string();
-    let port = url.port_or_known_default().unwrap_or(80);
-
     // SSRF guard: resolve the host and reject any non-public address.
-    let addrs = tokio::net::lookup_host((host.as_str(), port))
-        .await
-        .map_err(|e| format!("could not resolve host: {e}"))?;
-    let mut any = false;
-    for addr in addrs {
-        any = true;
-        if is_blocked_ip(addr.ip()) {
-            return Err("refusing to fetch a private/loopback/link-local address".into());
-        }
-    }
-    if !any {
-        return Err("host did not resolve".into());
-    }
+    guard_public_url(&url).await?;
 
     // No redirect following — a 3xx to an internal host would bypass the guard.
     let client = reqwest::Client::builder()
@@ -123,6 +105,32 @@ pub async fn web_fetch(args: &Value) -> Result<Value, String> {
         text.truncate(MAX_TEXT);
     }
     Ok(json!({ "url": raw, "status": status.as_u16(), "truncated": truncated, "content": text }))
+}
+
+/// SSRF guard, shared across server-side fetchers (`web_fetch`, image inlining).
+/// Rejects non-http(s) schemes and resolves the host, failing if *any* resolved
+/// address is private/loopback/link-local/metadata. Callers MUST also disable
+/// redirect following so a 3xx can't bounce to an internal host after this check.
+pub(crate) async fn guard_public_url(url: &reqwest::Url) -> Result<(), String> {
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("only http(s) URLs are allowed".into());
+    }
+    let host = url.host_str().ok_or("URL has no host")?.to_string();
+    let port = url.port_or_known_default().unwrap_or(80);
+    let addrs = tokio::net::lookup_host((host.as_str(), port))
+        .await
+        .map_err(|e| format!("could not resolve host: {e}"))?;
+    let mut any = false;
+    for addr in addrs {
+        any = true;
+        if is_blocked_ip(addr.ip()) {
+            return Err("refusing to fetch a private/loopback/link-local address".into());
+        }
+    }
+    if !any {
+        return Err("host did not resolve".into());
+    }
+    Ok(())
 }
 
 fn is_blocked_ip(ip: IpAddr) -> bool {

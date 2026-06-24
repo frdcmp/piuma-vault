@@ -898,21 +898,35 @@ fn parse_markdown_with_frontmatter(body: &str) -> (Option<String>, Option<String
     (title, Some(content), tags, folder)
 }
 
-/// Basic markdown to HTML conversion.
+/// HTML-escape untrusted text before interpolating it into markup. Prevents
+/// stored XSS in the public share HTML export, where note content (which may
+/// originate from LLM output, web fetches, or transcripts, not just typed text)
+/// is rendered on our own origin to unauthenticated visitors.
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
+}
+
+/// Basic markdown to HTML conversion. Every text segment is HTML-escaped, so
+/// raw `<script>`/event-handler payloads in the note body render as inert text.
 fn markdown_to_html(md: &str) -> String {
-    // Very basic conversion - in production, use a proper crate like `pulldown-cmark`
+    // Structural only — for rich rendering the frontend uses a real markdown
+    // pipeline client-side. This server path must stay escape-safe.
     let mut html = String::new();
     for line in md.lines() {
-        if line.starts_with("# ") {
-            html.push_str(&format!("<h1>{}</h1>\n", &line[2..]));
-        } else if line.starts_with("## ") {
-            html.push_str(&format!("<h2>{}</h2>\n", &line[3..]));
-        } else if line.starts_with("### ") {
-            html.push_str(&format!("<h3>{}</h3>\n", &line[4..]));
+        if let Some(rest) = line.strip_prefix("# ") {
+            html.push_str(&format!("<h1>{}</h1>\n", html_escape(rest)));
+        } else if let Some(rest) = line.strip_prefix("## ") {
+            html.push_str(&format!("<h2>{}</h2>\n", html_escape(rest)));
+        } else if let Some(rest) = line.strip_prefix("### ") {
+            html.push_str(&format!("<h3>{}</h3>\n", html_escape(rest)));
         } else if line.is_empty() {
             html.push_str("<br>\n");
         } else {
-            html.push_str(&format!("<p>{}</p>\n", line));
+            html.push_str(&format!("<p>{}</p>\n", html_escape(line)));
         }
     }
     html
