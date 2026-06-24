@@ -79,6 +79,25 @@ export const reconcileNoteUpdate = (qc, note) => {
 	}
 };
 
+// Best-effort note title for an id, read straight from whatever notes data is
+// already cached (detail, any list, browse tree, trash) — no network. Used to
+// label tool chips (e.g. read_note) with the note name while the tool is still
+// running, before its result (which carries the title) comes back. Returns null
+// when the note isn't cached anywhere.
+export const findCachedNoteTitle = (qc, id) => {
+	if (!qc || !id) return null;
+	const detail = qc.getQueryData(notesKeys.detail(id));
+	if (detail?.title) return detail.title;
+	for (const q of qc.getQueryCache().findAll({ queryKey: notesKeys.all })) {
+		const d = q.state.data;
+		const rows = Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : null;
+		if (!rows) continue;
+		const hit = rows.find((n) => n?.id === id && n?.title);
+		if (hit) return hit.title;
+	}
+	return null;
+};
+
 // ── List ──────────────────────────────────────────────────────────────────
 
 export const useNotes = (params = {}, options = {}) =>
