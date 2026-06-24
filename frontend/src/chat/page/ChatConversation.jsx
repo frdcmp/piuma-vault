@@ -130,6 +130,14 @@ export default function ChatConversation({
 	const focusInput = useCallback(() => {
 		requestAnimationFrame(() => inputRef.current?.focus());
 	}, []);
+	// Open (or close) the slash-command picker via the composer button. The menu
+	// keys off the input starting with "/", so we just seed/clear that token.
+	const toggleSlashMenu = useCallback(() => {
+		setInput((cur) => (cur === "/" ? "" : "/"));
+		setSlashActive(0);
+		setTitleMenu(false);
+		focusInput();
+	}, [focusInput]);
 
 	// Single navigation entry point for chat links / "Go" actions.
 	const goTo = useCallback(
@@ -847,6 +855,15 @@ export default function ChatConversation({
 									e.target.value = "";
 								}}
 							/>
+							<button
+								type="button"
+								className="chat-slash-btn"
+								onClick={toggleSlashMenu}
+								title="Commands"
+								aria-label="Open command menu"
+							>
+								/
+							</button>
 							<textarea
 								ref={inputRef}
 								className="chat-input"

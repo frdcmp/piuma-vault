@@ -107,6 +107,17 @@ impl TurnControl {
             .push(text);
     }
 
+    /// Are there injected messages waiting for this conversation? Lets the turn
+    /// loop keep going (and drain them) instead of ending while a mid-turn
+    /// injection sits unconsumed in the mailbox.
+    pub fn has_pending(&self, conv: Uuid) -> bool {
+        self.inbox
+            .lock()
+            .unwrap()
+            .get(&conv)
+            .is_some_and(|v| !v.is_empty())
+    }
+
     /// Take all pending injected messages for a conversation (empties the mailbox).
     pub fn drain(&self, conv: Uuid) -> Vec<String> {
         match self.inbox.lock().unwrap().get_mut(&conv) {

@@ -654,6 +654,29 @@ button.chat-context-tag-main {
 	outline: none;
 	border-color: var(--accent-2);
 }
+/* Composer "/" button — opens the slash-command picker. Matches the input's
+   height/border so it sits flush at the left edge of the composer row. */
+.chat-slash-btn {
+	flex: 0 0 auto;
+	width: 38px;
+	height: 38px;
+	padding: 0;
+	background: var(--bg-soft);
+	border: 2px solid var(--border-strong);
+	color: var(--muted);
+	font-family: inherit;
+	font-weight: 900;
+	font-size: 14pt;
+	line-height: 1;
+	cursor: pointer;
+}
+.chat-slash-btn:hover {
+	border-color: var(--accent-2);
+	color: var(--accent-2);
+}
+.chat-slash-btn:active {
+	transform: translate(1px, 1px);
+}
 .chat-send {
 	min-width: 110px;
 	height: 38px;

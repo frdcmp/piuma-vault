@@ -600,6 +600,21 @@ pub async fn chat(
                         if !res.text.trim().is_empty() {
                             display.push(json!({ "type": "text", "text": res.text }));
                         }
+                        // The model answered — but if the user injected a message
+                        // while it was generating, keep the turn going so that
+                        // injection is folded in (drained at the next round top),
+                        // recorded inline, and actually answered. Otherwise it would
+                        // be silently dropped when the loop ends. Carry the reply we
+                        // just produced into context for the continuation.
+                        if control.has_pending(conv_id) {
+                            if !res.text.trim().is_empty() {
+                                messages.push(json!({
+                                    "role": "assistant",
+                                    "content": res.text,
+                                }));
+                            }
+                            continue;
+                        }
                         answered = true;
                         break;
                     }

@@ -173,6 +173,14 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const focusInput = useCallback(() => {
 		requestAnimationFrame(() => inputRef.current?.focus());
 	}, []);
+	// Open (or close) the slash-command picker via the composer button. The menu
+	// keys off the input starting with "/", so we just seed/clear that token.
+	const toggleSlashMenu = useCallback(() => {
+		setInput((cur) => (cur === "/" ? "" : "/"));
+		setSlashActive(0);
+		setTitleMenu(false);
+		focusInput();
+	}, [focusInput]);
 	const slashActiveRef = useRef(null);
 	const overlayActiveRef = useRef(null);
 
@@ -1174,6 +1182,15 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 								if (visionEnabled) e.preventDefault();
 							}}
 						>
+							<button
+								type="button"
+								className="chat-slash-btn"
+								onClick={toggleSlashMenu}
+								title="Commands"
+								aria-label="Open command menu"
+							>
+								/
+							</button>
 							<textarea
 								ref={inputRef}
 								className="chat-input"
