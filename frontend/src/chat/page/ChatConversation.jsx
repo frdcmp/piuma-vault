@@ -225,7 +225,17 @@ export default function ChatConversation({
 		const el = inputRef.current;
 		if (!el) return;
 		el.style.height = "auto";
-		el.style.height = `${el.scrollHeight}px`;
+		const sh = el.scrollHeight;
+		el.style.height = `${sh}px`;
+		// With box-sizing: border-box, scrollHeight excludes the border, so the
+		// content sits 4px short of the box and a scrollbar appears before the max
+		// rows. Add the border height back when the content would otherwise overflow.
+		if (el.scrollHeight > el.clientHeight) {
+			const cs = getComputedStyle(el);
+			const bh =
+				parseInt(cs.borderTopWidth, 10) + parseInt(cs.borderBottomWidth, 10);
+			el.style.height = `${sh + bh}px`;
+		}
 	}, [input]);
 
 	useEffect(() => () => abortRef.current?.abort(), []);
