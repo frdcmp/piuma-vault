@@ -20,6 +20,9 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Don't advertise the nginx version in the Server header / error pages.
+    server_tokens off;
+
     # ── H4: baseline security headers ──
     # HSTS is safe because the public edge (Cloudflare) is always HTTPS.
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;

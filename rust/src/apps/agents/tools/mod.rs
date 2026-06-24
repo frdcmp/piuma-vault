@@ -29,7 +29,7 @@ mod self_config;
 mod shares;
 mod storage;
 mod tasks;
-mod web;
+pub(crate) mod web;
 
 /// (name, description, JSON-schema for parameters).
 fn all_defs() -> Vec<(&'static str, &'static str, Value)> {

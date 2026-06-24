@@ -22,7 +22,10 @@ services:
     restart: unless-stopped
     profiles: ["db-stack"]
     ports:
-      - "${DB_PORT_EXTERNAL}:5432"
+      # Bind to loopback only — the app reaches Postgres over the internal
+      # compose network (DB_HOST=db), so the host publish is just for local
+      # psql. Binding 0.0.0.0 would expose the DB to the whole network/ZeroTier.
+      - "127.0.0.1:${DB_PORT_EXTERNAL}:5432"
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
     environment:

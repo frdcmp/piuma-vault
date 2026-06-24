@@ -27,7 +27,14 @@ pub type SseSender = UnboundedSender<Result<Bytes, actix_web::Error>>;
 /// fetching the bytes. Data URLs and unfetchable images pass through unchanged
 /// (best-effort — a failed fetch degrades to the prior behaviour, with a log).
 async fn inline_images(messages: &[Value]) -> Vec<Value> {
-    let client = reqwest::Client::new();
+    // SSRF guard: the image URL is model/content-controlled, so reject any
+    // private/loopback/metadata target and never follow redirects (a 3xx could
+    // bounce to an internal host after the check). Mirrors `web_fetch`.
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(12))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
     let mut out = Vec::with_capacity(messages.len());
     for m in messages {
         let mut m = m.clone();
@@ -41,6 +48,18 @@ async fn inline_images(messages: &[Value]) -> Vec<Value> {
                 };
                 if !url.starts_with("http://") && !url.starts_with("https://") {
                     continue; // already a data URL (or inline) — leave it
+                }
+                // SSRF guard before fetching the (content-controlled) URL.
+                let parsed = match reqwest::Url::parse(url) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        log::warn!("inline_images: bad url {url}: {e}");
+                        continue;
+                    }
+                };
+                if let Err(e) = crate::apps::agents::tools::web::guard_public_url(&parsed).await {
+                    log::warn!("inline_images: refusing {url}: {e}");
+                    continue;
                 }
                 match client.get(url).send().await.and_then(|r| r.error_for_status()) {
                     Ok(resp) => {
