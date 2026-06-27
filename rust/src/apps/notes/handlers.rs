@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
+use crate::apps::telemetry::{Event, Severity};
 use crate::db::db::DbPool;
 
 use super::events::{NoteAction, NotesEventBus};
@@ -469,6 +470,10 @@ pub async fn create_note(
                 }
             });
             bus.publish(NoteAction::Created, note.id);
+            Event::new("note", "created", Severity::Info)
+                .user(&user)
+                .entity("note", note.id)
+                .emit();
             HttpResponse::Created().json(note)
         }
         Err(e) => {
@@ -564,6 +569,10 @@ pub async fn update_note(
                 }
             });
             bus.publish(NoteAction::Updated, note.id);
+            Event::new("note", "updated", Severity::Info)
+                .user(&user)
+                .entity("note", note.id)
+                .emit();
             HttpResponse::Ok().json(note)
         }
         Err(e) => {
@@ -601,6 +610,10 @@ pub async fn delete_note(
         Ok(res) if res.rows_affected() > 0 => {
             // Listeners treat this like a removal — the note leaves live views.
             bus.publish(NoteAction::Deleted, id);
+            Event::new("note", "deleted", Severity::Info)
+                .user(&user)
+                .entity("note", id)
+                .emit();
             HttpResponse::Ok().json(serde_json::json!({ "deleted": true, "id": id }))
         }
         Ok(_) => HttpResponse::NotFound().json(err("Note not found")),

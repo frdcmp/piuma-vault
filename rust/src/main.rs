@@ -14,6 +14,7 @@
  */
 
 use actix_web::{web, App, HttpServer, middleware::Logger};
+use actix_web::dev::Service as _;
 use std::io;
 
 mod db;
@@ -22,8 +23,14 @@ mod cors;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    // Initialize logging
-    env_logger::init();
+    // Logging: env_logger for stdout, plus a tee that forwards warn!/error!
+    // records into telemetry. Set the logger first so the pipeline's own
+    // startup line is visible; the SENDER is installed right after.
+    apps::telemetry::logging::init();
+
+    // Start the fire-and-forget telemetry pipeline (no-op unless
+    // TELEMETRY_INGEST_URL is configured). Events POST to the shared ingest-api.
+    apps::telemetry::init();
 
     let base_url = std::env::var("BASE_URL").unwrap_or_else(|_| "/".to_string());
     
@@ -97,6 +104,36 @@ async fn main() -> io::Result<()> {
         App::new()
             .wrap(cors_config.build())
             .wrap(Logger::default())   // Add request logging
+            // Telemetry access log: one `http` event per request (filtered).
+            .wrap_fn(|req, srv| {
+                let start = std::time::Instant::now();
+                let method = req.method().as_str().to_string();
+                let path = req.path().to_string();
+                let skip = apps::telemetry::http_skip(&path, &method);
+                let ip = apps::telemetry::req_ip(&req);
+                let ua = req
+                    .headers()
+                    .get(actix_web::http::header::USER_AGENT)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("")
+                    .to_string();
+                let fut = srv.call(req);
+                async move {
+                    let res = fut.await?;
+                    if !skip {
+                        let dur = start.elapsed().as_millis() as u32;
+                        apps::telemetry::log_http(
+                            &method,
+                            &path,
+                            res.status().as_u16(),
+                            dur,
+                            &ip,
+                            &ua,
+                        );
+                    }
+                    Ok(res)
+                }
+            })
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(rate_limiter.clone()))
             .app_data(web::Data::new(notes_bus.clone()))

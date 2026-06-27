@@ -767,6 +767,17 @@ pub async fn chat(
                 .execute(&pool2)
                 .await;
             }
+            crate::apps::telemetry::Event::new("chat", "turn", crate::apps::telemetry::Severity::Info)
+                .user_id(&user_id)
+                .entity("conversation", conv_id)
+                .model(&model_label)
+                .tokens(tin.max(0) as u32, tout.max(0) as u32)
+                .attrs(serde_json::json!({
+                    "provider": provider_kind,
+                    "agent": agent_kind,
+                    "tokens_cached": tcached,
+                }))
+                .emit();
             let _ = sqlx::query("UPDATE db_chat_conversations SET updated_at = NOW() WHERE id = $1")
                 .bind(conv_id)
                 .execute(&pool2)
