@@ -9,6 +9,7 @@ use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::notes::events::{NoteAction, NotesEventBus};
 use crate::apps::settings::store;
+use crate::apps::telemetry::{Event, Severity};
 use crate::db::db::DbPool;
 
 use super::models::{
@@ -59,6 +60,11 @@ pub async fn create_session(
                 .json(serde_json::json!({ "error": "could not create session" }));
         }
     };
+
+    Event::new("recorder", "session_started", Severity::Info)
+        .user(&user)
+        .entity("session", id)
+        .emit();
 
     let fmt = crate::apps::transcription::audio_format(&provider);
     HttpResponse::Ok().json(CreateSessionResponse {
@@ -204,6 +210,10 @@ pub async fn stop_session(
     match registry.get(&id) {
         Some(handle) => {
             handle.stop.notify_waiters();
+            Event::new("recorder", "session_stopped", Severity::Info)
+                .user(&user)
+                .entity("session", id)
+                .emit();
             HttpResponse::Accepted().json(serde_json::json!({ "stopping": true }))
         }
         None => HttpResponse::Conflict()
@@ -289,6 +299,10 @@ pub async fn delete_session(
         .bind(&user.user_id)
         .execute(pool.get_ref())
         .await;
+    Event::new("recorder", "session_deleted", Severity::Info)
+        .user(&user)
+        .entity("session", id)
+        .emit();
     HttpResponse::Ok().json(serde_json::json!({ "ok": true }))
 }
 

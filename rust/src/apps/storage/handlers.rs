@@ -20,6 +20,7 @@ use sha2::{Digest, Sha256};
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::settings::store;
+use crate::apps::telemetry::{Event, Severity};
 use crate::db::db::DbPool;
 
 // Permission gate. A dedicated scoped permission so least-privilege API keys can
@@ -437,11 +438,17 @@ pub async fn presign_upload(
         format!("{base}/{key}")
     };
     match req.presigned(cfg).await {
-        Ok(p) => HttpResponse::Ok().json(PresignUploadResponse {
-            url: p.uri().to_string(),
-            key,
-            public_url,
-        }),
+        Ok(p) => {
+            Event::new("storage", "uploaded", Severity::Info)
+                .user(&user)
+                .entity("file", &key)
+                .emit();
+            HttpResponse::Ok().json(PresignUploadResponse {
+                url: p.uri().to_string(),
+                key,
+                public_url,
+            })
+        }
         Err(e) => err(
             actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             format!("presign failed: {e}"),
@@ -468,6 +475,10 @@ pub async fn delete_object(
         Ok(_) => {
             // Drop the folder marker if this was the last file in it.
             prune_empty_parents(&client, &bucket, &key).await;
+            Event::new("storage", "file_deleted", Severity::Info)
+                .user(&user)
+                .entity("file", &key)
+                .emit();
             HttpResponse::Ok().json(DeleteResponse {
                 deleted: vec![key],
                 failed: vec![],
@@ -602,6 +613,10 @@ pub async fn delete_folder(
     let resp = delete_keys_individually(&client, &bucket, keys).await;
     // The folder is gone; tidy up any now-empty ancestors too.
     prune_empty_parents(&client, &bucket, &prefix).await;
+    Event::new("storage", "folder_deleted", Severity::Info)
+        .user(&user)
+        .entity("folder", &prefix)
+        .emit();
     resp
 }
 

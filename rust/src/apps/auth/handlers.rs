@@ -6,6 +6,7 @@ use super::models::{
 };
 use super::keys;
 use super::rate_limit::{client_ip, RateLimiter};
+use crate::apps::telemetry::{Event, Severity};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2, Params,
@@ -281,6 +282,13 @@ pub async fn register(
         return HttpResponse::InternalServerError().finish();
     }
 
+    Event::new("auth", "register", Severity::Info)
+        .user_email(&item.email)
+        .user_id(&id)
+        .ip(&client_ip(&req))
+        .attrs(serde_json::json!({ "first_user": is_first_user }))
+        .emit();
+
     if is_first_user {
         return HttpResponse::Created().json("Registration successful. You are automatically verified as the first admin user.");
     }
@@ -363,7 +371,14 @@ pub async fn login(
 
     let user = match fetch_user_full(pool.get_ref(), "u.email = $1", &item.email).await {
         Ok(Some(u)) => u,
-        Ok(None) => return HttpResponse::Unauthorized().json("Invalid credentials"),
+        Ok(None) => {
+            Event::new("auth", "login_failed", Severity::Warn)
+                .user_email(&item.email)
+                .ip(&ip)
+                .error_code("unknown_user")
+                .emit();
+            return HttpResponse::Unauthorized().json("Invalid credentials");
+        }
         Err(e) => {
             log::error!("DB error: {}", e);
             return HttpResponse::InternalServerError().finish();
@@ -380,6 +395,12 @@ pub async fn login(
     };
 
     if argon2_instance().verify_password(item.password.as_bytes(), &parsed_hash).is_err() {
+        Event::new("auth", "login_failed", Severity::Warn)
+            .user_email(&user.email)
+            .user_id(&user.id)
+            .ip(&ip)
+            .error_code("bad_password")
+            .emit();
         return HttpResponse::Unauthorized().json("Invalid credentials");
     }
 
@@ -416,6 +437,11 @@ pub async fn login(
 
     match generate_tokens(&user) {
         Ok((access_token, refresh_token)) => {
+            Event::new("auth", "login", Severity::Info)
+                .user_email(&user.email)
+                .user_id(&user.id)
+                .ip(&ip)
+                .emit();
             HttpResponse::Ok().json(AuthResponse { access_token, refresh_token, user })
         }
         Err(e) => HttpResponse::InternalServerError().json(e),
@@ -650,6 +676,11 @@ pub async fn reset_password(
         .bind(&hash).bind(&user_id).execute(pool.get_ref()).await;
     let _ = sqlx::query("DELETE FROM db_password_resets WHERE token = $1")
         .bind(&item.token).execute(pool.get_ref()).await;
+
+    Event::new("auth", "password_reset", Severity::Warn)
+        .user_email(&email)
+        .user_id(&user_id)
+        .emit();
 
     HttpResponse::Ok().json("Password reset successfully")
 }

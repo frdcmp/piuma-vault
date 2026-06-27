@@ -1,4 +1,5 @@
 pub mod realtime;
+pub mod telemetry;
 pub mod agents;
 pub mod embeddings;
 pub mod health;
