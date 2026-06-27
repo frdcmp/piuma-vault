@@ -6,6 +6,7 @@ use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::buckets::sync_tags;
 use crate::apps::realtime::ResourceAction;
+use crate::apps::telemetry::{Event, Severity};
 use crate::db::db::DbPool;
 
 use super::events::TasksEventBus;
@@ -258,6 +259,11 @@ pub async fn create_task(
     reschedule(pool.get_ref(), "task", id).await;
     bus.publish(ResourceAction::Created, id);
 
+    Event::new("task", "created", Severity::Info)
+        .user(&user)
+        .entity("task", id)
+        .emit();
+
     match fetch_task(pool.get_ref(), id, &user.user_id).await {
         Ok(Some(task)) => HttpResponse::Created().json(task),
         _ => HttpResponse::InternalServerError().json(err("Created but failed to load task")),
@@ -398,6 +404,11 @@ pub async fn update_task(
     reschedule(pool.get_ref(), "task", id).await;
     bus.publish(ResourceAction::Updated, id);
 
+    Event::new("task", "updated", Severity::Info)
+        .user(&user)
+        .entity("task", id)
+        .emit();
+
     match fetch_task(pool.get_ref(), id, &user.user_id).await {
         Ok(Some(task)) => HttpResponse::Ok().json(task),
         _ => HttpResponse::InternalServerError().json(err("Updated but failed to load task")),
@@ -478,6 +489,10 @@ pub async fn delete_task(
             let _ =
                 crate::apps::notifications::schedule::purge_source(pool.get_ref(), "task", id).await;
             bus.publish(ResourceAction::Deleted, id);
+            Event::new("task", "deleted", Severity::Info)
+                .user(&user)
+                .entity("task", id)
+                .emit();
             HttpResponse::NoContent().finish()
         }
         Err(e) => {
@@ -804,6 +819,11 @@ pub async fn complete_occurrence(
         log::error!("occurrence tag sync failed: {e}");
     }
     bus.publish(ResourceAction::Updated, recurrence_id);
+
+    Event::new("task", "completed", Severity::Info)
+        .user(&user)
+        .entity("task", task_id)
+        .emit();
 
     match fetch_task(pool.get_ref(), task_id, &user.user_id).await {
         Ok(Some(task)) => HttpResponse::Ok().json(task),

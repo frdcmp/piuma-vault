@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::notes::events::{NoteAction, NotesEventBus};
+use crate::apps::telemetry::{Event, Severity};
 use crate::db::db::DbPool;
 
 use super::crypto;
@@ -226,6 +227,16 @@ pub async fn create_share(
     let base_url = std::env::var("BASE_URL").unwrap_or_else(|_| "/".to_string());
     let base = if base_url.ends_with('/') { base_url } else { format!("{}/", base_url) };
     let url = format!("{}share/v/{}", base, slug);
+
+    Event::new("share", "created", Severity::Info)
+        .user(&user)
+        .entity("note_share", &share.slug)
+        .attrs(serde_json::json!({
+            "note_id": share.note_id,
+            "access_level": share.access_level,
+            "has_password": share.password_hash.is_some(),
+        }))
+        .emit();
 
     HttpResponse::Ok().json(CreateShareResponse {
         id: share.id,
@@ -604,6 +615,11 @@ pub async fn get_shared_note(
             .execute(&pool_ref)
             .await;
     });
+
+    Event::new("share", "view", Severity::Info)
+        .entity("note_share", &slug)
+        .attrs(serde_json::json!({ "access_level": share.access_level }))
+        .emit();
 
     // Fetch note
     let note: Option<(uuid::Uuid, String, String, Vec<String>, Option<String>, Option<DateTime<Utc>>)> = sqlx::query_as(

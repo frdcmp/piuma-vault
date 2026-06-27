@@ -5,6 +5,7 @@ use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::buckets::sync_tags;
 use crate::apps::realtime::ResourceAction;
+use crate::apps::telemetry::{Event, Severity};
 use crate::db::db::DbPool;
 
 use super::events::CalendarEventBus;
@@ -173,6 +174,11 @@ pub async fn create_event(
     reschedule(pool.get_ref(), id).await;
     bus.publish(ResourceAction::Created, id);
 
+    Event::new("calendar", "created", Severity::Info)
+        .user(&user)
+        .entity("event", id)
+        .emit();
+
     match fetch_event(pool.get_ref(), id, &user.user_id).await {
         Ok(Some(event)) => HttpResponse::Created().json(event),
         _ => HttpResponse::InternalServerError().json(err("Created but failed to load event")),
@@ -293,6 +299,11 @@ pub async fn update_event(
     reschedule(pool.get_ref(), id).await;
     bus.publish(ResourceAction::Updated, id);
 
+    Event::new("calendar", "updated", Severity::Info)
+        .user(&user)
+        .entity("event", id)
+        .emit();
+
     match fetch_event(pool.get_ref(), id, &user.user_id).await {
         Ok(Some(event)) => HttpResponse::Ok().json(event),
         _ => HttpResponse::InternalServerError().json(err("Updated but failed to load event")),
@@ -323,6 +334,10 @@ pub async fn delete_event(
             let _ =
                 crate::apps::notifications::schedule::purge_source(pool.get_ref(), "event", id).await;
             bus.publish(ResourceAction::Deleted, id);
+            Event::new("calendar", "deleted", Severity::Info)
+                .user(&user)
+                .entity("event", id)
+                .emit();
             HttpResponse::NoContent().finish()
         }
         Err(e) => {
