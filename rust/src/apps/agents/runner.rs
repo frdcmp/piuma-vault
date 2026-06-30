@@ -32,6 +32,12 @@ pub struct RunOptions {
     /// Tag stored on the persisted user message metadata (e.g. "cron") so the UI
     /// can badge the turn as scheduled.
     pub source: String,
+    /// When true, the turn runs with a CLEAN context: only this run's prompt is
+    /// sent to the model — prior turns in the conversation are NOT replayed. The
+    /// per-job conversation still records each run (for review), but a scheduled
+    /// job is independent each time, so it shouldn't re-send (and pay for) days
+    /// of stale history. The in-run tool rounds are unaffected.
+    pub fresh_context: bool,
 }
 
 pub struct TurnResult {
@@ -173,24 +179,30 @@ pub async fn run_turn(
         messages.push(json!({ "role": "system", "content": system }));
     }
 
-    let rows: Vec<(String, Value)> = sqlx::query_as(
-        "SELECT role, content FROM db_chat_messages WHERE conversation_id = $1 ORDER BY created_at",
-    )
-    .bind(conv_id)
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
-    let mut hist: Vec<(String, String)> = rows
-        .into_iter()
-        .filter(|(role, _)| role == "user" || role == "assistant")
-        .map(|(role, content)| (role, blocks_to_text(&content)))
-        .filter(|(_, text)| !text.trim().is_empty())
-        .collect();
-    if hist.len() > 50 {
-        hist.drain(..hist.len() - 50);
-    }
-    for (role, text) in hist {
-        messages.push(json!({ "role": role, "content": text }));
+    if opts.fresh_context {
+        // Stateless run: ignore the conversation's prior turns entirely — send
+        // only this run's prompt. (It's already persisted above for the record.)
+        messages.push(json!({ "role": "user", "content": prompt }));
+    } else {
+        let rows: Vec<(String, Value)> = sqlx::query_as(
+            "SELECT role, content FROM db_chat_messages WHERE conversation_id = $1 ORDER BY created_at",
+        )
+        .bind(conv_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+        let mut hist: Vec<(String, String)> = rows
+            .into_iter()
+            .filter(|(role, _)| role == "user" || role == "assistant")
+            .map(|(role, content)| (role, blocks_to_text(&content)))
+            .filter(|(_, text)| !text.trim().is_empty())
+            .collect();
+        if hist.len() > 50 {
+            hist.drain(..hist.len() - 50);
+        }
+        for (role, text) in hist {
+            messages.push(json!({ "role": role, "content": text }));
+        }
     }
 
     // Throwaway SSE sink: providers want a sender, but headless runs only need
@@ -234,7 +246,11 @@ pub async fn run_turn(
         let tcs: Vec<Value> = res
             .tool_calls
             .iter()
-            .map(|t| json!({ "id": t.id, "type": "function", "function": { "name": t.name, "arguments": t.arguments } }))
+            // `thought_signature` MUST be echoed back: Gemini 3 requires the
+            // signature it returned on a tool call to ride the same call when it's
+            // replayed in history, else the next round 400s. (chat.rs does the
+            // same; run_turn previously dropped it, breaking Gemini cron jobs.)
+            .map(|t| json!({ "id": t.id, "type": "function", "function": { "name": t.name, "arguments": t.arguments }, "thought_signature": t.thought_signature }))
             .collect();
         messages.push(json!({
             "role": "assistant",

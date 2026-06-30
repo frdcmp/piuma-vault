@@ -2,6 +2,7 @@ import { SettingOutlined } from "@ant-design/icons";
 import { Link, useNavigate } from "react-router-dom";
 import { Sprite, useSprite } from "../../sprites";
 import NavMenu from "../NavMenu/NavMenu";
+import NotificationBell from "../NotificationBell";
 import UserMenu from "../UserMenu";
 import "../../admin/vault-pixel.css";
 import "../../admin/components/layout/layout.css";
@@ -35,6 +36,7 @@ export default function WorkspaceHeader() {
 				>
 					<SettingOutlined />
 				</button>
+				<NotificationBell />
 				<UserMenu size={30} />
 			</div>
 		</header>

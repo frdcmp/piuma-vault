@@ -7,7 +7,7 @@ use tokio::time::sleep;
 
 use backend::apps::notifications::models::ScheduledNotification;
 use backend::apps::notifications::schedule::reschedule_source;
-use backend::apps::notifications::{expo, webpush};
+use backend::apps::notifications::{expo, notify, webpush, Channels, NewNotification};
 use backend::db;
 use serde_json::json;
 
@@ -127,6 +127,23 @@ async fn dispatch(pool: &db::db::DbPool, n: &ScheduledNotification) {
     };
     let body = n.body.clone().unwrap_or_default();
     let tag = format!("{}:{}", n.source_type, n.source_id);
+
+    // Persist an inbox row so the reminder also lands in the header bell with
+    // read state. `group_key = source:id` coalesces repeats of the same source
+    // (e.g. a recurring reminder) into one unread row. Inbox-only here — the
+    // actual push below keeps its data-only "alarm" semantics (the mobile
+    // background task turns it into a rich Notifee alarm), which the generic
+    // push in notify() would not preserve. Bus is None (separate process).
+    let inbox = NewNotification::new(&n.user_id, "alert", &n.title)
+        .body(&body)
+        .action_url(url)
+        .group_key(&tag)
+        .metadata(json!({
+            "source_type": n.source_type,
+            "source_id": n.source_id,
+            "occurrence_date": n.occurrence_date,
+        }));
+    notify(pool, None, inbox, Channels::inbox_only()).await;
 
     if wants_web {
         let payload = json!({
