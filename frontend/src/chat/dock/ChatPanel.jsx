@@ -323,6 +323,10 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		if (!text && !readyImages.length) return;
 		// Ignore clicks during the brief setup gap (button already shows a loader).
 		if (sending) return;
+		// Block send while an upload is in flight (covers the Enter-key path too,
+		// which bypasses the button's disabled state) so we never drop a
+		// half-uploaded image that has no CDN url yet.
+		if (pendingImages.some((p) => p.status === "uploading")) return;
 
 		// While a turn is streaming, a send INJECTS into it instead of starting a
 		// new turn; the running turn picks it up at the next round boundary.
