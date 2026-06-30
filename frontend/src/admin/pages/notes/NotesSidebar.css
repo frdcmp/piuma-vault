@@ -575,7 +575,10 @@
 }
 
 .ftree-title {
-	flex: 1;
+	/* Name takes priority: grows to fill, but keeps a guaranteed minimum so
+	   the date (which shrinks first) can never squeeze it down to a few chars. */
+	flex: 1 1 auto;
+	min-width: 90px;
 	color: var(--accent-4);
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -592,7 +595,13 @@
 	color: var(--muted);
 	font-size: 10px;
 	margin-left: 8px;
-	flex-shrink: 0;
+	/* Date is secondary: it yields to the name, truncating with an ellipsis
+	   when the row is tight (e.g. deeply nested files) instead of overlapping. */
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 /* Give the title the full row on hover */
