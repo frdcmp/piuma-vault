@@ -1,0 +1,197 @@
+/* Bell trigger + unread badge. The panel/modal chrome comes from the piuma
+ * primitives; this file styles the bell button and the inbox rows. */
+
+.nb-bell {
+	position: relative;
+}
+
+.nb-badge {
+	position: absolute;
+	top: -2px;
+	right: -2px;
+	min-width: 15px;
+	height: 15px;
+	padding: 0 3px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-family: var(--vp-font);
+	font-size: 9px;
+	font-weight: 700;
+	line-height: 1;
+	color: var(--vp-bg);
+	background: var(--vp-accent-3);
+	border: 1px solid var(--vp-bg);
+}
+
+.nb-list {
+	max-height: 60vh;
+	overflow-y: auto;
+}
+
+.nb-loading,
+.nb-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 28px 0;
+	color: var(--vp-muted);
+	font-family: var(--vp-font);
+	font-size: 12px;
+}
+.nb-empty-icon {
+	font-size: 28px;
+	opacity: 0.5;
+}
+
+.nb-item {
+	display: flex;
+	align-items: stretch;
+	width: 100%;
+	border-bottom: 1px solid var(--vp-border-soft);
+}
+.nb-item:last-child {
+	border-bottom: none;
+}
+.nb-item:hover {
+	background: var(--vp-panel-alt);
+}
+.nb-item-unread {
+	background: rgba(106, 176, 255, 0.07);
+}
+
+/* While a dismiss request is in flight: grey the row out and let the spinner
+ * (on the X) carry the "working" signal. (Text-greying overrides live at the
+ * end of the file, after the base row styles, to keep specificity ascending.) */
+.nb-item-dismissing {
+	opacity: 0.5;
+	pointer-events: none;
+}
+
+.nb-item-main {
+	display: flex;
+	gap: 10px;
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 10px 4px 10px 12px;
+	border: none;
+	background: transparent;
+	text-align: left;
+	cursor: pointer;
+	color: inherit;
+	font-family: var(--vp-font);
+}
+
+.nb-item-dot {
+	flex: 0 0 auto;
+	width: 8px;
+	height: 8px;
+	margin-top: 5px;
+}
+
+.nb-item-body {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.nb-item-title {
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 1.3;
+	color: var(--vp-text);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.nb-item-count {
+	font-size: 10px;
+	font-weight: 700;
+	color: var(--vp-bg);
+	background: var(--vp-accent);
+	padding: 0 5px;
+	line-height: 15px;
+}
+
+.nb-item-text {
+	font-size: 12px;
+	color: var(--vp-muted);
+	line-height: 1.35;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.nb-item-time {
+	font-size: 11px;
+	color: var(--vp-faint);
+	margin-top: 2px;
+}
+
+.nb-item-dismiss {
+	flex: 0 0 auto;
+	opacity: 0;
+	color: var(--vp-muted);
+	font-size: 12px;
+	padding: 0 10px;
+	border: none;
+	background: transparent;
+	cursor: pointer;
+	transition: opacity 0.12s ease;
+}
+.nb-item:hover .nb-item-dismiss {
+	opacity: 0.6;
+}
+.nb-item-dismiss:hover,
+.nb-item-dismiss:focus-visible {
+	opacity: 1;
+	color: var(--vp-accent-3);
+}
+
+.nb-more {
+	display: flex;
+	justify-content: center;
+	padding: 8px;
+	border-top: 1px solid var(--vp-border-soft);
+}
+
+/* ── Detail modal body ── */
+.nb-detail-meta {
+	font-size: 11px;
+	color: var(--vp-faint);
+	margin-bottom: 12px;
+}
+.nb-detail-body {
+	font-size: 13px;
+	line-height: 1.55;
+	color: var(--vp-text);
+	word-break: break-word;
+}
+.nb-detail-body :first-child {
+	margin-top: 0;
+}
+.nb-detail-body pre {
+	overflow-x: auto;
+	background: var(--vp-bg-soft);
+	border: 1px solid var(--vp-border-soft);
+	padding: 10px;
+}
+.nb-detail-body code {
+	font-family: var(--vp-font);
+}
+.nb-detail-body a {
+	color: var(--vp-accent-4);
+}
+
+/* Dismiss-in-flight text greying (placed last so specificity stays ascending). */
+.nb-item-dismissing .nb-item-title,
+.nb-item-dismissing .nb-item-text {
+	color: var(--vp-faint);
+}

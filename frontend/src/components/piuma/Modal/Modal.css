@@ -1,0 +1,93 @@
+/* ── Piuma pixel modal ────────────────────────────────────────────────────────
+ * Centered vp-panel with the three-dot title bar and a dedicated backdrop
+ * button. vault-pixel tokens (--vp-*) resolve on :root. */
+
+.piuma-modal-root {
+	position: fixed;
+	inset: 0;
+	z-index: 1200;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 16px;
+}
+.piuma-modal-overlay {
+	position: absolute;
+	inset: 0;
+	border: none;
+	padding: 0;
+	background: rgba(0, 0, 0, 0.6);
+	cursor: pointer;
+}
+.piuma-modal {
+	position: relative;
+	width: 560px;
+	max-width: 100%;
+	max-height: 84vh;
+	display: flex;
+	flex-direction: column;
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow-lg);
+	font-family: var(--vp-font);
+	color: var(--vp-text);
+}
+
+.piuma-modal-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px 6px 10px;
+	background: var(--vp-bg-soft);
+	border-bottom: 2px solid var(--vp-border);
+}
+.piuma-modal-dots {
+	display: inline-flex;
+	gap: 4px;
+}
+.piuma-modal-dots span {
+	width: 8px;
+	height: 8px;
+	display: block;
+}
+.piuma-modal-dots span:nth-child(1) {
+	background: var(--vp-accent-3);
+}
+.piuma-modal-dots span:nth-child(2) {
+	background: var(--vp-accent);
+}
+.piuma-modal-dots span:nth-child(3) {
+	background: var(--vp-accent-2);
+}
+.piuma-modal-title {
+	flex: 1;
+	margin: 0;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--vp-accent);
+}
+.piuma-modal-close {
+	background: none;
+	border: none;
+	cursor: pointer;
+	color: var(--vp-muted);
+	padding: 3px 4px;
+}
+.piuma-modal-close:hover {
+	color: var(--vp-accent-3);
+}
+
+.piuma-modal-body {
+	padding: 14px 16px;
+	overflow-y: auto;
+}
+.piuma-modal-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	padding: 10px 12px;
+	border-top: 2px solid var(--vp-border);
+	background: var(--vp-bg-soft);
+}

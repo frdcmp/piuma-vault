@@ -51,6 +51,33 @@ pub struct UpcomingQuery {
     pub within_minutes: Option<i32>,
 }
 
+// ── In-app notification center (inbox) ──────────────────────────────────────
+
+// A persisted, user-facing notification row as returned to the bell/inbox.
+#[derive(Debug, Serialize, FromRow)]
+pub struct NotificationRow {
+    pub id: uuid::Uuid,
+    pub category: String,
+    pub level: String,
+    pub title: String,
+    pub body: Option<String>,
+    pub action_url: Option<String>,
+    pub metadata: serde_json::Value,
+    pub count: i32,
+    pub read_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InboxQuery {
+    // When true, only unread (and never archived) rows.
+    pub unread_only: Option<bool>,
+    // Page size (default 20, clamped 1..=100).
+    pub limit: Option<i64>,
+    // Cursor: return rows strictly older than this `created_at`.
+    pub before: Option<chrono::DateTime<chrono::Utc>>,
+}
+
 // ── Subscription / token registration DTOs ──
 
 // Mirrors the browser PushSubscription.toJSON() shape.

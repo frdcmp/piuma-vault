@@ -9,7 +9,7 @@ use std::time::Duration;
 use backend::apps::agents::registry;
 use backend::apps::agents::runner::{run_turn, RunOptions};
 use backend::apps::cron::models::{compute_next_run, CronJobRow};
-use backend::apps::notifications::{expo, webpush};
+use backend::apps::notifications::{notify, Channels, NewNotification};
 use backend::db;
 use backend::db::db::DbPool;
 use chrono::Utc;
@@ -166,6 +166,9 @@ async fn run_job(pool: DbPool, job: CronJobRow) {
         timezone: job.timezone.clone(),
         allow_destructive: job.allow_destructive,
         source: "cron".to_string(),
+        // Each scheduled run is independent — run with a clean context instead of
+        // replaying (and paying for) the whole reused per-job conversation.
+        fresh_context: true,
     };
     let fut = run_turn(&pool, conv_id, &job.user_id, &job.prompt, opts);
 
@@ -186,7 +189,9 @@ async fn run_job(pool: DbPool, job: CronJobRow) {
             .execute(&pool)
             .await;
             if job.notify {
-                notify(&pool, &job, &summary, conv_id).await;
+                // The full report is the notification body — you read it by
+                // opening the notification, not by jumping into a chat thread.
+                notify_owner(&pool, &job, &res.assistant_text, conv_id, "info").await;
             }
             log::info!("cron job {} succeeded", job.id);
         }
@@ -199,7 +204,7 @@ async fn run_job(pool: DbPool, job: CronJobRow) {
             .execute(&pool)
             .await;
             if job.notify {
-                notify(&pool, &job, &format!("Failed: {e}"), conv_id).await;
+                notify_owner(&pool, &job, &format!("Failed: {e}"), conv_id, "error").await;
             }
             log::error!("cron job {} errored: {e}", job.id);
         }
@@ -212,38 +217,24 @@ async fn run_job(pool: DbPool, job: CronJobRow) {
             .execute(&pool)
             .await;
             if job.notify {
-                notify(&pool, &job, "Timed out before finishing", conv_id).await;
+                notify_owner(&pool, &job, "Timed out before finishing", conv_id, "error").await;
             }
             log::error!("cron job {} timed out", job.id);
         }
     }
 }
 
-/// Push a completion notification to the owner's web + Expo targets, honoring
-/// per-user channel prefs and the job's `notify_channels`. Deep-links to the
-/// cron admin page (web) / carries the conversation id (mobile).
-async fn notify(pool: &DbPool, job: &CronJobRow, summary: &str, conv_id: Uuid) {
-    let (web_enabled, push_enabled): (bool, bool) = sqlx::query_as(
-        "SELECT web_enabled, push_enabled FROM db_notification_prefs WHERE user_id = $1",
-    )
-    .bind(&job.user_id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
-    .unwrap_or((true, true));
-
-    let wants_web = job.notify_channels.iter().any(|c| c == "web") && web_enabled;
-    let wants_push = job.notify_channels.iter().any(|c| c == "push") && push_enabled;
-    let url = "/admin/cron";
-    let tag = format!("cron:{}", job.id);
-
-    if wants_web {
-        let payload = json!({ "title": job.title, "body": summary, "url": url, "tag": tag }).to_string();
-        let _ = webpush::dispatch_web(pool, &job.user_id, &payload).await;
-    }
-    if wants_push {
-        let data = json!({ "url": url, "tag": tag, "type": "cron", "job_id": job.id, "conversation_id": conv_id });
-        let _ = expo::dispatch_expo(pool, &job.user_id, &job.title, summary, &data).await;
-    }
+/// Deliver the job's report to the owner via the shared `notify()` helper: a
+/// persisted inbox row (header bell) whose BODY is the full report — opening
+/// the notification shows it, no chat deep-link. Push fan-out per the job's
+/// `notify_channels` (honoring the user's channel prefs inside `notify`; the
+/// push body is truncated there). `conversation_id` is kept in metadata for
+/// reference only. Bus is None — the worker is a separate process, so the
+/// client surfaces it on its next unread-count refetch rather than via SSE.
+async fn notify_owner(pool: &DbPool, job: &CronJobRow, body: &str, conv_id: Uuid, level: &str) {
+    let n = NewNotification::new(&job.user_id, "cron", &job.title)
+        .level(level)
+        .body(body)
+        .metadata(json!({ "job_id": job.id, "conversation_id": conv_id }));
+    notify(pool, None, n, Channels::from_list(&job.notify_channels)).await;
 }
