@@ -1,0 +1,90 @@
+/* ── Piuma pixel popover ──────────────────────────────────────────────────────
+ * vault-pixel design language: square corners, 2px borders, hard offset
+ * shadow, monospace, the three-dot title bar. Tokens (--vp-*) resolve on :root
+ * (admin/vault-pixel.css). */
+
+.piuma-pop {
+	position: relative;
+	display: inline-flex;
+}
+
+.piuma-pop-panel {
+	position: absolute;
+	top: calc(100% + 8px);
+	z-index: 1000;
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow-lg);
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+	max-width: 94vw;
+}
+.piuma-pop-panel--right {
+	right: 0;
+}
+.piuma-pop-panel--left {
+	left: 0;
+}
+
+.piuma-pop-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px 6px 10px;
+	background: var(--vp-bg-soft);
+	border-bottom: 2px solid var(--vp-border);
+}
+.piuma-pop-dots {
+	display: inline-flex;
+	gap: 4px;
+}
+.piuma-pop-dots span {
+	width: 8px;
+	height: 8px;
+	display: block;
+}
+.piuma-pop-dots span:nth-child(1) {
+	background: var(--vp-accent-3);
+}
+.piuma-pop-dots span:nth-child(2) {
+	background: var(--vp-accent);
+}
+.piuma-pop-dots span:nth-child(3) {
+	background: var(--vp-accent-2);
+}
+.piuma-pop-title {
+	flex: 1;
+	margin: 0;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--vp-accent);
+}
+.piuma-pop-actions {
+	display: inline-flex;
+	gap: 4px;
+}
+
+/* Compact text button for the title bar. */
+.piuma-pop-barbtn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	background: none;
+	border: none;
+	cursor: pointer;
+	font-family: var(--vp-font);
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--vp-muted);
+	padding: 3px 4px;
+}
+.piuma-pop-barbtn:hover:not(:disabled) {
+	color: var(--vp-accent-2);
+}
+.piuma-pop-barbtn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}

@@ -5,6 +5,7 @@ import {
 } from "@ant-design/icons";
 import { Link, useNavigate } from "react-router-dom";
 import NavMenu from "../../../components/NavMenu/NavMenu";
+import NotificationBell from "../../../components/NotificationBell";
 import UserMenu from "../../../components/UserMenu";
 import { Sprite, useSprite } from "../../../sprites";
 import useUiStore, { SCREEN_MODES } from "../../../store/uiStore";
@@ -67,6 +68,7 @@ const HeaderComponent = ({ onSidebarToggle, showSidebarToggle = false }) => {
 							</button>
 						</>
 					)}
+					<NotificationBell />
 					<UserMenu size={34} />
 				</div>
 			</div>

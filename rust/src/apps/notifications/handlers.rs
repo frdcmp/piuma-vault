@@ -4,11 +4,13 @@ use serde_json::json;
 use crate::apps::auth::models::AuthenticatedUser;
 use crate::db::db::DbPool;
 
+use super::events::NotificationsEventBus;
 use super::models::{
-    ExpoTokenDeleteRequest, ExpoTokenRequest, NotificationPrefs, NotificationsApiError,
-    UpcomingNotification, UpcomingQuery, UpdatePrefsRequest, VapidKeyResponse,
-    WebPushSubscribeRequest, WebPushUnsubscribeRequest,
+    ExpoTokenDeleteRequest, ExpoTokenRequest, InboxQuery, NotificationPrefs, NotificationRow,
+    NotificationsApiError, UpcomingNotification, UpcomingQuery, UpdatePrefsRequest,
+    VapidKeyResponse, WebPushSubscribeRequest, WebPushUnsubscribeRequest,
 };
+use super::notify::{notify, Channels, ComposeRequest, NewNotification};
 use super::{expo, webpush};
 
 fn err(msg: impl Into<String>) -> NotificationsApiError {
@@ -217,4 +219,152 @@ pub async fn get_upcoming(
     .unwrap_or_default();
 
     HttpResponse::Ok().json(rows)
+}
+
+// ── In-app notification center (inbox) ────────────────────────────────────────
+
+// Paginated inbox list (newest first). `unread_only` filters to unread; cursor
+// pagination via `before` (the created_at of the last item seen). Archived rows
+// are always excluded.
+pub async fn list_inbox(
+    user: AuthenticatedUser,
+    query: web::Query<InboxQuery>,
+    pool: web::Data<DbPool>,
+) -> impl Responder {
+    let limit = query.limit.unwrap_or(20).clamp(1, 100);
+    let unread_only = query.unread_only.unwrap_or(false);
+
+    let rows: Vec<NotificationRow> = sqlx::query_as(
+        "SELECT id, category, level, title, body, action_url, metadata, count, read_at, created_at \
+         FROM db_notifications \
+         WHERE user_id = $1 \
+           AND archived_at IS NULL \
+           AND ($2 = FALSE OR read_at IS NULL) \
+           AND ($3::timestamptz IS NULL OR created_at < $3) \
+         ORDER BY created_at DESC \
+         LIMIT $4",
+    )
+    .bind(&user.user_id)
+    .bind(unread_only)
+    .bind(query.before)
+    .bind(limit)
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default();
+
+    HttpResponse::Ok().json(rows)
+}
+
+// Unread count — drives the bell badge. Fast (partial index).
+pub async fn unread_count(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+) -> impl Responder {
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM db_notifications \
+         WHERE user_id = $1 AND read_at IS NULL AND archived_at IS NULL",
+    )
+    .bind(&user.user_id)
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or(0);
+
+    HttpResponse::Ok().json(json!({ "count": count }))
+}
+
+// Mark one notification read (idempotent — only sets read_at when still null).
+pub async fn mark_read(
+    user: AuthenticatedUser,
+    path: web::Path<uuid::Uuid>,
+    pool: web::Data<DbPool>,
+) -> impl Responder {
+    match sqlx::query(
+        "UPDATE db_notifications SET read_at = NOW() \
+         WHERE id = $1 AND user_id = $2 AND read_at IS NULL",
+    )
+    .bind(path.into_inner())
+    .bind(&user.user_id)
+    .execute(pool.get_ref())
+    .await
+    {
+        Ok(_) => HttpResponse::NoContent().finish(),
+        Err(e) => {
+            log::error!("mark_read failed: {e}");
+            HttpResponse::InternalServerError().json(err("Failed to mark read"))
+        }
+    }
+}
+
+// Mark all unread notifications read — fired when the bell popover opens
+// ("open = seen"). Returns how many were affected.
+pub async fn mark_all_read(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+) -> impl Responder {
+    match sqlx::query(
+        "UPDATE db_notifications SET read_at = NOW() \
+         WHERE user_id = $1 AND read_at IS NULL AND archived_at IS NULL",
+    )
+    .bind(&user.user_id)
+    .execute(pool.get_ref())
+    .await
+    {
+        Ok(r) => HttpResponse::Ok().json(json!({ "updated": r.rows_affected() })),
+        Err(e) => {
+            log::error!("mark_all_read failed: {e}");
+            HttpResponse::InternalServerError().json(err("Failed to mark all read"))
+        }
+    }
+}
+
+// Dismiss (soft-archive) a notification so it leaves the inbox.
+pub async fn dismiss_notification(
+    user: AuthenticatedUser,
+    path: web::Path<uuid::Uuid>,
+    pool: web::Data<DbPool>,
+) -> impl Responder {
+    match sqlx::query(
+        "UPDATE db_notifications SET archived_at = NOW() \
+         WHERE id = $1 AND user_id = $2 AND archived_at IS NULL",
+    )
+    .bind(path.into_inner())
+    .bind(&user.user_id)
+    .execute(pool.get_ref())
+    .await
+    {
+        Ok(_) => HttpResponse::NoContent().finish(),
+        Err(e) => {
+            log::error!("dismiss_notification failed: {e}");
+            HttpResponse::InternalServerError().json(err("Failed to dismiss"))
+        }
+    }
+}
+
+// Manual compose — send a notification to yourself (single-tenant). Goes to the
+// inbox always, plus any push channels in `channels` (["web","push"]).
+pub async fn compose_notification(
+    user: AuthenticatedUser,
+    body: web::Json<ComposeRequest>,
+    bus: web::Data<NotificationsEventBus>,
+    pool: web::Data<DbPool>,
+) -> impl Responder {
+    let req = body.into_inner();
+    let ch = match &req.channels {
+        Some(list) => Channels::from_list(list),
+        None => Channels::inbox_only(),
+    };
+
+    let mut n = NewNotification::new(&user.user_id, "manual", req.title)
+        .level(req.level.unwrap_or_else(|| "info".to_string()));
+    if let Some(b) = req.body {
+        n = n.body(b);
+    }
+    if let Some(u) = req.action_url {
+        n = n.action_url(u);
+    }
+
+    match notify(pool.get_ref(), Some(bus.get_ref()), n, ch).await {
+        Some(r) => HttpResponse::Created().json(json!({ "id": r.id })),
+        None => HttpResponse::InternalServerError().json(err("Failed to create notification")),
+    }
 }

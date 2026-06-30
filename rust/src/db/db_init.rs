@@ -558,6 +558,36 @@ const TABLES: &[TableDefinition] = &[
         "#,
         indices: &[],
     },
+    // In-app notification center / inbox. Persisted, user-facing notifications
+    // with read state, surfaced in the header bell (web + mobile). Created via
+    // the shared `notifications::notify()` helper, which also fans out to the
+    // push channels above. `group_key` (when set) coalesces repeats of the same
+    // source while still unread (count++) instead of inserting a new row.
+    TableDefinition {
+        name: "db_notifications",
+        sql: r#"
+            CREATE TABLE db_notifications (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'system',
+                level TEXT NOT NULL DEFAULT 'info',
+                title TEXT NOT NULL,
+                body TEXT,
+                action_url TEXT,
+                metadata JSONB NOT NULL DEFAULT '{}',
+                group_key TEXT,
+                count INTEGER NOT NULL DEFAULT 1,
+                read_at TIMESTAMPTZ,
+                archived_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_db_notifications_user_created ON db_notifications USING btree (user_id, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_db_notifications_unread ON db_notifications USING btree (user_id) WHERE read_at IS NULL AND archived_at IS NULL",
+            "CREATE INDEX IF NOT EXISTS idx_db_notifications_group ON db_notifications USING btree (user_id, group_key) WHERE group_key IS NOT NULL AND read_at IS NULL AND archived_at IS NULL",
+        ],
+    },
     // ── Agents system (apps/agents) — multi-provider LLM chat ──────────────
     // Editable per-agent prose (the agent *kind* itself lives in registry code).
     TableDefinition {
