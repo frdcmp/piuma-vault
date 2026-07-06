@@ -9,16 +9,27 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 COPY . .
 
-# Build both binaries
-RUN cargo build --release --bin backend --bin embedding-worker
+# Build all four binaries in one compilation pass
+RUN cargo build --release \
+    --bin backend \
+    --bin embedding-worker \
+    --bin notification-worker \
+    --bin cron-worker
 
 # Runtime image
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+# libssl3: reqwest/lettre link native-tls; ca-certificates: outbound HTTPS trust
+RUN apt-get update && apt-get install -y ca-certificates libssl3 curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/backend /usr/local/bin/
 COPY --from=builder /app/target/release/embedding-worker /usr/local/bin/
+COPY --from=builder /app/target/release/notification-worker /usr/local/bin/
+COPY --from=builder /app/target/release/cron-worker /usr/local/bin/
+
+# The binaries resolve JWT/VAPID key material from ./src/keys relative to the
+# working directory (legacy fallback path) — compose mounts the host keys there.
+WORKDIR /app
 
 EXPOSE 8080
 
