@@ -150,10 +150,12 @@ pub async fn notify(
 
     if ch.web_push || ch.expo {
         let (web_enabled, push_enabled) = load_prefs(pool, &n.user_id).await;
-        // Push payloads are size-limited (~4 KB) — truncate the body for the
-        // push. The full body is preserved on the inbox row above.
+        // OS push banners render PLAIN TEXT only — markdown shows its raw
+        // syntax (`**`, `###`, backticks). Strip it to clean text for the push,
+        // then truncate (payloads are ~4 KB capped). The inbox row above keeps
+        // the full markdown for the in-app renderer.
         let body = {
-            let full = n.body.clone().unwrap_or_default();
+            let full = strip_markdown(&n.body.clone().unwrap_or_default());
             if full.chars().count() > 240 {
                 let head: String = full.chars().take(240).collect();
                 format!("{head}…")
@@ -239,6 +241,72 @@ async fn upsert_inbox(pool: &DbPool, n: &NewNotification) -> Result<NotifyResult
         id,
         action: ResourceAction::Created,
     })
+}
+
+/// Render markdown to readable plain text for an OS push banner (which can't
+/// render markdown). Headings/bold/italic/code markers are removed, links
+/// collapse to their label, list bullets become "• ". Underscores are left
+/// alone so identifiers like `source_type` aren't mangled. Preview-only — the
+/// inbox row keeps the full markdown for the in-app renderer.
+fn strip_markdown(input: &str) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    for raw in input.lines() {
+        let mut line = raw.trim_end().to_string();
+        // Skip horizontal rules.
+        let t = line.trim();
+        if t == "---" || t == "***" || t == "___" {
+            continue;
+        }
+        // Drop leading heading hashes ("### Foo" -> "Foo").
+        let lead = line.trim_start();
+        if lead.starts_with('#') {
+            line = lead.trim_start_matches('#').trim_start().to_string();
+        }
+        // List markers ("* ", "- ", "+ " after optional indent) -> "• ".
+        let indent_len = line.len() - line.trim_start().len();
+        let (indent, rest) = line.split_at(indent_len);
+        if let Some(item) = rest
+            .strip_prefix("* ")
+            .or_else(|| rest.strip_prefix("- "))
+            .or_else(|| rest.strip_prefix("+ "))
+        {
+            line = format!("{indent}• {item}");
+        }
+        lines.push(line);
+    }
+    // Inline: links -> label, then drop code/bold/italic markers.
+    let mut s = collapse_links(&lines.join("\n"));
+    s = s.replace('`', "");
+    s = s.replace("**", "");
+    s = s.replace('*', "");
+    // Collapse runs of blank lines.
+    while s.contains("\n\n\n") {
+        s = s.replace("\n\n\n", "\n\n");
+    }
+    s.trim().to_string()
+}
+
+/// Replace `[label](url)` with just `label` (char-safe, so emoji/UTF-8 survive).
+fn collapse_links(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '[' {
+            if let Some(rb) = (i + 1..chars.len()).find(|&j| chars[j] == ']') {
+                if rb + 1 < chars.len() && chars[rb + 1] == '(' {
+                    if let Some(rp) = (rb + 2..chars.len()).find(|&j| chars[j] == ')') {
+                        out.extend(chars[i + 1..rb].iter());
+                        i = rp + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
 }
 
 /// Per-user channel preferences (default both enabled when no row exists).

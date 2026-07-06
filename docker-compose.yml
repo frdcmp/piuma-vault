@@ -139,6 +139,37 @@ services:
     networks:
       - network
 
+  # Single, health-gated connector (copied from the bodhistreams stack). The
+  # image (see ./cloudflared) is just the cloudflared binary on Alpine plus an
+  # in-process supervisor: it polls the full public chain (nginx -> rust) and,
+  # on sustained failure, drains cloudflared so it deregisters from the
+  # Cloudflare edge — then reconnects on recovery. No Docker socket, single
+  # process tree. Outbound-only (no inbound ports). This is the ONLY public
+  # ingress: traffic goes Cloudflare edge -> tunnel -> local nginx directly,
+  # with no external reverse proxy in between.
+  cloudflared:
+    container_name: ${COMPOSE_NAME}-cloudflared
+    build:
+      context: ./cloudflared
+    image: ${COMPOSE_NAME}-cloudflared
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    # host networking so BOTH the tunnel and its health probe reach nginx the
+    # same way (the Cloudflare-dashboard origin points at this host's nginx port)
+    network_mode: host
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARED_TOKEN}
+      # Full public chain via the host's published nginx port (matches nginx's
+      # own ${NGINX_PORT}:80 publish). Override in .env if your path differs.
+      - CLOUDFLARED_HEALTH_URL=http://localhost:${NGINX_PORT}/api/v1/health
+      # Asymmetric hysteresis: drop FAST (never keep the tunnel up over a dead
+      # backend), re-add SLOW (only after the server is provably stable, so a
+      # flapping/recovering backend doesn't yo-yo the edge). At POLL=2s this is
+      # ~2s to drain on the first failed probe, ~6s of clean probes to reconnect.
+      - FAIL_THRESHOLD=1
+      - OK_THRESHOLD=3
+      - POLL_INTERVAL=2
+
 networks:
   network:
     driver: bridge
