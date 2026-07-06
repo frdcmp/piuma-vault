@@ -1,0 +1,32 @@
+# Production override — compiled release binaries instead of cargo-watch.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# One image (rust/Dockerfile.prod) holds all four release binaries; each service
+# just runs a different one. The base ./rust:/app mount is kept: with
+# WORKDIR /app the binaries resolve the gitignored JWT/VAPID key material via
+# their legacy ./src/keys fallback path, exactly like dev. Source changes do NOT
+# hot-reload here — rebuild the image to deploy.
+
+x-prod-build: &prod-build
+  build:
+    context: ./rust
+    dockerfile: Dockerfile.prod
+  image: ${COMPOSE_NAME}-rust-prod
+
+services:
+  rust:
+    <<: *prod-build
+    command: ["backend"]
+
+  notification-worker:
+    <<: *prod-build
+    command: ["notification-worker"]
+
+  cron-worker:
+    <<: *prod-build
+    command: ["cron-worker"]
+
+  embedding-worker:
+    <<: *prod-build
+    command: ["embedding-worker"]
