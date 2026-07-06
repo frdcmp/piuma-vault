@@ -1,4 +1,5 @@
-FROM rust:slim AS builder
+# Builder and runtime must share the same Debian release (glibc version)
+FROM rust:slim-trixie AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -17,7 +18,7 @@ RUN cargo build --release \
     --bin cron-worker
 
 # Runtime image
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 # libssl3: reqwest/lettre link native-tls; ca-certificates: outbound HTTPS trust
 RUN apt-get update && apt-get install -y ca-certificates libssl3 curl && rm -rf /var/lib/apt/lists/*
