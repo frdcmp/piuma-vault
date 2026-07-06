@@ -8,9 +8,9 @@ dist
 target
 
 # ---- Lockfiles ----
+# (Cargo.lock is committed — reproducible prod builds need pinned deps)
 package-lock.json
 bun.lock
-Cargo.lock
 
 # ---- Env & secrets ----
 .env
