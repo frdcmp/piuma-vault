@@ -340,7 +340,8 @@ pub async fn create_note(pool: &DbPool, user_id: &str, args: &Value) -> Result<V
     let title = req_str(args, "title")?;
     let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
     let folder = opt_string(args, "folder").unwrap_or_else(|| "/".to_string());
-    let tags = opt_str_array(args, "tags").unwrap_or_default();
+    let tags =
+        crate::apps::notes::handlers::normalize_tags(&opt_str_array(args, "tags").unwrap_or_default());
     let id: Uuid = sqlx::query_scalar(
         "INSERT INTO notes (user_id, title, content, tags, folder) VALUES ($1, $2, $3, $4, $5) RETURNING id",
     )
@@ -361,7 +362,8 @@ pub async fn update_note(pool: &DbPool, user_id: &str, args: &Value) -> Result<V
     let title = opt_string(args, "title");
     let content = opt_string(args, "content");
     let folder = opt_string(args, "folder");
-    let tags = opt_str_array(args, "tags");
+    let tags = opt_str_array(args, "tags")
+        .map(|t| crate::apps::notes::handlers::normalize_tags(&t));
     let row: Option<(Uuid, String, String)> = sqlx::query_as(
         "UPDATE notes SET \
            title = COALESCE($3, title), \

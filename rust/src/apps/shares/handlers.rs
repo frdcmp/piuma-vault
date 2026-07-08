@@ -827,7 +827,8 @@ pub async fn update_shared_note(
 
     let final_title = new_title.unwrap_or(current_title);
     let final_content = new_content.unwrap_or(current_content);
-    let final_tags = new_tags.unwrap_or(current_tags);
+    let final_tags =
+        crate::apps::notes::handlers::normalize_tags(&new_tags.unwrap_or(current_tags));
     let final_folder = new_folder.or(current_folder);
 
     // Update note

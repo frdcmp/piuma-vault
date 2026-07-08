@@ -42,6 +42,25 @@ fn require_write(user: &AuthenticatedUser) -> Option<HttpResponse> {
 
 // ── VALIDATION ────────────────────────────────────────────────────────────
 
+// Tags are matched exactly in SQL ($n = ANY(tags)), so they are stored
+// lowercase with hyphens instead of whitespace. Normalize instead of
+// rejecting: "DR-5" → "dr-5", "Project Plans" → "project-plans". Empties
+// are dropped and case/whitespace duplicates collapse.
+pub fn normalize_tags(tags: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(tags.len());
+    for tag in tags {
+        let normalized = tag
+            .to_lowercase()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join("-");
+        if !normalized.is_empty() && !out.contains(&normalized) {
+            out.push(normalized);
+        }
+    }
+    out
+}
+
 fn validate_note(title: &str, content: &str, tags: &[String], folder: &str) -> Option<HttpResponse> {
     if title.trim().is_empty() {
         return Some(HttpResponse::BadRequest().json(err("Title is required")));
@@ -432,7 +451,8 @@ pub async fn create_note(
         return r;
     }
 
-    if let Some(r) = validate_note(&body.title, &body.content, &body.tags, &body.folder) {
+    let tags = normalize_tags(&body.tags);
+    if let Some(r) = validate_note(&body.title, &body.content, &tags, &body.folder) {
         return r;
     }
 
@@ -447,7 +467,7 @@ pub async fn create_note(
         .bind(&user.user_id)
         .bind(&body.title)
         .bind(&body.content)
-        .bind(&body.tags)
+        .bind(&tags)
         .bind(&body.folder)
         .fetch_one(pool.get_ref())
         .await
@@ -519,7 +539,7 @@ pub async fn update_note(
 
     let new_title = body.title.clone().unwrap_or(existing.title);
     let new_content = body.content.clone().unwrap_or(existing.content);
-    let new_tags = body.tags.clone().unwrap_or(existing.tags);
+    let new_tags = normalize_tags(&body.tags.clone().unwrap_or(existing.tags));
     let new_folder = body.folder.clone().or(existing.folder);
 
     // Validate merged values
