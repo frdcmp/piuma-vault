@@ -1034,38 +1034,34 @@ pub async fn browse_folder(
     };
 
     // ── Direct subfolders (one level deep) ──
-    // Build the SQL safely — the path is validated to start with '/'
-    // and we escape single quotes for the regex/pattern, then use bind for the full condition.
-    let subfolder_sql = if path == "/" {
-        "SELECT DISTINCT SUBSTRING(folder FROM '^/([^/]+)') AS name \
-         FROM notes WHERE user_id = $1 AND deleted_at IS NULL AND folder LIKE '/%' AND folder != '/'"
-            .to_string()
-    } else {
-        format!(
-            "SELECT DISTINCT SUBSTRING(folder FROM '^{}/?([^/]+)') AS name \
-             FROM notes WHERE user_id = $1 AND deleted_at IS NULL AND folder LIKE $2 AND folder != $3",
-            path.replace('\'', "''"),
-        )
-    };
+    // The subfolder name is the first path segment after the prefix. Use plain
+    // string functions with bound parameters — interpolating the path into a
+    // regex breaks on folder names with metacharacters (e.g. "[Project Plans]").
+    let prefix = format!("{}/", path.trim_end_matches('/'));
+    let like_pattern = format!(
+        "{}%",
+        prefix
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_")
+    );
 
-    let like_pattern = if path == "/" {
-        String::new()
-    } else {
-        format!("{}%", path)
-    };
+    let subfolder_sql =
+        "SELECT DISTINCT split_part(substr(folder, length($2) + 1), '/', 1) AS name \
+         FROM notes WHERE user_id = $1 AND deleted_at IS NULL AND folder LIKE $3 \
+         ORDER BY name";
 
-    let mut subfolder_query = sqlx::query_as::<_, (String,)>(&subfolder_sql)
-        .bind(&user.user_id);
-
-    if path != "/" {
-        subfolder_query = subfolder_query
-            .bind(&like_pattern)
-            .bind(path);
-    }
-
-    let subfolders: Vec<String> = match subfolder_query.fetch_all(pool.get_ref()).await
+    let subfolders: Vec<String> = match sqlx::query_as::<_, (Option<String>,)>(subfolder_sql)
+        .bind(&user.user_id)
+        .bind(&prefix)
+        .bind(&like_pattern)
+        .fetch_all(pool.get_ref())
+        .await
     {
-        Ok(rows) => rows.into_iter().map(|(s,)| s).collect(),
+        Ok(rows) => rows
+            .into_iter()
+            .filter_map(|(s,)| s.filter(|n| !n.is_empty()))
+            .collect(),
         Err(e) => {
             log::error!("notes browse subfolders failed: {e}");
             return HttpResponse::InternalServerError().json(err("Browse failed"));
