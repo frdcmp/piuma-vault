@@ -115,15 +115,40 @@ pub async fn usage(
     let to = parse_bound(&q.to);
 
     // Per-model prices (USD per 1M tokens) keyed by model label.
-    let price_rows: Vec<(String, f64, f64, f64)> =
-        sqlx::query_as("SELECT model_id, price_input, price_output, price_cached FROM db_llm_models")
-            .fetch_all(pool.get_ref())
-            .await
-            .unwrap_or_default();
+    let price_rows: Vec<(String, String, f64, f64, f64)> = sqlx::query_as(
+        "SELECT m.model_id, p.kind, m.price_input, m.price_output, m.price_cached \
+         FROM db_llm_models m JOIN db_llm_providers p ON p.id = m.provider_id \
+         ORDER BY p.kind, m.model_id",
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default();
     let prices: HashMap<String, (f64, f64, f64)> = price_rows
-        .into_iter()
-        .map(|(m, i, o, c)| (m, (i, o, c)))
+        .iter()
+        .map(|(m, _, i, o, c)| (m.clone(), (*i, *o, *c)))
         .collect();
+
+    // Configured rate card, echoed back so the dashboard can show what each
+    // model bills at. Embeddings get their fixed fallback row appended.
+    let mut pricing: Vec<serde_json::Value> = price_rows
+        .iter()
+        .map(|(m, p, i, o, c)| {
+            json!({
+                "model": m,
+                "provider_kind": p,
+                "price_input": i,
+                "price_output": o,
+                "price_cached": c,
+            })
+        })
+        .collect();
+    pricing.push(json!({
+        "model": "text-embedding-3-large",
+        "provider_kind": "azure",
+        "price_input": EMBED_PRICE_PER_1M,
+        "price_output": 0.0,
+        "price_cached": 0.0,
+    }));
 
     // One detailed grouped read; we fold it into the three views in Rust so the
     // per-row cost (which depends on model pricing) stays correct everywhere.
@@ -212,5 +237,6 @@ pub async fn usage(
         "by_model": by_model,
         "by_source": by_source,
         "by_day": by_day,
+        "pricing": pricing,
     }))
 }
