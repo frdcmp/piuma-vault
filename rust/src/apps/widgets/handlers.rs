@@ -163,9 +163,13 @@ pub async fn summary(
 
     let mut events: Vec<WidgetEvent> = Vec::new();
     if read_calendar {
+        // One-off events overlapping [now, horizon). Recurring templates are
+        // excluded here and expanded below — their base starts_at is usually in
+        // the past, so the overlap filter would drop them entirely.
         let rows = sqlx::query_as::<_, (Uuid, String, DateTime<Utc>, Option<DateTime<Utc>>, bool)>(
             "SELECT id, title, starts_at, ends_at, all_day FROM db_calendar_events \
-             WHERE user_id = $1 AND starts_at < $2 AND COALESCE(ends_at, starts_at) >= $3 \
+             WHERE user_id = $1 AND rrule IS NULL \
+               AND starts_at < $2 AND COALESCE(ends_at, starts_at) >= $3 \
              ORDER BY starts_at ASC",
         )
         .bind(&user.user_id)
@@ -177,7 +181,6 @@ pub async fn summary(
             Ok(rows) => {
                 events = rows
                     .into_iter()
-                    .take(EVENT_CAP)
                     .map(|(id, title, starts_at, ends_at, all_day)| WidgetEvent {
                         id: id.to_string(),
                         title,
@@ -192,6 +195,49 @@ pub async fn summary(
                 return HttpResponse::InternalServerError().json(err("Failed to fetch events"));
             }
         }
+
+        // Recurring events → concrete occurrences in the window, mirroring the
+        // recurring-task expansion above. Each occurrence keeps the template's
+        // UTC time-of-day and duration; UNTIL/COUNT live inside the rrule string
+        // (events have no `until` column).
+        let templates = sqlx::query_as::<_, (Uuid, String, DateTime<Utc>, Option<DateTime<Utc>>, bool, String)>(
+            "SELECT id, title, starts_at, ends_at, all_day, rrule FROM db_calendar_events \
+             WHERE user_id = $1 AND rrule IS NOT NULL AND starts_at < $2",
+        )
+        .bind(&user.user_id)
+        .bind(horizon)
+        .fetch_all(pool.get_ref())
+        .await;
+        let templates = match templates {
+            Ok(rows) => rows,
+            Err(e) => {
+                log::error!("widgets recurring events query failed: {e}");
+                return HttpResponse::InternalServerError()
+                    .json(err("Failed to fetch recurring events"));
+            }
+        };
+        for (id, title, starts_at, ends_at, all_day, rrule) in &templates {
+            let time_of_day = starts_at.time();
+            let duration = ends_at.map(|e| e - *starts_at);
+            for date in expand_dates(rrule, *starts_at, None, today, horizon_date) {
+                let occ_start = Utc.from_utc_datetime(&date.and_time(time_of_day));
+                let occ_end = duration.map(|d| occ_start + d);
+                // Same overlap rule as the one-off SQL: upcoming or still ongoing.
+                if occ_end.unwrap_or(occ_start) < now || occ_start >= horizon {
+                    continue;
+                }
+                events.push(WidgetEvent {
+                    id: id.to_string(),
+                    title: title.clone(),
+                    starts_at: occ_start,
+                    ends_at: occ_end,
+                    all_day: *all_day,
+                });
+            }
+        }
+
+        events.sort_by(|a, b| a.starts_at.cmp(&b.starts_at));
+        events.truncate(EVENT_CAP);
     }
 
     HttpResponse::Ok().json(WidgetSummary { now, tasks, events })
