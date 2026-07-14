@@ -49,6 +49,14 @@ const fmtUsd = (n) => {
 	if (v >= 0.0001) return `$${v.toFixed(4)}`;
 	return `$${v.toExponential(2)}`;
 };
+// Rate-card prices (USD per 1M tokens). Two decimals normally; keep more for
+// sub-cent rates like DeepSeek's $0.0028/M cache reads so they don't show $0.00.
+const fmtPrice = (n) => {
+	const v = n || 0;
+	if (v === 0) return "—";
+	if (v >= 0.01) return `$${v.toFixed(2)}`;
+	return `$${v.toFixed(4)}`;
+};
 
 // Chart series colors — mapped to the vault-pixel accent tokens. (SVG `stroke`
 // / `fill` attributes can't resolve CSS vars, so these mirror the hex values.)
@@ -95,6 +103,7 @@ const TokenUsage = () => {
 	const byModel = data?.by_model || [];
 	const bySource = data?.by_source || [];
 	const byDay = data?.by_day || [];
+	const pricing = data?.pricing || [];
 
 	const modelChart = useMemo(
 		() =>
@@ -420,6 +429,61 @@ const TokenUsage = () => {
 									render={fmtUsd}
 								/>
 							</Table>
+						</div>
+					</section>
+
+					{/* Rate card — configured price per 1M tokens for each model */}
+					<section className="vp-panel">
+						<header className="vp-panel-bar">
+							<span className="vp-dots">
+								<span />
+								<span />
+								<span />
+							</span>
+							<h3 className="vp-panel-title">Model pricing ($ / 1M tokens)</h3>
+						</header>
+						<div className="vp-panel-body">
+							<Table
+								dataSource={pricing}
+								rowKey={(r) => `${r.provider_kind}:${r.model}`}
+								loading={isLoading}
+								pagination={false}
+								size="small"
+								scroll={{ x: 600 }}
+							>
+								<Table.Column title="Model" dataIndex="model" key="model" />
+								<Table.Column
+									title="Provider"
+									dataIndex="provider_kind"
+									key="provider_kind"
+									render={(v) => v || "—"}
+								/>
+								<Table.Column
+									title="Input"
+									dataIndex="price_input"
+									key="price_input"
+									align="right"
+									render={fmtPrice}
+								/>
+								<Table.Column
+									title="Output"
+									dataIndex="price_output"
+									key="price_output"
+									align="right"
+									render={fmtPrice}
+								/>
+								<Table.Column
+									title="Cached"
+									dataIndex="price_cached"
+									key="price_cached"
+									align="right"
+									render={fmtPrice}
+								/>
+							</Table>
+							<p className="vp-muted" style={{ marginTop: 8, marginBottom: 0 }}>
+								Prices are editable per model in the Agents page. “—” means no
+								price set (local models bill at $0).
+							</p>
 						</div>
 					</section>
 				</div>
