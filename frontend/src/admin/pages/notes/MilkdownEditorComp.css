@@ -230,6 +230,15 @@
 .pv-milkdown-wrapper .milkdown .editor th {
 	background: var(--pv-code-bg);
 	font-weight: 600;
+	color: var(--pv-primary, #f7c948);
+	font-size: 13px;
+	text-transform: uppercase;
+	letter-spacing: 0.4px;
+}
+
+/* Zebra striping — same alternating row colors as the public share view */
+.pv-milkdown-wrapper .milkdown .editor tr:nth-child(even) td {
+	background: rgba(255, 255, 255, 0.02);
 }
 
 /* Prosemirror focus ring */

@@ -23,18 +23,47 @@
 
 .shared-note-card {
 	width: 100%;
-	max-width: 820px;
+	max-width: 960px;
 	background: var(--card, #161922);
 	border: 1px solid var(--border, #2a2f3a);
 	border-radius: 8px;
-	padding: 32px;
+	padding: 32px 40px;
 	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+	transition: max-width 0.2s ease;
+}
+
+/* Full-width reading mode (toggle in the header, persisted per browser) */
+.shared-note-card--wide {
+	max-width: none;
 }
 
 .shared-note-header {
+	position: relative;
 	border-bottom: 1px solid var(--border, #2a2f3a);
 	padding-bottom: 16px;
 	margin-bottom: 20px;
+}
+
+.shared-note-width-toggle {
+	position: absolute;
+	top: 2px;
+	right: 0;
+	padding: 2px 10px;
+	font-family: inherit;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	color: var(--muted, #8a93a3);
+	background: var(--bg, #0e0f12);
+	border: 1px solid var(--border, #2a2f3a);
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.shared-note-width-toggle:hover {
+	color: var(--bg, #0e0f12);
+	background: var(--accent, #f7c948);
+	border-color: var(--accent, #f7c948);
 }
 
 .shared-note-title {
@@ -42,6 +71,21 @@
 	font-size: 28px;
 	font-weight: 700;
 	color: var(--fg, #e6e6e6);
+}
+
+/* Keep the title clear of the width toggle in the top-right corner */
+.shared-note-header .shared-note-title {
+	padding-right: 90px;
+}
+
+@media (max-width: 640px) {
+	.shared-note-root {
+		padding: 12px 8px;
+	}
+
+	.shared-note-card {
+		padding: 20px 16px;
+	}
 }
 
 .shared-note-sub {
@@ -171,24 +215,56 @@
 	color: var(--muted, #8a93a3);
 }
 
+/* Tables: wide ones scroll horizontally inside the wrapper instead of
+   crushing columns until header words break mid-word. */
+.shared-note-table-wrap {
+	margin: 16px 0;
+	overflow-x: auto;
+	border: 1px solid var(--border, #2a2f3a);
+	border-radius: 8px;
+	background: var(--bg-soft, #15171c);
+}
+
 .shared-note-body table {
 	border-collapse: collapse;
 	width: 100%;
-	margin: 16px 0;
+	margin: 0;
 	font-size: 14px;
 }
 
 .shared-note-body th,
 .shared-note-body td {
-	border: 1px solid var(--border, #2a2f3a);
-	padding: 0.1em 0.8em;
+	border: none;
+	border-bottom: 1px solid var(--border, #2a2f3a);
+	padding: 8px 14px;
 	text-align: left;
 	vertical-align: top;
+	/* Undo the body-wide `anywhere` so cells wrap at spaces, never mid-word;
+	   overflow goes to the wrapper's horizontal scroll instead. */
+	overflow-wrap: normal;
+	line-height: 1.5;
+}
+
+.shared-note-body th + th,
+.shared-note-body td + td {
+	border-left: 1px solid var(--border, #2a2f3a);
 }
 
 .shared-note-body th {
-	background: var(--bg-soft, #15171c);
+	background: var(--card, #1b1e25);
 	font-weight: 600;
+	color: var(--accent, #f7c948);
+	font-size: 13px;
+	text-transform: uppercase;
+	letter-spacing: 0.4px;
+}
+
+.shared-note-body tbody tr:nth-child(even) {
+	background: rgba(255, 255, 255, 0.02);
+}
+
+.shared-note-body tbody tr:last-child td {
+	border-bottom: none;
 }
 
 .shared-note-body del {

@@ -136,6 +136,15 @@ const markdownComponents = {
 			/>
 		);
 	},
+	// Wide tables scroll horizontally inside their own container instead of
+	// squeezing columns until words break mid-word.
+	table({ children, ...props }) {
+		return (
+			<div className="shared-note-table-wrap">
+				<table {...props}>{children}</table>
+			</div>
+		);
+	},
 	// Unwrap the <pre> around a ```mermaid block so the diagram isn't nested in a
 	// code element; non-mermaid code keeps its <pre>.
 	pre({ children, ...props }) {
@@ -165,6 +174,13 @@ export default function SharedNotePage() {
 	const urlPwd = searchParams.get("pwd") || "";
 
 	const [data, setData] = useState(null);
+	const [wide, setWide] = useState(() => {
+		try {
+			return localStorage.getItem("pv-share-wide") === "1";
+		} catch {
+			return false;
+		}
+	});
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
 	const [needsPassword, setNeedsPassword] = useState(false);
@@ -220,6 +236,18 @@ export default function SharedNotePage() {
 			return null;
 		}
 	}, [data]);
+
+	const toggleWide = () => {
+		setWide((w) => {
+			const next = !w;
+			try {
+				localStorage.setItem("pv-share-wide", next ? "1" : "0");
+			} catch {
+				// private mode / storage disabled: toggle still works for the session
+			}
+			return next;
+		});
+	};
 
 	const handlePasswordSubmit = (e) => {
 		e.preventDefault();
@@ -287,8 +315,18 @@ export default function SharedNotePage() {
 
 	return (
 		<div className="shared-note-root">
-			<article className="shared-note-card">
+			<article
+				className={`shared-note-card${wide ? " shared-note-card--wide" : ""}`}
+			>
 				<header className="shared-note-header">
+					<button
+						type="button"
+						className="shared-note-width-toggle"
+						onClick={toggleWide}
+						title={wide ? "Switch to reading width" : "Expand to full width"}
+					>
+						{wide ? "normal" : "wide"}
+					</button>
 					<h1 className="shared-note-title">{data.note.title || "Untitled"}</h1>
 					<div className="shared-note-meta">
 						{data.note.folder ? (
