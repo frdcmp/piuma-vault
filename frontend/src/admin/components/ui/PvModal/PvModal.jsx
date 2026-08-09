@@ -80,11 +80,7 @@ export default function PvModal({
 
 				<div className="pv-modal-actions">
 					{onCancel && (
-						<button
-							type="button"
-							className="pv-modal-btn"
-							onClick={onCancel}
-						>
+						<button type="button" className="pv-modal-btn" onClick={onCancel}>
 							{cancelText}
 						</button>
 					)}

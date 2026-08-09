@@ -5,6 +5,8 @@ use super::otp_handlers;
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/auth")
+            .route("/status", web::get().to(handlers::auth_status))
+            // One-shot: creates the vault's only account, then closes for good.
             .route("/register", web::post().to(handlers::register))
             .route("/login", web::post().to(handlers::login))
             .route("/login/otp", web::post().to(otp_handlers::login_otp))

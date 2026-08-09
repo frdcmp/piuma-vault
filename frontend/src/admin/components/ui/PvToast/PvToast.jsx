@@ -64,9 +64,7 @@ function Toast({ id, label, status, progress }) {
 		>
 			<div className="pv-toast-row">
 				<span className={`pv-toast-glyph pv-toast-glyph-${status}`}>
-					<span
-						className={status === "progress" ? "pv-toast-dog" : undefined}
-					>
+					<span className={status === "progress" ? "pv-toast-dog" : undefined}>
 						{STATUS_GLYPH[status] || "•"}
 					</span>
 				</span>

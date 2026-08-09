@@ -4,16 +4,21 @@
 .ws-header {
 	display: flex;
 	align-items: center;
+	flex-wrap: nowrap;
 	gap: 14px;
 	padding: 5px 16px;
 	background: var(--vp-panel);
 	border-bottom: 2px solid var(--vp-border);
 	flex: 0 0 auto;
+	/* Same query container the admin header declares, so NavMenu compacts by
+	   the header's own width instead of wrapping to a second row. */
+	container: app-header / inline-size;
 }
 
 .ws-header-brand {
 	display: inline-flex;
 	align-items: center;
+	flex: 0 0 auto;
 	gap: 8px;
 	text-decoration: none;
 	color: var(--vp-text);
@@ -39,6 +44,7 @@
 .ws-header-actions {
 	display: flex;
 	align-items: center;
+	flex: 0 0 auto;
 	gap: 8px;
 	margin-left: auto;
 }

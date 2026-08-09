@@ -5,20 +5,30 @@ import {
 	listShareLinks,
 	revokeShareLink,
 } from "../../../api/shares";
+import useShareDefaultsStore, {
+	SHARE_EXPIRY_OPTIONS,
+} from "../../../store/shareDefaultsStore";
+import ShareSettingsModal from "./ShareSettingsModal";
 
 export default function SharePopover({ noteId, isMobile, iconOnly }) {
 	const [open, setOpen] = useState(false);
+	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [shares, setShares] = useState([]);
 	const [lastPassword, setLastPassword] = useState(null);
 	const [copiedSlug, setCopiedSlug] = useState(null);
 	const [copiedAiSlug, setCopiedAiSlug] = useState(null);
 
-	const [accessLevel, setAccessLevel] = useState("view");
+	// Browser-local defaults (gear icon) seed the form on every open.
+	const defaults = useShareDefaultsStore((s) => s.defaults);
+
+	const [accessLevel, setAccessLevel] = useState(defaults.accessLevel);
 	const [password, setPassword] = useState("");
-	const [expiresIn, setExpiresIn] = useState("1");
-	const [passwordEnabled, setPasswordEnabled] = useState(false);
-	const [expireEnabled, setExpireEnabled] = useState(true);
+	const [expiresIn, setExpiresIn] = useState(defaults.expiresInHours);
+	const [passwordEnabled, setPasswordEnabled] = useState(
+		defaults.passwordEnabled,
+	);
+	const [expireEnabled, setExpireEnabled] = useState(defaults.expireEnabled);
 
 	const popoverRef = useRef(null);
 
@@ -37,16 +47,19 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 			setLastPassword(null);
 			setCopiedSlug(null);
 			setCopiedAiSlug(null);
-			setAccessLevel("view");
-			setPassword("");
-			setExpiresIn("1");
-			setPasswordEnabled(false);
-			setExpireEnabled(true);
+			setAccessLevel(defaults.accessLevel);
+			setPassword(defaults.passwordEnabled ? defaults.defaultPassword : "");
+			setExpiresIn(defaults.expiresInHours);
+			setPasswordEnabled(defaults.passwordEnabled);
+			setExpireEnabled(defaults.expireEnabled);
 			loadShares();
 		}
-	}, [open, noteId]);
+	}, [open, noteId, defaults]);
 
 	useEffect(() => {
+		// The settings modal renders in a portal outside this subtree, so clicks
+		// inside it must not be treated as "outside" and close the popover.
+		if (settingsOpen) return;
 		const handleClickOutside = (event) => {
 			if (popoverRef.current && !popoverRef.current.contains(event.target)) {
 				setOpen(false);
@@ -54,7 +67,7 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 		};
 		document.addEventListener("mousedown", handleClickOutside);
 		return () => document.removeEventListener("mousedown", handleClickOutside);
-	}, []);
+	}, [settingsOpen]);
 
 	const handleGenerate = async () => {
 		try {
@@ -71,28 +84,38 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 			setLastPassword(effectivePassword);
 			await loadShares();
 
-			// Human-facing link stays bare — the share page prompts for the
-			// password. (The LLM/API URL embeds ?pwd= since it can't be prompted.)
-			const url = created?.slug
-				? `${window.location.origin}/share/v/${created.slug}`
-				: "";
+			// What lands on the clipboard is a user preference (gear icon):
+			// the human-facing link stays bare — the share page prompts for the
+			// password — while the LLM/API URL embeds ?pwd= since it can't prompt.
+			const wantsLlm = defaults.autoCopy === "llm";
+			const url = !created?.slug
+				? ""
+				: wantsLlm
+					? buildLlmUrl({
+							...created,
+							has_password: !!effectivePassword,
+							// state hasn't flushed yet, so pass the password explicitly
+							password: effectivePassword,
+						})
+					: `${window.location.origin}/share/v/${created.slug}`;
 
 			let copied = false;
-			if (url) {
+			if (url && defaults.autoCopy !== "none") {
 				try {
 					await navigator.clipboard.writeText(url);
 					copied = true;
-					if (created?.slug) {
-						setCopiedSlug(created.slug);
-						setTimeout(() => setCopiedSlug(null), 2000);
-					}
+					const markCopied = wantsLlm ? setCopiedAiSlug : setCopiedSlug;
+					markCopied(created.slug);
+					setTimeout(() => markCopied(null), 2000);
 				} catch {
 					// fall through to non-copied notice
 				}
 			}
 
 			if (copied) {
-				pvMessage.success("Link copied to clipboard");
+				pvMessage.success(
+					wantsLlm ? "LLM URL copied to clipboard" : "Link copied to clipboard",
+				);
 			} else {
 				pvMessage.info("Share link created");
 			}
@@ -204,9 +227,29 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 						boxShadow: "4px 4px 0 0 #000",
 					}}
 				>
-					<h3 style={{ margin: "0 0 12px 0", color: "var(--accent)" }}>
-						Share this note
-					</h3>
+					<div
+						style={{
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "space-between",
+							gap: 8,
+							margin: "0 0 12px 0",
+						}}
+					>
+						<h3 style={{ margin: 0, color: "var(--accent)" }}>
+							Share this note
+						</h3>
+						<button
+							type="button"
+							className="pixel-btn icon-only"
+							style={{ padding: "0 6px" }}
+							onClick={() => setSettingsOpen(true)}
+							title="Share link defaults"
+							aria-label="Share link defaults"
+						>
+							⚙️
+						</button>
+					</div>
 
 					<div style={{ marginBottom: 12 }}>
 						<label style={{ display: "block", marginBottom: 4, fontSize: 12 }}>
@@ -235,6 +278,7 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 									const next = !passwordEnabled;
 									setPasswordEnabled(next);
 									if (!next) setPassword("");
+									else if (!password) setPassword(defaults.defaultPassword);
 								}}
 							/>
 						</div>
@@ -263,7 +307,7 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 									const next = !expireEnabled;
 									setExpireEnabled(next);
 									if (!next) setExpiresIn("");
-									else if (!expiresIn) setExpiresIn("1");
+									else if (!expiresIn) setExpiresIn(defaults.expiresInHours);
 								}}
 							/>
 						</div>
@@ -273,11 +317,11 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 								value={expiresIn || "1"}
 								onChange={(e) => setExpiresIn(e.target.value)}
 							>
-								<option value="1">1 hour</option>
-								<option value="24">24 hours</option>
-								<option value="72">3 days</option>
-								<option value="168">7 days</option>
-								<option value="720">30 days</option>
+								{SHARE_EXPIRY_OPTIONS.map((o) => (
+									<option key={o.value} value={o.value}>
+										{o.label}
+									</option>
+								))}
 							</select>
 						)}
 					</div>
@@ -391,6 +435,11 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 					)}
 				</div>
 			)}
+
+			<ShareSettingsModal
+				open={settingsOpen}
+				onClose={() => setSettingsOpen(false)}
+			/>
 		</div>
 	);
 }

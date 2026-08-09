@@ -11,6 +11,7 @@ import ApiTest from "./admin/pages/apiTest";
 import Appearance from "./admin/pages/appearance";
 import ForgotPassword from "./admin/pages/auth/forgotPassword";
 import Login from "./admin/pages/auth/login";
+import Register from "./admin/pages/auth/register";
 import VerifyEmail from "./admin/pages/auth/verifyEmail";
 import CalendarPage from "./admin/pages/calendar/CalendarPage";
 import CronPage from "./admin/pages/cron/CronPage";
@@ -176,6 +177,8 @@ function AppContent() {
 
 				{/* Settings auth routes (no layout) */}
 				<Route path="/settings/login" element={<Login />} />
+				{/* One-shot vault setup — self-closes once the admin account exists. */}
+				<Route path="/settings/register" element={<Register />} />
 				<Route path="/settings/forgot-password" element={<ForgotPassword />} />
 				<Route path="/settings/verify-email" element={<VerifyEmail />} />
 

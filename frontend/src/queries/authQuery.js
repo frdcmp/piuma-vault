@@ -1,5 +1,6 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+	getAuthStatus,
 	postLogin,
 	postLoginOtp,
 	postRegister,
@@ -9,6 +10,21 @@ import {
 	postVerifyEmail,
 	setTrustedDeviceToken,
 } from "../api/auth";
+
+/**
+ * First-run detection for the login page. Kept short-lived and retried once so a
+ * cold backend doesn't strand the setup screen, but never refetched in the
+ * background — the answer only changes when the first account is created.
+ */
+export const useAuthStatus = () => {
+	return useQuery({
+		queryKey: ["authStatus"],
+		queryFn: getAuthStatus,
+		staleTime: 60_000,
+		retry: 1,
+		refetchOnWindowFocus: false,
+	});
+};
 
 export const useLogin = () => {
 	const queryClient = useQueryClient();
@@ -41,8 +57,18 @@ export const useLoginOtp = () => {
 };
 
 export const useRegister = () => {
+	const queryClient = useQueryClient();
 	return useMutation({
 		mutationFn: postRegister,
+		onSuccess: (data) => {
+			if (!data?.access_token) return;
+			localStorage.setItem("token", data.access_token);
+			localStorage.setItem("refreshToken", data.refresh_token);
+			// The vault just went from "empty" to "claimed" — drop the cached
+			// first-run answer so nothing keeps offering the setup form.
+			queryClient.invalidateQueries({ queryKey: ["authStatus"] });
+			queryClient.invalidateQueries({ queryKey: ["userMe"] });
+		},
 	});
 };
 
