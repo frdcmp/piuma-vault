@@ -1,0 +1,340 @@
+/* auth-chrome.css — shared chrome for the full-screen auth pages (login +
+   first-run register).
+
+   Both pages render the same shell: animated pixel starfield backdrop, padlock
+   brand mark, panel with a blinking status LED, and the pixel form controls.
+   Page-specific markup lives in the JSX; everything visual is here.
+
+   NOTE: forgotPassword.css and verifyEmail.css still ship their own copies of
+   the base `.vp-auth-layout` / `.vp-auth-panel` / `.vp-auth-title` /
+   `.vp-auth-subtitle` rules, and all of it lands in one bundle. The base block
+   below stays interchangeable with those copies; anything that would change
+   their appearance is scoped under `.vp-auth-immersive`. */
+
+.vp-auth-layout {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	min-height: 100vh;
+	padding: 16px;
+	box-sizing: border-box;
+}
+
+.vp-auth-panel {
+	width: 100%;
+	max-width: 380px;
+	box-shadow: var(--vp-shadow-lg);
+}
+
+.vp-auth-title {
+	text-align: center;
+	color: var(--vp-accent);
+	margin-bottom: 6px;
+}
+
+.vp-auth-subtitle {
+	text-align: center;
+	margin-bottom: 20px;
+}
+
+/* ---- Login backdrop -------------------------------------------------------- */
+
+/* The auth screen is the only page seen before the app shell loads, so it
+   carries the vault's signature backdrop: the animated pixel starfield plus an
+   accent glow, with the panel floating on top. --accent/--text are the tokens
+   the starfield canvas reads for its palette. */
+.vp-auth-immersive.vp-auth-layout {
+	position: relative;
+	overflow: hidden;
+	padding: 24px 16px;
+	--accent: var(--vp-accent);
+	--text: var(--vp-text);
+	background-image:
+		radial-gradient(
+			70% 55% at 50% 38%,
+			rgba(247, 201, 72, 0.07),
+			transparent 72%
+		),
+		linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+	background-size:
+		cover,
+		8px 8px,
+		8px 8px;
+}
+
+/* Brand + panel + footer, stacked above the starfield canvas. */
+.vp-auth-stack {
+	position: relative;
+	z-index: 1;
+	width: 100%;
+	max-width: 380px;
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+}
+
+/* The stack owns the width now. */
+.vp-auth-immersive .vp-auth-panel {
+	max-width: none;
+}
+
+.vp-auth-immersive .vp-auth-subtitle {
+	line-height: 1.7;
+}
+
+/* ---- Brand mark ------------------------------------------------------------ */
+
+.vp-auth-brand {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+}
+
+.vp-auth-glyph {
+	flex: none;
+	fill: var(--vp-accent);
+	filter: drop-shadow(2px 2px 0 #000);
+	transition: fill 0.15s;
+}
+
+.vp-auth-glyph.is-open {
+	fill: var(--vp-accent-2);
+}
+
+.vp-auth-glyph-hole {
+	fill: var(--vp-bg);
+}
+
+.vp-auth-brand-text {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.vp-auth-brand-name {
+	font-size: 15px;
+	font-weight: 700;
+	letter-spacing: 4px;
+	color: var(--vp-text);
+	text-shadow: 2px 2px 0 #000;
+}
+
+.vp-auth-brand-tag {
+	font-size: 10px;
+	letter-spacing: 1.5px;
+	text-transform: uppercase;
+	color: var(--vp-faint);
+}
+
+/* ---- Panel chrome ---------------------------------------------------------- */
+
+/* Blinking status LED in the title bar — yellow normally, green on first run. */
+.vp-auth-led {
+	flex: none;
+	width: 8px;
+	height: 8px;
+	background: var(--vp-accent);
+	animation: vp-auth-blink 1.6s steps(1, end) infinite;
+}
+
+.vp-auth-led.is-setup {
+	background: var(--vp-accent-2);
+}
+
+@keyframes vp-auth-blink {
+	0%,
+	60% {
+		opacity: 1;
+	}
+	61%,
+	100% {
+		opacity: 0.15;
+	}
+}
+
+/* Placeholder body while GET /auth/status decides login vs. first-run setup. */
+.vp-auth-boot {
+	text-align: center;
+	margin: 26px 0;
+	text-transform: uppercase;
+	letter-spacing: 1.5px;
+	font-size: 11px;
+}
+
+.vp-auth-caret {
+	display: inline-block;
+	width: 7px;
+	height: 12px;
+	margin-left: 6px;
+	vertical-align: -2px;
+	background: var(--vp-accent);
+	animation: vp-auth-blink 1s steps(1, end) infinite;
+}
+
+/* ---- Alerts ---------------------------------------------------------------- */
+
+.vp-auth-alert {
+	border: 2px solid var(--vp-accent-3);
+	background: rgba(255, 107, 107, 0.1);
+	color: var(--vp-text);
+	padding: 12px;
+	margin-bottom: 20px;
+	font-size: 13px;
+	line-height: 1.6;
+}
+
+.vp-auth-alert--warning {
+	border-color: var(--vp-accent);
+	background: rgba(247, 201, 72, 0.1);
+}
+
+.vp-auth-alert-title {
+	font-weight: 700;
+	margin-bottom: 6px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--vp-accent-3);
+}
+
+.vp-auth-alert--warning .vp-auth-alert-title {
+	color: var(--vp-accent);
+}
+
+/* ---- Fields ---------------------------------------------------------------- */
+
+/* Password field with an inline show/hide toggle. */
+.vp-auth-input-wrap {
+	position: relative;
+	display: block;
+}
+
+.vp-auth-input--reveal {
+	padding-right: 56px;
+}
+
+.vp-auth-reveal {
+	position: absolute;
+	top: 50%;
+	right: 8px;
+	transform: translateY(-50%);
+	background: none;
+	border: none;
+	padding: 2px 4px;
+	cursor: pointer;
+	font-family: var(--vp-font);
+	font-size: 10px;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: var(--vp-faint);
+	transition: color 0.1s;
+}
+
+.vp-auth-reveal:hover {
+	color: var(--vp-accent);
+}
+
+.vp-auth-otp-input {
+	text-align: center;
+	font-size: 18px;
+	letter-spacing: 8px;
+	padding-left: 8px;
+}
+
+/* Live password-policy readout shown during first-run setup. */
+.vp-auth-checklist {
+	list-style: none;
+	margin: 0 0 18px;
+	padding: 10px 12px;
+	border: 2px solid var(--vp-border-soft);
+	background: var(--vp-bg-soft);
+	font-size: 11px;
+	line-height: 1.9;
+	color: var(--vp-faint);
+}
+
+.vp-auth-checklist li.is-ok {
+	color: var(--vp-accent-2);
+}
+
+.vp-auth-checklist-mark {
+	display: inline-block;
+	width: 14px;
+	color: inherit;
+}
+
+.vp-auth-forgot {
+	text-align: right;
+	margin-bottom: 18px;
+	font-size: 12px;
+}
+
+.vp-auth-checkbox {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12px;
+	color: var(--vp-muted);
+	margin-bottom: 16px;
+	cursor: pointer;
+}
+
+.vp-auth-back {
+	text-align: center;
+	margin-top: 14px;
+	font-size: 12px;
+}
+
+.vp-auth-back-btn {
+	background: none;
+	border: none;
+	padding: 0;
+	font-family: var(--vp-font);
+	font-size: 12px;
+}
+
+.vp-auth-note {
+	margin: 16px 0 0;
+	font-size: 11px;
+	line-height: 1.8;
+	text-align: center;
+}
+
+.vp-auth-code {
+	font-family: var(--vp-font);
+	font-size: 10px;
+	padding: 1px 5px;
+	border: 1px solid var(--vp-border-soft);
+	background: var(--vp-bg-soft);
+	color: var(--vp-accent);
+	white-space: nowrap;
+}
+
+.vp-auth-foot {
+	margin: 0;
+	text-align: center;
+	font-size: 10px;
+	letter-spacing: 1.5px;
+	text-transform: uppercase;
+	color: var(--vp-faint);
+}
+
+/* Fix WebKit autofill styling breaking dark theme */
+.vp-input:-webkit-autofill,
+.vp-input:-webkit-autofill:hover,
+.vp-input:-webkit-autofill:focus,
+.vp-input:-webkit-autofill:active {
+	/* biome-ignore lint/complexity/noImportantStyles: override UA autofill styling */
+	-webkit-box-shadow: 0 0 0 30px var(--vp-bg-soft) inset !important;
+	/* biome-ignore lint/complexity/noImportantStyles: override UA autofill styling */
+	-webkit-text-fill-color: var(--vp-text) !important;
+	transition: background-color 5000s ease-in-out 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.vp-auth-led,
+	.vp-auth-caret {
+		animation: none;
+	}
+}

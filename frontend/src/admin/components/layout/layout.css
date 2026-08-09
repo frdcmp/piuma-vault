@@ -247,19 +247,36 @@
 	z-index: 9;
 	background: var(--vp-panel);
 	border-bottom: 2px solid var(--vp-border);
-	padding: 8px 18px;
+	/* Query container for NavMenu/breadcrumb compaction — the header shrinks
+	   with the sidebar, so its own width is the right thing to measure. The
+	   padding lives on .vp-header-inner because a container query can't style
+	   its own container. */
+	container: app-header / inline-size;
 }
 .vp-header-inner {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 16px;
+	flex-wrap: nowrap;
+	padding: 8px 18px;
 }
 .vp-header-left,
 .vp-header-right {
 	display: flex;
 	align-items: center;
 	gap: 10px;
+}
+/* The breadcrumbs are the only part allowed to give up space; the nav and the
+   icon buttons keep their size so nothing ever wraps to a second line. */
+.vp-header-left {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+}
+.vp-header-nav,
+.vp-header-right {
+	flex: 0 0 auto;
 }
 .vp-header-logo {
 	display: inline-flex;
@@ -278,11 +295,26 @@
 	font-weight: 700;
 	letter-spacing: 0.5px;
 	text-transform: uppercase;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
+	min-width: 0;
+	overflow: hidden;
+}
+/* Crumbs hold their width until the last one, which truncates instead of
+   pushing the trail onto a second line. */
+.vp-crumbs > * {
+	flex: 0 0 auto;
+	min-width: 0;
+}
+.vp-crumbs > *:last-child {
+	flex: 0 1 auto;
 }
 .vp-crumb {
 	color: var(--vp-muted);
 	text-decoration: none;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
 }
 .vp-crumb:hover {
 	color: var(--vp-accent);
@@ -292,6 +324,21 @@
 }
 .vp-crumb-sep {
 	color: var(--vp-faint);
+	flex: 0 0 auto;
+}
+
+/* Tight header: shed padding first, then drop the middle of the breadcrumb
+   trail so only "home / current page" remains. */
+@container app-header (max-width: 1240px) {
+	.vp-header-inner {
+		gap: 10px;
+		padding: 8px 12px;
+	}
+}
+@container app-header (max-width: 900px) {
+	.vp-crumbs > *:not(:first-child):not(:last-child) {
+		display: none;
+	}
 }
 
 /* ---- User avatar (header) -------------------------------------------------- */

@@ -6,13 +6,18 @@
 	display: flex;
 	align-items: center;
 	gap: 4px;
-	flex-wrap: wrap;
+	/* Never break onto a second row — the header is a fixed-height strip. When
+	   space runs out the links compact (see the container queries below). */
+	flex-wrap: nowrap;
+	min-width: 0;
 }
 
 .nav-menu-link {
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
+	flex: 0 0 auto;
+	white-space: nowrap;
 	padding: 6px 12px;
 	font-family: var(--vp-font);
 	font-size: 12px;
@@ -44,6 +49,33 @@
 .nav-menu-link-icon {
 	font-size: 14px;
 	display: inline-flex;
+}
+
+/* Progressive compaction driven by the *header's* width, not the viewport, so
+   the space eaten by the admin sidebar counts the same as a narrow window.
+   Both headers declare `container: app-header / inline-size`. */
+@container app-header (max-width: 1240px) {
+	.nav-menu {
+		gap: 2px;
+	}
+	.nav-menu-link {
+		padding: 6px 8px;
+		gap: 6px;
+		letter-spacing: 0.3px;
+	}
+}
+
+@container app-header (max-width: 1060px) {
+	/* Icons only — labels survive as the link's tooltip. */
+	.nav-menu-link-label {
+		display: none;
+	}
+	.nav-menu-link {
+		padding: 6px 9px;
+	}
+	.nav-menu-link-icon {
+		font-size: 16px;
+	}
 }
 
 @media (max-width: 640px) {

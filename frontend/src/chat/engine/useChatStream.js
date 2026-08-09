@@ -13,6 +13,31 @@ import { createTextSmoother } from "./textSmoother";
 // the recover poller) bail if the user switched away. `recoverTimeoutText`, when
 // set, replaces the trailing reply's content after recovery gives up (the dock
 // shows a "reopen to see it" note; the full page leaves it as-is).
+
+// Backend rejections that the user can actually fix, rewritten as markdown with
+// a link to the settings page that fixes them. Internal `/…` links navigate
+// client-side (see VaultLink), so the chat surface stays mounted.
+const ACTIONABLE_ERRORS = [
+	{
+		match: /no model configured/i,
+		text: "**No model configured.** Add a provider and a model in [Settings → Agents](/settings/agents), then send this again.",
+	},
+	{
+		match: /provider has no API key/i,
+		text: "**That provider has no API key.** Set one in [Settings → Agents](/settings/agents), then send this again.",
+	},
+	{
+		match: /provider not found|provider kind .* not supported/i,
+		text: "**The configured provider can't be used.** Pick a working provider in [Settings → Agents](/settings/agents), then send this again.",
+	},
+];
+
+function errorText(e) {
+	const msg = e?.message || "something went wrong";
+	const hit = ACTIONABLE_ERRORS.find((c) => c.match.test(msg));
+	return hit ? `\n\n${hit.text}` : `\n\n**Error:** ${msg}`;
+}
+
 export default function useChatStream({
 	convRef,
 	setMessages,
@@ -24,6 +49,11 @@ export default function useChatStream({
 	// ref so the post-turn reload can wait for it to finish painting, and an abort
 	// can stop it mid-flight.
 	const smootherRef = useRef(null);
+	// Set when a turn dies on a hard backend rejection. Such a turn persists
+	// nothing server-side (the handler bails before writing the user message), so
+	// the post-turn reload would replace our locally-shown prompt + error notice
+	// with a shorter, staler list. Guards `reloadActivePath` against that.
+	const hardErrorRef = useRef(false);
 
 	// Append literal text to the trailing assistant message (the smoother's sink).
 	const commitText = useCallback(
@@ -88,10 +118,19 @@ export default function useChatStream({
 			await (smootherRef.current?.finish() ?? Promise.resolve());
 			smootherRef.current = null;
 			if (!convId) return;
+			const hadHardError = hardErrorRef.current;
+			hardErrorRef.current = false;
 			try {
 				const d = await fetchConversation(convId);
 				if (convRef.current !== convId) return;
-				setMessages((d.messages || []).map(mapServerMessage));
+				const msgs = d.messages || [];
+				setMessages((curr) =>
+					// A rejected turn left the server with less than we're showing —
+					// keep the local view (prompt + the actionable error) instead.
+					hadHardError && msgs.length < curr.length
+						? curr
+						: msgs.map(mapServerMessage),
+				);
 			} catch {
 				/* ignore */
 			}
@@ -104,6 +143,7 @@ export default function useChatStream({
 	const buildHandlers = useCallback(
 		(convId, signal) => {
 			// Fresh typewriter for this turn; abandon any previous one.
+			hardErrorRef.current = false;
 			smootherRef.current?.cancel();
 			const smoother = createTextSmoother(commitText);
 			smootherRef.current = smoother;
@@ -188,7 +228,8 @@ export default function useChatStream({
 						recoverTurn(convId);
 						return;
 					}
-					commitText(`\n\n**Error:** ${e.message}`);
+					hardErrorRef.current = true;
+					commitText(errorText(e));
 				},
 				onDone: () => {
 					const used = activeModelRef.current?.model_id || null;

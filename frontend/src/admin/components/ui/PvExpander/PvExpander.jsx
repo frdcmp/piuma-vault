@@ -8,12 +8,7 @@ import "../../../vault-pixel.css";
  * Matches the antd Table `expandIcon` signature: ({ expanded, onExpand, record })
  * — drop it into `expandable.expandIcon` directly.
  */
-export default function PvExpander({
-	expanded,
-	onExpand,
-	record,
-	...rest
-}) {
+export default function PvExpander({ expanded, onExpand, record, ...rest }) {
 	return (
 		<button
 			type="button"

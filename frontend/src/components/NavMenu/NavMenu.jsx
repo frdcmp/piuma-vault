@@ -42,6 +42,7 @@ export default function NavMenu({ className = "" }) {
 				<Link
 					key={item.key}
 					to={item.key}
+					title={item.label}
 					className={`nav-menu-link ${isActive(item.key) ? "nav-menu-link--active" : ""}`}
 				>
 					<span className="nav-menu-link-icon">{item.icon}</span>

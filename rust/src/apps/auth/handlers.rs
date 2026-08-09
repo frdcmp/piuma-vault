@@ -128,190 +128,79 @@ fn generate_tokens(user: &User) -> Result<(String, String), String> {
     Ok((access_token, refresh_token))
 }
 
-/// Helper: fetch a user with groups + permissions + profile by a WHERE clause
+/// The vault has exactly one account and it is always the administrator, so
+/// authorization is a constant rather than something to look up. The
+/// group/permission tables would only ever hold these two fixed rows.
+pub const ADMIN_GROUP: &str = "admin_group";
+pub const ADMIN_PERMISSION: &str = "admin_access";
+
+/// Helper: fetch a user with profile by a WHERE clause.
+///
+/// Groups and permissions aren't read from the DB — see [`ADMIN_GROUP`]. They're
+/// stamped on here so the User model, the JWT claims and the frontend's
+/// `admin_access` checks all keep seeing the values they expect.
 async fn fetch_user_full(pool: &DbPool, where_clause: &str, bind_val: &str) -> Result<Option<User>, sqlx::Error> {
     let query = format!(
         r#"
-        WITH user_perms AS (
-            SELECT ug.user_id, gp.permission_slug
-            FROM db_user_groups ug
-            JOIN db_group_permissions gp ON ug.group_slug = gp.group_slug
-            UNION
-            SELECT user_id, permission_slug
-            FROM db_user_permissions
-        )
         SELECT
             u.id, u.email, u.password_hash, u.created_at, u.updated_at, u.is_verified,
             u.otp_secret, u.otp_enabled,
-            COALESCE(array_agg(DISTINCT ug.group_slug) FILTER (WHERE ug.group_slug IS NOT NULL), '{{}}') as groups,
-            COALESCE(array_agg(DISTINCT up.permission_slug) FILTER (WHERE up.permission_slug IS NOT NULL), '{{}}') as permissions,
             p.first_name, p.last_name, p.phone, p.location, p.bio, p.birth_date,
             p.language, p.timezone, p.avatar_url
         FROM db_users u
-        LEFT JOIN db_user_groups ug ON u.id = ug.user_id
-        LEFT JOIN user_perms up ON u.id = up.user_id
         LEFT JOIN db_user_profiles p ON u.id = p.user_id
         WHERE {}
-        GROUP BY u.id, p.first_name, p.last_name, p.phone, p.location, p.bio, p.birth_date, p.language, p.timezone, p.avatar_url
         "#,
         where_clause
     );
 
-    sqlx::query_as::<_, User>(&query)
+    let user = sqlx::query_as::<_, User>(&query)
         .bind(bind_val)
         .fetch_optional(pool)
-        .await
+        .await?;
+
+    Ok(user.map(|mut u| {
+        u.groups = vec![ADMIN_GROUP.to_string()];
+        u.permissions = vec![ADMIN_PERMISSION.to_string()];
+        u
+    }))
 }
 
-// ── POST /auth/register ──
+/// Total number of accounts in the vault. `None` on DB error.
+async fn user_count(pool: &DbPool) -> Option<i64> {
+    sqlx::query_as::<_, (i64,)>("SELECT count(*) FROM db_users")
+        .fetch_one(pool)
+        .await
+        .map(|r| r.0)
+        .ok()
+}
 
-pub async fn register(
+// ── GET /auth/status ──
+//
+// Public, unauthenticated. Lets the login page know whether this is a brand-new
+// vault (no accounts yet) so it can render the first-run setup flow instead of
+// a plain login form. Only exposes a boolean the bootstrap flow already reveals
+// — never anything about a specific account.
+
+pub async fn auth_status(
     req: HttpRequest,
     pool: web::Data<DbPool>,
     limiter: web::Data<RateLimiter>,
-    item: web::Json<RegisterRequest>,
 ) -> impl Responder {
-    // Check if registration is allowed via env var (default: disabled)
-    if std::env::var("ALLOW_REGISTRATION").unwrap_or_else(|_| "false".to_string()) != "true" {
-        return HttpResponse::Forbidden().json("Registration is currently disabled");
+    if let Err(r) = enforce_limit(&limiter, "auth_status_ip", &client_ip(&req), 60, 60).await {
+        return r;
     }
 
-    // H1 — rate limit by IP (cheap to fake by switching IP, but stops casual
-    // abuse) and by email (caps email-flood on the verification mailer).
-    let ip = client_ip(&req);
-    if let Err(r) = enforce_limit(&limiter, "register_ip", &ip, 10, 3600).await { return r; }
-    if let Err(r) = enforce_limit(&limiter, "register_email", &item.email, 3, 3600).await { return r; }
-
-    let frontend_base = extract_frontend_base(&req);
-
-    // H3 — server-side password policy
-    if let Err(msg) = validate_password_policy(&item.email, &item.password) {
-        return HttpResponse::BadRequest().json(msg);
-    }
-    if !is_plausible_email(&item.email) {
-        return HttpResponse::BadRequest().json("Invalid email");
-    }
-
-    // Hash password (outside the transaction — it's CPU-bound, no DB locks held)
-    let salt = SaltString::generate(&mut OsRng);
-    let password_hash = match argon2_instance().hash_password(item.password.as_bytes(), &salt) {
-        Ok(h) => h.to_string(),
-        Err(e) => {
-            log::error!("Argon2 hash error: {}", e);
-            return HttpResponse::InternalServerError().json("Failed to hash password");
-        }
-    };
-
-    let id = format!("user_{}", Uuid::new_v4());
-
-    // C2 — atomic registration:
-    // existence check + first-user check + all inserts run in one transaction,
-    // and the `one_admin_only` partial unique index guarantees at most one admin
-    // even if two requests race past the count() snapshot.
-    let mut tx = match pool.begin().await {
-        Ok(t) => t,
-        Err(e) => {
-            log::error!("DB begin tx error: {}", e);
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-
-    let exists: (i64,) = match sqlx::query_as(
-        "SELECT count(*) FROM db_users WHERE email = $1"
-    )
-    .bind(&item.email)
-    .fetch_one(&mut *tx)
-    .await {
-        Ok(v) => v,
-        Err(e) => {
-            log::error!("DB error checking user: {}", e);
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-    if exists.0 > 0 {
-        return HttpResponse::BadRequest().json("User already exists");
-    }
-
-    let total: (i64,) = match sqlx::query_as("SELECT count(*) FROM db_users")
-        .fetch_one(&mut *tx)
-        .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            log::error!("DB count error: {}", e);
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-    let is_first_user = total.0 == 0;
-    let default_group = if is_first_user { "admin_group" } else { "viewer_group" };
-
-    if let Err(e) = sqlx::query(
-        "INSERT INTO db_users (id, email, password_hash, is_verified)
-         VALUES ($1, $2, $3, $4)"
-    )
-    .bind(&id).bind(&item.email).bind(&password_hash).bind(is_first_user)
-    .execute(&mut *tx).await
-    {
-        log::error!("DB insert user error: {}", e);
+    let Some(total) = user_count(pool.get_ref()).await else {
+        log::error!("DB count error in auth_status");
         return HttpResponse::InternalServerError().finish();
-    }
+    };
 
-    if let Err(e) = sqlx::query(
-        "INSERT INTO db_user_groups (user_id, group_slug) VALUES ($1, $2)"
-    )
-    .bind(&id).bind(default_group)
-    .execute(&mut *tx).await
-    {
-        // unique-index violation on admin → race lost; surface as conflict
-        log::warn!("DB insert group error (possible admin race): {}", e);
-        return HttpResponse::Conflict().json("Registration failed");
-    }
-
-    if let Err(e) = sqlx::query(
-        "INSERT INTO db_user_profiles (user_id) VALUES ($1)"
-    )
-    .bind(&id)
-    .execute(&mut *tx).await
-    {
-        log::error!("DB insert profile error: {}", e);
-        return HttpResponse::InternalServerError().finish();
-    }
-
-    if let Err(e) = tx.commit().await {
-        log::error!("DB commit error: {}", e);
-        return HttpResponse::InternalServerError().finish();
-    }
-
-    Event::new("auth", "register", Severity::Info)
-        .user_email(&item.email)
-        .user_id(&id)
-        .ip(&client_ip(&req))
-        .attrs(serde_json::json!({ "first_user": is_first_user }))
-        .emit();
-
-    if is_first_user {
-        return HttpResponse::Created().json("Registration successful. You are automatically verified as the first admin user.");
-    }
-
-    // Generate email verification token (24h expiry) — best-effort, outside tx
-    let token = Uuid::new_v4().to_string();
-    let expires_at = Utc::now() + Duration::hours(24);
-    if let Err(e) = sqlx::query(
-        "INSERT INTO db_registration_verifications (token, user_id, expires_at) VALUES ($1, $2, $3)"
-    )
-    .bind(&token).bind(&id).bind(expires_at)
-    .execute(pool.get_ref()).await {
-        log::error!("Failed to insert verification token: {}", e);
-    } else {
-        let email_addr = item.email.clone();
-        let pool_c = pool.get_ref().clone();
-        tokio::spawn(async move {
-            if let Err(e) = crate::apps::email::service::send_verification_email(&pool_c, &email_addr, &token, &frontend_base).await {
-                log::error!("Failed to send verification email to {}: {}", &email_addr, e);
-            }
-        });
-    }
-    HttpResponse::Created().json("Registration successful. Please check your email to verify your account.")
+    HttpResponse::Ok().json(serde_json::json!({
+        // First run: nobody has claimed the vault yet, so the next login
+        // creates the one and only admin account.
+        "setup_required": total == 0,
+    }))
 }
 
 // ── H3: password policy + email sanity ──
@@ -355,6 +244,176 @@ fn is_plausible_email(email: &str) -> bool {
     true
 }
 
+// ── First-run bootstrap ──
+//
+// There is no sign-up endpoint: the vault gets exactly one account, and the very
+// first login creates it. When db_users is empty the submitted credentials seed
+// the admin account instead of bouncing off a 401; once that account exists this
+// path is permanently inert, so it can't be used to hijack a live vault and it
+// can't leak anything about existing accounts (on the only run where it fires,
+// there are none).
+
+/// Arbitrary fixed key for the advisory lock that serializes first-run setup.
+const BOOTSTRAP_LOCK_KEY: i64 = 0x7069_756d_6176_31; // "piumav1"
+
+enum Bootstrap {
+    /// Not a first-run situation — fall through to normal login handling.
+    NotApplicable,
+    /// The admin account was created; carry on as a logged-in user.
+    Created(User),
+    /// The credentials can't be used to seed an account (weak password, bad
+    /// email, DB failure) — return this response verbatim.
+    Rejected(HttpResponse),
+}
+
+async fn bootstrap_first_user(pool: &DbPool, email: &str, password: &str) -> Bootstrap {
+    match user_count(pool).await {
+        Some(0) => {}
+        Some(_) => return Bootstrap::NotApplicable,
+        None => {
+            log::error!("DB count error during first-user bootstrap");
+            return Bootstrap::Rejected(HttpResponse::InternalServerError().finish());
+        }
+    }
+
+    // Same policy password resets enforce — this is the vault's only account,
+    // so it must not be the weakest one.
+    if !is_plausible_email(email) {
+        return Bootstrap::Rejected(HttpResponse::BadRequest().json("Invalid email"));
+    }
+    if let Err(msg) = validate_password_policy(email, password) {
+        return Bootstrap::Rejected(HttpResponse::BadRequest().json(msg));
+    }
+
+    // Hash outside the transaction — CPU-bound, no reason to hold DB locks.
+    let salt = SaltString::generate(&mut OsRng);
+    let password_hash = match argon2_instance().hash_password(password.as_bytes(), &salt) {
+        Ok(h) => h.to_string(),
+        Err(e) => {
+            log::error!("Argon2 hash error: {}", e);
+            return Bootstrap::Rejected(
+                HttpResponse::InternalServerError().json("Failed to hash password"),
+            );
+        }
+    };
+
+    let id = format!("user_{}", Uuid::new_v4());
+
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => {
+            log::error!("DB begin tx error: {}", e);
+            return Bootstrap::Rejected(HttpResponse::InternalServerError().finish());
+        }
+    };
+
+    // Serialize concurrent first logins. Two requests can both read count==0
+    // above, so the winner takes this transaction-scoped lock and creates the
+    // account; the loser blocks here, then sees count==1 below and falls through
+    // to a normal (failing) login. The lock releases on commit or rollback.
+    if let Err(e) = sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(BOOTSTRAP_LOCK_KEY)
+        .execute(&mut *tx)
+        .await
+    {
+        log::error!("DB advisory lock error: {}", e);
+        return Bootstrap::Rejected(HttpResponse::InternalServerError().finish());
+    }
+
+    // Re-check now that we hold the lock — this is the authoritative read.
+    let total: (i64,) = match sqlx::query_as("SELECT count(*) FROM db_users")
+        .fetch_one(&mut *tx)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("DB count error: {}", e);
+            return Bootstrap::Rejected(HttpResponse::InternalServerError().finish());
+        }
+    };
+    if total.0 != 0 {
+        return Bootstrap::NotApplicable;
+    }
+
+    if let Err(e) = sqlx::query(
+        "INSERT INTO db_users (id, email, password_hash, is_verified)
+         VALUES ($1, $2, $3, TRUE)",
+    )
+    .bind(&id).bind(email).bind(&password_hash)
+    .execute(&mut *tx).await
+    {
+        log::error!("DB insert first user error: {}", e);
+        return Bootstrap::Rejected(HttpResponse::InternalServerError().finish());
+    }
+
+    if let Err(e) = sqlx::query("INSERT INTO db_user_profiles (user_id) VALUES ($1)")
+        .bind(&id)
+        .execute(&mut *tx).await
+    {
+        log::error!("DB insert profile error: {}", e);
+        return Bootstrap::Rejected(HttpResponse::InternalServerError().finish());
+    }
+
+    if let Err(e) = tx.commit().await {
+        log::error!("DB commit error: {}", e);
+        return Bootstrap::Rejected(HttpResponse::InternalServerError().finish());
+    }
+
+    match fetch_user_full(pool, "u.id = $1", &id).await {
+        Ok(Some(u)) => Bootstrap::Created(u),
+        Ok(None) => {
+            log::error!("Bootstrapped user {} vanished immediately after commit", id);
+            Bootstrap::Rejected(HttpResponse::InternalServerError().finish())
+        }
+        Err(e) => {
+            log::error!("DB error re-reading bootstrapped user: {}", e);
+            Bootstrap::Rejected(HttpResponse::InternalServerError().finish())
+        }
+    }
+}
+
+// ── POST /auth/register ──
+//
+// One-shot: creates the vault's single admin account and signs it in. Works only
+// while db_users is empty; every call after that is a 403. There is no other way
+// to create an account.
+
+pub async fn register(
+    req: HttpRequest,
+    pool: web::Data<DbPool>,
+    limiter: web::Data<RateLimiter>,
+    item: web::Json<RegisterRequest>,
+) -> impl Responder {
+    let ip = client_ip(&req);
+    if let Err(r) = enforce_limit(&limiter, "register_ip", &ip, 10, 3600).await { return r; }
+
+    match bootstrap_first_user(pool.get_ref(), &item.email, &item.password).await {
+        Bootstrap::Created(user) => {
+            Event::new("auth", "register", Severity::Info)
+                .user_email(&user.email)
+                .user_id(&user.id)
+                .ip(&ip)
+                .attrs(serde_json::json!({ "first_user": true }))
+                .emit();
+
+            // Hand back tokens so setup flows straight into the vault instead of
+            // bouncing through the login form.
+            match generate_tokens(&user) {
+                Ok((access_token, refresh_token)) => HttpResponse::Created().json(serde_json::json!({
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "user": user,
+                })),
+                Err(e) => HttpResponse::InternalServerError().json(e),
+            }
+        }
+        Bootstrap::Rejected(resp) => resp,
+        Bootstrap::NotApplicable => {
+            HttpResponse::Forbidden().json("This vault already has an account. Registration is closed.")
+        }
+    }
+}
+
 // ── POST /auth/login ──
 
 pub async fn login(
@@ -372,6 +431,8 @@ pub async fn login(
     let user = match fetch_user_full(pool.get_ref(), "u.email = $1", &item.email).await {
         Ok(Some(u)) => u,
         Ok(None) => {
+            // Login never creates an account — that's the one-shot /auth/register
+            // endpoint's job, and only while the vault is still empty.
             Event::new("auth", "login_failed", Severity::Warn)
                 .user_email(&item.email)
                 .ip(&ip)

@@ -162,7 +162,6 @@ cp .env.example .env
 | `DB_PORT_EXTERNAL` | Host port mapped to Postgres, for connecting with `psql` from your machine. |
 | `DB_VERIFY_SCHEMA` | Boot-time schema-drift check against `db_init`'s table definitions. `1` = on, `0` = off. |
 | `SITE_URL` | Canonical site URL. Also used as the issuer label in 2FA authenticator apps. |
-| `ALLOW_REGISTRATION` | `true` to allow account sign-ups. Default `false`. **See step 4.** |
 
 > JWT and Web Push (VAPID) key material is **auto-generated** into `rust/src/keys/` on first build — no env vars needed.
 
@@ -184,11 +183,9 @@ The backend runs under `cargo watch`, so the **first boot compiles Rust and take
 
 ### 4. Create your admin account
 
-The **first account to register automatically becomes the admin** (auto-verified, full `admin_access`). Because registration is locked by default:
+The vault holds **exactly one account** and there is no sign-up page — the **first login creates it**. Open the app: while `db_users` is empty the login screen shows the first-run setup form. The email and password you submit there become the admin account (auto-verified, full `admin_access`), and you are signed straight in.
 
-1. Set `ALLOW_REGISTRATION=true` in `.env` and restart: `docker compose --profile server-stack up -d rust`
-2. Open the app, register your account — you're now the admin.
-3. (Recommended) Set `ALLOW_REGISTRATION=false` again and restart to lock down sign-ups.
+Once that account exists the setup path is permanently closed, and every later login is an ordinary login. Password rules for the first account: at least 10 characters, using 3 of lowercase / uppercase / digit / symbol.
 
 Then head to **admin → Services / Agents** to plug in your LLM, embedding, storage, and email providers.
 

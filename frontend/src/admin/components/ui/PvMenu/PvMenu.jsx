@@ -13,13 +13,7 @@ import "./PvMenu.css";
  * The menu portals to <body>, clamps itself inside the viewport, and closes on
  * outside click, Escape, scroll, resize, or after an item is chosen.
  */
-export default function PvMenu({
-	open,
-	x = 0,
-	y = 0,
-	items = [],
-	onClose,
-}) {
+export default function PvMenu({ open, x = 0, y = 0, items = [], onClose }) {
 	const menuRef = useRef(null);
 	// Start at the raw anchor; the layout effect clamps it before paint.
 	const [pos, setPos] = useState({ x, y });

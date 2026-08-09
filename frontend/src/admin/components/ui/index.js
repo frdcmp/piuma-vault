@@ -1,3 +1,4 @@
+export { default as LockGlyph } from "./LockGlyph";
 export { default as PvAlarm } from "./PvAlarm";
 export { default as PvButton } from "./PvButton";
 export { default as PvCheckbox } from "./PvCheckbox";

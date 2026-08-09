@@ -91,6 +91,14 @@ const Sidebar = ({ inDrawer = false, onNavigate }) => {
 	const toggle = (section) =>
 		setExpanded((prev) => ({ ...prev, [section]: !prev[section] }));
 
+	// Match by route prefix so deep routes (e.g. /settings/projects/:id) keep
+	// their parent lit. "/settings" is the section root, so it only counts as a
+	// match exactly — otherwise Home would light up on every settings page.
+	const isActive = (key) =>
+		key === "/settings"
+			? location.pathname === "/settings"
+			: location.pathname === key || location.pathname.startsWith(`${key}/`);
+
 	// Global keyboard shortcut for search (Cmd+K or Ctrl+K)
 	useEffect(() => {
 		const handleKeyDown = (e) => {
@@ -103,7 +111,7 @@ const Sidebar = ({ inDrawer = false, onNavigate }) => {
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, []);
 
-	const Section = ({ id, label, items, activeMatch }) => (
+	const Section = ({ id, label, items }) => (
 		<div className="vp-nav-section">
 			<button
 				type="button"
@@ -123,7 +131,7 @@ const Sidebar = ({ inDrawer = false, onNavigate }) => {
 						<NavItem
 							key={item.label}
 							item={item}
-							active={activeMatch ? location.pathname === item.key : false}
+							active={isActive(item.key)}
 							onNavigate={onNavigate}
 						/>
 					))}
@@ -160,12 +168,7 @@ const Sidebar = ({ inDrawer = false, onNavigate }) => {
 
 				{/* Navigation */}
 				<div className="vp-sidebar-nav">
-					<Section
-						id="navigation"
-						label="Navigation"
-						items={NAVIGATION}
-						activeMatch
-					/>
+					<Section id="navigation" label="Navigation" items={NAVIGATION} />
 					<Section id="ai" label="AI" items={AI} />
 					<Section id="personalize" label="Personalize" items={PERSONALIZE} />
 					<Section id="system" label="System" items={SYSTEM} />

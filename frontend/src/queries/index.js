@@ -4,6 +4,7 @@ export * from "./apiKeysQuery";
 export * from "./authQuery";
 // Re-export named for convenience
 export {
+	useAuthStatus,
 	useLogin,
 	useLoginOtp,
 	useLogout,

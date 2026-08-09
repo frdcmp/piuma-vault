@@ -68,11 +68,7 @@ export default function PvPopconfirm({
 					</div>
 				</div>
 				<div className="pv-popconfirm-actions">
-					<PvButton
-						size="sm"
-						variant="ghost"
-						onClick={() => setOpen(false)}
-					>
+					<PvButton size="sm" variant="ghost" onClick={() => setOpen(false)}>
 						{cancelText}
 					</PvButton>
 					<PvButton size="sm" variant={okVariant} onClick={confirm}>

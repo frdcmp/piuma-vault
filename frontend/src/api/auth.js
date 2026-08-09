@@ -19,6 +19,28 @@ export const setTrustedDeviceToken = (token) => {
 	}
 };
 
+/**
+ * Public, unauthenticated. Tells the login page whether this vault is brand new
+ * (`setup_required`), in which case the one-shot setup page at
+ * /settings/register is the only way to create its single admin account.
+ */
+export const getAuthStatus = async () => {
+	const { data } = await axiosInstance.get("/auth/status");
+	return data;
+};
+
+/**
+ * One-shot vault setup. Creates the single admin account and returns tokens.
+ * The backend refuses with 403 once an account exists.
+ */
+export const postRegister = async ({ email, password }) => {
+	const { data } = await axiosInstance.post("/auth/register", {
+		email,
+		password,
+	});
+	return data;
+};
+
 export const postLogin = async ({ email, password }) => {
 	const trusted_device_token = getTrustedDeviceToken();
 	const { data } = await axiosInstance.post("/auth/login", {
@@ -69,14 +91,6 @@ export const getTrustedDevices = async () => {
 
 export const deleteTrustedDevice = async (id) => {
 	const { data } = await axiosInstance.delete(`/auth/devices/${id}`);
-	return data;
-};
-
-export const postRegister = async ({ email, password }) => {
-	const { data } = await axiosInstance.post("/auth/register", {
-		email,
-		password,
-	});
 	return data;
 };
 
