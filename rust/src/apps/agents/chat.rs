@@ -45,8 +45,29 @@ pub(super) fn blocks_to_text(content: &Value) -> String {
 /// has image blocks AND the active model supports vision, return a multimodal
 /// block array (`[{type:text},{type:image,url,media_type}]`) so the provider
 /// adapter forwards the images; otherwise images are dropped (string only).
+///
+/// Attached images' storage KEYS are appended as text either way: the model
+/// can see the pixels but has no idea where the file lives, so when asked to
+/// "save this image to a note" it would otherwise hunt through `list_storage`
+/// and grab the wrong file (it once moved another conversation's months-old
+/// temp image into a note).
 fn content_for_provider(content: &Value, supports_vision: bool) -> Value {
-    let text = blocks_to_text(content);
+    let mut text = blocks_to_text(content);
+    if let Value::Array(blocks) = content {
+        let keys: Vec<&str> = blocks
+            .iter()
+            .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("image"))
+            .filter_map(|b| b.get("key").and_then(|k| k.as_str()))
+            .filter(|k| !k.is_empty())
+            .collect();
+        if !keys.is_empty() {
+            text.push_str(&format!(
+                "\n\n[attachment storage key(s) for the image(s) in THIS message: {} — when saving, moving, or attaching one of these images, operate on its exact key; do not search storage for it]",
+                keys.join(", ")
+            ));
+        }
+    }
+    let text = text;
     let images: Vec<&Value> = match content {
         Value::Array(blocks) if supports_vision => blocks
             .iter()
