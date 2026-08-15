@@ -324,11 +324,6 @@ const SearchResultItem = ({
 				<span className="ftree-title">
 					{highlightText(note.title || "Untitled", searchQuery)}
 				</span>
-				{note.score !== undefined && note.score !== null && (
-					<span className="ftree-score" title="Match Score">
-						{note.score.toFixed(2)}
-					</span>
-				)}
 				<span className="ftree-date">{formatDate(note.updated_at)}</span>
 				<span
 					className="ftree-delete"

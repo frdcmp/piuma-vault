@@ -176,7 +176,7 @@ cd frontend && bun install && bun run build && cd ..
 ### 3. Start the stack
 
 ```bash
-docker compose --profile server-stack --profile db-stack up -d
+docker compose up -d
 ```
 
 The backend runs under `cargo watch`, so the **first boot compiles Rust and takes a few minutes** — follow along with `docker compose logs -f rust`. Your vault is then served via nginx at `http://localhost:8034` (or whatever `NGINX_PORT` you set).
