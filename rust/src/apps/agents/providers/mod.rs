@@ -241,9 +241,112 @@ fn estimate_str(s: &str) -> i32 {
     (s.chars().count() / 4) as i32
 }
 
+/// Tool names every provider accepts: `[a-zA-Z0-9_-]`, ≤63 chars, leading
+/// letter/underscore (the intersection of the OpenAI, Anthropic and Gemini
+/// rules — Gemini alone allows dots, Anthropic alone is strict on length AND
+/// charset, so we normalise to the strictest common form). Built-in tools
+/// always comply; MCP tool names (`mcp__{server}__{tool}`) may not. The
+/// rewrite is deterministic, so replayed history stays self-consistent across
+/// rounds and turns; `call()` keeps a reverse map so the ToolCalls it returns
+/// carry the REAL name for dispatch.
+fn wire_name(name: &str) -> String {
+    let mut safe: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if safe
+        .chars()
+        .next()
+        .is_some_and(|c| !c.is_ascii_alphabetic() && c != '_')
+    {
+        safe.insert(0, '_');
+    }
+    if safe.len() <= 63 {
+        return safe;
+    }
+    // Too long: keep a readable prefix, disambiguate with a hash of the full
+    // original name. All chars are ASCII by now, so byte slicing is safe.
+    use sha2::Digest;
+    let hex = format!("{:x}", sha2::Sha256::digest(name.as_bytes()));
+    format!("{}_{}", &safe[..50], &hex[..12])
+}
+
 /// One streaming model round. `messages`/`tools` are OpenAI-shaped JSON; the
 /// Anthropic and Gemini adapters translate them internally.
+///
+/// Tool names are normalised to the provider-safe form on the way in
+/// (declarations AND replayed assistant `tool_calls` in history) and mapped
+/// back to their real names on the way out — callers and `tools::dispatch`
+/// only ever see real names. Zero-cost when every name is already compliant,
+/// i.e. whenever no MCP tools are in play.
 pub async fn call(
+    kind: &str,
+    api_key: &str,
+    base_url: Option<&str>,
+    model: &str,
+    messages: &[Value],
+    tools: &[Value],
+    tx: &SseSender,
+) -> Result<CallResult, String> {
+    let renames: std::collections::HashMap<String, String> = tools
+        .iter()
+        .filter_map(|t| t.pointer("/function/name").and_then(|n| n.as_str()))
+        .filter_map(|n| {
+            let w = wire_name(n);
+            (w != n).then(|| (n.to_string(), w))
+        })
+        .collect();
+    if renames.is_empty() {
+        return call_adapter(kind, api_key, base_url, model, messages, tools, tx).await;
+    }
+
+    let tools: Vec<Value> = tools
+        .iter()
+        .map(|t| {
+            let mut t = t.clone();
+            if let Some(name) = t.pointer_mut("/function/name") {
+                if let Some(w) = name.as_str().and_then(|n| renames.get(n)) {
+                    *name = Value::String(w.clone());
+                }
+            }
+            t
+        })
+        .collect();
+    let messages: Vec<Value> = messages
+        .iter()
+        .map(|m| {
+            let mut m = m.clone();
+            if let Some(tcs) = m.get_mut("tool_calls").and_then(|v| v.as_array_mut()) {
+                for tc in tcs {
+                    if let Some(name) = tc.pointer_mut("/function/name") {
+                        if let Some(w) = name.as_str().and_then(|n| renames.get(n)) {
+                            *name = Value::String(w.clone());
+                        }
+                    }
+                }
+            }
+            m
+        })
+        .collect();
+
+    let real_names: std::collections::HashMap<&String, &String> =
+        renames.iter().map(|(real, wire)| (wire, real)).collect();
+    let mut res = call_adapter(kind, api_key, base_url, model, &messages, &tools, tx).await?;
+    for tc in &mut res.tool_calls {
+        if let Some(real) = real_names.get(&tc.name) {
+            tc.name = (*real).clone();
+        }
+    }
+    Ok(res)
+}
+
+async fn call_adapter(
     kind: &str,
     api_key: &str,
     base_url: Option<&str>,

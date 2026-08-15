@@ -20,6 +20,7 @@ export * from "./dbDumpQuery";
 export * from "./emailAccountsQuery";
 export * from "./folderSharesQuery";
 export * from "./healthQuery";
+export * from "./mcpServersQuery";
 export * from "./memoryQuery";
 export * from "./notesQuery";
 export * from "./notificationsQuery";

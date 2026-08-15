@@ -1,0 +1,26 @@
+# Dev image for the mcp-worker ONLY: the base dev image (./Dockerfile) plus the
+# runtimes stdio MCP servers are published for — node (npx) and uv (uvx). Kept
+# out of ./Dockerfile so the backend and other workers stay lean; this is the
+# one container that spawns MCP child processes.
+FROM rust:slim AS builder
+
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    curl \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv/uvx — installs to /root/.local/bin
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+WORKDIR /app
+
+RUN cargo install cargo-watch
+
+EXPOSE 8090
+
+CMD ["cargo", "watch", "-x", "run --bin mcp-worker"]

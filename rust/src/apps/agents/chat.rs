@@ -23,7 +23,7 @@ use crate::db::db::DbPool;
 use super::control::TurnControl;
 use super::models::{ApiError, ChatTurnReq, ConversationRow, ModelRow, ProviderRow};
 use super::providers;
-use super::{identities, registry, tools};
+use super::{identities, mcp, registry, tools};
 
 const MAX_ROUNDS: usize = 12;
 
@@ -336,20 +336,29 @@ pub async fn chat(
         Err(e) => return HttpResponse::BadRequest().json(ApiError::new(e)),
     };
 
-    // Enabled tools = agent subscription ∩ persona.allowed_tools (None = all);
-    // schemas_for further narrows to the tools actually implemented.
+    // Enabled tools = agent subscription ∩ persona.allowed_tools (None = all,
+    // `prefix*` entries match as wildcards); schemas_for further narrows to the
+    // tools actually implemented.
+    let allowed = resolved.persona.allowed_tools.clone();
     let enabled: Vec<String> = match registry::get(&conv.agent) {
-        Some(def) => {
-            let allowed = resolved.persona.allowed_tools.clone();
-            def.tools
-                .iter()
-                .map(|s| s.to_string())
-                .filter(|t| allowed.as_ref().map_or(true, |a| a.contains(t)))
-                .collect()
-        }
+        Some(def) => def
+            .tools
+            .iter()
+            .map(|s| s.to_string())
+            .filter(|t| tools::tool_allowed(allowed.as_ref(), t))
+            .collect(),
         None => Vec::new(),
     };
-    let tool_schemas = tools::schemas_for(&enabled);
+    let mut tool_schemas = tools::schemas_for(&enabled);
+    // MCP tools bypass the static registry (their names are discovered at
+    // runtime) but still respect persona.allowed_tools — gate whole servers
+    // with `mcp__{server}__*`. Served from the worker's cache: one
+    // intra-compose GET, no per-server round-trips.
+    tool_schemas.extend(mcp::schemas().await.into_iter().filter(|s| {
+        s.pointer("/function/name")
+            .and_then(|n| n.as_str())
+            .is_some_and(|n| tools::tool_allowed(allowed.as_ref(), n))
+    }));
 
     // Whether this conversation's model can see images — gates whether attached
     // images are forwarded to the provider (they're always persisted as a record

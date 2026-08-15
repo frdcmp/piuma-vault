@@ -2,16 +2,20 @@
 #
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 #
-# One image (rust/Dockerfile.prod) holds all four release binaries; each service
+# One image (rust/Dockerfile.prod) holds all five release binaries; each service
 # just runs a different one. The base ./rust:/app mount is kept: with
 # WORKDIR /app the binaries resolve the gitignored JWT/VAPID key material via
 # their legacy ./src/keys fallback path, exactly like dev. Source changes do NOT
 # hot-reload here — rebuild the image to deploy.
 
+# `target: runtime` is required: Dockerfile.prod's LAST stage is the
+# node/uv-enabled `mcp-runtime` (mcp-worker only), and an untargeted build
+# would default to it for every service.
 x-prod-build: &prod-build
   build:
     context: ./rust
     dockerfile: Dockerfile.prod
+    target: runtime
   image: ${COMPOSE_NAME}-rust-prod
 
 services:
@@ -30,3 +34,12 @@ services:
   embedding-worker:
     <<: *prod-build
     command: ["embedding-worker"]
+
+  # Own image variant: runtime + node/uv for stdio MCP child processes.
+  mcp-worker:
+    build:
+      context: ./rust
+      dockerfile: Dockerfile.prod
+      target: mcp-runtime
+    image: ${COMPOSE_NAME}-rust-prod-mcp
+    command: ["mcp-worker"]

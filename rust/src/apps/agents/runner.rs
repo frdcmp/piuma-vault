@@ -19,7 +19,7 @@ use crate::db::db::DbPool;
 
 use super::chat::blocks_to_text;
 use super::models::{ConversationRow, ModelRow, ProviderRow};
-use super::{identities, providers, registry, tools};
+use super::{identities, mcp, providers, registry, tools};
 
 const MAX_ROUNDS: usize = 12;
 
@@ -108,21 +108,35 @@ pub async fn run_turn(
 
     let resolved = identities::resolve(pool, &conv.agent, &conv.identity).await?;
 
-    // Enabled tools = agent subscription ∩ persona.allowed_tools, minus the
-    // destructive `delete_*` family unless this job opted in.
+    // Enabled tools = agent subscription ∩ persona.allowed_tools (with
+    // `prefix*` wildcards), minus the destructive `delete_*` family unless
+    // this job opted in.
+    let allowed = resolved.persona.allowed_tools.clone();
     let enabled: Vec<String> = match registry::get(&conv.agent) {
-        Some(def) => {
-            let allowed = resolved.persona.allowed_tools.clone();
-            def.tools
-                .iter()
-                .map(|s| s.to_string())
-                .filter(|t| allowed.as_ref().map_or(true, |a| a.contains(t)))
-                .filter(|t| opts.allow_destructive || !t.starts_with("delete_"))
-                .collect()
-        }
+        Some(def) => def
+            .tools
+            .iter()
+            .map(|s| s.to_string())
+            .filter(|t| tools::tool_allowed(allowed.as_ref(), t))
+            .filter(|t| opts.allow_destructive || !t.starts_with("delete_"))
+            .collect(),
         None => Vec::new(),
     };
-    let tool_schemas = tools::schemas_for(&enabled);
+    let mut tool_schemas = tools::schemas_for(&enabled);
+    // MCP tools in headless runs: only `cron_safe` servers, and unless the job
+    // opted into destructive tools, only tools annotated read-only/
+    // non-destructive by their server (unannotated ones are excluded). Persona
+    // gating applies on top, same as chat.
+    tool_schemas.extend(
+        mcp::schemas_cron(opts.allow_destructive)
+            .await
+            .into_iter()
+            .filter(|s| {
+                s.pointer("/function/name")
+                    .and_then(|n| n.as_str())
+                    .is_some_and(|n| tools::tool_allowed(allowed.as_ref(), n))
+            }),
+    );
 
     // Persist the user (cron prompt) message, tagged so the UI can badge it.
     let user_content = json!([{ "type": "text", "text": prompt }]);

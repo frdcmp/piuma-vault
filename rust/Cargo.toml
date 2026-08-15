@@ -21,6 +21,10 @@ path = "src/bin/notification-worker.rs"
 name = "cron-worker"
 path = "src/bin/cron-worker.rs"
 
+[[bin]]
+name = "mcp-worker"
+path = "src/bin/mcp-worker.rs"
+
 [dependencies]
 actix-web = "4.3"
 actix-cors = "0.7"
@@ -64,6 +68,9 @@ pgvector = { version = "0.4", features = ["sqlx"] }
 moka = { version = "0.12", features = ["future"] }
 serde_yaml = "0.9"
 web-push = { version = "0.10", default-features = false, features = ["hyper-client"] }
+# MCP client (mcp-worker only). Pulls its own reqwest 0.13 — independent of the
+# 0.11 above; the two majors coexist in the dependency graph.
+rmcp = { version = "3.1", features = ["client", "transport-streamable-http-client-reqwest", "transport-child-process"] }
 
 [build-dependencies]
 rand = "0.8"

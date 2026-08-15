@@ -1020,6 +1020,41 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_gen_images_user ON db_generated_images USING btree (user_id, created_at DESC)",
         ],
     },
+    // External MCP servers the agent can call (via the mcp-worker, which owns
+    // all connections). `name` is the namespace in tool names
+    // (`mcp__{name}__{tool}`), so it's a short slug with no `__` (the parser
+    // splits on the first double underscore). Two transports: 'http'
+    // (streamable HTTP; `url` + optional bearer `auth_token`) and 'stdio'
+    // (`command` + `args` spawned as a child of the mcp-worker with ONLY the
+    // row's `env` — admin-only, it is arbitrary code execution by design).
+    // `tool_cache` holds the last tools/list result so the chat loop never
+    // blocks on discovery; the worker refreshes it on connect and on
+    // POST /refresh. `cron_safe` gates headless (cron) runs — chat is gated
+    // per-persona (allowed_tools patterns like `mcp__github__*`) instead.
+    TableDefinition {
+        name: "mcp_servers",
+        sql: r#"
+            CREATE TABLE mcp_servers (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                name TEXT UNIQUE NOT NULL,
+                transport TEXT NOT NULL DEFAULT 'http' CHECK (transport IN ('http', 'stdio')),
+                url TEXT NOT NULL DEFAULT '',
+                auth_token TEXT NOT NULL DEFAULT '',
+                command TEXT NOT NULL DEFAULT '',
+                args TEXT[] NOT NULL DEFAULT '{}',
+                env JSONB NOT NULL DEFAULT '{}',
+                enabled BOOLEAN NOT NULL DEFAULT true,
+                cron_safe BOOLEAN NOT NULL DEFAULT false,
+                timeout_secs INTEGER NOT NULL DEFAULT 30,
+                last_status TEXT,
+                last_checked_at TIMESTAMPTZ,
+                tool_cache JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[],
+    },
 ];
 
 // Trigger DDL, applied idempotently on every boot (CREATE OR REPLACE + DROP IF

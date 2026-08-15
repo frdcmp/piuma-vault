@@ -54,6 +54,21 @@ fn all_defs() -> Vec<(&'static str, &'static str, Value)> {
     defs
 }
 
+/// Whether a persona's `allowed_tools` list admits a tool. `None` = everything.
+/// Entries match exactly, or as a prefix when they end in `*` — the wildcard
+/// exists for MCP tools (`mcp__github__*`), whose names are discovered at
+/// runtime and so can never be enumerated in a static list.
+pub fn tool_allowed(allowed: Option<&Vec<String>>, name: &str) -> bool {
+    match allowed {
+        None => true,
+        Some(list) => list.iter().any(|p| {
+            p == name
+                || p.strip_suffix('*')
+                    .is_some_and(|prefix| name.starts_with(prefix))
+        }),
+    }
+}
+
 /// OpenAI-format `tools` array for the enabled tool names.
 pub fn schemas_for(enabled: &[String]) -> Vec<Value> {
     all_defs()
@@ -177,6 +192,8 @@ pub async fn dispatch(
         "backup_database" => db_backup::backup_database(pool, args).await,
         // ── Image generation (provider from admin → Services; result stored in S3) ──
         "generate_image" => image::generate_image(pool, user_id, args).await,
+        // ── MCP (`mcp__{server}__{tool}` → external server, via the mcp-worker) ──
+        other if other.starts_with(super::mcp::TOOL_PREFIX) => super::mcp::call(other, args).await,
         other => Err(format!("unknown tool: {other}")),
     }
 }

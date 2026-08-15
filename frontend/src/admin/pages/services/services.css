@@ -99,3 +99,61 @@
 	border-left: 2px dashed var(--vp-border);
 	margin-left: 4px;
 }
+
+/* MCP servers — one bordered card per server (row or add/edit form). */
+.vp-mcp-card {
+	border: 2px solid var(--vp-border);
+	border-radius: 6px;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+/* Connection-status dot from last_status: ok / error / never checked. */
+.vp-mcp-dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	flex-shrink: 0;
+}
+.vp-mcp-dot.is-ok {
+	background: var(--vp-accent-2);
+}
+.vp-mcp-dot.is-err {
+	background: var(--vp-accent-3);
+}
+.vp-mcp-dot.is-none {
+	background: var(--vp-border);
+}
+
+.vp-mcp-name {
+	font-weight: 700;
+	letter-spacing: 0.5px;
+}
+
+.vp-mcp-target {
+	font-size: 12px;
+	color: var(--vp-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1 1 160px;
+	min-width: 0;
+}
+
+/* Expanded list of discovered tool names. */
+.vp-mcp-tools {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding-top: 10px;
+	border-top: 2px dashed var(--vp-border);
+}
+.vp-mcp-tool {
+	font-size: 11px;
+	color: var(--vp-muted);
+	background: var(--vp-bg-soft);
+	border: 1px solid var(--vp-border);
+	padding: 2px 6px;
+}
