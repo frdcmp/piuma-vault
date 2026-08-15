@@ -1033,11 +1033,17 @@ const TABLES: &[TableDefinition] = &[
 // on content change so the embedding worker re-embeds instead of keeping a
 // stale vector), plus the `content_tsv` FTS vector on both insert and update.
 const TRIGGER_STATEMENTS: &[&str] = &[
+    // Weighted FTS vector (title > content > folder/tags) — same shape as the
+    // hand-made `notes_tsvector_trigger` that lived only in the production DB
+    // before versioning made the repo authoritative for triggers.
     r#"
     CREATE OR REPLACE FUNCTION notes_fts_refresh() RETURNS trigger AS $$
     BEGIN
-        NEW.content_tsv := to_tsvector('english',
-            coalesce(NEW.title, '') || ' ' || coalesce(NEW.content, ''));
+        NEW.content_tsv :=
+            setweight(to_tsvector('pg_catalog.english', coalesce(NEW.title, '')), 'A') ||
+            setweight(to_tsvector('pg_catalog.english', coalesce(NEW.content, '')), 'B') ||
+            setweight(to_tsvector('pg_catalog.english', coalesce(NEW.folder, '')), 'C') ||
+            setweight(to_tsvector('pg_catalog.english', coalesce(array_to_string(NEW.tags, ' '), '')), 'C');
         RETURN NEW;
     END;
     $$ LANGUAGE plpgsql
@@ -1054,8 +1060,11 @@ const TRIGGER_STATEMENTS: &[&str] = &[
                     coalesce(OLD.tags, '{}'), OLD.folder,
                     NULLIF(current_setting('app.change_source', true), ''));
             NEW.updated_at := NOW();
-            NEW.content_tsv := to_tsvector('english',
-                coalesce(NEW.title, '') || ' ' || coalesce(NEW.content, ''));
+            NEW.content_tsv :=
+                setweight(to_tsvector('pg_catalog.english', coalesce(NEW.title, '')), 'A') ||
+                setweight(to_tsvector('pg_catalog.english', coalesce(NEW.content, '')), 'B') ||
+                setweight(to_tsvector('pg_catalog.english', coalesce(NEW.folder, '')), 'C') ||
+                setweight(to_tsvector('pg_catalog.english', coalesce(array_to_string(NEW.tags, ' '), '')), 'C');
             IF OLD.content IS DISTINCT FROM NEW.content THEN
                 NEW.embedding := NULL;
             END IF;
