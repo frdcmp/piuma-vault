@@ -8,11 +8,14 @@ import {
 	fetchFolders,
 	fetchNote,
 	fetchNotes,
+	fetchNoteVersion,
+	fetchNoteVersions,
 	fetchTags,
 	fetchTrash,
 	permanentlyDeleteNote,
 	renameFolder,
 	restoreNote,
+	restoreNoteVersion,
 	searchFolders,
 	updateNote,
 } from "../api/notesApi";
@@ -30,6 +33,8 @@ export const notesKeys = {
 	folders: () => ["notes", "folders"],
 	browse: (path) => ["notes", "browse", path],
 	trash: () => ["notes", "trash"],
+	versions: (id) => ["notes", "versions", id],
+	version: (id, versionId) => ["notes", "versions", id, versionId],
 };
 
 // ── Surgical cache reconciliation (note updates) ──────────────────────────────
@@ -217,6 +222,40 @@ export const useRenameFolder = () => {
 		onSuccess: () => {
 			// Folder paths changed across many notes — refresh the whole tree.
 			qc.invalidateQueries({ queryKey: notesKeys.all });
+		},
+	});
+};
+
+// ── Version history ───────────────────────────────────────────────────────
+
+export const useNoteVersions = (id, options = {}) =>
+	useQuery({
+		queryKey: notesKeys.versions(id),
+		queryFn: () => fetchNoteVersions(id),
+		enabled: UUID_RE.test(id),
+		staleTime: 10_000,
+		...options,
+	});
+
+export const useNoteVersion = (id, versionId, options = {}) =>
+	useQuery({
+		queryKey: notesKeys.version(id, versionId),
+		queryFn: () => fetchNoteVersion(id, versionId),
+		enabled: UUID_RE.test(id) && versionId != null,
+		staleTime: Infinity, // a snapshot never changes
+		...options,
+	});
+
+export const useRestoreNoteVersion = () => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: restoreNoteVersion,
+		onMutate: () => markLocalChange(NOTES_SSE_PATH),
+		onSuccess: (data, { id }) => {
+			// The restore returns the updated note — patch caches like a save, and
+			// refresh the history list (the pre-restore state is now its newest row).
+			reconcileNoteUpdate(qc, data);
+			qc.invalidateQueries({ queryKey: notesKeys.versions(id) });
 		},
 	});
 };

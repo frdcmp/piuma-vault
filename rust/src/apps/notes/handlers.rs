@@ -547,6 +547,9 @@ pub async fn update_note(
         return r;
     }
 
+    // `updated_at`, `content_tsv` and the version snapshot are handled by the
+    // `trg_notes_version` trigger; the transaction exists so the trigger can
+    // read the change source (see versions::set_change_source).
     let sql = format!(
         "UPDATE notes SET title = $1, content = $2, tags = $3, folder = $4 \
          WHERE id = $5 AND user_id = $6 AND deleted_at IS NULL \
@@ -554,16 +557,24 @@ pub async fn update_note(
         NOTE_FIELDS
     );
 
-    match sqlx::query_as::<_, Note>(&sql)
-        .bind(&new_title)
-        .bind(&new_content)
-        .bind(&new_tags)
-        .bind(&new_folder)
-        .bind(id)
-        .bind(&user.user_id)
-        .fetch_one(pool.get_ref())
-        .await
-    {
+    let update_res: Result<Note, sqlx::Error> = async {
+        let mut tx = pool.get_ref().begin().await?;
+        super::versions::set_change_source(&mut tx, "user").await?;
+        let note = sqlx::query_as::<_, Note>(&sql)
+            .bind(&new_title)
+            .bind(&new_content)
+            .bind(&new_tags)
+            .bind(&new_folder)
+            .bind(id)
+            .bind(&user.user_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(note)
+    }
+    .await;
+
+    match update_res {
         Ok(note) => {
             // Enqueue embedding regeneration (non-blocking; fire-and-forget)
             let pool_clone = pool.get_ref().clone();
@@ -842,15 +853,23 @@ pub async fn rename_folder(
          WHERE user_id = $3 AND deleted_at IS NULL AND (folder = $4 OR folder LIKE $5) \
          RETURNING id";
 
-    match sqlx::query_as::<_, (Uuid,)>(sql)
-        .bind(&to)
-        .bind(from_len + 1)
-        .bind(&user.user_id)
-        .bind(&from)
-        .bind(&from_like)
-        .fetch_all(pool.get_ref())
-        .await
-    {
+    let rename_res: Result<Vec<(Uuid,)>, sqlx::Error> = async {
+        let mut tx = pool.get_ref().begin().await?;
+        super::versions::set_change_source(&mut tx, "user").await?;
+        let rows = sqlx::query_as::<_, (Uuid,)>(sql)
+            .bind(&to)
+            .bind(from_len + 1)
+            .bind(&user.user_id)
+            .bind(&from)
+            .bind(&from_like)
+            .fetch_all(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+    .await;
+
+    match rename_res {
         Ok(rows) => {
             // Folder is metadata-only, so no embeddings change — just notify
             // listeners that these notes moved.

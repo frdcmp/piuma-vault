@@ -1,6 +1,6 @@
 use actix_web::web;
 
-use super::{events, handlers};
+use super::{events, handlers, versions};
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg
@@ -47,6 +47,18 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(
             web::resource("/admin/notes/{id}/permanent")
                 .route(web::delete().to(handlers::permanently_delete_note)),
+        )
+        .service(
+            web::resource("/admin/notes/{id}/versions")
+                .route(web::get().to(versions::list_note_versions)),
+        )
+        .service(
+            web::resource("/admin/notes/{id}/versions/{version_id}")
+                .route(web::get().to(versions::get_note_version)),
+        )
+        .service(
+            web::resource("/admin/notes/{id}/versions/{version_id}/restore")
+                .route(web::post().to(versions::restore_note_version)),
         )
         .service(
             web::resource("/admin/notes/{id}")

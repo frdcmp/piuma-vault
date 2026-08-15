@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import useChatDockStore from "../../../store/chatDockStore";
 import useNoteControlsStore from "../../../store/noteControlsStore";
+import NoteHistoryPopover from "../../components/notes/NoteHistoryPopover";
 import SharePopover from "../../components/notes/SharePopover";
 
 // Save-status pill — mirrors the icon the editor header used to show.
@@ -106,9 +106,6 @@ function SearchPopover() {
 // bar beside the tabs. When the bar is too narrow (`compact`) the action
 // buttons collapse into a single ⋯ overflow menu.
 export default function NoteControls({ onClose, compact }) {
-	// Hide the "open chat" affordance when the dock is already open.
-	const chatOpen = useChatDockStore((s) => s.open);
-	const openChat = useChatDockStore((s) => s.openChat);
 	const noteId = useNoteControlsStore((s) => s.noteId);
 	const saveStatus = useNoteControlsStore((s) => s.saveStatus);
 	const searchOpen = useNoteControlsStore((s) => s.searchOpen);
@@ -195,21 +192,13 @@ export default function NoteControls({ onClose, compact }) {
 				>
 					⋯
 				</button>
+				{noteId ? <NoteHistoryPopover noteId={noteId} /> : null}
 				{menuOpen && (
 					<div className="note-ctl-menu" role="menu">
 						{noteId ? (
 							<div className="note-ctl-menu-item note-ctl-menu-share">
 								<SharePopover noteId={noteId} />
 							</div>
-						) : null}
-						{!chatOpen ? (
-							<button
-								type="button"
-								className="note-ctl-menu-item"
-								onClick={run(openChat)}
-							>
-								💬 Chat about note
-							</button>
 						) : null}
 						<button
 							type="button"
@@ -241,18 +230,8 @@ export default function NoteControls({ onClose, compact }) {
 				</button>
 				{searchOpen && <SearchPopover />}
 			</span>
+			{noteId ? <NoteHistoryPopover noteId={noteId} /> : null}
 			{noteId ? <SharePopover noteId={noteId} iconOnly /> : null}
-			{!chatOpen ? (
-				<button
-					type="button"
-					className="note-ctl-btn"
-					onClick={openChat}
-					title="Open chat about this note"
-					aria-label="Open chat"
-				>
-					💬
-				</button>
-			) : null}
 			<button
 				type="button"
 				className="note-ctl-btn danger"

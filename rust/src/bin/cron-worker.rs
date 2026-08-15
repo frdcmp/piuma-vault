@@ -44,7 +44,15 @@ fn main() {
         };
 
         let poll_interval = Duration::from_secs(30);
+        let prune_interval = Duration::from_secs(3600);
+        let mut last_prune: Option<std::time::Instant> = None;
         loop {
+            // Hourly: prune note version history down to the retention tiers.
+            if last_prune.is_none_or(|t| t.elapsed() >= prune_interval) {
+                prune_note_versions(&pool).await;
+                last_prune = Some(std::time::Instant::now());
+            }
+
             let claimed = claim_due(&pool).await;
             if !claimed.is_empty() {
                 log::info!("Firing {} due cron job(s)", claimed.len());
@@ -57,6 +65,47 @@ fn main() {
             sleep(poll_interval).await;
         }
     });
+}
+
+/// Tiered retention for the `note_versions` history (written by the notes
+/// versioning trigger; the 1.5s editor autosave makes rows pile up fast).
+/// Per note, keep: the 20 newest versions unconditionally, then one per hour
+/// for the last 24 hours, then one per day for the last 30 days. Everything
+/// else is dropped. Pruning is deliberately asynchronous — writes always
+/// capture the pre-image, so the state just before any screwup is never lost
+/// to coalescing.
+async fn prune_note_versions(pool: &DbPool) {
+    match sqlx::query(
+        r#"
+        WITH ranked AS (
+            SELECT id, created_at,
+                   ROW_NUMBER() OVER (PARTITION BY note_id
+                       ORDER BY created_at DESC, id DESC) AS rn,
+                   ROW_NUMBER() OVER (PARTITION BY note_id, date_trunc('hour', created_at)
+                       ORDER BY created_at DESC, id DESC) AS rn_hour,
+                   ROW_NUMBER() OVER (PARTITION BY note_id, date_trunc('day', created_at)
+                       ORDER BY created_at DESC, id DESC) AS rn_day
+            FROM note_versions
+        )
+        DELETE FROM note_versions v
+        USING ranked r
+        WHERE v.id = r.id
+          AND r.rn > 20
+          AND NOT (r.created_at > NOW() - INTERVAL '24 hours' AND r.rn_hour = 1)
+          AND NOT (r.created_at <= NOW() - INTERVAL '24 hours'
+                   AND r.created_at > NOW() - INTERVAL '30 days'
+                   AND r.rn_day = 1)
+        "#,
+    )
+    .execute(pool)
+    .await
+    {
+        Ok(res) if res.rows_affected() > 0 => {
+            log::info!("🧹 Pruned {} note version(s)", res.rows_affected());
+        }
+        Ok(_) => {}
+        Err(e) => log::error!("note version pruning failed: {e}"),
+    }
 }
 
 /// Atomically claim due jobs and advance their schedule inside one short

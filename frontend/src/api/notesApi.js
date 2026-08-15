@@ -71,6 +71,41 @@ export const emptyTrash = async () => {
 	return data;
 };
 
+// ── Version history ───────────────────────────────────────────────────────
+//
+// Snapshots of a note's previous states, written server-side by a DB trigger
+// on every content-bearing update (manual edit, AI agent, share link, …).
+
+export const fetchNoteVersions = async (id) => {
+	if (!UUID_RE.test(id)) {
+		throw new Error(`Invalid note ID for versions: ${id}`);
+	}
+	const { data } = await axiosInstance.get(`/admin/notes/${id}/versions`);
+	return data;
+};
+
+export const fetchNoteVersion = async (id, versionId) => {
+	if (!UUID_RE.test(id)) {
+		throw new Error(`Invalid note ID for version: ${id}`);
+	}
+	const { data } = await axiosInstance.get(
+		`/admin/notes/${id}/versions/${versionId}`,
+	);
+	return data;
+};
+
+// Restore copies the snapshot back onto the live note. The current state is
+// snapshotted first (by the same trigger), so a restore is itself undoable.
+export const restoreNoteVersion = async ({ id, versionId }) => {
+	if (!UUID_RE.test(id)) {
+		throw new Error(`Invalid note ID for version restore: ${id}`);
+	}
+	const { data } = await axiosInstance.post(
+		`/admin/notes/${id}/versions/${versionId}/restore`,
+	);
+	return data;
+};
+
 // ── Metadata ──────────────────────────────────────────────────────────────
 
 export const fetchTags = async () => {

@@ -103,8 +103,11 @@ async fn main() {
             match apps::embeddings::embed(&pool, &content, 1536, "embedding:notes").await {
                 Ok(embedding) => {
                     let pg_vec = pgvector::Vector::from(embedding);
+                    // No `embedding IS NULL` guard: edits re-enqueue a job (and the
+                    // versioning trigger nulls the stale vector), so the newest job —
+                    // processed in created_at order — must always win the write.
                     match sqlx::query(
-                        "UPDATE notes SET embedding = $1 WHERE id = $2 AND embedding IS NULL AND deleted_at IS NULL",
+                        "UPDATE notes SET embedding = $1 WHERE id = $2 AND deleted_at IS NULL",
                     )
                     .bind(&pg_vec)
                     .bind(note_id)

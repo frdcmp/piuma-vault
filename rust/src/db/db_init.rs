@@ -222,6 +222,32 @@ const TABLES: &[TableDefinition] = &[
         "#,
         indices: &[],
     },
+    // Version history: the `trg_notes_version` BEFORE UPDATE trigger snapshots a
+    // note's pre-image here whenever title/content/tags/folder change, no matter
+    // which code path issued the UPDATE (HTTP handler, agent tool, share edit,
+    // recorder, bulk folder rename). Rows are pruned on a tiered retention
+    // schedule by the cron worker. `source` is the transaction-local
+    // `app.change_source` GUC set by the write site ('user'/'agent'/'share'/…).
+    TableDefinition {
+        name: "note_versions",
+        sql: r#"
+            CREATE TABLE note_versions (
+                id BIGSERIAL PRIMARY KEY,
+                note_id UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+                user_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                tags TEXT[] NOT NULL DEFAULT '{}',
+                folder TEXT,
+                source TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_note_versions_note
+                ON note_versions USING btree (note_id, created_at DESC)",
+        ],
+    },
     TableDefinition {
         name: "api_keys",
         sql: r#"
@@ -996,6 +1022,58 @@ const TABLES: &[TableDefinition] = &[
     },
 ];
 
+// Trigger DDL, applied idempotently on every boot (CREATE OR REPLACE + DROP IF
+// EXISTS). Triggers live here — not in TABLES — because `verify_schema` only
+// diffs columns and indices; re-running these is always safe.
+//
+// `notes_version_snapshot` is the single chokepoint for note versioning: five
+// independent modules UPDATE `notes` directly, so an application-layer hook
+// would leak. It also owns two derived columns no code path maintained before:
+// `updated_at` (the HTTP update handler never set it) and `embedding` (nulled
+// on content change so the embedding worker re-embeds instead of keeping a
+// stale vector), plus the `content_tsv` FTS vector on both insert and update.
+const TRIGGER_STATEMENTS: &[&str] = &[
+    r#"
+    CREATE OR REPLACE FUNCTION notes_fts_refresh() RETURNS trigger AS $$
+    BEGIN
+        NEW.content_tsv := to_tsvector('english',
+            coalesce(NEW.title, '') || ' ' || coalesce(NEW.content, ''));
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+    "#,
+    r#"
+    CREATE OR REPLACE FUNCTION notes_version_snapshot() RETURNS trigger AS $$
+    BEGIN
+        IF (OLD.title   IS DISTINCT FROM NEW.title)
+        OR (OLD.content IS DISTINCT FROM NEW.content)
+        OR (OLD.tags    IS DISTINCT FROM NEW.tags)
+        OR (OLD.folder  IS DISTINCT FROM NEW.folder) THEN
+            INSERT INTO note_versions (note_id, user_id, title, content, tags, folder, source)
+            VALUES (OLD.id, OLD.user_id, OLD.title, OLD.content,
+                    coalesce(OLD.tags, '{}'), OLD.folder,
+                    NULLIF(current_setting('app.change_source', true), ''));
+            NEW.updated_at := NOW();
+            NEW.content_tsv := to_tsvector('english',
+                coalesce(NEW.title, '') || ' ' || coalesce(NEW.content, ''));
+            IF OLD.content IS DISTINCT FROM NEW.content THEN
+                NEW.embedding := NULL;
+            END IF;
+        END IF;
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+    "#,
+    "DROP TRIGGER IF EXISTS trg_notes_fts_insert ON notes",
+    "CREATE TRIGGER trg_notes_fts_insert
+        BEFORE INSERT ON notes
+        FOR EACH ROW EXECUTE FUNCTION notes_fts_refresh()",
+    "DROP TRIGGER IF EXISTS trg_notes_version ON notes",
+    "CREATE TRIGGER trg_notes_version
+        BEFORE UPDATE ON notes
+        FOR EACH ROW EXECUTE FUNCTION notes_version_snapshot()",
+];
+
 pub async fn init_db(pool: &DbPool) -> Result<InitResult, sqlx::Error> {
     let mut result = InitResult {
         tables_created: Vec::new(),
@@ -1036,6 +1114,10 @@ pub async fn init_db(pool: &DbPool) -> Result<InitResult, sqlx::Error> {
         for index in table.indices {
             sqlx::query(*index).execute(pool).await?;
         }
+    }
+
+    for stmt in TRIGGER_STATEMENTS {
+        sqlx::query(*stmt).execute(pool).await?;
     }
 
     // Schema drift guard: confirm the live database matches what TABLES
