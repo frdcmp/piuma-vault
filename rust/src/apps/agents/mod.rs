@@ -6,6 +6,7 @@ pub mod control;
 pub mod dialectic;
 pub mod handlers;
 pub mod identities;
+pub mod mcp;
 pub mod memory_admin;
 pub mod models;
 pub mod providers;

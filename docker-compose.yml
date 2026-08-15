@@ -73,6 +73,9 @@ services:
       - TELEMETRY_API_KEY=${TELEMETRY_API_KEY:-}
       # Web Push (VAPID) key material lives in rust/src/keys/ (file-based), not env.
       # S3 object storage config lives in the DB (Services dashboard), not here.
+      # MCP bridge — the mcp-worker owns all MCP connections; the backend only
+      # proxies tool schemas/calls to it over the compose network.
+      - MCP_WORKER_URL=http://mcp-worker:8090
     networks:
       - network
 
@@ -116,6 +119,33 @@ services:
       - DB_PORT=${DB_PORT}
       # Email (send_email tool) now lives in the DB — Services → Email.
       # Web Push (VAPID) key material lives in rust/src/keys/ (file-based), not env.
+    networks:
+      - network
+
+  # Single owner of all outbound MCP connections (see rust/src/bin/mcp-worker.rs).
+  # Serves an internal HTTP API (tools/call/refresh/health) on 8090 — compose
+  # network only, never published. extra_hosts so `localhost` MCP server URLs
+  # reach host-run servers, same as the LLM providers.
+  mcp-worker:
+    container_name: ${COMPOSE_NAME}-mcp-worker
+    # Own dev image: base + node/uv so stdio MCP servers (npx/uvx) can spawn.
+    build:
+      context: ./rust
+      dockerfile: Dockerfile.mcp
+    restart: unless-stopped
+    profiles: ["server-stack"]
+    command: ["cargo", "watch", "-x", "run --bin mcp-worker"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./rust:/app
+    environment:
+      - RUST_LOG=${RUST_LOG}
+      - DB_HOST=${DB_HOST}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_PORT=${DB_PORT}
     networks:
       - network
 

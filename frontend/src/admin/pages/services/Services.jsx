@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
 	useEmailAccounts,
 	useImagegenModels,
+	useMcpServers,
 	useServices,
 	useTestEmbedding,
 	useTestGithub,
@@ -16,6 +17,7 @@ import { PvButton, PvModal, PvPanel, pvMessage } from "../../components/ui";
 import "../../vault-pixel.css";
 import "./services.css";
 import EmailAccounts from "./EmailAccounts";
+import McpServers from "./McpServers";
 
 const EMPTY = {
 	azure_embedding_url: "",
@@ -57,6 +59,7 @@ const TABS = [
 	{ id: "images", label: "Images" },
 	{ id: "github", label: "GitHub" },
 	{ id: "email", label: "Email" },
+	{ id: "mcp", label: "MCP" },
 ];
 
 // Image-generation providers we ship adapters for (see apps::image_gen). Each
@@ -178,6 +181,7 @@ const BUNNY_DEFAULTS = {
 const Services = () => {
 	const { data, isLoading, error } = useServices();
 	const { data: emailAccounts } = useEmailAccounts();
+	const { data: mcpServers } = useMcpServers();
 	const update = useUpdateServices();
 	const testEmb = useTestEmbedding();
 	const testS3 = useTestStorage();
@@ -529,6 +533,7 @@ const Services = () => {
 						email: !!emailAccounts?.some(
 							(a) => a.send_enabled || a.read_enabled,
 						),
+						mcp: !!mcpServers?.some((s) => s.enabled),
 					};
 					return (
 						<div className="vp-stack">
@@ -1096,9 +1101,12 @@ const Services = () => {
 							{/* Email accounts — self-contained multi-account CRUD. */}
 							{activeTab === "email" && <EmailAccounts />}
 
+							{/* MCP servers — self-contained multi-server CRUD. */}
+							{activeTab === "mcp" && <McpServers />}
+
 							{/* The shared "Save changes" persists the single-form tabs; the
-								Email tab saves per account, so it's hidden there. */}
-							{activeTab !== "email" && (
+								Email and MCP tabs save per row, so it's hidden there. */}
+							{activeTab !== "email" && activeTab !== "mcp" && (
 								<div className="vp-row" style={{ justifyContent: "flex-end" }}>
 									<PvButton
 										variant="primary"
