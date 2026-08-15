@@ -4,11 +4,18 @@
 //! response back into our shared `CallResult`. Auth is a `?key=` query param.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use futures::StreamExt;
 use serde_json::{json, Value};
 
 use super::{CallResult, SseSender, ToolCall};
+
+/// Gemini has no tool-call ids, so we synthesise them. A per-process sequence
+/// keeps ids unique across rounds/turns — restarting at `call-0` every round
+/// made repeated same-name calls collide in the clients' live chip tracking
+/// (one chip blinking running↔done instead of one chip per invocation).
+static CALL_SEQ: AtomicU64 = AtomicU64::new(0);
 
 pub const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com";
 // Gemini wants an output cap; generous so long answers aren't truncated.
@@ -299,6 +306,7 @@ pub async fn call(
         return Err(format!("gemini HTTP {status}: {body}"));
     }
 
+    let round_seq = CALL_SEQ.fetch_add(1, Ordering::Relaxed);
     let mut out = CallResult::default();
     let mut stream = resp.bytes_stream();
     let mut buf = String::new();
@@ -339,7 +347,7 @@ pub async fn call(
                                 .and_then(|s| s.as_str())
                                 .map(str::to_string);
                             out.tool_calls.push(ToolCall {
-                                id: format!("call-{}", out.tool_calls.len()),
+                                id: format!("call-{round_seq}-{}", out.tool_calls.len()),
                                 name: name.to_string(),
                                 arguments: args.to_string(),
                                 thought_signature: sig,
