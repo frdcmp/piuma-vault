@@ -735,16 +735,6 @@
 	-webkit-box-orient: vertical;
 }
 
-.ftree-score {
-	font-size: 10px;
-	padding: 1px 4px;
-	background: var(--bg-soft);
-	color: var(--accent-2);
-	border: 1px solid var(--border);
-	font-weight: 700;
-	flex-shrink: 0;
-}
-
 /* UI Elements */
 .pixel-btn {
 	background: var(--bg-soft);
