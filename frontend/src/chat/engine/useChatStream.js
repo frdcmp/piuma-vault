@@ -185,9 +185,21 @@ export default function useChatStream({
 						const last = { ...updated[updated.length - 1] };
 						const parts = [...(last.parts || [])];
 						if (t.done) {
+							// Provider call ids may repeat across rounds (Gemini restarts
+							// numbering each round), so settle the LAST still-running match
+							// — the first match may be an earlier, already-settled call,
+							// which would leave this invocation's chip spinning forever.
 							for (let i = parts.length - 1; i >= 0; i--) {
 								if (parts[i].kind !== "tools") continue;
-								const idx = parts[i].tools.findIndex((x) => x.id === t.id);
+								let idx = -1;
+								for (let j = parts[i].tools.length - 1; j >= 0; j--) {
+									if (parts[i].tools[j].id !== t.id) continue;
+									if (parts[i].tools[j].status === "running") {
+										idx = j;
+										break;
+									}
+									if (idx < 0) idx = j;
+								}
 								if (idx >= 0) {
 									const tools = [...parts[i].tools];
 									tools[idx] = {
