@@ -3,7 +3,9 @@
 //! the user message, then loops: stream a model round (via the provider adapter
 //! resolved from `provider.kind`) → if it emits tool_calls, run them (under the
 //! user) and feed results back → repeat until the model answers. The full turn
-//! (thinking / tool_use / tool_result / text blocks) is persisted.
+//! (thinking / tool_use / tool_result / text / error blocks) is persisted —
+//! including failed turns, so the user's message never falls off the active
+//! branch when a provider errors.
 
 use actix_web::{web, HttpResponse, Responder};
 use bytes::Bytes;
@@ -80,6 +82,37 @@ fn content_is_empty(content: &Value) -> bool {
 
 fn frame(payload: Value) -> Bytes {
     Bytes::from(format!("data: {payload}\n\n"))
+}
+
+/// Provider failures worth retrying: rate limits and transient overload. Every
+/// adapter surfaces these as `"{kind} HTTP {status}: {body}"` from its pre-body
+/// status check — i.e. BEFORE any tokens were streamed — so a retry can never
+/// duplicate output already sent to the client. Mid-stream failures ("stream
+/// error", "decode failed") never match.
+fn retryable_provider_error(e: &str) -> bool {
+    let e = e.to_ascii_lowercase();
+    e.contains("http 429")
+        || e.contains("http 503")
+        || e.contains("http 529")
+        || e.contains("resource_exhausted")
+        || e.contains("rate limit")
+        || e.contains("overloaded")
+}
+
+/// Human-readable one-liner for a provider error, shown in the chat as the
+/// turn's error bubble. The raw error still goes to the log and the SSE frame's
+/// `detail` field.
+fn friendly_provider_error(e: &str) -> String {
+    let lower = e.to_ascii_lowercase();
+    if retryable_provider_error(e) {
+        "The model is rate-limited or temporarily overloaded. Wait a moment and regenerate, or switch to another model.".into()
+    } else if lower.contains("http 401") || lower.contains("http 403") {
+        "The provider rejected the API key. Check it in admin → Agents.".into()
+    } else if lower.contains("request failed") || lower.contains("timed out") {
+        "Couldn't reach the model provider (network error). Regenerate to try again.".into()
+    } else {
+        format!("The model call failed: {e}")
+    }
 }
 
 /// After a mutating tool succeeds, publish to the matching live-update bus so
@@ -581,11 +614,36 @@ pub async fn chat(
 
             // STOP: race the streaming round against the cancel signal. Dropping
             // the call future closes the in-flight provider socket immediately.
-            let round = tokio::select! {
+            let mut round = tokio::select! {
                 biased;
                 _ = cancel.cancelled() => { stopped = true; break 'rounds; }
                 r = providers::call(&provider_kind, &api_key, base_url.as_deref(), &model, &messages, &tool_schemas, &tx) => r,
             };
+            // Rate-limit resilience: 429/overloaded arrive from the adapter's
+            // status check before anything streamed, so a retry is safe. Two
+            // retries with short backoff (2s, 5s), both cancellable by STOP.
+            for attempt in 1..=2u64 {
+                match &round {
+                    Err(e) if retryable_provider_error(e) => {
+                        log::warn!("chat: {provider_kind} rate-limited, retry {attempt}/2: {e}");
+                    }
+                    _ => break,
+                }
+                let _ = tx.unbounded_send(Ok(frame(json!({
+                    "type": "status",
+                    "text": format!("Model is rate-limited — retrying ({attempt}/2)…"),
+                }))));
+                tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => { stopped = true; break 'rounds; }
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(3 * attempt - 1)) => {}
+                }
+                round = tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => { stopped = true; break 'rounds; }
+                    r = providers::call(&provider_kind, &api_key, base_url.as_deref(), &model, &messages, &tool_schemas, &tx) => r,
+                };
+            }
             match round {
                 Ok(res) => {
                     tin += res.tokens_in;
@@ -671,7 +729,15 @@ pub async fn chat(
                 }
                 Err(e) => {
                     log::error!("chat: {provider_kind} round failed: {e}");
-                    let _ = tx.unbounded_send(Ok(frame(json!({ "type": "error", "error": e }))));
+                    let friendly = friendly_provider_error(&e);
+                    let _ = tx.unbounded_send(Ok(frame(
+                        json!({ "type": "error", "error": friendly, "detail": e }),
+                    )));
+                    // Record the failure as a content block so the turn persists:
+                    // the user's message stays on the active branch and reloads
+                    // show an error bubble instead of silently losing the turn.
+                    display.push(json!({ "type": "error", "error": friendly, "detail": e }));
+                    stop = "error".to_string();
                     errored = true;
                     break;
                 }
@@ -706,7 +772,12 @@ pub async fn chat(
                     }
                     Err(e) => {
                         log::error!("chat: {provider_kind} final answer failed: {e}");
-                        let _ = tx.unbounded_send(Ok(frame(json!({ "type": "error", "error": e }))));
+                        let friendly = friendly_provider_error(&e);
+                        let _ = tx.unbounded_send(Ok(frame(
+                            json!({ "type": "error", "error": friendly, "detail": e }),
+                        )));
+                        display.push(json!({ "type": "error", "error": friendly, "detail": e }));
+                        stop = "error".to_string();
                         errored = true;
                     }
                 },
@@ -718,7 +789,12 @@ pub async fn chat(
             stop = "cancelled".to_string();
         }
 
-        if !errored {
+        // Persist the assistant turn ALWAYS — success, cancel, or error. An
+        // errored turn stores its error block and stop_reason "error", and still
+        // advances the active leaf below: otherwise the just-inserted user
+        // message is left off-branch and a reload silently "loses" the exchange
+        // (the disappearing-chat bug when the provider 429s on an image turn).
+        {
             let content = Value::Array(display);
             let msg_id: Option<Uuid> = sqlx::query_scalar(
                 "INSERT INTO db_chat_messages \
@@ -776,6 +852,7 @@ pub async fn chat(
                     "provider": provider_kind,
                     "agent": agent_kind,
                     "tokens_cached": tcached,
+                    "stop_reason": stop.clone(),
                 }))
                 .emit();
             let _ = sqlx::query("UPDATE db_chat_conversations SET updated_at = NOW() WHERE id = $1")
@@ -798,7 +875,7 @@ pub async fn chat(
             .await;
             // L4: fire-and-forget dialectic pass (runs only on the cadence
             // boundary). Spawned so it never delays the client after `done`.
-            if !stopped {
+            if !stopped && !errored {
                 let dpool = pool2.clone();
                 let dagent = agent_kind.clone();
                 actix_web::rt::spawn(async move {
@@ -815,8 +892,8 @@ pub async fn chat(
 
             // Replace the fallback title with an AI-generated subject line now
             // that the first exchange exists. Best-effort, after `done`. Skipped
-            // on a stopped turn — no point spending an LLM call on a cancelled one.
-            if first_turn && !stopped {
+            // on a stopped or errored turn — no point spending an LLM call there.
+            if first_turn && !stopped && !errored {
                 super::title::generate(&pool2, conv_id).await;
             }
         }

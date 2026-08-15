@@ -88,6 +88,15 @@ export const blocksToParts = (content) => {
 			// A mid-turn user injection, rendered inline where it landed.
 			if (b.text)
 				parts.push({ kind: "inject", id: `p${parts.length}`, text: b.text });
+		} else if (b.type === "error") {
+			// A persisted provider failure — render it exactly like the live
+			// stream's error frame so reloads match what the user saw.
+			if (b.error)
+				parts.push({
+					kind: "text",
+					id: `p${parts.length}`,
+					text: `**Error:** ${b.error}`,
+				});
 		}
 	}
 	return parts;

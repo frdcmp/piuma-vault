@@ -604,10 +604,8 @@
 	white-space: nowrap;
 }
 
-/* Give the title the full row on hover */
-.ftree-row:hover .ftree-date {
-	display: none;
-}
+/* Hover must never add/remove elements — only recolor — or rows jump around.
+   The date stays put; the delete X reveals via opacity in its own reserved slot. */
 
 /* When the sidebar is narrow, drop the date entirely so titles aren't squeezed */
 @container (max-width: 240px) {
