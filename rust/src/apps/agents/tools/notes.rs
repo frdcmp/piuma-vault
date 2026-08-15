@@ -364,6 +364,11 @@ pub async fn update_note(pool: &DbPool, user_id: &str, args: &Value) -> Result<V
     let folder = opt_string(args, "folder");
     let tags = opt_str_array(args, "tags")
         .map(|t| crate::apps::notes::handlers::normalize_tags(&t));
+    // Transaction so the versioning trigger records this change as 'agent'.
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    crate::apps::notes::versions::set_change_source(&mut tx, "agent")
+        .await
+        .map_err(|e| e.to_string())?;
     let row: Option<(Uuid, String, String)> = sqlx::query_as(
         "UPDATE notes SET \
            title = COALESCE($3, title), \
@@ -380,9 +385,10 @@ pub async fn update_note(pool: &DbPool, user_id: &str, args: &Value) -> Result<V
     .bind(&content)
     .bind(&folder)
     .bind(&tags)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
     match row {
         Some((id, title, new_content)) => {
             if content.is_some() {
@@ -397,6 +403,11 @@ pub async fn update_note(pool: &DbPool, user_id: &str, args: &Value) -> Result<V
 pub async fn append_to_note(pool: &DbPool, user_id: &str, args: &Value) -> Result<Value, String> {
     let id = uuid_arg(args, "id")?;
     let text = req_str(args, "text")?;
+    // Transaction so the versioning trigger records this change as 'agent'.
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    crate::apps::notes::versions::set_change_source(&mut tx, "agent")
+        .await
+        .map_err(|e| e.to_string())?;
     let row: Option<(Uuid, String, String)> = sqlx::query_as(
         "UPDATE notes SET content = content || E'\\n\\n' || $3, updated_at = NOW() \
          WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL \
@@ -405,9 +416,10 @@ pub async fn append_to_note(pool: &DbPool, user_id: &str, args: &Value) -> Resul
     .bind(id)
     .bind(user_id)
     .bind(&text)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
     match row {
         Some((id, title, new_content)) => {
             enqueue_embedding(pool, id, &new_content).await;

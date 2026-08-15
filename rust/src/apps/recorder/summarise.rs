@@ -104,15 +104,24 @@ pub async fn run(pool: &DbPool, id: Uuid, user_id: &str) -> Result<Uuid, String>
     // embedding so search reflects the latest text.
     let note_id: Uuid = match existing_note {
         Some(nid) => {
-            let res = sqlx::query(
-                "UPDATE notes SET title = $3, content = $4, updated_at = NOW() \
-                 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
-            )
-            .bind(nid)
-            .bind(user_id)
-            .bind(&note_title)
-            .bind(&content)
-            .execute(pool)
+            // Transaction so the versioning trigger records this overwrite as
+            // 'recorder' — re-summarising replaces the whole body.
+            let res = async {
+                let mut tx = pool.begin().await?;
+                crate::apps::notes::versions::set_change_source(&mut tx, "recorder").await?;
+                let r = sqlx::query(
+                    "UPDATE notes SET title = $3, content = $4, updated_at = NOW() \
+                     WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
+                )
+                .bind(nid)
+                .bind(user_id)
+                .bind(&note_title)
+                .bind(&content)
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                Ok::<_, sqlx::Error>(r)
+            }
             .await;
             // If the note was trashed/removed, fall back to a fresh insert.
             match res {

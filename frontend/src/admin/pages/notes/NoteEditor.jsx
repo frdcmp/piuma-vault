@@ -7,11 +7,11 @@ import {
 	useNote,
 	useUpdateNote,
 } from "../../../queries/notesQuery";
-import useChatDockStore from "../../../store/chatDockStore";
 import useNoteControlsStore from "../../../store/noteControlsStore";
 import useNotesWorkspaceStore from "../../../store/notesWorkspaceStore";
 import useUiStore from "../../../store/uiStore";
 import { attachmentMarkdown } from "../../../utils/attachments";
+import NoteHistoryPopover from "../../components/notes/NoteHistoryPopover";
 import SharePopover from "../../components/notes/SharePopover";
 import MilkdownEditorComp from "./MilkdownEditorComp";
 
@@ -43,7 +43,6 @@ export default function NoteEditor() {
 	const { id: paramId } = useParams();
 	const navigate = useNavigate();
 	const location = useLocation();
-	const openChat = useChatDockStore((s) => s.openChat);
 	const isNew = paramId === "new";
 
 	const noteId = isNew || !UUID_RE.test(paramId) ? undefined : paramId;
@@ -653,16 +652,8 @@ export default function NoteEditor() {
 					{isMobile && (
 						<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 							{saveIcon()}
+							{noteId && <NoteHistoryPopover noteId={noteId} />}
 							{noteId && <SharePopover noteId={noteId} isMobile={isMobile} />}
-							<button
-								type="button"
-								className="pixel-btn icon-only editor-chat-btn"
-								onClick={openChat}
-								title="Open chat about this note"
-								aria-label="Open chat"
-							>
-								💬
-							</button>
 							<button
 								type="button"
 								className="pixel-btn icon-only editor-close-btn"

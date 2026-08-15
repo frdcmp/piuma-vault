@@ -825,24 +825,36 @@ pub async fn update_shared_note(
         }
     };
 
+    let content_changed = new_content
+        .as_deref()
+        .is_some_and(|c| c != current_content);
+
     let final_title = new_title.unwrap_or(current_title);
     let final_content = new_content.unwrap_or(current_content);
     let final_tags =
         crate::apps::notes::handlers::normalize_tags(&new_tags.unwrap_or(current_tags));
     let final_folder = new_folder.or(current_folder);
 
-    // Update note
-    let updated: Option<(uuid::Uuid, String, String, Vec<String>, Option<String>, Option<DateTime<Utc>>)> = sqlx::query_as(
-        "UPDATE notes SET title = $1, content = $2, tags = $3, folder = $4, updated_at = NOW()
-         WHERE id = $5 AND deleted_at IS NULL
-         RETURNING id, title, content, tags, folder, updated_at"
-    )
-    .bind(&final_title)
-    .bind(&final_content)
-    .bind(&final_tags)
-    .bind(&final_folder)
-    .bind(share.note_id)
-    .fetch_optional(pool.get_ref())
+    // Update note — inside a transaction so the versioning trigger records the
+    // change as 'share' (see notes::versions::set_change_source).
+    let updated: Option<(uuid::Uuid, String, String, Vec<String>, Option<String>, Option<DateTime<Utc>>)> = async {
+        let mut tx = pool.get_ref().begin().await?;
+        crate::apps::notes::versions::set_change_source(&mut tx, "share").await?;
+        let row = sqlx::query_as(
+            "UPDATE notes SET title = $1, content = $2, tags = $3, folder = $4, updated_at = NOW()
+             WHERE id = $5 AND deleted_at IS NULL
+             RETURNING id, title, content, tags, folder, updated_at"
+        )
+        .bind(&final_title)
+        .bind(&final_content)
+        .bind(&final_tags)
+        .bind(&final_folder)
+        .bind(share.note_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok::<_, sqlx::Error>(row)
+    }
     .await
     .map_err(|e| {
         log::error!("Failed to update note: {e}");
@@ -867,6 +879,29 @@ pub async fn update_shared_note(
             .execute(&pool_ref)
             .await;
     });
+
+    // Share edits change content like any other edit — re-enqueue the embedding
+    // job so vector search doesn't keep a stale vector (fire-and-forget, same
+    // pattern as the admin update handler).
+    if content_changed {
+        let pool_ref = pool.get_ref().clone();
+        let content_for_job = content.clone();
+        tokio::spawn(async move {
+            let _ = sqlx::query("DELETE FROM embedding_jobs WHERE note_id = $1")
+                .bind(note_id)
+                .execute(&pool_ref)
+                .await;
+            if let Err(e) =
+                sqlx::query("INSERT INTO embedding_jobs (note_id, content) VALUES ($1, $2)")
+                    .bind(note_id)
+                    .bind(content_for_job)
+                    .execute(&pool_ref)
+                    .await
+            {
+                log::error!("Failed to enqueue embedding job for shared note {note_id}: {e}");
+            }
+        });
+    }
 
     // Notify any connected browser/mobile clients that this note changed.
     bus.publish(NoteAction::Updated, note_id);
