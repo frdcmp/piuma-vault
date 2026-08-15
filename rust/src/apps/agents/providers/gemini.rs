@@ -56,14 +56,14 @@ fn response_obj(content: &str) -> Value {
 
 /// A user message's content → Gemini parts. Plain string → one text part; a
 /// multimodal array maps text through and turns our canonical
-/// `{type:"image", url, media_type}` into a `fileData` part referencing the
-/// public (Bunny CDN) URL.
+/// `{type:"image", url, media_type}` into an image part.
 ///
-/// NOTE: `fileData.fileUri` is reliably resolved for Google-hosted URIs (Files
-/// API / GCS). Arbitrary public URLs may not be fetched by Gemini in all
-/// regions; if that proves flaky, switch to `inlineData` with base64 (requires
-/// fetching the bytes server-side first). DeepSeek/OpenAI/Anthropic take the URL
-/// directly, so they're the recommended vision providers here.
+/// Images MUST arrive as `data:` URLs here (the dispatch layer runs
+/// `inline_images` first): they become `inlineData` base64 parts, the only
+/// form the Gemini API reliably accepts. `fileData.fileUri` remains as a
+/// fallback for non-data URLs, but Gemini rejects arbitrary public URLs there
+/// with a misleading 429 RESOURCE_EXHAUSTED — verified empirically — so it only
+/// genuinely works for Files-API/GCS URIs.
 fn user_parts(content: Option<&Value>) -> Vec<Value> {
     match content {
         Some(Value::Array(blocks)) => {
@@ -80,9 +80,22 @@ fn user_parts(content: Option<&Value>) -> Vec<Value> {
                             .get("media_type")
                             .and_then(|m| m.as_str())
                             .unwrap_or("image/png");
-                        parts.push(json!({
-                            "fileData": { "mimeType": mt, "fileUri": url }
-                        }));
+                        let inline = url
+                            .strip_prefix("data:")
+                            .and_then(|rest| rest.split_once(";base64,"));
+                        match inline {
+                            Some((header_mime, b64)) => {
+                                // Prefer the data-URL's own mime when present —
+                                // it reflects the bytes actually fetched.
+                                let mime = if header_mime.is_empty() { mt } else { header_mime };
+                                parts.push(json!({
+                                    "inlineData": { "mimeType": mime, "data": b64 }
+                                }));
+                            }
+                            None => parts.push(json!({
+                                "fileData": { "mimeType": mt, "fileUri": url }
+                            })),
+                        }
                     }
                     _ => {}
                 }

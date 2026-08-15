@@ -262,7 +262,14 @@ pub async fn call(
         }
         "minimax" => minimax::call(api_key, base_url, model, messages, tools, tx).await,
         "anthropic" => anthropic::call(api_key, base_url, model, messages, tools, tx).await,
-        "gemini" => gemini::call(api_key, base_url, model, messages, tools, tx).await,
+        // Gemini's `fileData.fileUri` only resolves Files-API/GCS URIs — an
+        // arbitrary public URL (our CDN) fails with a misleading 429
+        // RESOURCE_EXHAUSTED. Inline the bytes so the adapter can send them as
+        // `inlineData` base64, which Gemini accepts.
+        "gemini" => {
+            let inlined = inline_images(messages).await;
+            gemini::call(api_key, base_url, model, &inlined, tools, tx).await
+        }
         _ => deepseek::call(api_key, base_url, model, messages, tools, tx).await,
     }
 }
