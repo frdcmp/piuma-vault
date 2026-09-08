@@ -78,13 +78,105 @@
 	padding-right: 90px;
 }
 
+/* Mobile: drop the card chrome and the width toggle and lay the note out
+   full-bleed, the same way the mobile app does. Every pixel of a phone
+   screen goes to the content instead of margins, borders and buttons. */
 @media (max-width: 640px) {
 	.shared-note-root {
-		padding: 12px 8px;
+		padding: 0;
+		display: block;
 	}
 
-	.shared-note-card {
-		padding: 20px 16px;
+	.shared-note-card,
+	.shared-note-card--wide {
+		max-width: none;
+		background: transparent;
+		border: none;
+		border-radius: 0;
+		box-shadow: none;
+		padding: 16px 16px 32px;
+	}
+
+	.shared-note-width-toggle {
+		display: none;
+	}
+
+	.shared-note-header {
+		padding-bottom: 12px;
+		margin-bottom: 16px;
+	}
+
+	.shared-note-header .shared-note-title {
+		padding-right: 0;
+		font-size: 22px;
+		line-height: 1.25;
+		margin-bottom: 6px;
+	}
+
+	.shared-note-meta {
+		gap: 8px;
+		font-size: 11px;
+	}
+
+	/* The access level is noise on a phone; the folder path and date stay. */
+	.shared-note-access {
+		display: none;
+	}
+
+	.shared-note-tags {
+		margin-top: 8px;
+		gap: 8px;
+	}
+
+	.shared-note-body {
+		font-size: 16px;
+		line-height: 1.55;
+	}
+
+	.shared-note-body h1 {
+		font-size: 24px;
+	}
+
+	.shared-note-body h2 {
+		font-size: 20px;
+	}
+
+	.shared-note-body h3 {
+		font-size: 17px;
+	}
+
+	.shared-note-body h1,
+	.shared-note-body h2,
+	.shared-note-body h3 {
+		margin-top: 20px;
+		margin-bottom: 8px;
+	}
+
+	.shared-note-body ul,
+	.shared-note-body ol {
+		padding-left: 22px;
+	}
+
+	.shared-note-body pre {
+		border-radius: 6px;
+		padding: 26px 12px 12px;
+	}
+
+	.shared-note-body pre code {
+		font-size: 12.5px;
+	}
+
+	.shared-note-table-wrap {
+		margin: 12px 0;
+	}
+
+	.shared-note-body th,
+	.shared-note-body td {
+		padding: 6px 10px;
+	}
+
+	.shared-note-pdf {
+		height: 420px;
 	}
 }
 
