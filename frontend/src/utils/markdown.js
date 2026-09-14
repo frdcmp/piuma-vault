@@ -276,14 +276,20 @@ const convert = (text) =>
 			const out = convertBody(body);
 			return out === null ? whole : out.trim();
 		})
-		// Inline math: only when it holds a command and doesn't open on a digit,
-		// so currency ("$35 to $192", "pay $5 \to $10") is never touched.
-		.replace(/\$([^$\n]{1,120})\$/g, (whole, body) => {
-			if (!/\\[a-zA-Z]/.test(body) && !/[_^]/.test(body)) return whole;
-			if (/^\s*\d/.test(body)) return whole;
-			const out = convertBody(body);
-			return out === null ? whole : out.trim();
-		});
+		// Inline math. The "looks like math" test lives in the pattern, not the
+		// callback: in "$250,000 $\to$ $280,000" a callback-side check matches the
+		// currency span first and consumes it, so the real `$\to$` just after is
+		// never examined. Requiring a command (or a sub/superscript) inside the
+		// body makes the engine skip the currency span and land on the math one.
+		.replace(
+			/\$((?=[^$\n]*(?:\\[a-zA-Z]|[\^_]))[^$\n]{1,120})\$/g,
+			(whole, body) => {
+				// Opening on a digit means it is an amount, not math ("pay $5 \to $10").
+				if (/^\s*\d/.test(body)) return whole;
+				const out = convertBody(body);
+				return out === null ? whole : out.trim();
+			},
+		);
 
 export function mathToUnicode(src) {
 	if (typeof src !== "string" || !src.includes("$")) return src;
