@@ -348,7 +348,11 @@
    item gets some air, and the list keeps the same rhythm as a paragraph. */
 .chat-assistant-body ul,
 .chat-assistant-body ol {
-	margin: 0 0 12px;
+	/* Set the whole block off from the text above and below it — the lead-in
+	   line ("...here is what to do:") and whatever follows the last bullet.
+	   Margins collapse with the neighbouring paragraph's 10px, so this is the
+	   gap you actually get. Spacing *between* items is on `li` below. */
+	margin: 18px 0 20px;
 }
 .chat-assistant-body li {
 	margin-bottom: 12px;
