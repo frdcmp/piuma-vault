@@ -29,8 +29,8 @@
 
 /* ── Left rail ─────────────────────────────────────────────────────────────── */
 .chatx-rail {
-	flex: 0 0 280px;
-	width: 280px;
+	flex: 0 0 300px;
+	width: 300px;
 	display: flex;
 	min-height: 0;
 	border-right: 2px solid var(--border-strong);
@@ -184,6 +184,7 @@
 	text-align: center;
 }
 .chatx-session {
+	position: relative;
 	display: flex;
 	align-items: stretch;
 	border: 1px solid transparent;
@@ -205,7 +206,7 @@
 	flex-direction: column;
 	gap: 3px;
 	align-items: flex-start;
-	padding: 9px 10px;
+	padding: 8px 10px;
 	background: none;
 	border: 0;
 	color: var(--text);
@@ -215,11 +216,15 @@
 }
 .chatx-session-title {
 	width: 100%;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
 	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 	font-size: 10pt;
 	font-weight: 700;
+	line-height: 1.35;
+	word-break: break-word;
 }
 .chatx-session.is-active .chatx-session-title {
 	color: var(--accent);
@@ -230,14 +235,18 @@
 	letter-spacing: 0.3px;
 }
 .chatx-session-del {
-	flex: 0 0 auto;
+	position: absolute;
+	right: 4px;
+	bottom: 4px;
 	display: flex;
 	align-items: center;
-	padding: 0 10px;
+	justify-content: center;
+	width: 24px;
+	height: 22px;
 	background: none;
 	border: 0;
 	color: var(--muted);
-	font-size: 11pt;
+	font-size: 10.5pt;
 	cursor: pointer;
 	opacity: 0;
 	transition: opacity 0.1s;
