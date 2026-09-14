@@ -18,6 +18,20 @@ docker compose logs -f rust                                       # logs
 `COMPOSE_NAME` namespaces container names and the nginx → rust proxy target, so
 multiple stacks can coexist on one host.
 
+### Dev vs prod
+
+`COMPOSE_FILE` in `.env` selects the mode, so the commands above never need `-f`:
+
+```dotenv
+COMPOSE_FILE=docker-compose.yml                            # dev — cargo-watch hot reload
+COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml    # prod — release binaries
+```
+
+`docker-compose.prod.yml` is an *override*: it redefines only the five Rust
+services (one release image, a different binary each) and carries no db, nginx,
+env or volumes of its own. It is never valid on its own — always layered over the
+base file, which `COMPOSE_FILE` does for you.
+
 ## Nginx edge
 
 `nginx/default.conf.template` adds the `/api/v1/` prefix, sets security headers, and
@@ -26,11 +40,19 @@ TLS terminates at Cloudflare; the origin serves plain HTTP.
 
 ## Deploying
 
-Deployments are typically run via Docker Compose on the host machine. The Rust services run under hot-reload or production profiles in their containers — so a deploy is largely a `git pull` followed by a container restart:
+Deployments run via Docker Compose on the host. What a deploy involves depends on
+what changed:
 
 ```bash
-docker compose pull && docker compose up -d
+git pull
+cd frontend && bun install && bun run build && cd ..   # frontend: nginx serves dist/ from disk — done
+docker compose up -d --build rust                      # backend (prod): rebuild the release image
 ```
+
+In **dev** mode the backend hot-reloads under cargo-watch, so the `--build` step
+is unnecessary. In **prod** the release image is built locally from
+`rust/Dockerfile.prod` — there is nothing to `pull`. `rust/.dockerignore` keeps
+the host `target/` cache and key material out of the build context.
 
 ## JWT keys
 

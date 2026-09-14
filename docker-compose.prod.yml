@@ -1,6 +1,17 @@
 # Production override — compiled release binaries instead of cargo-watch.
 #
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# This file is an OVERRIDE: it only redefines the five rust services' build +
+# command. It has no db, nginx, environment, volumes or networks of its own and
+# is never valid alone. Select it via COMPOSE_FILE in .env:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+#
+# then deploy with a plain
+#
+#   docker compose up -d --build          # all five rust services
+#   docker compose up -d --build rust     # API only (workers keep their image)
+#
+# (Equivalent to the explicit `-f docker-compose.yml -f docker-compose.prod.yml`.)
 #
 # One image (rust/Dockerfile.prod) holds all five release binaries; each service
 # just runs a different one. The base ./rust:/app mount is kept: with
