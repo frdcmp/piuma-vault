@@ -98,6 +98,38 @@
 	resize: vertical;
 	line-height: 1.5;
 }
+
+/* Native <select>: drop the OS chrome (which renders light on every platform),
+   draw our own chevron, and force the popup + any native widgets to dark. */
+.ag-select {
+	appearance: none;
+	-webkit-appearance: none;
+	-moz-appearance: none;
+	color-scheme: dark;
+	cursor: pointer;
+	padding-right: 28px;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%238a93a3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 9px center;
+}
+.ag-select option {
+	background: var(--vp-panel, #1b1e25);
+	color: var(--vp-text, #d6dbe5);
+}
+
+/* WebKit paints autofilled fields pale blue and ignores background — repaint
+   them with an inset shadow so password-manager fills stay on-theme. */
+.ag-input:-webkit-autofill,
+.ag-input:-webkit-autofill:hover,
+.ag-input:-webkit-autofill:focus,
+.ag-input:-webkit-autofill:active {
+	/* biome-ignore lint/complexity/noImportantStyles: override UA autofill styling */
+	-webkit-box-shadow: 0 0 0 30px var(--vp-bg-soft, #15171c) inset !important;
+	/* biome-ignore lint/complexity/noImportantStyles: override UA autofill styling */
+	-webkit-text-fill-color: var(--vp-text, #d6dbe5) !important;
+	caret-color: var(--vp-text, #d6dbe5);
+	transition: background-color 5000s ease-in-out 0s;
+}
 .ag-field {
 	margin-bottom: 10px;
 }
