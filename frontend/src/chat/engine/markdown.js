@@ -1,3 +1,5 @@
+import { mathToUnicode } from "../../utils/markdown";
+
 // Markdown normalisation for chat assistant text.
 //
 // LLMs frequently emit GFM tables in shapes that remark-gfm refuses to parse,
@@ -29,9 +31,11 @@ function withOuterPipes(line) {
 }
 
 export function normalizeChatMarkdown(src) {
-	if (typeof src !== "string" || !src.includes("|")) return src;
+	// Models write arrows as LaTeX (`$\to$`); render them as the symbol.
+	const text = mathToUnicode(src);
+	if (typeof text !== "string" || !text.includes("|")) return text;
 
-	const lines = src.split("\n");
+	const lines = text.split("\n");
 	let changed = false;
 
 	for (let i = 1; i < lines.length; i++) {
@@ -65,5 +69,5 @@ export function normalizeChatMarkdown(src) {
 		i = end; // skip past the block we just processed
 	}
 
-	return changed ? lines.join("\n") : src;
+	return changed ? lines.join("\n") : text;
 }
