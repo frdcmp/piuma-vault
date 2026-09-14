@@ -342,6 +342,34 @@
 .chat-assistant-body p:last-child {
 	margin-bottom: 0;
 }
+
+/* Lists. The browser defaults pack items tight, which reads as a wall of text
+   in a monospace body where most bullets wrap onto two or three lines — so each
+   item gets some air, and the list keeps the same rhythm as a paragraph. */
+.chat-assistant-body ul,
+.chat-assistant-body ol {
+	margin: 0 0 10px;
+}
+.chat-assistant-body li {
+	margin-bottom: 7px;
+}
+.chat-assistant-body li:last-child {
+	margin-bottom: 0;
+}
+/* A "loose" list (blank lines between items) wraps each item in a <p>, which
+   already carries the paragraph margin — don't stack the two gaps. */
+.chat-assistant-body li > p {
+	margin-bottom: 7px;
+}
+.chat-assistant-body li > p:last-child {
+	margin-bottom: 0;
+}
+/* A nested list belongs to the item above it: separate it from that line, but
+   keep it tighter than the gap between top-level items. */
+.chat-assistant-body li > ul,
+.chat-assistant-body li > ol {
+	margin: 7px 0 0;
+}
 .chat-assistant-body code {
 	background: var(--bg-soft);
 	border: 1px solid var(--border);
