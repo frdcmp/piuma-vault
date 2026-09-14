@@ -1,9 +1,11 @@
+import { attachmentMeta } from "@/utils/attachments";
 import { noteLabel } from "../engine/messageModel";
 import ContextTag from "./ContextTag";
 
 // A user message: locked-note context tags (dock only — omitted when absent),
-// any attached images, then the text.
-export default function UserBubble({ content, context, images }) {
+// any attached images, any attached documents (as chips — the extracted text
+// went to the model, not the transcript), then the text.
+export default function UserBubble({ content, context, images, files }) {
 	return (
 		<div className="chat-user-row">
 			<div className="chat-user-card">
@@ -31,6 +33,22 @@ export default function UserBubble({ content, context, images }) {
 							>
 								<img src={img.url} alt="attachment" />
 							</a>
+						))}
+					</div>
+				) : null}
+				{files?.length ? (
+					<div className="chat-image-tags chat-user-files">
+						{files.map((f) => (
+							<span
+								key={f.id}
+								className="chat-image-tag"
+								title={`${f.name} — ${f.chars.toLocaleString()} chars${f.truncated ? " (truncated)" : ""}`}
+							>
+								<span className="chat-image-tag-icon" aria-hidden="true">
+									{attachmentMeta(f.name).icon}
+								</span>
+								<span className="chat-image-tag-name">{f.name}</span>
+							</span>
 						))}
 					</div>
 				) : null}

@@ -150,6 +150,7 @@ const buildChatRequest = (
 	message,
 	contextNoteIds,
 	images,
+	files,
 	signal,
 	branch,
 ) => {
@@ -165,6 +166,7 @@ const buildChatRequest = (
 			message,
 			context_note_ids: contextNoteIds || [],
 			images: images || [],
+			files: files || [],
 			timezone: localTimezone(),
 			client_now: localNowIso(),
 			regenerate: !!regenerate,
@@ -184,6 +186,7 @@ export async function streamChat({
 	message,
 	contextNoteIds,
 	images,
+	files,
 	signal,
 	branch,
 	onText,
@@ -198,6 +201,7 @@ export async function streamChat({
 			message,
 			contextNoteIds,
 			images,
+			files,
 			signal,
 			branch,
 		);
@@ -209,6 +213,7 @@ export async function streamChat({
 					message,
 					contextNoteIds,
 					images,
+					files,
 					signal,
 					branch,
 				);

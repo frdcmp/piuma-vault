@@ -46,6 +46,11 @@ pub(super) fn blocks_to_text(content: &Value) -> String {
 /// block array (`[{type:text},{type:image,url,media_type}]`) so the provider
 /// adapter forwards the images; otherwise images are dropped (string only).
 ///
+/// `file` blocks (documents the CLIENT already extracted to text — PDFs,
+/// spreadsheets, Word) are folded into the text, delimited and named. They need
+/// no model capability, so unlike images they are never dropped: every provider
+/// gets them, including the text-only ones.
+///
 /// Attached images' storage KEYS are appended as text either way: the model
 /// can see the pixels but has no idea where the file lives, so when asked to
 /// "save this image to a note" it would otherwise hunt through `list_storage`
@@ -54,6 +59,32 @@ pub(super) fn blocks_to_text(content: &Value) -> String {
 fn content_for_provider(content: &Value, supports_vision: bool) -> Value {
     let mut text = blocks_to_text(content);
     if let Value::Array(blocks) = content {
+        // Documents first, right after what the user typed, so the question and
+        // the material it's about stay adjacent.
+        for b in blocks
+            .iter()
+            .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("file"))
+        {
+            let body = b.get("text").and_then(|t| t.as_str()).unwrap_or("");
+            if body.trim().is_empty() {
+                continue;
+            }
+            let name = b.get("name").and_then(|n| n.as_str()).unwrap_or("attachment");
+            let mime = b.get("mime").and_then(|m| m.as_str()).unwrap_or("");
+            let label = if mime.is_empty() {
+                name.to_string()
+            } else {
+                format!("{name} ({mime})")
+            };
+            let note = if b.get("truncated").and_then(|t| t.as_bool()) == Some(true) {
+                " — TRUNCATED, this is only the beginning of the document"
+            } else {
+                ""
+            };
+            text.push_str(&format!(
+                "\n\n--- attached file: {label}{note} ---\n{body}\n--- end of {name} ---"
+            ));
+        }
         let keys: Vec<&str> = blocks
             .iter()
             .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("image"))
@@ -276,6 +307,7 @@ pub async fn chat(
     let msg = req.message;
     let context_ids = req.context_note_ids;
     let images = req.images;
+    let files = req.files;
     let timezone = req.timezone;
     let client_now = req.client_now;
     let regenerate = req.regenerate;
@@ -369,7 +401,8 @@ pub async fn chat(
     // Pre-embed the user message so L2 retrieval can use the cached vector
     // instead of calling the embedding API synchronously each turn.
     // Content is a block array: one text block, then one image block per
-    // attached image (`{type:"image", url, media_type, key}`).
+    // attached image (`{type:"image", url, media_type, key}`), then one file
+    // block per client-extracted document (`{type:"file", name, mime, text}`).
     let mut user_blocks = vec![json!({ "type": "text", "text": msg })];
     for img in &images {
         user_blocks.push(json!({
@@ -377,6 +410,15 @@ pub async fn chat(
             "url": img.url,
             "media_type": img.media_type.clone().unwrap_or_else(|| "image/png".to_string()),
             "key": img.key,
+        }));
+    }
+    for f in &files {
+        user_blocks.push(json!({
+            "type": "file",
+            "name": f.name,
+            "mime": f.mime.clone().unwrap_or_default(),
+            "text": f.text,
+            "truncated": f.truncated,
         }));
     }
     let user_content = Value::Array(user_blocks);

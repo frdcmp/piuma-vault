@@ -16,6 +16,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { PvModal, pvMessage } from "@/admin/components/ui";
+import { ACCEPT_ATTR, SUPPORTED_LABEL } from "@/processing";
 import {
 	clearConversation,
 	createConversation,
@@ -34,7 +35,7 @@ import { useAgentList, useDefaultAgent } from "../../queries";
 import useNotesWorkspaceStore from "../../store/notesWorkspaceStore";
 import ContextTag from "../components/ContextTag";
 import MessageList from "../components/MessageList";
-import PendingImages from "../components/PendingImages";
+import PendingAttachments from "../components/PendingAttachments";
 import SlashMenu from "../components/SlashMenu";
 import SpriteRunner from "../components/SpriteRunner";
 import {
@@ -42,9 +43,9 @@ import {
 	mapServerMessage,
 	newMessageId,
 } from "../engine/messageModel";
+import useAttachments from "../engine/useAttachments";
 import useChatScroll from "../engine/useChatScroll";
 import useChatStream from "../engine/useChatStream";
-import useImageUpload from "../engine/useImageUpload";
 import useModelCatalog from "../engine/useModelCatalog";
 import "../chat-shared.css";
 
@@ -194,13 +195,18 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	const { visionEnabled, activeModelRef, modelLabelFor } =
 		useModelCatalog(modelId);
 	const {
-		pendingImages,
-		setPendingImages,
-		uploadingImages,
-		removePendingImage,
+		pending,
+		busy,
+		readyImages,
+		readyDocs,
+		addFile,
+		removePending,
+		clearPending,
+		dropImages,
 		onPaste,
 		onDrop,
-	} = useImageUpload({ visionEnabled, convRef });
+	} = useAttachments({ visionEnabled, convRef });
+	const fileRef = useRef(null);
 	const { buildHandlers, reloadActivePath } = useChatStream({
 		convRef,
 		setMessages,
@@ -317,16 +323,13 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 
 	const sendMessage = useCallback(async () => {
 		const text = input.trim();
-		const readyImages = pendingImages.filter(
-			(p) => p.status === "ready" && p.url,
-		);
-		if (!text && !readyImages.length) return;
+		if (!text && !readyImages.length && !readyDocs.length) return;
 		// Ignore clicks during the brief setup gap (button already shows a loader).
 		if (sending) return;
-		// Block send while an upload is in flight (covers the Enter-key path too,
-		// which bypasses the button's disabled state) so we never drop a
-		// half-uploaded image that has no CDN url yet.
-		if (pendingImages.some((p) => p.status === "uploading")) return;
+		// Block send while an upload/extraction is in flight (covers the Enter-key
+		// path too, which bypasses the button's disabled state) so we never drop
+		// a half-uploaded image or a half-read document.
+		if (busy) return;
 
 		// While a turn is streaming, a send INJECTS into it instead of starting a
 		// new turn; the running turn picks it up at the next round boundary.
@@ -368,6 +371,17 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 						})),
 					}
 				: {}),
+			...(readyDocs.length
+				? {
+						files: readyDocs.map((p) => ({
+							id: p.id,
+							name: p.name,
+							mime: p.mime,
+							chars: p.chars,
+							truncated: p.truncated,
+						})),
+					}
+				: {}),
 		};
 		const assistantMsg = {
 			id: newMessageId(),
@@ -379,11 +393,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		// create-conversation + first-request gap (don't wait on the network).
 		setMessages((curr) => [...curr, userMsg, assistantMsg]);
 		setInput("");
-		// Sent → drop the pending chips (the CDN urls now live on the message).
-		setPendingImages((curr) => {
-			for (const p of curr) if (p.localUrl) URL.revokeObjectURL(p.localUrl);
-			return [];
-		});
+		// Sent → drop the pending chips (the CDN urls / text now live on the message).
+		clearPending();
 		setSending(true);
 		scrollToBottom();
 
@@ -438,6 +449,12 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 					key: p.key,
 					media_type: p.mediaType,
 				})),
+				files: readyDocs.map((p) => ({
+					name: p.name,
+					mime: p.mime,
+					text: p.text,
+					truncated: p.truncated,
+				})),
 				signal: controller.signal,
 				...buildHandlers(convId, controller.signal),
 			});
@@ -458,8 +475,10 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		effectiveAgent,
 		sentContextPaths,
 		sentContextIds,
-		pendingImages,
-		setPendingImages,
+		readyImages,
+		readyDocs,
+		busy,
+		clearPending,
 		buildHandlers,
 		reloadActivePath,
 		scrollToBottom,
@@ -812,17 +831,12 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			setModelId(m.id);
 			// Switching to a model that can't see images: drop any pending ones so
 			// we don't try to send them to a text-only model.
-			if (!m.supports_vision) {
-				setPendingImages((curr) => {
-					if (curr.length) {
-						for (const p of curr)
-							if (p.localUrl) URL.revokeObjectURL(p.localUrl);
-						pvMessage.info(
-							`${m.display_name} can't read images — removed the attached image(s).`,
-						);
-					}
-					return [];
-				});
+			// Text-only model: image chips would be silently ignored, so drop them.
+			// Document chips stay — extracted text works on any model.
+			if (!m.supports_vision && dropImages() > 0) {
+				pvMessage.info(
+					`${m.display_name} can't read images — removed the attached image(s).`,
+				);
 			}
 			pvMessage.success(`Model switched to ${m.display_name}`);
 			if (conversationId) {
@@ -833,7 +847,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				}
 			}
 		},
-		[conversationId, focusInput, setPendingImages],
+		[conversationId, focusInput, dropImages],
 	);
 
 	// Shared picker (sessions/models) keyboard nav. Used by both the composer
@@ -932,11 +946,11 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	// Composer button is state-driven: STOP while streaming with an empty box,
 	// otherwise SEND (which injects when streaming, sends a new turn when idle).
 	const hasText = input.trim().length > 0;
-	const hasReadyImage = pendingImages.some((p) => p.status === "ready");
+	const hasAttachment = readyImages.length > 0 || readyDocs.length > 0;
 	const showStop = isStreaming && !hasText;
 	// Block send while an upload is in flight so we never send a half-uploaded
 	// image (no CDN url yet). Text-only or a ready image both enable send.
-	const canSend = (hasText || hasReadyImage) && !uploadingImages;
+	const canSend = (hasText || hasAttachment) && !busy;
 
 	return (
 		<div className="chat-root chat-panel">
@@ -1048,7 +1062,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 							))}
 						</div>
 					) : null}
-					<PendingImages images={pendingImages} onRemove={removePendingImage} />
+					<PendingAttachments items={pending} onRemove={removePending} />
 					<div className="chat-composer-fields">
 						<SlashMenu
 							items={slashItems(slashMatches)}
@@ -1182,10 +1196,28 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 						<div
 							className="chat-composer-row"
 							onDrop={onDrop}
-							onDragOver={(e) => {
-								if (visionEnabled) e.preventDefault();
-							}}
+							onDragOver={(e) => e.preventDefault()}
 						>
+							<button
+								type="button"
+								className="chat-slash-btn chat-attach-btn"
+								onClick={() => fileRef.current?.click()}
+								title={`Attach a file (${SUPPORTED_LABEL})`}
+								aria-label="Attach a file"
+							>
+								＋
+							</button>
+							<input
+								ref={fileRef}
+								type="file"
+								accept={ACCEPT_ATTR}
+								multiple
+								hidden
+								onChange={(e) => {
+									for (const f of e.target.files || []) addFile(f);
+									e.target.value = "";
+								}}
+							/>
 							<button
 								type="button"
 								className="chat-slash-btn"
