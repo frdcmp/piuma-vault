@@ -269,9 +269,25 @@ pub struct ChatImageRef {
     pub key: Option<String>,
 }
 
+/// A document attached to a chat turn, ALREADY EXTRACTED TO TEXT by the client
+/// (`frontend/src/processing/`). The original file is never uploaded: a PDF or
+/// spreadsheet is parsed in the browser and only its text arrives here, so no
+/// publicly-fetchable copy of a bank statement or tax return is ever created.
+/// `truncated` records that the client hit its per-file character cap.
+#[derive(Debug, Deserialize)]
+pub struct ChatFileRef {
+    pub name: String,
+    #[serde(default)]
+    pub mime: Option<String>,
+    pub text: String,
+    #[serde(default)]
+    pub truncated: bool,
+}
+
 /// Body of POST /agents/conversations/{id}/chat — the new user message, plus
 /// optional note ids whose content is injected as context for this turn (the
-/// "locked note" chips in the chat UI), plus optional pasted images (vision).
+/// "locked note" chips in the chat UI), plus optional pasted images (vision)
+/// and extracted documents.
 #[derive(Debug, Deserialize)]
 pub struct ChatTurnReq {
     pub message: String,
@@ -281,6 +297,11 @@ pub struct ChatTurnReq {
     /// active model has `supports_vision`; otherwise persisted but not sent.
     #[serde(default)]
     pub images: Vec<ChatImageRef>,
+    /// Documents attached to this turn, extracted to text client-side. Unlike
+    /// images these need no model capability — they're folded into the message
+    /// text, so they work on every provider.
+    #[serde(default)]
+    pub files: Vec<ChatFileRef>,
     /// IANA timezone of the client (e.g. "Europe/Rome"), so the agent can
     /// resolve relative dates and emit correctly-offset timestamps.
     #[serde(default)]

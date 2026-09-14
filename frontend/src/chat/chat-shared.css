@@ -1376,3 +1376,35 @@ button.chat-context-tag-main {
 	color: var(--muted);
 	font-size: 9.5pt;
 }
+
+/* Document chips (PDF / sheet / Word / text) share the image-chip shell but
+   show a type glyph where the thumbnail would be. `is-heavy` flags a document
+   big enough to weigh on every later turn of the conversation. */
+.chat-image-tag-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border: 1px solid var(--border-strong);
+	font-size: 13pt;
+	line-height: 1;
+	flex: 0 0 auto;
+}
+.chat-image-tag.is-heavy {
+	border-color: var(--accent-2, var(--border-strong));
+}
+.chat-image-tag.is-heavy .chat-image-tag-dim {
+	color: var(--accent-2, var(--muted));
+}
+/* Sent-message chips: no remove button, tighter. */
+.chat-user-files {
+	margin-bottom: 6px;
+}
+.chat-user-files .chat-image-tag {
+	padding-right: 8px;
+}
+/* The dock's attach button sits left of the "/" button, same footprint. */
+.chat-attach-btn {
+	font-size: 12pt;
+}

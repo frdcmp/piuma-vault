@@ -31,6 +31,22 @@ export const blocksToImages = (content) => {
 		.map((b) => ({ url: b.url, mediaType: b.media_type }));
 };
 
+// Pull document blocks out of a persisted user message → [{ name, mime,
+// chars, truncated }]. The extracted text itself stays out of the UI model —
+// the bubble shows a chip, not a 100k-char dump.
+export const blocksToFiles = (content) => {
+	if (!Array.isArray(content)) return [];
+	return content
+		.filter((b) => b.type === "file" && b.name)
+		.map((b, i) => ({
+			id: `f${i}-${b.name}`,
+			name: b.name,
+			mime: b.mime || "",
+			chars: (b.text || "").length,
+			truncated: !!b.truncated,
+		}));
+};
+
 // Walk persisted content blocks IN ORDER into renderable parts, so tools show up
 // inline at the point they ran. A part is a `text` segment, a `tools` run, a
 // `nav` action, or an `inject` marker. `tool_result` resolves the status of the
@@ -111,6 +127,7 @@ export const mapServerMessage = (m) => ({
 	content: blocksToText(m.content),
 	parts: blocksToParts(m.content),
 	images: blocksToImages(m.content),
+	files: blocksToFiles(m.content),
 	model: m.model_used || null,
 	parentId: m.parent_id ?? null,
 	branchIndex: m.branch_index ?? 1,

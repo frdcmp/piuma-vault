@@ -33,27 +33,40 @@ const isPublicPath = (pathname) =>
  */
 export default function ScreenLockGate() {
 	const location = useLocation();
-	const { data: me } = useUserMe();
-	const authed = !!me;
+	const meQuery = useUserMe();
+	const authed = !!meQuery.data;
 	const onPublicPath = isPublicPath(location.pathname);
 
-	const { data: settings } = useScreenLockSettings({
+	const settingsQuery = useScreenLockSettings({
 		enabled: authed && !onPublicPath,
 		staleTime: 60_000,
 	});
+	const settings = settingsQuery.data;
 
 	const enabled = !!settings?.enabled;
 	const timeoutMs = (settings?.timeout_seconds || 300) * 1000;
+
+	// On a reload both queries start empty, so `authed` and `enabled` are false
+	// for the first few frames — an answer we must not act on, or we'd clear a
+	// persisted lock before ever learning the session is alive. A query that is
+	// disabled (no token at all) sits at fetchStatus "idle" and *is* an answer.
+	const meSettled = !meQuery.isPending || meQuery.fetchStatus === "idle";
+	const settingsSettled =
+		!settingsQuery.isPending || settingsQuery.fetchStatus === "idle";
+	const resolving = !meSettled || !settingsSettled;
 
 	const locked = useScreenLockStore((s) => s.locked);
 	const lock = useScreenLockStore((s) => s.lock);
 	const unlock = useScreenLockStore((s) => s.unlock);
 	const lastActivityRef = useRef(Date.now());
 
-	// Clear a stale persisted lock if the feature is off or the session ended.
+	// Clear a stale persisted lock if the feature is off or the session ended —
+	// but only once we actually know. A failed settings fetch is not an answer
+	// either, so require a successful load before honouring "disabled".
 	useEffect(() => {
-		if (locked && (!enabled || !authed)) unlock();
-	}, [locked, enabled, authed, unlock]);
+		if (!locked || resolving) return;
+		if (!authed || (settingsQuery.isSuccess && !enabled)) unlock();
+	}, [locked, resolving, enabled, authed, settingsQuery.isSuccess, unlock]);
 
 	// Idle tracking — only while enabled, authenticated, and on a private route.
 	useEffect(() => {
@@ -88,6 +101,9 @@ export default function ScreenLockGate() {
 		};
 	}, [enabled, authed, onPublicPath, timeoutMs, lock]);
 
-	if (!enabled || !authed || onPublicPath || !locked) return null;
+	if (onPublicPath || !locked) return null;
+	// Keep blocking while the session/config is still in flight rather than
+	// flashing the vault contents behind the overlay.
+	if (!resolving && (!authed || !enabled)) return null;
 	return <ScreenLockOverlay />;
 }

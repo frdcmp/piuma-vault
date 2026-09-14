@@ -109,6 +109,7 @@ export default function MessageList({
 													content={m.content}
 													context={m.context}
 													images={m.images}
+													files={m.files}
 												/>
 												<div className="chatx-msg-actions chatx-msg-actions--user">
 													{switcher}

@@ -173,7 +173,7 @@ export default function Home({ onBack }) {
 					<span className="piuma-menu-glyph" aria-hidden="true">
 						⚙
 					</span>
-					<span>admin</span>
+					<span>settings</span>
 				</button>
 				<button
 					type="button"

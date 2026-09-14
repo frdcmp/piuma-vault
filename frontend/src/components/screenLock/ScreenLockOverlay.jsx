@@ -91,19 +91,26 @@ export default function ScreenLockOverlay() {
 				<p className="vp-text vp-muted">Enter your 6-digit PIN to unlock.</p>
 
 				{/* Segmented pixel PIN: a transparent input captures keystrokes
-				    (and the mobile keyboard) while six cells render the state. */}
-				<button
-					type="button"
-					className="vp-lock-pin"
-					onClick={() => inputRef.current?.focus()}
-					aria-label="6-digit PIN"
-				>
+				    (and the mobile keyboard) while six cells render the state.
+				    A label, not a button — an input may not nest in one, and a
+				    label hands clicks to the field for free. The field is
+				    `text`, not `password`: a password input makes every manager
+				    offer to fill it, and their autofill background paints
+				    straight over this transparent input, hiding the cells
+				    underneath. Nothing leaks — the value renders transparent and
+				    the dots below are the only readout. */}
+				<label className="vp-lock-pin">
 					<input
 						ref={inputRef}
 						className="vp-lock-pin-field"
-						type="password"
+						aria-label="6-digit PIN"
+						type="text"
 						inputMode="numeric"
 						autoComplete="off"
+						data-1p-ignore="true"
+						data-lpignore="true"
+						data-bwignore="true"
+						data-form-type="other"
 						maxLength={6}
 						value={pin}
 						disabled={busy}
@@ -134,7 +141,7 @@ export default function ScreenLockOverlay() {
 							</span>
 						);
 					})}
-				</button>
+				</label>
 
 				{error && <p className="vp-text vp-lock-error">{error}</p>}
 				<PvButton variant="ghost" size="sm" onClick={logout}>

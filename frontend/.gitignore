@@ -29,3 +29,6 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# ---- pdf.js runtime assets (copied by `bun run prepare:pdfjs`, never committed) ----
+public/pdfjs/

@@ -72,6 +72,20 @@
 	cursor: text;
 }
 
+/* Belt and braces: if a manager fills the field anyway, keep the UA autofill
+   background and text off it so the cells below stay visible. */
+.vp-lock-pin-field:autofill,
+.vp-lock-pin-field:-webkit-autofill,
+.vp-lock-pin-field:-webkit-autofill:hover,
+.vp-lock-pin-field:-webkit-autofill:focus {
+	/* biome-ignore lint/complexity/noImportantStyles: override UA autofill styling */
+	-webkit-text-fill-color: transparent !important;
+	filter: none;
+	/* The UA autofill background can't be unset directly — stalling its
+	   transition is the only way to keep it from ever painting. */
+	transition: background-color 5000s ease-in-out 0s;
+}
+
 .vp-lock-cell {
 	width: 38px;
 	height: 48px;

@@ -14,6 +14,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { pvMessage } from "@/admin/components/ui";
+import { ACCEPT_ATTR, SUPPORTED_LABEL } from "@/processing";
 import {
 	clearConversation,
 	createConversation,
@@ -28,16 +29,16 @@ import {
 import { useAgentList, useDefaultAgent } from "../../queries";
 import { formatDateTime, timeAgo } from "../../utils/dateTime";
 import MessageList from "../components/MessageList";
-import PendingImages from "../components/PendingImages";
+import PendingAttachments from "../components/PendingAttachments";
 import SlashMenu from "../components/SlashMenu";
 import {
 	appendTextPart,
 	mapServerMessage,
 	newMessageId,
 } from "../engine/messageModel";
+import useAttachments from "../engine/useAttachments";
 import useChatScroll from "../engine/useChatScroll";
 import useChatStream from "../engine/useChatStream";
-import useImageUpload from "../engine/useImageUpload";
 import useModelCatalog from "../engine/useModelCatalog";
 
 // Universal client commands (same for every agent). Agent-specific commands are
@@ -163,14 +164,17 @@ export default function ChatConversation({
 		modelLabelFor,
 	} = useModelCatalog(modelId);
 	const {
-		pendingImages,
-		setPendingImages,
-		uploadingImages,
-		addImageFile,
-		removePendingImage,
+		pending,
+		busy,
+		readyImages,
+		readyDocs,
+		addFile,
+		removePending,
+		clearPending,
+		dropImages,
 		onPaste,
 		onDrop,
-	} = useImageUpload({ visionEnabled, convRef });
+	} = useAttachments({ visionEnabled, convRef });
 	const { buildHandlers, reloadActivePath } = useChatStream({
 		convRef,
 		setMessages,
@@ -243,11 +247,10 @@ export default function ChatConversation({
 	// ── Send ─────────────────────────────────────────────────────────────────
 	const sendMessage = useCallback(async () => {
 		const text = input.trim();
-		const readyImages = pendingImages.filter(
-			(p) => p.status === "ready" && p.url,
-		);
-		if (!text && !readyImages.length) return;
+		if (!text && !readyImages.length && !readyDocs.length) return;
 		if (sending) return;
+		// Never send a half-uploaded image or a half-read document.
+		if (busy) return;
 
 		// Mid-stream: a send INJECTS into the running turn instead of starting one.
 		if (isStreaming) {
@@ -284,14 +287,22 @@ export default function ChatConversation({
 						})),
 					}
 				: {}),
+			...(readyDocs.length
+				? {
+						files: readyDocs.map((p) => ({
+							id: p.id,
+							name: p.name,
+							mime: p.mime,
+							chars: p.chars,
+							truncated: p.truncated,
+						})),
+					}
+				: {}),
 		};
 		const assistantMsg = { id: newMessageId(), role: "assistant", parts: [] };
 		setMessages((curr) => [...curr, userMsg, assistantMsg]);
 		setInput("");
-		setPendingImages((curr) => {
-			for (const p of curr) if (p.localUrl) URL.revokeObjectURL(p.localUrl);
-			return [];
-		});
+		clearPending();
 		setSending(true);
 		scrollToBottom();
 
@@ -343,6 +354,12 @@ export default function ChatConversation({
 					key: p.key,
 					media_type: p.mediaType,
 				})),
+				files: readyDocs.map((p) => ({
+					name: p.name,
+					mime: p.mime,
+					text: p.text,
+					truncated: p.truncated,
+				})),
 				signal: controller.signal,
 				...buildHandlers(convId, controller.signal),
 			});
@@ -362,8 +379,10 @@ export default function ChatConversation({
 		sending,
 		conversationId,
 		effectiveAgent,
-		pendingImages,
-		setPendingImages,
+		readyImages,
+		readyDocs,
+		busy,
+		clearPending,
 		buildHandlers,
 		scrollToBottom,
 		reloadActivePath,
@@ -502,17 +521,12 @@ export default function ChatConversation({
 			setModelMenuOpen(false);
 			focusInput();
 			setModelId(m.id);
-			if (!m.supports_vision) {
-				setPendingImages((curr) => {
-					if (curr.length) {
-						for (const p of curr)
-							if (p.localUrl) URL.revokeObjectURL(p.localUrl);
-						pvMessage.info(
-							`${m.display_name} can't read images — removed the attached image(s).`,
-						);
-					}
-					return [];
-				});
+			// Text-only model: image chips would be silently ignored, so drop them.
+			// Document chips stay — extracted text works on any model.
+			if (!m.supports_vision && dropImages() > 0) {
+				pvMessage.info(
+					`${m.display_name} can't read images — removed the attached image(s).`,
+				);
 			}
 			pvMessage.success(`Model switched to ${m.display_name}`);
 			if (conversationId) {
@@ -523,7 +537,7 @@ export default function ChatConversation({
 				}
 			}
 		},
-		[conversationId, focusInput, setPendingImages],
+		[conversationId, focusInput, dropImages],
 	);
 
 	// ── Slash commands ─────────────────────────────────────────────────────────
@@ -686,9 +700,9 @@ export default function ChatConversation({
 	};
 
 	const hasText = input.trim().length > 0;
-	const hasReadyImage = pendingImages.some((p) => p.status === "ready");
+	const hasAttachment = readyImages.length > 0 || readyDocs.length > 0;
 	const showStop = isStreaming && !hasText;
-	const canSend = (hasText || hasReadyImage) && !uploadingImages;
+	const canSend = (hasText || hasAttachment) && !busy;
 
 	return (
 		<section className="chatx-conv">
@@ -817,7 +831,7 @@ export default function ChatConversation({
 
 			<div className="chat-composer">
 				<div className="chat-composer-inner">
-					<PendingImages images={pendingImages} onRemove={removePendingImage} />
+					<PendingAttachments items={pending} onRemove={removePending} />
 					<div className="chat-composer-fields">
 						<SlashMenu
 							items={slashItems(slashMatches)}
@@ -837,31 +851,25 @@ export default function ChatConversation({
 						<div
 							className="chat-composer-row"
 							onDrop={onDrop}
-							onDragOver={(e) => {
-								if (visionEnabled) e.preventDefault();
-							}}
+							onDragOver={(e) => e.preventDefault()}
 						>
 							<button
 								type="button"
 								className="chatx-attach"
 								onClick={() => fileRef.current?.click()}
-								disabled={!visionEnabled}
-								title={
-									visionEnabled
-										? "Attach an image"
-										: "This model can't read images"
-								}
+								title={`Attach a file (${SUPPORTED_LABEL}${visionEnabled ? "" : " — images need a vision model"})`}
+								aria-label="Attach a file"
 							>
 								＋
 							</button>
 							<input
 								ref={fileRef}
 								type="file"
-								accept="image/*"
+								accept={ACCEPT_ATTR}
 								multiple
 								hidden
 								onChange={(e) => {
-									for (const f of e.target.files || []) addImageFile(f);
+									for (const f of e.target.files || []) addFile(f);
 									e.target.value = "";
 								}}
 							/>
