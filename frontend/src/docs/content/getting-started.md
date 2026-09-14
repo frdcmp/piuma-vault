@@ -25,13 +25,19 @@ docker compose --profile server-stack up
 docker compose logs -f rust
 ```
 
-The Rust services run under `cargo watch`, so they hot-reload on source changes.
-**Never run `cargo build` or `docker compose build` for the backend** — to check
-your Rust compiles, run:
+That is the **dev** stack — `COMPOSE_FILE=docker-compose.yml` in `.env`. The
+Rust services run under `cargo watch`, so they hot-reload on source changes, and
+in dev you should **never run `cargo build` or `docker compose build` for the
+backend** — to check your Rust compiles, run:
 
 ```bash
 cd rust && cargo check
 ```
+
+For a **prod** host set `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml`
+instead: the same `docker compose up -d` then runs compiled release binaries, and
+a backend change is deployed with `docker compose up -d --build`. See
+*Operations & Deployment*.
 
 ## Front-end dev server
 

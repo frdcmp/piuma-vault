@@ -1,0 +1,25 @@
+# Build context for Dockerfile.prod is ./rust — everything here is uploaded to
+# the Docker daemon on every build and lands in the builder layer via `COPY . .`.
+# Keep it to source only.
+
+# Host/dev build cache (cargo-watch in the dev stack, or a local `cargo check`).
+# The image builds into its OWN /app/target, so this is pure dead weight — it was
+# ~2 GB of debug artifacts. Never needed, and stale host artifacts only confuse
+# the release build.
+target/
+
+# Runtime key material (JWT signing, VAPID). Gitignored, and the binaries read it
+# from ./src/keys at RUNTIME, where compose bind-mounts the real host keys over
+# /app — nothing is compiled in (no include_str!/include_bytes!). Excluding it
+# keeps the private key out of the builder layer; build.rs just generates a
+# throwaway pair inside the image, which the mount then shadows.
+#   NOTE: this assumes the container always runs with the ./rust:/app mount that
+#   docker-compose.yml provides. A bare `docker run` of this image would use the
+#   throwaway keys and invalidate existing sessions. Delete this line if you ever
+#   need the image to stand alone.
+src/keys/
+
+# Read by the client, never needed inside the context.
+Dockerfile
+Dockerfile.*
+.dockerignore

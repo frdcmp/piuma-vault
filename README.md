@@ -149,6 +149,7 @@ cp .env.example .env
 | Variable | Description |
 | :--- | :--- |
 | `COMPOSE_PROFILES` | Default profiles to bring up: `db-stack` (Postgres) and/or `server-stack` (nginx + backend + workers). |
+| `COMPOSE_FILE` | Stack mode. `docker-compose.yml` = **dev** (cargo-watch hot reload). `docker-compose.yml:docker-compose.prod.yml` = **prod** (compiled release binaries). Read by compose itself, so plain `docker compose up -d` picks the right stack. |
 | `COMPOSE_NAME` | Prefix for container names and the internal nginx→backend proxy target. |
 | `SERVER_NAME` | Server name injected into the nginx config. |
 | `BASE_URL` | Base path the app is served under. Use `/` unless hosting under a sub-path. |
@@ -179,7 +180,12 @@ cd frontend && bun install && bun run build && cd ..
 docker compose up -d
 ```
 
-The backend runs under `cargo watch`, so the **first boot compiles Rust and takes a few minutes** — follow along with `docker compose logs -f rust`. Your vault is then served via nginx at `http://localhost:8034` (or whatever `NGINX_PORT` you set).
+Which stack that is comes from `COMPOSE_FILE` in your `.env`:
+
+*   **dev** (the template default) — the backend runs under `cargo watch`, so the **first boot compiles Rust and takes a few minutes** and then hot-reloads on source changes. Follow along with `docker compose logs -f rust`.
+*   **prod** — `docker-compose.prod.yml` layers compiled release binaries over the base file. Nothing hot-reloads: after a backend change, redeploy with `docker compose up -d --build` (or `--build rust` for the API alone). Frontend changes only need step 2 — nginx serves `frontend/dist` straight from disk.
+
+Your vault is then served via nginx at `http://localhost:8034` (or whatever `NGINX_PORT` you set).
 
 ### 4. Create your admin account
 
