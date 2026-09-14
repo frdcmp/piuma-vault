@@ -4,6 +4,20 @@
 #   and any "https" decisions should honor what Cloudflare put in
 #   X-Forwarded-Proto, not the local $scheme.
 
+# This file is rendered into /etc/nginx/conf.d/, which nginx.conf includes from
+# INSIDE the `http` block — so directives before `server {}` here are http-level.
+#
+# nginx's stock mime.types has no `.mjs` entry, so an ES-module asset falls back
+# to `default_type application/octet-stream`. Combined with the `nosniff` header
+# below, the browser then refuses to execute it and a dynamic `import()` fails
+# with "Failed to fetch dynamically imported module". Vite emits the pdf.js
+# worker as `.mjs`, so this is load-bearing for document attachments in chat.
+# Additive: a second `types` block in the same context extends the map that
+# `include mime.types` already built (`.wasm` is already covered there).
+types {
+    text/javascript mjs;
+}
+
 server {
     listen 80;
     server_name localhost;
