@@ -394,6 +394,20 @@
 		0 1px 0 rgba(0, 0, 0, 0.3),
 		inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
+/* A fence with no language isn't code — it's prose kept in monospace: an ASCII
+   diagram, a transcript, a sketch of a table. remark only puts `language-*` on
+   the <code> when the fence declared one, so use that to drop the terminal
+   chrome for the rest. Nine lines of ASCII shouldn't arrive dressed as an app
+   window. */
+.chat-assistant-body pre:not(:has(code[class*="language-"])) {
+	padding-top: 14px;
+	border-radius: 2px;
+	box-shadow: none;
+}
+.chat-assistant-body pre:not(:has(code[class*="language-"]))::before {
+	content: none;
+}
+
 .chat-assistant-body pre::before {
 	content: "";
 	position: absolute;
