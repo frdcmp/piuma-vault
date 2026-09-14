@@ -8,7 +8,6 @@ import {
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useNavigate } from "react-router-dom";
-import remarkGfm from "remark-gfm";
 import {
 	useDismissNotification,
 	useMarkAllNotificationsRead,
@@ -17,6 +16,7 @@ import {
 	useUnreadNotificationCount,
 } from "../../queries";
 import { formatDateTime, timeAgo } from "../../utils/dateTime";
+import { remarkPlugins } from "../../utils/markdown";
 import PiumaModal from "../piuma/Modal";
 import PiumaPopover from "../piuma/Popover";
 import "./NotificationBell.css";
@@ -238,7 +238,7 @@ export default function NotificationBell() {
 							{formatDateTime(detail.created_at).time}
 						</div>
 						<div className="nb-detail-body">
-							<ReactMarkdown remarkPlugins={[remarkGfm]}>
+							<ReactMarkdown remarkPlugins={remarkPlugins}>
 								{detail.body || "_(no content)_"}
 							</ReactMarkdown>
 						</div>

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { remarkPlugins } from "../../utils/markdown";
 import { normalizeChatMarkdown } from "../engine/markdown";
 import { NAV_FALLBACK_LABEL, navTargetToPath } from "../engine/messageModel";
 import SpriteRunner from "./SpriteRunner";
@@ -81,7 +81,7 @@ export default function AssistantBubble({
 							return (
 								<ReactMarkdown
 									key={p.id}
-									remarkPlugins={[remarkGfm]}
+									remarkPlugins={remarkPlugins}
 									components={mdComponents}
 								>
 									{normalizeChatMarkdown(p.text)}
