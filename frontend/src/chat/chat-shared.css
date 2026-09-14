@@ -348,10 +348,10 @@
    item gets some air, and the list keeps the same rhythm as a paragraph. */
 .chat-assistant-body ul,
 .chat-assistant-body ol {
-	margin: 0 0 10px;
+	margin: 0 0 12px;
 }
 .chat-assistant-body li {
-	margin-bottom: 7px;
+	margin-bottom: 12px;
 }
 .chat-assistant-body li:last-child {
 	margin-bottom: 0;
@@ -359,7 +359,7 @@
 /* A "loose" list (blank lines between items) wraps each item in a <p>, which
    already carries the paragraph margin — don't stack the two gaps. */
 .chat-assistant-body li > p {
-	margin-bottom: 7px;
+	margin-bottom: 12px;
 }
 .chat-assistant-body li > p:last-child {
 	margin-bottom: 0;
@@ -368,7 +368,7 @@
    keep it tighter than the gap between top-level items. */
 .chat-assistant-body li > ul,
 .chat-assistant-body li > ol {
-	margin: 7px 0 0;
+	margin: 8px 0 0;
 }
 .chat-assistant-body code {
 	background: var(--bg-soft);
