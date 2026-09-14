@@ -561,7 +561,17 @@ pub async fn chat(
          it surfaces a one-click \"Go\" button. Prefer inline links for passing mentions; use \
          `navigate` when the user asked to be taken/shown/opened somewhere.",
     );
-    let mut blocks = vec![now_block, model_block, link_block];
+    // Models — Gemini especially — reach for LaTeX when they want a symbol
+    // ("PromptPay QR $\\to$ Send to IBKR"). The clients render Markdown, not
+    // math, so the source shows through; ask for the character instead.
+    let format_block = String::from(
+        "# Formatting\n\n\
+         Write replies in plain GitHub-flavoured Markdown. Never use LaTeX or math \
+         delimiters (`$...$`, `$$...$$`, `\\(...\\)`): write the symbol itself — \
+         → × ÷ ≈ ≤ ≥ ± — instead of `\\to`, `\\times`, `\\approx`. `$` is money here, \
+         not math.",
+    );
+    let mut blocks = vec![now_block, model_block, link_block, format_block];
     if !resolved.system_prompt.trim().is_empty() {
         blocks.push(resolved.system_prompt.clone());
     }
