@@ -2,7 +2,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useParams, useSearchParams } from "react-router-dom";
-import remarkGfm from "remark-gfm";
 import { fetchSharedNote } from "../api/shares";
 import {
 	attachmentMeta,
@@ -11,6 +10,7 @@ import {
 	stripQueryWidth,
 	widthFromUrl,
 } from "../utils/attachments";
+import { remarkPlugins } from "../utils/markdown";
 import { renderMermaid } from "../utils/mermaid";
 import "./SharedNotePage.css";
 
@@ -352,7 +352,7 @@ export default function SharedNotePage() {
 				<div className="shared-note-body">
 					<ReactMarkdown
 						components={markdownComponents}
-						remarkPlugins={[remarkGfm]}
+						remarkPlugins={remarkPlugins}
 					>
 						{data.note.content || ""}
 					</ReactMarkdown>

@@ -2,9 +2,9 @@ import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import { Link, Navigate, useParams } from "react-router-dom";
 import rehypeHighlight from "rehype-highlight";
-import remarkGfm from "remark-gfm";
 import PvPanel from "../admin/components/ui/PvPanel/PvPanel";
 import piumaIcon from "../img/piuma-icon.png";
+import { remarkPlugins } from "../utils/markdown";
 import { DOC_BY_SLUG, FIRST_SLUG } from "./docsManifest";
 import Mermaid from "./Mermaid";
 
@@ -142,7 +142,7 @@ export default function DocsPage() {
 					)}
 					<ReactMarkdown
 						components={markdownComponents}
-						remarkPlugins={[remarkGfm]}
+						remarkPlugins={remarkPlugins}
 						rehypePlugins={[rehypeHighlight]}
 					>
 						{body}

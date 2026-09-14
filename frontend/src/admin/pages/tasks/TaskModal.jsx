@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { BucketSelect, TagPicker } from "../../../components/buckets";
 import {
 	useBuckets,
@@ -9,12 +8,9 @@ import {
 	useUpdateTask,
 } from "../../../queries";
 import { formatDateTime } from "../../../utils/dateTime";
+import { remarkPlugins } from "../../../utils/markdown";
 import AlertsField from "../../components/AlertsField";
-import {
-	PvButton,
-	PvDateTimePicker,
-	PvModal,
-} from "../../components/ui";
+import { PvButton, PvDateTimePicker, PvModal } from "../../components/ui";
 
 const PRIORITY_LABELS = ["none", "low", "medium", "high"];
 
@@ -468,7 +464,7 @@ export default function TaskModal({
 					>
 						{notes ? (
 							<div className="task-view-md">
-								<ReactMarkdown remarkPlugins={[remarkGfm]}>
+								<ReactMarkdown remarkPlugins={remarkPlugins}>
 									{notes}
 								</ReactMarkdown>
 							</div>
