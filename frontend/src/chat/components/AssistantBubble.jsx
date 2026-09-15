@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import { remarkPlugins } from "../../utils/markdown";
 import { normalizeChatMarkdown } from "../engine/markdown";
@@ -10,12 +10,7 @@ import VaultLink from "./VaultLink";
 // An assistant reply: text, tool runs, mid-turn injections, and "Go" nav actions
 // rendered in stream order, plus the pixel-Piuma "thinking…" loader while the
 // reply is still empty and streaming.
-export default function AssistantBubble({
-	parts,
-	isStreaming,
-	label,
-	onNavigate,
-}) {
+function AssistantBubble({ parts, isStreaming, label, onNavigate }) {
 	const empty = !parts?.length;
 	// Bind the custom link renderer to this bubble's navigation handler.
 	const mdComponents = useMemo(
@@ -95,3 +90,11 @@ export default function AssistantBubble({
 		</div>
 	);
 }
+
+// Memoised because the chat input's state lives in the host component: without
+// this, every keystroke re-renders the whole list and react-markdown re-parses
+// every message in the conversation (~47ms for 40 messages, ~74ms for 80),
+// which is felt directly as lag while typing. The props are all stable per
+// message — `parts` only gets a new identity when that message actually
+// changes, and the host's navigation handler is a useCallback.
+export default memo(AssistantBubble);
