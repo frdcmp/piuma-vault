@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import WorkspaceHeader from "../../components/WorkspaceHeader/WorkspaceHeader";
 import useChatDockStore from "../../store/chatDockStore";
 import useUiStore from "../../store/uiStore";
+import { chatDockMode } from "../../utils/workspaceLayout";
 import ChatDock from "./ChatDock";
 import "./ChatDock.css";
 
@@ -11,11 +12,12 @@ import "./ChatDock.css";
 // children) on the left, and the single ChatDock on the right. Mounted once by
 // WorkspaceLayout so the header + chat persist across navigation between pages.
 //
-// Clicking a note reference inside the chat navigates to that note; on mobile we
-// also collapse the chat so the editor becomes visible (only one column shows).
+// Clicking a note reference inside the chat navigates to that note; when the
+// chat is a full-screen overlay (phone, or a window too narrow for two columns)
+// we also collapse it so the editor becomes visible.
 export default function WorkspaceShell({ children }) {
 	const navigate = useNavigate();
-	const { handleResize, isMobile } = useUiStore();
+	const { handleResize, isMobile, viewportWidth } = useUiStore();
 	const closeChat = useChatDockStore((s) => s.closeChat);
 
 	useEffect(() => {
@@ -26,7 +28,7 @@ export default function WorkspaceShell({ children }) {
 
 	const handleOpenNote = (noteId) => {
 		navigate(`/notes/${noteId}`);
-		if (isMobile) closeChat();
+		if (chatDockMode(viewportWidth, isMobile) === "overlay") closeChat();
 	};
 
 	return (

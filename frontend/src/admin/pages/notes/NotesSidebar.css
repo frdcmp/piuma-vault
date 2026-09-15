@@ -12,6 +12,9 @@
 	--accent-4: #6cb6ff;
 
 	display: flex;
+	/* Anchors .notes-pixel-sidebar.drawer + its scrim when the tree no longer
+	   fits as a column and floats over the content instead. */
+	position: relative;
 	/* Fill the workspace row (which sits below the WorkspaceHeader top bar),
 	   not the whole viewport — 100vh here would overflow past the header and
 	   push the empty-state content off the bottom of the screen. */
@@ -45,6 +48,34 @@
 .notes-pixel-sidebar.mobile {
 	width: 100% !important;
 	border-right: none;
+}
+
+/* Two-column tier: the window fits [editor | chat] but not the tree as well, so
+   the tree floats over the editor, opened from the top bar's ☰. */
+.notes-pixel-sidebar.drawer {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	z-index: 30;
+	border-right: 2px solid var(--border-strong);
+	box-shadow: 6px 0 0 0 rgba(0, 0, 0, 0.45);
+}
+
+.notes-drawer-scrim {
+	position: absolute;
+	inset: 0;
+	z-index: 29;
+	padding: 0;
+	border: 0;
+	background: rgba(0, 0, 0, 0.5);
+	cursor: pointer;
+}
+
+/* ☰ that brings the drawer back, shown only while the tree has no column. */
+.notes-tree-toggle.note-ctl-btn {
+	flex: none;
+	margin: 0 0 6px 8px;
 }
 
 .notes-sidebar-resizer {

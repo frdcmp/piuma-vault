@@ -21,6 +21,9 @@ const getScreenMode = (width) => {
 const useUiStore = create((set) => ({
 	screenMode: getScreenMode(window.innerWidth),
 	isMobile: window.innerWidth < BREAKPOINTS.TABLET,
+	// Raw viewport width — the workspace shell fits its columns against actual
+	// pixels (see utils/workspaceLayout.js), not just the coarse screen mode.
+	viewportWidth: window.innerWidth,
 
 	// Action to update screen mode based on width
 	handleResize: () => {
@@ -29,6 +32,7 @@ const useUiStore = create((set) => ({
 		set({
 			screenMode: mode,
 			isMobile: mode === SCREEN_MODES.PHONE,
+			viewportWidth: width,
 		});
 	},
 }));
