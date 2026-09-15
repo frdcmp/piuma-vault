@@ -11,7 +11,9 @@
 
 #![allow(dead_code)]
 
+pub mod handlers;
 pub mod logging;
+pub mod routes;
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -104,6 +106,12 @@ impl Event {
     pub fn user(mut self, u: &AuthenticatedUser) -> Self {
         self.user_id = u.user_id.clone();
         self.user_email = u.email.clone();
+        self
+    }
+    /// Override the emitting source (defaults to "backend"); used by the
+    /// client-error ingest to mark events as coming from the browser.
+    pub fn source(mut self, s: impl ToString) -> Self {
+        self.source = s.to_string();
         self
     }
     pub fn user_email(mut self, email: impl ToString) -> Self {

@@ -9,6 +9,7 @@ import {
 } from "@/processing";
 import { attachmentMeta } from "@/utils/attachments";
 import { uploadChatImage } from "../../api/storage";
+import { reportClientError } from "../../api/telemetry";
 import { newMessageId } from "./messageModel";
 
 // Files pasted / dropped / attached for the next turn, as one ordered list of
@@ -200,6 +201,18 @@ export default function useAttachments({ visionEnabled, convRef }) {
 					});
 				})
 				.catch((err) => {
+					// A parser that breaks on a whole format is invisible from the
+					// server side — extraction never leaves the browser — so this
+					// is the only place it can be recorded.
+					reportClientError("attachment", err, {
+						type: "extract_failed",
+						attributes: {
+							kind: kindOf(file),
+							name: file.name,
+							mime: file.type || "",
+							size: file.size,
+						},
+					});
 					pvMessage.error(err?.message || `Couldn't read ${file.name}`);
 					removePending(id);
 				});
