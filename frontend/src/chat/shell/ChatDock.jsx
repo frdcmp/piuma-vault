@@ -4,6 +4,7 @@ import useChatDockStore, {
 	CHAT_MIN,
 } from "../../store/chatDockStore";
 import useUiStore from "../../store/uiStore";
+import { chatColumnWidth, chatDockMode } from "../../utils/workspaceLayout";
 import ChatPanel from "../dock/ChatPanel";
 import "./ChatDock.css";
 
@@ -12,9 +13,13 @@ import "./ChatDock.css";
 // resizer + the chat column; when closed it shows a floating toggle button.
 // Open/width state lives in chatDockStore so it's unified across pages and any
 // component can open the chat; the conversation itself is persisted by ChatPanel.
+//
+// The stored width is a preference, not a promise: on a window too narrow for
+// [content | chat] the column shrinks toward CHAT_MIN, and once even that would
+// starve the page it drops to a full-screen overlay (chat wins the last column).
 
 export default function ChatDock({ onOpenNote }) {
-	const { isMobile } = useUiStore();
+	const { isMobile, viewportWidth } = useUiStore();
 	const open = useChatDockStore((s) => s.open);
 	const width = useChatDockStore((s) => s.width);
 	const isResizing = useChatDockStore((s) => s.isResizing);
@@ -24,9 +29,17 @@ export default function ChatDock({ onOpenNote }) {
 	const resetWidth = useChatDockStore((s) => s.resetWidth);
 	const setResizing = useChatDockStore((s) => s.setResizing);
 
+	const overlay = chatDockMode(viewportWidth, isMobile) === "overlay";
+	const colWidth = chatColumnWidth(viewportWidth, width);
+
 	useEffect(() => {
 		if (!isResizing) return;
-		const onMove = (e) => setWidth(window.innerWidth - e.clientX);
+		// Clamp to what the page can actually spare, so the column edge keeps
+		// tracking the cursor instead of detaching once it hits the cap.
+		const onMove = (e) =>
+			setWidth(
+				chatColumnWidth(window.innerWidth, window.innerWidth - e.clientX),
+			);
 		const onUp = () => setResizing(false);
 		window.addEventListener("mousemove", onMove);
 		window.addEventListener("mouseup", onUp);
@@ -58,7 +71,7 @@ export default function ChatDock({ onOpenNote }) {
 
 	return (
 		<>
-			{!isMobile && (
+			{!overlay && (
 				// biome-ignore lint/a11y/useSemanticElements: draggable resizer for the chat column
 				<div
 					className={`chat-dock-resizer ${isResizing ? "active" : ""}`}
@@ -69,10 +82,13 @@ export default function ChatDock({ onOpenNote }) {
 					onDoubleClick={resetWidth}
 					onKeyDown={(e) => {
 						const step = e.shiftKey ? 32 : 8;
-						if (e.key === "ArrowLeft") setWidth(width + step);
-						else if (e.key === "ArrowRight") setWidth(width - step);
-						else if (e.key === "Home") setWidth(CHAT_MAX);
-						else if (e.key === "End") setWidth(CHAT_MIN);
+						// From colWidth, not the stored width: on a narrow window the two
+						// differ, and stepping the stored one would move nothing on screen.
+						const to = (n) => setWidth(chatColumnWidth(viewportWidth, n));
+						if (e.key === "ArrowLeft") to(colWidth + step);
+						else if (e.key === "ArrowRight") to(colWidth - step);
+						else if (e.key === "Home") to(CHAT_MAX);
+						else if (e.key === "End") to(CHAT_MIN);
 						else return;
 						e.preventDefault();
 					}}
@@ -80,15 +96,15 @@ export default function ChatDock({ onOpenNote }) {
 					tabIndex={0}
 					aria-orientation="vertical"
 					aria-label="Resize chat"
-					aria-valuenow={width}
+					aria-valuenow={colWidth}
 					aria-valuemin={CHAT_MIN}
 					aria-valuemax={CHAT_MAX}
 					title="Drag to resize · double-click to reset"
 				/>
 			)}
 			<div
-				className={`chat-dock-col ${isMobile ? "mobile" : ""}`}
-				style={isMobile ? undefined : { width }}
+				className={`chat-dock-col ${overlay ? "overlay" : ""}`}
+				style={overlay ? undefined : { width: colWidth }}
 			>
 				<ChatPanel onClose={closeChat} onOpenNote={onOpenNote} />
 			</div>

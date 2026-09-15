@@ -54,7 +54,9 @@
 	border-left: 1px solid #2a2f3a;
 }
 
-.chat-dock-col.mobile {
+/* Single-column tier: too narrow for [content | chat], so the chat takes the
+   screen (see chatDockMode in utils/workspaceLayout.js). Also the phone case. */
+.chat-dock-col.overlay {
 	position: fixed;
 	inset: 0;
 	width: 100%;

@@ -5,6 +5,12 @@ import useChatDockStore from "../../../store/chatDockStore";
 import useNoteControlsStore from "../../../store/noteControlsStore";
 import useNotesWorkspaceStore from "../../../store/notesWorkspaceStore";
 import useUiStore from "../../../store/uiStore";
+import {
+	CONTENT_MIN,
+	chatColumnSpace,
+	RESIZER_W,
+	railLayout,
+} from "../../../utils/workspaceLayout";
 import Home from "../../components/notes/Home";
 import NoteControls from "./NoteControls";
 import NotesListSidebar from "./NotesListSidebar";
@@ -32,7 +38,14 @@ const readStoredNumber = (key, fallback, min, max) => {
  * Three-column shell: notes tree (left) | editor / empty (middle) | chat (right).
  * The left sidebar is resizable and persists its width to localStorage; the
  * right chat column is the shared dock provided by WorkspaceShell (open/width
- * state lives in chatDockStore). On mobile only one column is visible at a time.
+ * state lives in chatDockStore).
+ *
+ * Both side columns are fixed-width, so a window too narrow for all three would
+ * squeeze the editor to nothing. Instead the shell steps down through tiers
+ * (utils/workspaceLayout.js): the columns shrink toward their minimums, then the
+ * tree drops out of the row into an overlay drawer behind the top bar's ☰, then
+ * — when even [editor | chat] won't fit — the chat takes the whole screen. On
+ * mobile only one column is visible at a time.
  */
 const UUID_RE =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,7 +54,7 @@ export default function NotesLayout() {
 	const { id } = useParams();
 	const navigate = useNavigate();
 	const location = useLocation();
-	const { isMobile, handleResize } = useUiStore();
+	const { isMobile, handleResize, viewportWidth } = useUiStore();
 	const tabs = useNotesWorkspaceStore((s) => s.tabs);
 	const closeTab = useNotesWorkspaceStore((s) => s.closeTab);
 	const pinTab = useNotesWorkspaceStore((s) => s.pinTab);
@@ -52,6 +65,7 @@ export default function NotesLayout() {
 	// for mobile single-column gating. Opening the chat is wired directly in the
 	// child controls; the shared WorkspaceShell handles open-note-from-chat.
 	const chatOpen = useChatDockStore((s) => s.open);
+	const chatWidth = useChatDockStore((s) => s.width);
 
 	// When the content column is narrow (e.g. chat panel open), the top-bar
 	// controls collapse into a ⋯ overflow menu.
@@ -103,6 +117,33 @@ export default function NotesLayout() {
 	);
 	const [isResizingSidebar, setIsResizingSidebar] = useState(false);
 
+	// How much room the tree has left once the chat column has taken its share.
+	// `collapsed` means it no longer fits alongside the editor — the tree then
+	// renders as an overlay drawer on top of the content instead of as a column.
+	const chatSpace = chatColumnSpace(viewportWidth, {
+		open: chatOpen,
+		width: chatWidth,
+		isPhone: isMobile,
+	});
+	const rail = railLayout(viewportWidth - chatSpace, sidebarWidth, SIDEBAR_MIN);
+	const railMax = viewportWidth - chatSpace - CONTENT_MIN - RESIZER_W;
+	const railCollapsed = !isMobile && rail.collapsed;
+	const [drawerOpen, setDrawerOpen] = useState(false);
+
+	// Don't leave the drawer hanging around once the tree has a column again.
+	useEffect(() => {
+		if (!railCollapsed) setDrawerOpen(false);
+	}, [railCollapsed]);
+
+	useEffect(() => {
+		if (!drawerOpen) return;
+		const onKey = (e) => {
+			if (e.key === "Escape") setDrawerOpen(false);
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [drawerOpen]);
+
 	// Mobile-only toggle: from the sidebar's X button, switch the root view to
 	// the empty state (dog + Chat). The empty state has a small back icon to
 	// return here. Reset whenever the route changes off /.
@@ -120,7 +161,15 @@ export default function NotesLayout() {
 	useEffect(() => {
 		if (!isResizingSidebar) return;
 		const onMove = (e) => {
-			setSidebarWidth(clampWidth(e.clientX, SIDEBAR_MIN, SIDEBAR_MAX));
+			// Capped at the rail's current max too, so the edge keeps tracking the
+			// cursor rather than detaching once the editor hits CONTENT_MIN.
+			setSidebarWidth(
+				clampWidth(
+					e.clientX,
+					SIDEBAR_MIN,
+					Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, railMax)),
+				),
+			);
 		};
 		const onUp = () => setIsResizingSidebar(false);
 		window.addEventListener("mousemove", onMove);
@@ -135,7 +184,7 @@ export default function NotesLayout() {
 			document.body.style.cursor = prevCursor;
 			document.body.style.userSelect = prevSelect;
 		};
-	}, [isResizingSidebar]);
+	}, [isResizingSidebar, railMax]);
 
 	useEffect(() => {
 		try {
@@ -146,6 +195,7 @@ export default function NotesLayout() {
 	}, [sidebarWidth]);
 
 	const handleSelectNote = (noteId) => {
+		setDrawerOpen(false);
 		if (noteId) {
 			navigate(`/notes/${noteId}`);
 		} else {
@@ -174,20 +224,56 @@ export default function NotesLayout() {
 	const mobileEmptyInline =
 		isMobile && isRoot && mobileShowEmpty && !mobileChatOpen;
 	const showSidebar =
-		(!isMobile || isRoot) && !mobileEmptyInline && !mobileChatOpen;
+		(!isMobile || isRoot) &&
+		!mobileEmptyInline &&
+		!mobileChatOpen &&
+		(!railCollapsed || drawerOpen);
 	const showContent = (!isMobile || !isRoot) && !mobileChatOpen;
+
+	// As a drawer the tree floats over the editor, so it is capped to leave a
+	// sliver of content showing rather than sized to fit the (missing) column.
+	let sidebarClass = "";
+	let sidebarStyle = { width: rail.width };
+	if (isMobile) {
+		sidebarClass = "mobile";
+		sidebarStyle = undefined;
+	} else if (railCollapsed) {
+		sidebarClass = "drawer";
+		sidebarStyle = {
+			width: Math.min(
+				sidebarWidth,
+				Math.max(SIDEBAR_MIN, viewportWidth - chatSpace - 64),
+			),
+		};
+	}
 
 	return (
 		<div className="notes-pixel-layout">
+			{showSidebar && railCollapsed && (
+				<button
+					type="button"
+					className="notes-drawer-scrim"
+					onClick={() => setDrawerOpen(false)}
+					aria-label="Close notes list"
+					tabIndex={-1}
+				/>
+			)}
+
 			{showSidebar && (
 				<div
-					className={`notes-pixel-sidebar ${isMobile ? "mobile" : ""}`}
-					style={isMobile ? undefined : { width: sidebarWidth }}
+					className={`notes-pixel-sidebar ${sidebarClass}`}
+					style={sidebarStyle}
 				>
 					<NotesListSidebar
 						selectedNoteId={activeNoteId}
 						onSelectNote={handleSelectNote}
-						onClose={isMobile ? () => setMobileShowEmpty(true) : undefined}
+						onClose={
+							isMobile
+								? () => setMobileShowEmpty(true)
+								: railCollapsed
+									? () => setDrawerOpen(false)
+									: undefined
+						}
 					/>
 				</div>
 			)}
@@ -198,7 +284,7 @@ export default function NotesLayout() {
 				</div>
 			)}
 
-			{showSidebar && !isMobile && (
+			{showSidebar && !isMobile && !railCollapsed && (
 				// biome-ignore lint/a11y/useSemanticElements: <hr> is not interactive; this is a draggable resizer
 				<div
 					className={`notes-sidebar-resizer ${isResizingSidebar ? "active" : ""}`}
@@ -223,7 +309,7 @@ export default function NotesLayout() {
 					tabIndex={0}
 					aria-orientation="vertical"
 					aria-label="Resize sidebar"
-					aria-valuenow={sidebarWidth}
+					aria-valuenow={rail.width}
 					aria-valuemin={SIDEBAR_MIN}
 					aria-valuemax={SIDEBAR_MAX}
 					title="Drag to resize · double-click to reset"
@@ -232,24 +318,37 @@ export default function NotesLayout() {
 
 			{showContent && (
 				<div className="notes-pixel-content" ref={contentRef}>
-					{!isMobile && (tabs.length > 0 || controlsPresent) && (
-						<div className="note-topbar">
-							<NoteTabs
-								tabs={tabs}
-								activeId={activeNoteId}
-								onSelect={handleSelectNote}
-								onClose={handleCloseTab}
-								onPin={pinTab}
-								onReorder={reorderTabs}
-							/>
-							{controlsPresent && (
-								<NoteControls
-									onClose={() => navigate("/notes")}
-									compact={contentNarrow}
+					{!isMobile &&
+						(railCollapsed || tabs.length > 0 || controlsPresent) && (
+							<div className="note-topbar">
+								{railCollapsed && (
+									<button
+										type="button"
+										className="note-ctl-btn notes-tree-toggle"
+										onClick={() => setDrawerOpen((v) => !v)}
+										title="Notes list"
+										aria-label="Toggle notes list"
+										aria-expanded={drawerOpen}
+									>
+										☰
+									</button>
+								)}
+								<NoteTabs
+									tabs={tabs}
+									activeId={activeNoteId}
+									onSelect={handleSelectNote}
+									onClose={handleCloseTab}
+									onPin={pinTab}
+									onReorder={reorderTabs}
 								/>
-							)}
-						</div>
-					)}
+								{controlsPresent && (
+									<NoteControls
+										onClose={() => navigate("/notes")}
+										compact={contentNarrow}
+									/>
+								)}
+							</div>
+						)}
 					{!isRoot ? <Outlet /> : <Home />}
 				</div>
 			)}
