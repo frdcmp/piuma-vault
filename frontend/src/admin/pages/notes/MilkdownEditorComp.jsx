@@ -16,7 +16,7 @@ import {
 	commonmark,
 	imageSchema,
 } from "@milkdown/kit/preset/commonmark";
-import { gfm } from "@milkdown/kit/preset/gfm";
+import { gfm, remarkGFMPlugin } from "@milkdown/kit/preset/gfm";
 import { Plugin, PluginKey } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
 import "@milkdown/kit/prose/view/style/prosemirror.css";
@@ -534,6 +534,12 @@ function MilkdownEditor({
 					if (!userEditedRef.current) return;
 					onChangeRef.current?.(markdown);
 				});
+				// GFM lets a *single* `~` open a strikethrough, so a note that uses
+				// `~` for "approximately" ("(€115k) - mutuo ... = ~€80k") renders
+				// struck through between the two tildes. Worse than the chat case:
+				// the editor serialises back, so an edit would save that as a real
+				// `~~strikethrough~~` and corrupt the note. Require `~~`.
+				ctx.set(remarkGFMPlugin.options.key, { singleTilde: false });
 			})
 			.use(commonmark)
 			.use(gfm)
