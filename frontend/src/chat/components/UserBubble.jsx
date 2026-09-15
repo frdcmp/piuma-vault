@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import { attachmentMeta } from "@/utils/attachments";
 import { noteLabel } from "../engine/messageModel";
 import ContextTag from "./ContextTag";
@@ -5,7 +7,7 @@ import ContextTag from "./ContextTag";
 // A user message: locked-note context tags (dock only — omitted when absent),
 // any attached images, any attached documents (as chips — the extracted text
 // went to the model, not the transcript), then the text.
-export default function UserBubble({ content, context, images, files }) {
+function UserBubble({ content, context, images, files }) {
 	return (
 		<div className="chat-user-row">
 			<div className="chat-user-card">
@@ -57,3 +59,7 @@ export default function UserBubble({ content, context, images, files }) {
 		</div>
 	);
 }
+
+// Memoised for the same reason as AssistantBubble: a keystroke in the chat
+// input must not re-render every message in the conversation.
+export default memo(UserBubble);
