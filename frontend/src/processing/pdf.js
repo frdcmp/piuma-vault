@@ -132,7 +132,8 @@ export const extract = async (file) => {
 		};
 	} finally {
 		// Frees the worker's copy of the document; without it a few big PDFs in
-		// one session hold on to hundreds of MB.
-		await pdf.destroy();
+		// one session hold on to hundreds of MB. Teardown lives on the loading
+		// task — PDFDocumentProxy itself has no destroy().
+		await pdf.loadingTask.destroy();
 	}
 };
