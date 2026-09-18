@@ -19,13 +19,34 @@ use serde_json::{json, Value};
 
 pub type SseSender = UnboundedSender<Result<Bytes, actix_web::Error>>;
 
+/// Stand-in for an image we could not inline, replacing the block entirely.
+///
+/// Passing the original http(s) URL through is not a safe degradation: the
+/// Gemini adapter's only remaining option for a non-`data:` URL is
+/// `fileData.fileUri`, which Google resolves against its own Files API/GCS and
+/// rejects with a hard `404 NOT_FOUND` ("Requested entity was not found") for
+/// anything else — killing the whole turn, and every retry after it, because a
+/// purged attachment never comes back. Dropping the image costs one picture;
+/// keeping the URL costs the conversation.
+fn image_unavailable(url: &str) -> Value {
+    let name = url
+        .split('?')
+        .next()
+        .unwrap_or(url)
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("image");
+    json!({ "type": "text", "text": format!("[attached image unavailable: {name}]") })
+}
+
 /// Local OpenAI-compatible servers (LM Studio, Ollama) won't fetch a remote
 /// image URL — their `/chat/completions` requires the image inlined as a
 /// `data:<mime>;base64,…` URL. Cloud OpenAI accepts an http(s) URL, so we only
 /// do this for the local kinds. Walks every block-array message and rewrites any
 /// `{type:"image", url: "http(s)://…"}` block's `url` to a base64 data URL by
-/// fetching the bytes. Data URLs and unfetchable images pass through unchanged
-/// (best-effort — a failed fetch degrades to the prior behaviour, with a log).
+/// fetching the bytes. Data URLs pass through unchanged; an image we cannot
+/// fetch becomes an `image_unavailable` text block so the turn still completes.
 async fn inline_images(messages: &[Value]) -> Vec<Value> {
     // SSRF guard: the image URL is model/content-controlled, so reject any
     // private/loopback/metadata target and never follow redirects (a 3xx could
@@ -43,9 +64,12 @@ async fn inline_images(messages: &[Value]) -> Vec<Value> {
                 if b.get("type").and_then(|t| t.as_str()) != Some("image") {
                     continue;
                 }
-                let Some(url) = b.get("url").and_then(|u| u.as_str()) else {
+                // Owned: every failure path below replaces the whole block,
+                // which a live borrow into it would forbid.
+                let Some(url) = b.get("url").and_then(|u| u.as_str()).map(str::to_string) else {
                     continue;
                 };
+                let url = url.as_str();
                 if !url.starts_with("http://") && !url.starts_with("https://") {
                     continue; // already a data URL (or inline) — leave it
                 }
@@ -54,11 +78,13 @@ async fn inline_images(messages: &[Value]) -> Vec<Value> {
                     Ok(u) => u,
                     Err(e) => {
                         log::warn!("inline_images: bad url {url}: {e}");
+                        *b = image_unavailable(url);
                         continue;
                     }
                 };
                 if let Err(e) = crate::apps::agents::tools::web::guard_public_url(&parsed).await {
                     log::warn!("inline_images: refusing {url}: {e}");
+                    *b = image_unavailable(url);
                     continue;
                 }
                 match client.get(url).send().await.and_then(|r| r.error_for_status()) {
@@ -81,10 +107,16 @@ async fn inline_images(messages: &[Value]) -> Vec<Value> {
                                 let data = B64.encode(&bytes);
                                 b["url"] = json!(format!("data:{mime};base64,{data}"));
                             }
-                            Err(e) => log::warn!("inline_images: read body failed for {url}: {e}"),
+                            Err(e) => {
+                                log::warn!("inline_images: read body failed for {url}: {e}");
+                                *b = image_unavailable(url);
+                            }
                         }
                     }
-                    Err(e) => log::warn!("inline_images: fetch failed for {url}: {e}"),
+                    Err(e) => {
+                        log::warn!("inline_images: fetch failed for {url}: {e}");
+                        *b = image_unavailable(url);
+                    }
                 }
             }
         }

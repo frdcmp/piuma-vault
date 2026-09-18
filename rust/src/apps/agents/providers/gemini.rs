@@ -61,16 +61,22 @@ fn response_obj(content: &str) -> Value {
     }
 }
 
+/// Does this URI name something Gemini can actually resolve in `fileData`?
+/// Only its own Files API and Google Cloud Storage qualify.
+fn is_gemini_file_uri(url: &str) -> bool {
+    url.starts_with("gs://") || url.contains("generativelanguage.googleapis.com/")
+}
+
 /// A user message's content → Gemini parts. Plain string → one text part; a
 /// multimodal array maps text through and turns our canonical
 /// `{type:"image", url, media_type}` into an image part.
 ///
 /// Images MUST arrive as `data:` URLs here (the dispatch layer runs
 /// `inline_images` first): they become `inlineData` base64 parts, the only
-/// form the Gemini API reliably accepts. `fileData.fileUri` remains as a
-/// fallback for non-data URLs, but Gemini rejects arbitrary public URLs there
-/// with a misleading 429 RESOURCE_EXHAUSTED — verified empirically — so it only
-/// genuinely works for Files-API/GCS URIs.
+/// form the Gemini API reliably accepts. `fileData.fileUri` is used only for a
+/// genuine Files-API/GCS URI — an arbitrary public URL fails there, either with
+/// a misleading 429 RESOURCE_EXHAUSTED or a 404 NOT_FOUND, both of which abort
+/// the turn — so any other non-data URL becomes a text note instead.
 fn user_parts(content: Option<&Value>) -> Vec<Value> {
     match content {
         Some(Value::Array(blocks)) => {
@@ -99,9 +105,18 @@ fn user_parts(content: Option<&Value>) -> Vec<Value> {
                                     "inlineData": { "mimeType": mime, "data": b64 }
                                 }));
                             }
-                            None => parts.push(json!({
+                            // Only a Files-API/GCS URI resolves here. Anything
+                            // else — our CDN included — returns 404 NOT_FOUND
+                            // and fails the entire turn, so send a text note
+                            // instead. `inline_images` already substitutes the
+                            // images it could not fetch; this is a backstop.
+                            None if is_gemini_file_uri(url) => parts.push(json!({
                                 "fileData": { "mimeType": mt, "fileUri": url }
                             })),
+                            None => {
+                                log::warn!("gemini: image url not inlined, dropping: {url}");
+                                parts.push(json!({ "text": "[attached image unavailable]" }));
+                            }
                         }
                     }
                     _ => {}
