@@ -295,6 +295,12 @@ const SearchResultItem = ({
 		);
 	};
 
+	// Search snippets come from Postgres `ts_headline`, which echoes the note
+	// body verbatim. The backend now escapes it and re-adds only <b>…</b>
+	// (see notes::handlers::render_headline); this strips anything else that
+	// somehow reaches us, so the innerHTML below can never run markup.
+	const safeHeadline = (h) => String(h ?? "").replace(/<(?!\/?b>)[^>]*>/g, "");
+
 	const highlights =
 		note.highlights?.length > 0
 			? note.highlights
@@ -344,7 +350,7 @@ const SearchResultItem = ({
 				<div
 					key={i}
 					className="ftree-search-headline note-search-headline"
-					dangerouslySetInnerHTML={{ __html: highlight }}
+					dangerouslySetInnerHTML={{ __html: safeHeadline(highlight) }}
 				/>
 			))}
 		</div>

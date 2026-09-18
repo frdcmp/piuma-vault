@@ -5,7 +5,14 @@ services:
     restart: unless-stopped
     profiles: ["server-stack"]
     ports:
-      - "${NGINX_PORT}:80"
+      # Loopback-only on purpose. The Cloudflare Tunnel connector runs with
+      # network_mode: host and reaches nginx over localhost, so binding to
+      # 0.0.0.0 published the origin to the LAN (and, on a host with a routable
+      # IPv6, potentially the internet) as plain HTTP with no WAF — and let a
+      # caller set CF-Connecting-IP by hand, which defeats the per-IP rate
+      # limiter. Publish on a LAN address deliberately if you need device
+      # testing; don't widen this back to 0.0.0.0.
+      - "127.0.0.1:${NGINX_PORT}:80"
     volumes:
       - ./frontend/dist:/usr/share/nginx/html
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template

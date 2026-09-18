@@ -1,4 +1,4 @@
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2, Params,
@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
+use crate::apps::auth::rate_limit::{client_ip, guard, RateLimiter};
 use crate::apps::notes::events::{NoteAction, NotesEventBus};
 use crate::apps::telemetry::{Event, Severity};
 use crate::db::db::DbPool;
@@ -568,11 +569,19 @@ pub async fn delete_share(
 
 /// GET /share/v/{slug} — View note as markdown
 pub async fn get_shared_note(
+    req: HttpRequest,
     pool: web::Data<DbPool>,
+    limiter: web::Data<RateLimiter>,
     path: web::Path<String>,
     query: web::Query<PublicShareQuery>,
 ) -> impl Responder {
     let slug = path.into_inner();
+
+    // Anonymous surface: budget it. Slugs are 6 chars over a 32-char alphabet,
+    // so an unthrottled 404 is an enumeration oracle for every shared note.
+    if let Some(r) = guard(&limiter, "share_view_ip", &client_ip(&req), 60, 60).await {
+        return r;
+    }
 
     // Fetch share
     let share: Option<NoteShare> = sqlx::query_as::<_, NoteShare>(
@@ -601,8 +610,13 @@ pub async fn get_shared_note(
         return r;
     }
 
-    // Check password
+    // Check password. A failure also spends a per-slug budget: the slug is the
+    // thing under attack and the one identifier a guesser cannot rotate, so
+    // this holds even if the client IP is not trustworthy.
     if let Some(r) = check_share_password(&share, query.pwd.as_deref()) {
+        if let Some(limited) = guard(&limiter, "share_pwd_slug", &slug, 20, 900).await {
+            return limited;
+        }
         return r;
     }
 
@@ -736,13 +750,19 @@ pub async fn get_shared_note(
 
 /// PUT /share/v/{slug} — Update note content
 pub async fn update_shared_note(
+    req: HttpRequest,
     pool: web::Data<DbPool>,
+    limiter: web::Data<RateLimiter>,
     path: web::Path<String>,
     query: web::Query<PublicShareQuery>,
     body: web::Bytes,
     bus: web::Data<NotesEventBus>,
 ) -> impl Responder {
     let slug = path.into_inner();
+
+    if let Some(r) = guard(&limiter, "share_edit_ip", &client_ip(&req), 30, 60).await {
+        return r;
+    }
 
     // Fetch share
     let share: Option<NoteShare> = sqlx::query_as::<_, NoteShare>(
@@ -771,8 +791,13 @@ pub async fn update_shared_note(
         return r;
     }
 
-    // Check password
+    // Check password. A failure also spends a per-slug budget: the slug is the
+    // thing under attack and the one identifier a guesser cannot rotate, so
+    // this holds even if the client IP is not trustworthy.
     if let Some(r) = check_share_password(&share, query.pwd.as_deref()) {
+        if let Some(limited) = guard(&limiter, "share_pwd_slug", &slug, 20, 900).await {
+            return limited;
+        }
         return r;
     }
 

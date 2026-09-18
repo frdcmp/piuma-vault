@@ -56,7 +56,16 @@ async function ensureMermaid() {
 			`,
 			flowchart: { curve: "basis", htmlLabels: true },
 			stateDiagram: { htmlLabels: true },
-			securityLevel: "loose",
+			// "strict" (mermaid's own default) encodes HTML in labels and
+			// disables `click` bindings. It must stay strict: we inject the
+			// rendered SVG with dangerouslySetInnerHTML, and diagram source is
+			// not always ours — a ```mermaid block can arrive from an
+			// edit-access public share, an agent web_fetch, or a transcript.
+			// Under "loose" mermaid skips its DOMPurify pass and honours
+			// `click X "javascript:..."`, which is arbitrary JS on our origin.
+			// Inline <b>/<strong> in labels no longer renders as markup; use
+			// mermaid's markdown strings instead: A["`**bold**`"].
+			securityLevel: "strict",
 		});
 		initialised = true;
 	}

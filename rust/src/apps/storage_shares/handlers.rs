@@ -1,4 +1,4 @@
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2, Params,
@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
+use crate::apps::auth::rate_limit::{client_ip, guard, RateLimiter};
 use crate::apps::storage::handlers as st;
 use crate::db::db::DbPool;
 
@@ -170,7 +171,15 @@ async fn touch(pool: &DbPool, id: Uuid) {
 // ════════════════════════════════════════════════════════════════
 
 // GET /share/f/{slug}
-pub async fn meta(pool: web::Data<DbPool>, path: web::Path<String>) -> impl Responder {
+pub async fn meta(
+    req: HttpRequest,
+    pool: web::Data<DbPool>,
+    limiter: web::Data<RateLimiter>,
+    path: web::Path<String>,
+) -> impl Responder {
+    if let Some(r) = guard(&limiter, "share_f_view_ip", &client_ip(&req), 60, 60).await {
+        return r;
+    }
     let share = match fetch_share(pool.get_ref(), &path.into_inner()).await {
         Ok(s) => s,
         Err(r) => return r,
@@ -188,15 +197,23 @@ pub async fn meta(pool: web::Data<DbPool>, path: web::Path<String>) -> impl Resp
 
 // GET /share/f/{slug}/list?path=&pwd=
 pub async fn list(
+    req: HttpRequest,
     pool: web::Data<DbPool>,
+    limiter: web::Data<RateLimiter>,
     path: web::Path<String>,
     q: web::Query<PublicListQuery>,
 ) -> impl Responder {
+    if let Some(r) = guard(&limiter, "share_f_view_ip", &client_ip(&req), 60, 60).await {
+        return r;
+    }
     let share = match fetch_share(pool.get_ref(), &path.into_inner()).await {
         Ok(s) => s,
         Err(r) => return r,
     };
     if let Some(r) = check_pwd(&share, q.pwd.as_deref()) {
+        if let Some(limited) = guard(&limiter, "share_f_pwd_slug", &share.slug, 20, 900).await {
+            return limited;
+        }
         return r;
     }
     let rel = q.path.clone().unwrap_or_default();
@@ -275,16 +292,24 @@ pub async fn list(
 
 // POST /share/f/{slug}/signed-url  { path }   (+ ?pwd=)
 pub async fn signed_url(
+    req: HttpRequest,
     pool: web::Data<DbPool>,
+    limiter: web::Data<RateLimiter>,
     path: web::Path<String>,
     q: web::Query<PwdQuery>,
     body: web::Json<PathBody>,
 ) -> impl Responder {
+    if let Some(r) = guard(&limiter, "share_f_view_ip", &client_ip(&req), 60, 60).await {
+        return r;
+    }
     let share = match fetch_share(pool.get_ref(), &path.into_inner()).await {
         Ok(s) => s,
         Err(r) => return r,
     };
     if let Some(r) = check_pwd(&share, q.pwd.as_deref()) {
+        if let Some(limited) = guard(&limiter, "share_f_pwd_slug", &share.slug, 20, 900).await {
+            return limited;
+        }
         return r;
     }
     let key = match resolve(&share.prefix, &body.path, false) {
@@ -303,16 +328,24 @@ pub async fn signed_url(
 
 // POST /share/f/{slug}/zip  { path? }  (+ ?pwd=)
 pub async fn zip(
+    req: HttpRequest,
     pool: web::Data<DbPool>,
+    limiter: web::Data<RateLimiter>,
     path: web::Path<String>,
     q: web::Query<PwdQuery>,
     body: web::Json<ZipBody>,
 ) -> impl Responder {
+    if let Some(r) = guard(&limiter, "share_f_zip_ip", &client_ip(&req), 10, 60).await {
+        return r;
+    }
     let share = match fetch_share(pool.get_ref(), &path.into_inner()).await {
         Ok(s) => s,
         Err(r) => return r,
     };
     if let Some(r) = check_pwd(&share, q.pwd.as_deref()) {
+        if let Some(limited) = guard(&limiter, "share_f_pwd_slug", &share.slug, 20, 900).await {
+            return limited;
+        }
         return r;
     }
     let dir = match resolve(&share.prefix, body.path.as_deref().unwrap_or(""), true) {
@@ -341,16 +374,24 @@ pub async fn zip(
 
 // POST /share/f/{slug}/upload  { path, content_type? }  (+ ?pwd=)   [edit]
 pub async fn presign_upload(
+    req: HttpRequest,
     pool: web::Data<DbPool>,
+    limiter: web::Data<RateLimiter>,
     path: web::Path<String>,
     q: web::Query<PwdQuery>,
     body: web::Json<PresignBody>,
 ) -> impl Responder {
+    if let Some(r) = guard(&limiter, "share_f_write_ip", &client_ip(&req), 30, 60).await {
+        return r;
+    }
     let share = match fetch_share(pool.get_ref(), &path.into_inner()).await {
         Ok(s) => s,
         Err(r) => return r,
     };
     if let Some(r) = check_pwd(&share, q.pwd.as_deref()) {
+        if let Some(limited) = guard(&limiter, "share_f_pwd_slug", &share.slug, 20, 900).await {
+            return limited;
+        }
         return r;
     }
     if let Some(r) = require_edit(&share) {
@@ -383,16 +424,24 @@ pub async fn presign_upload(
 
 // DELETE /share/f/{slug}/object  { path }  (+ ?pwd=)   [edit]
 pub async fn delete_object(
+    req: HttpRequest,
     pool: web::Data<DbPool>,
+    limiter: web::Data<RateLimiter>,
     path: web::Path<String>,
     q: web::Query<PwdQuery>,
     body: web::Json<PathBody>,
 ) -> impl Responder {
+    if let Some(r) = guard(&limiter, "share_f_write_ip", &client_ip(&req), 30, 60).await {
+        return r;
+    }
     let share = match fetch_share(pool.get_ref(), &path.into_inner()).await {
         Ok(s) => s,
         Err(r) => return r,
     };
     if let Some(r) = check_pwd(&share, q.pwd.as_deref()) {
+        if let Some(limited) = guard(&limiter, "share_f_pwd_slug", &share.slug, 20, 900).await {
+            return limited;
+        }
         return r;
     }
     if let Some(r) = require_edit(&share) {
@@ -417,16 +466,24 @@ pub async fn delete_object(
 
 // DELETE /share/f/{slug}/folder  { path }  (+ ?pwd=)   [edit]
 pub async fn delete_folder(
+    req: HttpRequest,
     pool: web::Data<DbPool>,
+    limiter: web::Data<RateLimiter>,
     path: web::Path<String>,
     q: web::Query<PwdQuery>,
     body: web::Json<PathBody>,
 ) -> impl Responder {
+    if let Some(r) = guard(&limiter, "share_f_write_ip", &client_ip(&req), 30, 60).await {
+        return r;
+    }
     let share = match fetch_share(pool.get_ref(), &path.into_inner()).await {
         Ok(s) => s,
         Err(r) => return r,
     };
     if let Some(r) = check_pwd(&share, q.pwd.as_deref()) {
+        if let Some(limited) = guard(&limiter, "share_f_pwd_slug", &share.slug, 20, 900).await {
+            return limited;
+        }
         return r;
     }
     if let Some(r) = require_edit(&share) {
@@ -459,16 +516,24 @@ pub async fn delete_folder(
 
 // POST /share/f/{slug}/folder  { path }  (+ ?pwd=)   [edit]   create folder
 pub async fn create_folder(
+    req: HttpRequest,
     pool: web::Data<DbPool>,
+    limiter: web::Data<RateLimiter>,
     path: web::Path<String>,
     q: web::Query<PwdQuery>,
     body: web::Json<PathBody>,
 ) -> impl Responder {
+    if let Some(r) = guard(&limiter, "share_f_write_ip", &client_ip(&req), 30, 60).await {
+        return r;
+    }
     let share = match fetch_share(pool.get_ref(), &path.into_inner()).await {
         Ok(s) => s,
         Err(r) => return r,
     };
     if let Some(r) = check_pwd(&share, q.pwd.as_deref()) {
+        if let Some(limited) = guard(&limiter, "share_f_pwd_slug", &share.slug, 20, 900).await {
+            return limited;
+        }
         return r;
     }
     if let Some(r) = require_edit(&share) {
@@ -501,16 +566,24 @@ pub async fn create_folder(
 
 // POST /share/f/{slug}/move  { from, to }  (+ ?pwd=)   [edit]   rename/move
 pub async fn move_item(
+    req: HttpRequest,
     pool: web::Data<DbPool>,
+    limiter: web::Data<RateLimiter>,
     path: web::Path<String>,
     q: web::Query<PwdQuery>,
     body: web::Json<MoveBody>,
 ) -> impl Responder {
+    if let Some(r) = guard(&limiter, "share_f_write_ip", &client_ip(&req), 30, 60).await {
+        return r;
+    }
     let share = match fetch_share(pool.get_ref(), &path.into_inner()).await {
         Ok(s) => s,
         Err(r) => return r,
     };
     if let Some(r) = check_pwd(&share, q.pwd.as_deref()) {
+        if let Some(limited) = guard(&limiter, "share_f_pwd_slug", &share.slug, 20, 900).await {
+            return limited;
+        }
         return r;
     }
     if let Some(r) = require_edit(&share) {

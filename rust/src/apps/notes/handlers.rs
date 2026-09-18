@@ -170,6 +170,31 @@ pub async fn list_notes(
     }
 }
 
+/// Sentinels `ts_headline` wraps around matched terms. They must be plain
+/// printable ASCII (Postgres silently drops control characters from the
+/// StartSel/StopSel options) and improbable enough in real note text that a
+/// collision is cosmetic rather than meaningful — the worst a note author can
+/// smuggle through is an inert `<b>`.
+const HL_START: &str = "@@PVHLS@@";
+const HL_STOP: &str = "@@PVHLE@@";
+
+/// Turn a raw `ts_headline` string into HTML that is safe to render.
+///
+/// Escape first (so any markup living in the note body becomes visible text),
+/// then promote the sentinels to the `<b>` highlight the UI expects. Order
+/// matters: escaping afterwards would neuter the tags we just added.
+fn render_headline(raw: Option<String>) -> Option<String> {
+    raw.map(|s| {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&#x27;")
+            .replace(HL_START, "<b>")
+            .replace(HL_STOP, "</b>")
+    })
+}
+
 async fn list_with_search(
     user: &AuthenticatedUser,
     pool: &web::Data<DbPool>,
@@ -203,9 +228,15 @@ async fn list_with_search(
     } else {
         format!("to_tsquery('english', '{}')", tsquery_terms.join(" & "))
     };
+    // `ts_headline` echoes the note's own text back verbatim — it does NOT
+    // HTML-escape it. Asking Postgres for `StartSel=<b>` and then interpolating
+    // the result into the DOM is a stored-XSS hole (a note containing
+    // `<img src=x onerror=…>` executes when it shows up in a search snippet).
+    // So mark matches with inert sentinels here and let `render_headline`
+    // escape the whole string before promoting them to real <b> tags.
     let headline_expr = format!(
-        "ts_headline('english', content, {}, 'MaxWords=30, MinWords=15, StartSel=<b>, StopSel=</b>')",
-        tsquery
+        "ts_headline('english', content, {}, 'MaxWords=30, MinWords=15, StartSel={}, StopSel={}')",
+        tsquery, HL_START, HL_STOP
     );
 
     // ── Build filter clauses ── (shared by the FTS/vector/trigram CTE pools)
@@ -343,7 +374,7 @@ async fn list_with_search(
             Ok(rows) => {
                 total = rows.first().map(|r| r.8).unwrap_or(0);
                 data = rows.into_iter().map(|(id, title, tags, folder, created_at, updated_at, headline, score, _)| {
-                    NoteListItem { id, title, tags, folder, created_at, updated_at, headline, score: Some(score), deleted_at: None }
+                    NoteListItem { id, title, tags, folder, created_at, updated_at, headline: render_headline(headline), score: Some(score), deleted_at: None }
                 }).collect();
             }
             Err(e) => {
@@ -393,7 +424,7 @@ async fn list_with_search(
         match q.fetch_all(pool.get_ref()).await {
             Ok(rows) => {
                 data = rows.into_iter().map(|(id, title, tags, folder, created_at, updated_at, headline, score)| {
-                    NoteListItem { id, title, tags, folder, created_at, updated_at, headline, score: Some(score), deleted_at: None }
+                    NoteListItem { id, title, tags, folder, created_at, updated_at, headline: render_headline(headline), score: Some(score), deleted_at: None }
                 }).collect();
             }
             Err(e) => {
@@ -1165,5 +1196,35 @@ pub async fn empty_trash(
             log::error!("empty trash failed: {e}");
             HttpResponse::InternalServerError().json(err("Failed to empty trash"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{render_headline, HL_START, HL_STOP};
+
+    #[test]
+    fn escapes_markup_from_the_note_body() {
+        // `ts_headline` hands back the note's own text verbatim; the snippet is
+        // interpolated into the DOM, so nothing but our own <b> may survive.
+        let raw = format!("my bank {HL_START}secret{HL_STOP} <img src=x onerror=alert(1)>");
+        let out = render_headline(Some(raw)).unwrap();
+        assert_eq!(
+            out,
+            "my bank <b>secret</b> &lt;img src=x onerror=alert(1)&gt;"
+        );
+        assert!(!out.contains("<img"));
+    }
+
+    #[test]
+    fn a_sentinel_typed_into_a_note_cannot_smuggle_anything_worse() {
+        let raw = format!("{HL_START}<script>alert(1)</script>{HL_STOP}");
+        let out = render_headline(Some(raw)).unwrap();
+        assert_eq!(out, "<b>&lt;script&gt;alert(1)&lt;/script&gt;</b>");
+    }
+
+    #[test]
+    fn passes_none_through() {
+        assert!(render_headline(None).is_none());
     }
 }

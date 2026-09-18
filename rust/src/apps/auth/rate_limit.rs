@@ -13,7 +13,7 @@
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use actix_web::HttpRequest;
+use actix_web::{HttpRequest, HttpResponse};
 use moka::future::Cache;
 
 #[derive(Debug)]
@@ -78,6 +78,35 @@ impl RateLimiter {
             return Err(remaining);
         }
         Ok(())
+    }
+}
+
+/// Guard a public, unauthenticated endpoint.
+///
+/// Returns a ready-to-send 429 when the caller is over budget, `None` when the
+/// request may proceed. The public share links are the vault's only anonymous
+/// surface — slug lookups and share-password attempts both need an explicit
+/// budget here, because nothing upstream of the app enforces one.
+pub async fn guard(
+    limiter: &RateLimiter,
+    scope: &str,
+    identifier: &str,
+    max: u32,
+    window_secs: u64,
+) -> Option<HttpResponse> {
+    match limiter
+        .check(scope, identifier, max, Duration::from_secs(window_secs))
+        .await
+    {
+        Ok(()) => None,
+        Err(retry_after) => Some(
+            HttpResponse::TooManyRequests()
+                .insert_header(("Retry-After", retry_after.to_string()))
+                .json(serde_json::json!({
+                    "error": "Too many requests. Try again later.",
+                    "retry_after_seconds": retry_after,
+                })),
+        ),
     }
 }
 

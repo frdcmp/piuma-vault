@@ -51,16 +51,11 @@ impl CorsConfig {
 
         Cors::default()
             .allowed_origin_fn(move |origin, _req_head| {
-                let o = origin.as_bytes();
-                if allow_local
-                    && (o.starts_with(b"http://localhost:")
-                        || o.starts_with(b"http://127.0.0.1:")
-                        || o.starts_with(b"http://192.168.")
-                        || o.starts_with(b"http://10."))
-                {
+                let Ok(o) = origin.to_str() else { return false };
+                if allow_local && is_local_origin(o) {
                     return true;
                 }
-                allowed_origins.iter().any(|allowed| allowed.as_bytes() == o)
+                allowed_origins.iter().any(|allowed| allowed == o)
             })
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"])
             // Origin allowlist (above) + JWT auth are the security boundary here;
@@ -68,5 +63,75 @@ impl CorsConfig {
             // (e.g. last-event-id) don't trip preflight 400s.
             .allow_any_header()
             .max_age(3600)
+    }
+}
+
+/// Is this a loopback / RFC1918 origin we allow for local development?
+///
+/// Parse the host instead of prefix-matching the origin string. The previous
+/// `origin.starts_with("http://10.")` form also matched `http://10.evil.com`
+/// — a digit is a legal first character in a DNS label, so an attacker can
+/// simply register a host that satisfies the prefix.
+fn is_local_origin(origin: &str) -> bool {
+    let Some(rest) = origin.strip_prefix("http://") else {
+        return false;
+    };
+    // Origins carry no path, but be defensive about trailing slashes.
+    let authority = rest.split('/').next().unwrap_or(rest);
+
+    // Strip the port, taking care not to split an IPv6 literal on its colons.
+    let host = if let Some(end) = authority.strip_prefix('[').and_then(|r| r.find(']')) {
+        &authority[1..=end]
+    } else {
+        match authority.rsplit_once(':') {
+            Some((h, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => h,
+            _ => authority,
+        }
+    };
+
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    if let Ok(v4) = host.parse::<std::net::Ipv4Addr>() {
+        return v4.is_loopback() || v4.is_private();
+    }
+    if let Ok(v6) = host.trim_matches(|c| c == '[' || c == ']').parse::<std::net::Ipv6Addr>() {
+        return v6.is_loopback();
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_local_origin;
+
+    #[test]
+    fn accepts_real_local_origins() {
+        for o in [
+            "http://localhost:3000",
+            "http://127.0.0.1:8034",
+            "http://192.168.1.50:3000",
+            "http://10.0.0.7:3000",
+            "http://172.16.4.1:3000",
+            "http://[::1]:3000",
+        ] {
+            assert!(is_local_origin(o), "should allow {o}");
+        }
+    }
+
+    #[test]
+    fn rejects_hosts_that_merely_look_local() {
+        // The regression this guards: a prefix match on "http://10." also
+        // accepts a registrable domain whose first label starts with a digit.
+        for o in [
+            "http://10.evil.com",
+            "http://192.168.evil.com",
+            "http://127.0.0.1.evil.com",
+            "http://localhost.evil.com",
+            "https://10.0.0.7:3000",
+            "http://8.8.8.8",
+        ] {
+            assert!(!is_local_origin(o), "should reject {o}");
+        }
     }
 }
