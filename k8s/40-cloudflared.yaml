@@ -1,0 +1,29 @@
+# Health-gated Cloudflare Tunnel connector (reuses the repo's cloudflared image,
+# which wraps the binary in a watchdog that drains the tunnel when the backend
+# is unhealthy). The dashboard origin for this tunnel must point at
+# http://nginx:80 — in compose it was localhost:${NGINX_PORT} because the
+# container ran with network_mode: host, which has no equivalent here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: piuma-vault
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: cloudflared}}
+  template:
+    metadata: {labels: {app: cloudflared}}
+    spec:
+      containers:
+        - name: cloudflared
+          image: docker.io/library/piuma-vault-cloudflared:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom: {secretKeyRef: {name: pv-secret, key: CLOUDFLARED_TOKEN}}
+            - {name: CLOUDFLARED_HEALTH_URL, value: "http://nginx/api/v1/health"}
+            - {name: FAIL_THRESHOLD, value: "1"}
+            - {name: OK_THRESHOLD,   value: "3"}
+            - {name: POLL_INTERVAL,  value: "2"}
+          resources:
+            limits: {memory: 128Mi}

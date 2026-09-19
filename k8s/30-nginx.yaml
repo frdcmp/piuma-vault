@@ -1,0 +1,64 @@
+# Alias Service so the existing nginx template's ${COMPOSE_NAME}-rust:8080
+# resolves unchanged. Same pods as the "rust" Service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: piuma-vault-rust
+  namespace: piuma-vault
+spec:
+  selector: {app: rust}
+  ports: [{port: 8080, targetPort: 8080}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: piuma-vault
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: nginx}}
+  template:
+    metadata: {labels: {app: nginx}}
+    spec:
+      containers:
+        - name: nginx
+          image: docker.io/library/piuma-vault-nginx-k8s:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: COMPOSE_NAME, value: "piuma-vault"}
+            - {name: BASE_URL,   valueFrom: {configMapKeyRef: {name: pv-config, key: BASE_URL}}}
+            - {name: SERVER_NAME, valueFrom: {configMapKeyRef: {name: pv-config, key: SERVER_NAME}}}
+          ports: [{containerPort: 80}]
+          readinessProbe:
+            httpGet: {path: /, port: 80}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: piuma-vault
+spec:
+  selector: {app: nginx}
+  ports: [{port: 80, targetPort: 80}]
+---
+# Private tailnet hostname for validation — production DNS stays untouched.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vault-k8s
+  namespace: piuma-vault
+spec:
+  ingressClassName: tailscale
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx
+                port: {number: 80}
+  tls:
+    - hosts: [vault-k8s]

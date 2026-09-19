@@ -19,13 +19,13 @@ data:
   DB_HOST: "db"
   DB_NAME: "db_piuma-vault"
   DB_PORT: "5432"
-  DB_USER: "fdc1992"
+  DB_USER: "vaultuser"
   DB_VERIFY_SCHEMA: "1"
   MCP_WORKER_URL: "http://mcp-worker:8090"
   RUST_LOG: "info"
-  SERVER_NAME: "decatron-piuma"
+  SERVER_NAME: "piuma-host"
   SITE_URL: "https://vault.example.com"
-  TELEMETRY_INGEST_URL: "http://100.112.201.7:46005/v1/events"
+  TELEMETRY_INGEST_URL: "http://10.0.0.10:46005/v1/events"
 ---
 apiVersion: v1
 kind: Secret
