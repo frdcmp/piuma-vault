@@ -185,7 +185,13 @@ Two places it can go:
 | | |
 | :--- | :--- |
 | `~/.claude/skills/` | every project, this user |
-| `<project>/.claude/skills/` | that project only — commit the link and the team gets it |
+| `<project>/.claude/skills/` | that project only — commit the link and a pull brings it |
+
+**For this repo the project-scoped link is already committed**, as
+`.claude/skills/piuma-vault -> ../../skills/piuma-vault`. A relative target is right there
+because it resolves against the link's own directory, so it lands on the checkout's own
+`skills/piuma-vault` whatever path the clone sits at. Pulling the repo is therefore enough
+to get the skill inside this project; the `ln -s` above is only for using it elsewhere.
 
 If a copied `piuma-vault/` is already sitting there, delete it first. `ln -s` will not
 replace a directory — handed an existing one it creates the link *inside* it, leaving
