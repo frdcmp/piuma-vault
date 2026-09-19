@@ -361,6 +361,7 @@ export default function NotesListSidebar({
 	selectedNoteId,
 	onSelectNote,
 	onClose,
+	onCollapse,
 }) {
 	const [search, setSearch] = useState("");
 	const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -735,6 +736,17 @@ export default function NotesListSidebar({
 				<div className="notes-sidebar-header-row">
 					<h3 className="notes-sidebar-title">Notes</h3>
 					<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+						{onCollapse ? (
+							<button
+								type="button"
+								className="notes-sidebar-collapse"
+								onClick={onCollapse}
+								title="Collapse notes list"
+								aria-label="Collapse notes list"
+							>
+								<span aria-hidden="true">«</span>
+							</button>
+						) : null}
 						<button
 							type="button"
 							className="notes-sidebar-refresh"

@@ -1039,6 +1039,25 @@
 	background: rgba(255, 107, 107, 0.18);
 }
 
+/* Bare icon — no button box, just the glyph. Same treatment as the refresh
+   icon; collapses the tree column until the top bar's ☰ brings it back. */
+.notes-sidebar-collapse {
+	padding: 4px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: none;
+	border: none;
+	box-shadow: none;
+	color: var(--muted);
+	cursor: pointer;
+	font-size: 12pt;
+	line-height: 1;
+}
+.notes-sidebar-collapse:hover {
+	color: var(--accent-2);
+}
+
 /* Bare icon — no button box, just the glyph. */
 .notes-sidebar-refresh {
 	padding: 4px;

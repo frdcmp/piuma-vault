@@ -21,8 +21,17 @@ const SIDEBAR_MIN = 220;
 const SIDEBAR_MAX = 560;
 const SIDEBAR_DEFAULT = 320;
 const SIDEBAR_STORAGE_KEY = "piuma:notes-sidebar-width";
+const SIDEBAR_COLLAPSED_KEY = "piuma:notes-sidebar-collapsed";
 
 const clampWidth = (n, min, max) => Math.min(max, Math.max(min, Math.round(n)));
+
+const readStoredFlag = (key) => {
+	try {
+		return localStorage.getItem(key) === "1";
+	} catch {
+		return false;
+	}
+};
 
 const readStoredNumber = (key, fallback, min, max) => {
 	try {
@@ -130,6 +139,33 @@ export default function NotesLayout() {
 	const railCollapsed = !isMobile && rail.collapsed;
 	const [drawerOpen, setDrawerOpen] = useState(false);
 
+	// Manual collapse (the « in the tree header): hides the tree column until
+	// the top bar's ☰ brings it back. Independent of `railCollapsed`, which is
+	// the automatic drop-out when the window is too narrow for three columns.
+	const [treeCollapsed, setTreeCollapsed] = useState(() =>
+		readStoredFlag(SIDEBAR_COLLAPSED_KEY),
+	);
+
+	useEffect(() => {
+		try {
+			localStorage.setItem(SIDEBAR_COLLAPSED_KEY, treeCollapsed ? "1" : "0");
+		} catch {
+			/* localStorage unavailable */
+		}
+	}, [treeCollapsed]);
+
+	// The ☰ serves both hidden states: it un-collapses a manually hidden tree
+	// (opening the drawer too, when there's no room for a column), otherwise it
+	// toggles the overlay drawer.
+	const toggleTree = useCallback(() => {
+		if (treeCollapsed) {
+			setTreeCollapsed(false);
+			if (railCollapsed) setDrawerOpen(true);
+			return;
+		}
+		setDrawerOpen((v) => !v);
+	}, [treeCollapsed, railCollapsed]);
+
 	// Don't leave the drawer hanging around once the tree has a column again.
 	useEffect(() => {
 		if (!railCollapsed) setDrawerOpen(false);
@@ -227,6 +263,7 @@ export default function NotesLayout() {
 		(!isMobile || isRoot) &&
 		!mobileEmptyInline &&
 		!mobileChatOpen &&
+		(isMobile || !treeCollapsed) &&
 		(!railCollapsed || drawerOpen);
 	const showContent = (!isMobile || !isRoot) && !mobileChatOpen;
 
@@ -274,6 +311,11 @@ export default function NotesLayout() {
 									? () => setDrawerOpen(false)
 									: undefined
 						}
+						onCollapse={
+							!isMobile && !railCollapsed
+								? () => setTreeCollapsed(true)
+								: undefined
+						}
 					/>
 				</div>
 			)}
@@ -319,16 +361,19 @@ export default function NotesLayout() {
 			{showContent && (
 				<div className="notes-pixel-content" ref={contentRef}>
 					{!isMobile &&
-						(railCollapsed || tabs.length > 0 || controlsPresent) && (
+						(railCollapsed ||
+							treeCollapsed ||
+							tabs.length > 0 ||
+							controlsPresent) && (
 							<div className="note-topbar">
-								{railCollapsed && (
+								{(railCollapsed || treeCollapsed) && (
 									<button
 										type="button"
 										className="note-ctl-btn notes-tree-toggle"
-										onClick={() => setDrawerOpen((v) => !v)}
+										onClick={toggleTree}
 										title="Notes list"
 										aria-label="Toggle notes list"
-										aria-expanded={drawerOpen}
+										aria-expanded={!treeCollapsed && drawerOpen}
 									>
 										☰
 									</button>

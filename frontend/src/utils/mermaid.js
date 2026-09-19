@@ -66,6 +66,12 @@ async function ensureMermaid() {
 			// Inline <b>/<strong> in labels no longer renders as markup; use
 			// mermaid's markdown strings instead: A["`**bold**`"].
 			securityLevel: "strict",
+			// On a parse failure mermaid otherwise draws its "bomb" error
+			// diagram into a temp div it appends to <body>, and throws before
+			// reaching its own cleanup — leaving a giant orphaned SVG floating
+			// over the app. Every caller renders the thrown error inline, so
+			// suppress mermaid's graphic and let it clean up and rethrow.
+			suppressErrorRendering: true,
 		});
 		initialised = true;
 	}

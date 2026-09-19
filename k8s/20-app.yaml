@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rust
+  namespace: piuma-vault
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: rust}}
+  template:
+    metadata: {labels: {app: rust}}
+    spec:
+      containers:
+        - name: rust
+          image: docker.io/library/piuma-vault-rust-prod:latest
+          imagePullPolicy: IfNotPresent      # built locally, imported into containerd
+          args: ["backend"]
+          envFrom:
+            - configMapRef: {name: pv-config}
+            - secretRef: {name: pv-secret}
+          ports: [{containerPort: 8080}]
+          readinessProbe:
+            httpGet: {path: /health, port: 8080}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: 8080}
+            initialDelaySeconds: 30
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rust
+  namespace: piuma-vault
+spec:
+  selector: {app: rust}
+  ports: [{port: 8080, targetPort: 8080}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-worker
+  namespace: piuma-vault
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: notification-worker}}
+  template:
+    metadata: {labels: {app: notification-worker}}
+    spec:
+      containers:
+        - name: notification-worker
+          image: docker.io/library/piuma-vault-rust-prod:latest
+          imagePullPolicy: IfNotPresent      # built locally, imported into containerd
+          args: ["notification-worker"]
+          envFrom:
+            - configMapRef: {name: pv-config}
+            - secretRef: {name: pv-secret}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cron-worker
+  namespace: piuma-vault
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: cron-worker}}
+  template:
+    metadata: {labels: {app: cron-worker}}
+    spec:
+      containers:
+        - name: cron-worker
+          image: docker.io/library/piuma-vault-rust-prod:latest
+          imagePullPolicy: IfNotPresent      # built locally, imported into containerd
+          args: ["cron-worker"]
+          envFrom:
+            - configMapRef: {name: pv-config}
+            - secretRef: {name: pv-secret}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: embedding-worker
+  namespace: piuma-vault
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: embedding-worker}}
+  template:
+    metadata: {labels: {app: embedding-worker}}
+    spec:
+      containers:
+        - name: embedding-worker
+          image: docker.io/library/piuma-vault-rust-prod:latest
+          imagePullPolicy: IfNotPresent      # built locally, imported into containerd
+          args: ["embedding-worker"]
+          envFrom:
+            - configMapRef: {name: pv-config}
+            - secretRef: {name: pv-secret}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-worker
+  namespace: piuma-vault
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mcp-worker}}
+  template:
+    metadata: {labels: {app: mcp-worker}}
+    spec:
+      containers:
+        - name: mcp-worker
+          image: docker.io/library/piuma-vault-rust-prod-mcp:latest
+          imagePullPolicy: IfNotPresent      # built locally, imported into containerd
+          args: ["mcp-worker"]
+          envFrom:
+            - configMapRef: {name: pv-config}
+            - secretRef: {name: pv-secret}
+          ports: [{containerPort: 8090}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-worker
+  namespace: piuma-vault
+spec:
+  selector: {app: mcp-worker}
+  ports: [{port: 8090, targetPort: 8090}]

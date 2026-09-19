@@ -1,0 +1,41 @@
+# TEMPLATE ONLY — placeholders, safe to commit.
+# The real file (k8s/00-config.yaml) is gitignored and generated from .env:
+#   see k8s/render-config.sh
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: piuma-vault
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pv-config
+  namespace: piuma-vault
+data:
+  ALLOW_REGISTRATION: "false"
+  BASE_URL: "/"
+  CORS_ALLOWED_ORIGINS: "https://vault.example.com,https://www.example.com"
+  CORS_ALLOW_LOCAL: "true"
+  DB_HOST: "db"
+  DB_NAME: "db_piuma-vault"
+  DB_PORT: "5432"
+  DB_USER: "fdc1992"
+  DB_VERIFY_SCHEMA: "1"
+  MCP_WORKER_URL: "http://mcp-worker:8090"
+  RUST_LOG: "info"
+  SERVER_NAME: "decatron-piuma"
+  SITE_URL: "https://vault.example.com"
+  TELEMETRY_INGEST_URL: "http://100.112.201.7:46005/v1/events"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pv-secret
+  namespace: piuma-vault
+type: Opaque
+stringData:
+  CLOUDFLARED_TOKEN: "CHANGEME"
+  CLOUDFLARE_ACCOUNT_ID: "CHANGEME"
+  CLOUDFLARE_API_TOKEN: "CHANGEME"
+  DB_PASSWORD: "CHANGEME"
+  TELEMETRY_API_KEY: "CHANGEME"
