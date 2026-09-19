@@ -54,6 +54,36 @@ export const formatDate = (value) => {
 };
 
 /**
+ * Short form for tight columns (the notes tree): the year is only spent when
+ * it isn't this one — "15 Sep" for anything from this year, "25 Aug 25"
+ * otherwise. Mirrors `formatDateCompact` in the mobile app.
+ *
+ * @param {string|Date|null|undefined} value
+ * @returns {string}
+ */
+export const formatDateCompact = (value) => {
+	const d = parseUtc(value);
+	if (!d) return "—";
+	const thisYear =
+		new Intl.DateTimeFormat("en-GB", { year: "numeric", timeZone: TZ }).format(
+			d,
+		) ===
+		new Intl.DateTimeFormat("en-GB", { year: "numeric", timeZone: TZ }).format(
+			new Date(),
+		);
+	const parts = new Intl.DateTimeFormat("en-GB", {
+		day: "2-digit",
+		month: "short",
+		...(thisYear ? {} : { year: "2-digit" }),
+		timeZone: TZ,
+	}).formatToParts(d);
+	const day = parts.find((p) => p.type === "day")?.value ?? "";
+	const month = parts.find((p) => p.type === "month")?.value ?? "";
+	const year = parts.find((p) => p.type === "year")?.value;
+	return year ? `${day} ${month} ${year}` : `${day} ${month}`;
+};
+
+/**
  * Format a UTC value as "14:00" (24-hour, browser timezone).
  *
  * @param {string|Date|null|undefined} value

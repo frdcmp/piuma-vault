@@ -14,7 +14,7 @@ import {
 	useUpdateNote,
 } from "../../../queries/notesQuery";
 import useNotesWorkspaceStore from "../../../store/notesWorkspaceStore";
-import { formatDate } from "../../../utils/dateTime";
+import { formatDateCompact } from "../../../utils/dateTime";
 import "./NotesSidebar.css";
 
 const folderLabel = (path) => {
@@ -84,7 +84,7 @@ const TreeFile = ({
 		<TreePrefix parentLines={parentLines} isLast={isLast} />
 		<span className="ftree-bullet">{selected ? "▶" : "▸"}</span>
 		<span className="ftree-title">{file.title || "Untitled"}</span>
-		<span className="ftree-date">{formatDate(file.updated_at)}</span>
+		<span className="ftree-date">{formatDateCompact(file.updated_at)}</span>
 		<span
 			className="ftree-delete"
 			onClick={(e) => {
@@ -330,7 +330,7 @@ const SearchResultItem = ({
 				<span className="ftree-title">
 					{highlightText(note.title || "Untitled", searchQuery)}
 				</span>
-				<span className="ftree-date">{formatDate(note.updated_at)}</span>
+				<span className="ftree-date">{formatDateCompact(note.updated_at)}</span>
 				<span
 					className="ftree-delete"
 					onClick={(e) => {
