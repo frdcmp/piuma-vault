@@ -17,6 +17,15 @@ spec:
           envFrom:
             - configMapRef: {name: pv-config}
             - secretRef: {name: pv-secret}
+          # Host attribution for telemetry. The node is injected per-pod, but the
+          # "-piuma" suffix is kept: telemetry hardcodes source="backend" and both
+          # this app and keeperproxy ship to the SAME ingest, so `server` is the
+          # only field distinguishing them. A bare node name would merge them.
+          env:
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - name: SERVER_NAME
+              value: "$(NODE_NAME)-piuma"
           ports: [{containerPort: 8080}]
           readinessProbe:
             httpGet: {path: /health, port: 8080}
@@ -55,6 +64,15 @@ spec:
           envFrom:
             - configMapRef: {name: pv-config}
             - secretRef: {name: pv-secret}
+          # Host attribution for telemetry. The node is injected per-pod, but the
+          # "-piuma" suffix is kept: telemetry hardcodes source="backend" and both
+          # this app and keeperproxy ship to the SAME ingest, so `server` is the
+          # only field distinguishing them. A bare node name would merge them.
+          env:
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - name: SERVER_NAME
+              value: "$(NODE_NAME)-piuma"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -75,6 +93,15 @@ spec:
           envFrom:
             - configMapRef: {name: pv-config}
             - secretRef: {name: pv-secret}
+          # Host attribution for telemetry. The node is injected per-pod, but the
+          # "-piuma" suffix is kept: telemetry hardcodes source="backend" and both
+          # this app and keeperproxy ship to the SAME ingest, so `server` is the
+          # only field distinguishing them. A bare node name would merge them.
+          env:
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - name: SERVER_NAME
+              value: "$(NODE_NAME)-piuma"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -95,6 +122,15 @@ spec:
           envFrom:
             - configMapRef: {name: pv-config}
             - secretRef: {name: pv-secret}
+          # Host attribution for telemetry. The node is injected per-pod, but the
+          # "-piuma" suffix is kept: telemetry hardcodes source="backend" and both
+          # this app and keeperproxy ship to the SAME ingest, so `server` is the
+          # only field distinguishing them. A bare node name would merge them.
+          env:
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - name: SERVER_NAME
+              value: "$(NODE_NAME)-piuma"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -115,6 +151,15 @@ spec:
           envFrom:
             - configMapRef: {name: pv-config}
             - secretRef: {name: pv-secret}
+          # Host attribution for telemetry. The node is injected per-pod, but the
+          # "-piuma" suffix is kept: telemetry hardcodes source="backend" and both
+          # this app and keeperproxy ship to the SAME ingest, so `server` is the
+          # only field distinguishing them. A bare node name would merge them.
+          env:
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - name: SERVER_NAME
+              value: "$(NODE_NAME)-piuma"
           ports: [{containerPort: 8090}]
 ---
 apiVersion: v1

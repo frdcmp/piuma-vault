@@ -37,7 +37,10 @@ sec={k:v for k,v in cfg_all.items() if k in SECRET}
 if os.path.exists('.env'):
     dev=load('.env')
     COMPOSE_ONLY={'COMPOSE_PROFILES','COMPOSE_NAME','COMPOSE_FILE','NGINX_PORT','DB_PORT_EXTERNAL'}
-    missing=sorted(set(dev) - set(cfg_all) - COMPOSE_ONLY)
+    # Absent from .env.k8s on purpose: the Deployments build these per-pod via
+    # fieldRef, which a single ConfigMap value cannot express.
+    K8S_INJECTED={'SERVER_NAME','NODE_NAME'}
+    missing=sorted(set(dev) - set(cfg_all) - COMPOSE_ONLY - K8S_INJECTED)
     if missing:
         print(f"  WARNING: in .env but not .env.k8s -> {missing}", file=sys.stderr)
         print( "           add them to .env.k8s, or to COMPOSE_ONLY if dev-only.", file=sys.stderr)

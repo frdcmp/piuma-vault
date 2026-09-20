@@ -27,7 +27,8 @@ spec:
           env:
             - {name: COMPOSE_NAME, value: "piuma-vault"}
             - {name: BASE_URL,   valueFrom: {configMapKeyRef: {name: pv-config, key: BASE_URL}}}
-            - {name: SERVER_NAME, valueFrom: {configMapKeyRef: {name: pv-config, key: SERVER_NAME}}}
+            - {name: NODE_NAME, valueFrom: {fieldRef: {fieldPath: spec.nodeName}}}
+            - {name: SERVER_NAME, value: "$(NODE_NAME)-piuma"}
           ports: [{containerPort: 80}]
           readinessProbe:
             httpGet: {path: /, port: 80}
