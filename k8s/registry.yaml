@@ -4,10 +4,11 @@ metadata: {name: registry}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
-metadata: {name: registry-data, namespace: registry}
+metadata: {name: docker-hub, namespace: registry}
 spec:
   accessModes: [ReadWriteOnce]
-  resources: {requests: {storage: 40Gi}}
+  storageClassName: longhorn-capacity   # container images are bulk, sequential
+  resources: {requests: {storage: 20Gi}}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -32,7 +33,7 @@ spec:
             initialDelaySeconds: 5
       volumes:
         - name: data
-          persistentVolumeClaim: {claimName: registry-data}
+          persistentVolumeClaim: {claimName: docker-hub}
 ---
 apiVersion: v1
 kind: Service

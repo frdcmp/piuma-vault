@@ -57,3 +57,6 @@ piuma-vault-mobile/
 
 # k8s Secret/ConfigMap rendered from .env — never commit
 k8s/00-config.yaml
+
+# Local-only backups: database dumps. Never commit.
+.backup/

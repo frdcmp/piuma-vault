@@ -5,10 +5,13 @@ metadata:
   namespace: piuma-vault
 spec:
   accessModes: [ReadWriteOnce]
+  # Postgres commits need a durable fsync, so this must never land on a spinning
+  # disk: longhorn-latency selects only disks tagged ssd. Never rely on the
+  # cluster default here.
+  storageClassName: longhorn-latency
   resources:
     requests:
       storage: 10Gi
-  # storageClassName omitted -> cluster default (local-path now, Longhorn later)
 ---
 apiVersion: apps/v1
 kind: Deployment
