@@ -60,3 +60,6 @@ k8s/00-config.yaml
 
 # Local-only backups: database dumps. Never commit.
 .backup/
+
+# Cluster env. This repo is PUBLIC: never commit it, encrypted or otherwise.
+.env.k8s
