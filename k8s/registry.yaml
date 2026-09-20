@@ -4,7 +4,10 @@ metadata: {name: registry}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
-metadata: {name: docker-hub, namespace: registry}
+# The cluster's own private image registry. Despite an earlier name, this
+# has nothing to do with Docker Hub: it is where locally built images are
+# pushed and where the nodes pull them from.
+metadata: {name: images, namespace: registry}
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: longhorn-capacity   # container images are bulk, sequential
@@ -33,7 +36,7 @@ spec:
             initialDelaySeconds: 5
       volumes:
         - name: data
-          persistentVolumeClaim: {claimName: docker-hub}
+          persistentVolumeClaim: {claimName: images}
 ---
 apiVersion: v1
 kind: Service
