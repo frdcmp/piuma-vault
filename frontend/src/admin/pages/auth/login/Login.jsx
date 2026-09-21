@@ -8,7 +8,7 @@ import {
 	useResendVerification,
 } from "../../../../queries";
 import Starfield from "../../../components/notes/Starfield";
-import { LockGlyph, PvButton } from "../../../components/ui";
+import { LockGlyph, PvButton, PvCheckbox } from "../../../components/ui";
 import "../../../vault-pixel.css";
 import "../auth-chrome.css";
 
@@ -369,14 +369,12 @@ const Login = () => {
 											/>
 										</div>
 
-										<label className="vp-auth-checkbox">
-											<input
-												type="checkbox"
-												checked={trustDevice}
-												onChange={(e) => setTrustDevice(e.target.checked)}
-											/>
-											Trust this device for 30 days
-										</label>
+										<PvCheckbox
+											className="vp-auth-checkbox"
+											checked={trustDevice}
+											onChange={setTrustDevice}
+											label="Trust this device for 30 days"
+										/>
 
 										<PvButton
 											type="submit"
