@@ -197,7 +197,15 @@ const buildInlineTagDecos = (doc) => {
 	doc.descendants((node, pos) => {
 		if (node.type.name === "code_block") return false;
 		if (!node.isText || !node.text) return;
-		if (node.marks.some((m) => m.type.name === "code")) return;
+		// Inline code is the `inlineCode` mark in Milkdown (not `code`):
+		// a backticked `#tag` must stay literal code, not become a pill.
+		if (
+			node.marks.some(
+				(m) => m.type.name === "inlineCode" || m.type.name === "code",
+			)
+		) {
+			return;
+		}
 		let offset = 0;
 		for (const part of splitInlineTags(node.text)) {
 			if (part.type === "tag") {
