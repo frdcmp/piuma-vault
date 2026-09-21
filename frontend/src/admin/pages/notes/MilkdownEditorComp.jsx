@@ -32,7 +32,7 @@ import {
 } from "../../../utils/attachments";
 import { splitInlineTags } from "../../../utils/inlineTags";
 import { renderMermaid } from "../../../utils/mermaid";
-import { tagColor, tagTint } from "../../../utils/tagColor";
+import { tagColor } from "../../../utils/tagColor";
 import "./MilkdownEditorComp.css";
 
 const searchPluginKey = new PluginKey("search-plugin");
@@ -206,7 +206,7 @@ const buildInlineTagDecos = (doc) => {
 					Decoration.inline(pos + offset, pos + offset + part.raw.length, {
 						class: "inline-tag-deco",
 						"data-tag": part.name,
-						style: `color:${color};border-color:${color};background:${tagTint(part.name)};`,
+						style: `color:${color};border-color:${color};`,
 					}),
 				);
 				offset += part.raw.length;

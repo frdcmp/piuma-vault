@@ -1,16 +1,16 @@
-import { tagColor, tagTint } from "../../utils/tagColor";
+import { tagColor } from "../../utils/tagColor";
 import "./InlineTag.css";
 
-// An inline tag typed in a note body (`#k8s` or `[k8s]`) rendered as a rounded,
-// colour-coded pill. Shape lives in CSS; the colour is applied inline from the
-// deterministic tag hash so the same tag always looks the same (web, mobile,
-// chat).
+// An inline tag typed in a note body (`#k8s`) rendered as a rounded, colour-coded
+// pill. Shape lives in CSS; the colour is applied inline from the deterministic
+// tag hash so the same tag always looks the same (web, mobile, chat). Outline
+// only — a filled pill paints as a square behind the border on Android's Text.
 export default function InlineTag({ name, className = "" }) {
 	const color = tagColor(name);
 	return (
 		<span
 			className={`inline-tag ${className}`.trim()}
-			style={{ color, borderColor: color, background: tagTint(name) }}
+			style={{ color, borderColor: color }}
 			data-tag={name}
 		>
 			<span className="inline-tag-hash" aria-hidden="true">
