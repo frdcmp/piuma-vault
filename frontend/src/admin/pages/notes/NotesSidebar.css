@@ -995,10 +995,38 @@
 .editor-footer {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 8px 16px;
+	gap: 6px;
+	padding: 5px 12px;
 	border-top: 2px dashed var(--border-strong);
 	background: var(--panel);
+}
+
+/* Footer controls share the metadata tag height so the bar stays slim: the
+   attach button used to be a full .pixel-btn and stood taller than the tags. */
+.editor-footer .pixel-tag,
+.editor-footer .pixel-btn.icon-only {
+	height: 22px;
+	box-sizing: border-box;
+}
+
+.editor-footer .pixel-tag {
+	padding: 0 8px;
+}
+
+.editor-footer .pixel-btn.icon-only {
+	width: 22px;
+	padding: 0;
+	justify-content: center;
+	box-shadow: none;
+	font-size: 12px;
+	line-height: 1;
+}
+
+/* The inline "add tag" field shouldn't push the bar taller than the chips. */
+.editor-footer .pixel-input {
+	height: 22px;
+	box-sizing: border-box;
+	padding: 0 8px;
 }
 
 .note-search-headline b {
