@@ -61,29 +61,29 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
         ),
         (
             "create_note",
-            "Create a new note. Returns the new note id.",
+            "Create a new note. Returns the new note id. Write tags inline in `content` as `#tag` (e.g. `#k8s`); the `tags` field is metadata only.",
             json!({
                 "type": "object",
                 "properties": {
                     "title": { "type": "string" },
-                    "content": { "type": "string", "description": "markdown body" },
+                    "content": { "type": "string", "description": "markdown body. Tags go inline here as `#tag` (e.g. `#k8s`, `#infra/nodes`)." },
                     "folder": { "type": "string", "description": "folder path (default '/'). Verify the path against search_folders/list_folders first; reuse an existing folder and match it verbatim rather than creating a near-duplicate." },
-                    "tags": { "type": "array", "items": { "type": "string" } }
+                    "tags": { "type": "array", "items": { "type": "string" }, "description": "METADATA labels stored on the note and shown separately from the body. Usually leave this unset — to tag the note visibly, write `#tag` inline in `content` instead." }
                 },
                 "required": ["title", "content"]
             }),
         ),
         (
             "update_note",
-            "Update an existing note. Only the provided fields change; content fully replaces the body (use append_to_note to add).",
+            "Update an existing note. Only the provided fields change; content fully replaces the body (use append_to_note to add). Tags are inline `#tag`s in the body; the `tags` field is metadata only.",
             json!({
                 "type": "object",
                 "properties": {
                     "id": { "type": "string", "description": "note UUID — must come from a prior search_notes / read_note / browse_folder result; never invent or guess it" },
                     "title": { "type": "string" },
-                    "content": { "type": "string" },
+                    "content": { "type": "string", "description": "markdown body; tags go inline as `#tag`." },
                     "folder": { "type": "string" },
-                    "tags": { "type": "array", "items": { "type": "string" } }
+                    "tags": { "type": "array", "items": { "type": "string" }, "description": "METADATA labels stored on the note and shown separately from the body. Usually leave this unset — to tag the note visibly, write `#tag` inline in `content` instead." }
                 },
                 "required": ["id"]
             }),
@@ -95,7 +95,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                 "type": "object",
                 "properties": {
                     "id": { "type": "string", "description": "note UUID — must come from a prior search_notes / read_note / browse_folder result; never invent or guess it" },
-                    "text": { "type": "string", "description": "markdown to append" }
+                    "text": { "type": "string", "description": "markdown to append; write tags inline as `#tag`." }
                 },
                 "required": ["id", "text"]
             }),
