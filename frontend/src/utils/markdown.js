@@ -1,11 +1,18 @@
 import remarkGfm from "remark-gfm";
+import { remarkInlineTags } from "./inlineTags";
 
 // Shared react-markdown plugin list.
 //
 // GFM lets a *single* `~` open a strikethrough, so prose that uses `~` to mean
 // "approximately" (`~5% ... (~$500)`) ends up struck through between the two
 // tildes. `singleTilde: false` requires `~~` for a real strikethrough.
-export const remarkPlugins = [[remarkGfm, { singleTilde: false }]];
+//
+// `remarkInlineTags` turns `#tag` / `[tag]` runs into inline-tag spans, which
+// the `span` components in the note/share/chat renderers draw as pills.
+export const remarkPlugins = [
+	[remarkGfm, { singleTilde: false }],
+	remarkInlineTags,
+];
 
 // Render the LaTeX that models sprinkle into prose as readable plain text.
 //

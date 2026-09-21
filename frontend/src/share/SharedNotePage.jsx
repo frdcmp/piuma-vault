@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useParams, useSearchParams } from "react-router-dom";
 import { fetchSharedNote } from "../api/shares";
+import { InlineTagSpan } from "../components/tags/InlineTag";
 import {
 	attachmentMeta,
 	fileNameFromUrl,
@@ -69,6 +70,8 @@ function MermaidBlock({ chart }) {
 // Render note attachments richly: images inline, every other uploaded file as
 // a download/open box. Non-attachment links/images fall through to defaults.
 const markdownComponents = {
+	// Inline `#tag` / `[tag]` pills (everything else is a normal span).
+	span: InlineTagSpan,
 	a({ href, children, ...props }) {
 		if (isAttachmentUrl(href)) {
 			const meta = attachmentMeta(href);

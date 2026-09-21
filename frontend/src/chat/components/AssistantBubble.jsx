@@ -1,5 +1,6 @@
 import { memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
+import { InlineTagSpan } from "../../components/tags/InlineTag";
 import { remarkPlugins } from "../../utils/markdown";
 import { normalizeChatMarkdown } from "../engine/markdown";
 import { NAV_FALLBACK_LABEL, navTargetToPath } from "../engine/messageModel";
@@ -14,7 +15,10 @@ function AssistantBubble({ parts, isStreaming, label, onNavigate }) {
 	const empty = !parts?.length;
 	// Bind the custom link renderer to this bubble's navigation handler.
 	const mdComponents = useMemo(
-		() => ({ a: (props) => <VaultLink {...props} onNavigate={onNavigate} /> }),
+		() => ({
+			span: InlineTagSpan,
+			a: (props) => <VaultLink {...props} onNavigate={onNavigate} />,
+		}),
 		[onNavigate],
 	);
 	return (

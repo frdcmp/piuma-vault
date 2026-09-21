@@ -15,3 +15,8 @@ export function tagColor(value) {
 	const hue = (c0 * 37 + c1 * 17) % 360;
 	return `hsl(${hue}, 62%, 68%)`;
 }
+
+// Same hue as tagColor, as a translucent wash for a chip/pill background.
+export function tagTint(value, alpha = 0.16) {
+	return tagColor(value).replace("hsl(", "hsla(").replace(")", `, ${alpha})`);
+}

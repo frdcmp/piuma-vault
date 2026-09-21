@@ -1,0 +1,19 @@
+/* Inline tags typed in note bodies / chat, rendered as circled pills. Colour is
+   applied inline (utils/tagColor); this only carries the shape. Mirrors the
+   mobile pill in MarkdownView.js. */
+.inline-tag {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 1px;
+	padding: 0 8px;
+	border: 1px solid currentColor;
+	border-radius: 999px;
+	font-size: 0.85em;
+	line-height: 1.6;
+	white-space: nowrap;
+	vertical-align: baseline;
+}
+
+.inline-tag-hash {
+	opacity: 0.5;
+}

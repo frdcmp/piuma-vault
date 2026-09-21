@@ -30,7 +30,9 @@ import {
 	widthFromUrl,
 	withWidth,
 } from "../../../utils/attachments";
+import { splitInlineTags } from "../../../utils/inlineTags";
 import { renderMermaid } from "../../../utils/mermaid";
+import { tagColor, tagTint } from "../../../utils/tagColor";
 import "./MilkdownEditorComp.css";
 
 const searchPluginKey = new PluginKey("search-plugin");
@@ -181,6 +183,59 @@ const searchHighlightPlugin = $prose(() => {
 					}
 				},
 			};
+		},
+	});
+});
+
+const inlineTagPluginKey = new PluginKey("inline-tag-plugin");
+
+// Draw `#tag` / `[tag]` runs in the body as colour-coded pills while editing.
+// Decoration-only: the underlying markdown text is untouched, so it round-trips
+// back to the server exactly as typed. Code blocks and inline code are skipped.
+const buildInlineTagDecos = (doc) => {
+	const decos = [];
+	doc.descendants((node, pos) => {
+		if (node.type.name === "code_block") return false;
+		if (!node.isText || !node.text) return;
+		if (node.marks.some((m) => m.type.name === "code")) return;
+		let offset = 0;
+		for (const part of splitInlineTags(node.text)) {
+			if (part.type === "tag") {
+				const color = tagColor(part.name);
+				decos.push(
+					Decoration.inline(pos + offset, pos + offset + part.raw.length, {
+						class: "inline-tag-deco",
+						"data-tag": part.name,
+						style: `color:${color};border-color:${color};background:${tagTint(part.name)};`,
+					}),
+				);
+				offset += part.raw.length;
+			} else {
+				offset += part.value.length;
+			}
+		}
+	});
+	return DecorationSet.create(doc, decos);
+};
+
+const inlineTagPlugin = $prose(() => {
+	return new Plugin({
+		key: inlineTagPluginKey,
+		state: {
+			init(_config, state) {
+				return { decos: buildInlineTagDecos(state.doc) };
+			},
+			apply(tr, old) {
+				if (!tr.docChanged) {
+					return { decos: old.decos.map(tr.mapping, tr.doc) };
+				}
+				return { decos: buildInlineTagDecos(tr.doc) };
+			},
+		},
+		props: {
+			decorations(state) {
+				return this.getState(state).decos;
+			},
 		},
 	});
 });
@@ -549,6 +604,7 @@ function MilkdownEditor({
 			.use(trailing)
 			.use(listener)
 			.use(searchHighlightPlugin)
+			.use(inlineTagPlugin)
 			.use(imageResizeView)
 			.use(mermaidCodeView)
 			.use(attachmentViewPlugin);

@@ -250,6 +250,17 @@
 	min-height: 180px;
 }
 
+/* Inline `#tag` / `[tag]` pills — colour/border/background come from the
+   decoration's inline style, this only carries the shape. */
+.pv-milkdown-wrapper .milkdown .editor .inline-tag-deco {
+	padding: 0 7px;
+	border: 1px solid currentColor;
+	border-radius: 999px;
+	white-space: nowrap;
+	box-decoration-break: clone;
+	-webkit-box-decoration-break: clone;
+}
+
 /* Search highlight */
 .pv-milkdown-wrapper .milkdown .editor .search-highlight {
 	background-color: rgba(247, 201, 72, 0.4);
