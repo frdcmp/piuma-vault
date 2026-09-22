@@ -22,8 +22,9 @@ spec:
             - name: TUNNEL_TOKEN
               valueFrom: {secretKeyRef: {name: pv-secret, key: CLOUDFLARED_TOKEN}}
             - {name: CLOUDFLARED_HEALTH_URL, value: "http://nginx/api/v1/health"}
-            - {name: FAIL_THRESHOLD, value: "1"}
+            - {name: FAIL_THRESHOLD, value: "5"}
             - {name: OK_THRESHOLD,   value: "3"}
-            - {name: POLL_INTERVAL,  value: "2"}
+            - {name: POLL_INTERVAL,  value: "5"}
           resources:
+            requests: {cpu: 10m, memory: 48Mi}
             limits: {memory: 128Mi}

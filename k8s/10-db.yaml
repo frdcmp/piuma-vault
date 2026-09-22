@@ -40,6 +40,7 @@ spec:
             exec: {command: ["sh","-c","pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]}
             initialDelaySeconds: 5
             periodSeconds: 10
+          resources: {requests: {cpu: 50m, memory: 256Mi}, limits: {memory: 1Gi}}
       volumes:
         - name: data
           persistentVolumeClaim: {claimName: pv-postgres}
