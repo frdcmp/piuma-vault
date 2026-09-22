@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: cloudflared
-          image: docker.io/library/piuma-vault-cloudflared:latest
+          image: __REGISTRY__/piuma-vault-cloudflared:a5ff85bbc9f0
           imagePullPolicy: IfNotPresent
           env:
             - name: TUNNEL_TOKEN

@@ -57,6 +57,8 @@ piuma-vault-mobile/
 
 # k8s Secret/ConfigMap rendered from .env — never commit
 k8s/00-config.yaml
+# manifests with the registry address filled in — installation-specific
+k8s/.rendered/
 
 # Local-only backups: database dumps. Never commit.
 .backup/

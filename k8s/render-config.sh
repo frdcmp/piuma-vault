@@ -1,5 +1,15 @@
 #!/bin/bash
-# Renders k8s/00-config.yaml (gitignored) from .env.k8s. Run from the repo root.
+# Renders everything the cluster needs from .env.k8s. Run from the repo root.
+#
+#   k8s/00-config.yaml   Namespace + ConfigMap + Secret (gitignored)
+#   k8s/.rendered/       every other k8s/*.yaml with __REGISTRY__ filled in
+#                        (gitignored)
+#
+#   ./k8s/render-config.sh && kubectl apply -f k8s/00-config.yaml -f k8s/.rendered/
+#
+# The committed manifests name images as __REGISTRY__/<image>:<tag>, so this
+# public repo carries no one installation's registry address. REGISTRY_HOST in
+# .env.k8s supplies it; it is a deploy-time value, never put in the ConfigMap.
 #
 #   .env      -> the DEV file, used by docker compose. Never read here.
 #   .env.k8s  -> the CLUSTER file, authoritative for production. Read here.
@@ -29,7 +39,10 @@ cfg_all = load('.env.k8s')
 SECRET={'DB_PASSWORD','CLOUDFLARE_API_TOKEN','CLOUDFLARED_TOKEN',
         'CLOUDFLARE_ACCOUNT_ID','TELEMETRY_API_KEY'}
 
-cfg={k:v for k,v in cfg_all.items() if k not in SECRET}
+# Deploy-time substitutions: consumed by this script, read by no pod.
+DEPLOY_ONLY={'REGISTRY_HOST'}
+
+cfg={k:v for k,v in cfg_all.items() if k not in SECRET and k not in DEPLOY_ONLY}
 sec={k:v for k,v in cfg_all.items() if k in SECRET}
 
 # A key added to dev and forgotten here is the failure mode this split
@@ -52,4 +65,19 @@ open('k8s/00-config.yaml','w').write(
  "apiVersion: v1\nkind: Secret\nmetadata:\n  name: pv-secret\n  namespace: piuma-vault\ntype: Opaque\nstringData:\n"+b(sec)+"\n")
 os.chmod('k8s/00-config.yaml',0o600)
 print(f"rendered k8s/00-config.yaml from .env.k8s — {len(cfg)} config keys, {len(sec)} secrets (0600, gitignored)")
+
+import glob
+reg=cfg_all.get('REGISTRY_HOST','')
+if not reg or '<' in reg:
+    sys.exit("error: REGISTRY_HOST missing from .env.k8s (see .env.k8s.example)")
+os.makedirs('k8s/.rendered', exist_ok=True)
+for old in glob.glob('k8s/.rendered/*.yaml'): os.remove(old)
+n=0
+for src in sorted(glob.glob('k8s/*.yaml')):
+    if os.path.basename(src).startswith('00-config'): continue
+    out=open(src).read().replace('__REGISTRY__', reg)
+    if '__' in ''.join(l for l in out.splitlines() if 'image:' in l):
+        sys.exit(f"error: unfilled placeholder left in {src}")
+    open(os.path.join('k8s/.rendered', os.path.basename(src)),'w').write(out); n+=1
+print(f"rendered {n} manifests into k8s/.rendered/ (registry {reg})")
 PY

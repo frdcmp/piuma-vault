@@ -11,7 +11,7 @@ spec:
     spec:
       containers:
         - name: rust
-          image: docker.io/library/piuma-vault-rust-prod:latest
+          image: __REGISTRY__/piuma-vault-rust:7bee3c6f71b0
           imagePullPolicy: IfNotPresent      # built locally, imported into containerd
           args: ["backend"]
           envFrom:
@@ -58,7 +58,7 @@ spec:
     spec:
       containers:
         - name: notification-worker
-          image: docker.io/library/piuma-vault-rust-prod:latest
+          image: __REGISTRY__/piuma-vault-rust:7bee3c6f71b0
           imagePullPolicy: IfNotPresent      # built locally, imported into containerd
           args: ["notification-worker"]
           envFrom:
@@ -87,7 +87,7 @@ spec:
     spec:
       containers:
         - name: cron-worker
-          image: docker.io/library/piuma-vault-rust-prod:latest
+          image: __REGISTRY__/piuma-vault-rust:7bee3c6f71b0
           imagePullPolicy: IfNotPresent      # built locally, imported into containerd
           args: ["cron-worker"]
           envFrom:
@@ -116,7 +116,7 @@ spec:
     spec:
       containers:
         - name: embedding-worker
-          image: docker.io/library/piuma-vault-rust-prod:latest
+          image: __REGISTRY__/piuma-vault-rust:7bee3c6f71b0
           imagePullPolicy: IfNotPresent      # built locally, imported into containerd
           args: ["embedding-worker"]
           envFrom:
@@ -145,7 +145,7 @@ spec:
     spec:
       containers:
         - name: mcp-worker
-          image: docker.io/library/piuma-vault-rust-prod-mcp:latest
+          image: __REGISTRY__/piuma-vault-rust-prod-mcp:a4c847b1ff05
           imagePullPolicy: IfNotPresent      # built locally, imported into containerd
           args: ["mcp-worker"]
           envFrom:

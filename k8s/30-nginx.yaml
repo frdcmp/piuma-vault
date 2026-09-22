@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: nginx
-          image: docker.io/library/piuma-vault-nginx-k8s:latest
+          image: __REGISTRY__/piuma-vault-nginx-k8s:d1e11e80b893
           imagePullPolicy: IfNotPresent
           env:
             - {name: COMPOSE_NAME, value: "piuma-vault"}
