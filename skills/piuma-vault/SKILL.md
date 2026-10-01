@@ -45,6 +45,11 @@ candidates and stops. Prefer UUIDs from a previous `list`/`search` when acting i
 
 ## Note rules
 
+- **Always link every note you created, edited, appended to, moved or restored** in your
+  reply, so the user can open it straight from the chat. The web link is
+  `$VAULT_URL/notes/<uuid>`: take the host from `VAULT_URL` in `~/.config/piuma-vault/env`
+  and the UUID from the script's output. It's `/notes/`, not `/admin/notes/` (that path is
+  the API). Give one link per note, next to its title.
 - **Read before you write.** `search` first — the vault already has a note for most topics,
   and appending to it beats creating a near-duplicate.
 - **`rm` is soft** (sets `deleted_at`, note keeps content and attachments). It's the default
