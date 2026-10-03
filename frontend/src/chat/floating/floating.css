@@ -1,0 +1,152 @@
+/* Floating recording chat (FloatingChat.jsx). Redeclares the chat page's
+   color tokens so the embedded ChatConversation renders the same anywhere. */
+.fchat-window,
+.fchat-pill {
+	--bg: #0e0f12;
+	--bg-soft: #15171c;
+	--panel: #1b1e25;
+	--border: #2a2f3a;
+	--border-strong: #3a4150;
+	--text: #d6dbe5;
+	--muted: #8a93a3;
+	--accent: #f7c948;
+	--accent-2: #5cd0a9;
+	--accent-3: #ff6b6b;
+	--accent-4: #6cb6ff;
+
+	position: fixed;
+	z-index: 900;
+	color: var(--text);
+	font-family:
+		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+	font-size: 10.5pt;
+	line-height: 1.5;
+}
+
+.fchat-window {
+	display: flex;
+	flex-direction: column;
+	width: 400px;
+	height: 560px;
+	min-width: 300px;
+	min-height: 280px;
+	max-width: calc(100vw - 24px);
+	max-height: calc(100vh - 24px);
+	background: var(--bg);
+	border: 2px solid var(--accent-2);
+	box-shadow: 4px 4px 0 #000;
+	/* Drag the bottom-right corner to resize. */
+	resize: both;
+	overflow: hidden;
+}
+
+.fchat-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px;
+	background: var(--panel);
+	border-bottom: 2px solid var(--border-strong);
+	cursor: grab;
+	user-select: none;
+	touch-action: none;
+}
+
+.fchat-bar:active {
+	cursor: grabbing;
+}
+
+.fchat-grip {
+	color: var(--muted);
+	font-size: 12px;
+}
+
+.fchat-bar-title {
+	flex: 1;
+	min-width: 0;
+	color: var(--accent-2);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.fchat-bar-btn {
+	width: 26px;
+	height: 22px;
+	padding: 0;
+	background: var(--bg-soft);
+	border: 2px solid var(--border-strong);
+	color: var(--text);
+	font-family: inherit;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.fchat-bar-btn:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.fchat-body {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+}
+
+.fchat-status {
+	margin: auto;
+	color: var(--muted);
+	font-size: 12px;
+}
+
+.fchat-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 4px 4px 8px;
+	background: var(--panel);
+	border: 2px solid var(--accent-2);
+	box-shadow: 3px 3px 0 #000;
+	cursor: grab;
+	user-select: none;
+	touch-action: none;
+}
+
+.fchat-pill-btn {
+	padding: 6px 10px;
+	background: var(--bg-soft);
+	border: 2px solid var(--border-strong);
+	color: var(--accent-2);
+	font-family: inherit;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 1px;
+	cursor: pointer;
+}
+
+.fchat-pill-btn:hover {
+	border-color: var(--accent-2);
+}
+
+/* Phones: the window spans the width; it still drags vertically. */
+@media (max-width: 600px) {
+	.fchat-window {
+		width: calc(100vw - 24px);
+		height: 60vh;
+		resize: none;
+	}
+}
+
+/* The floating bar already names the chat: drop the conversation's own title
+   line so the stop + model controls fit the narrow window. */
+.fchat-window .chatx-conv-titlewrap {
+	display: none;
+}
+
+.fchat-window .chatx-status {
+	margin-left: auto;
+}

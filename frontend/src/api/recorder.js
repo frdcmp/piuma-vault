@@ -75,3 +75,10 @@ export const recorderWsUrl = (wsPath) => {
 	const base = `${import.meta.env.BASE_URL}api/v1`.replace(/\/+/g, "/");
 	return `${proto}://${window.location.host}${base}${wsPath}?token=${encodeURIComponent(token)}`;
 };
+
+// The recording's own chat conversation (created on first use). Chat turns in
+// it get the recording's transcript as context — live while recording.
+export const getRecordingChat = async (id) => {
+	const { data } = await axiosInstance.post(`/recorder/sessions/${id}/chat`);
+	return data;
+};

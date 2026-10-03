@@ -17,6 +17,7 @@ use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::calendar::events::CalendarEventBus;
 use crate::apps::notes::events::{NoteAction, NotesEventBus};
 use crate::apps::realtime::ResourceAction;
+use crate::apps::recorder::session::SessionRegistry;
 use crate::apps::tasks::events::TasksEventBus;
 use crate::db::db::DbPool;
 
@@ -301,6 +302,7 @@ pub async fn chat(
     tasks_bus: web::Data<TasksEventBus>,
     calendar_bus: web::Data<CalendarEventBus>,
     control: web::Data<TurnControl>,
+    recordings: web::Data<SessionRegistry>,
 ) -> impl Responder {
     let conv_id = path.into_inner();
     let req = body.into_inner();
@@ -583,6 +585,20 @@ pub async fn chat(
     let mem_block = tools::memory::format_block(&retrieved);
     if !mem_block.trim().is_empty() {
         blocks.push(mem_block);
+    }
+    // A recording's own chat: hand the model its transcript every turn — live
+    // while still recording, so questions see what was said up to now.
+    let recording_id = conv
+        .metadata
+        .get("recording_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok());
+    if let Some(rid) = recording_id {
+        if let Some(block) =
+            crate::apps::recorder::session::chat_context(db, &recordings, rid, &user.user_id).await
+        {
+            blocks.push(block);
+        }
     }
     // Opportunistic ask: surface 1-2 most-relevant pending facts for the agent
     // to casually verify with the user.

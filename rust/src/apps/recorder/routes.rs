@@ -33,6 +33,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         web::resource("/recorder/sessions/{id}/title").route(web::post().to(handlers::set_title)),
     )
     .service(
+        web::resource("/recorder/sessions/{id}/chat")
+            .route(web::post().to(handlers::chat_conversation)),
+    )
+    .service(
         web::resource("/recorder/sessions/{id}")
             .route(web::get().to(handlers::get_session))
             .route(web::delete().to(handlers::delete_session)),

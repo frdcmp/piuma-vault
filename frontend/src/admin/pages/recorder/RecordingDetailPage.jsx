@@ -1,4 +1,5 @@
 import { useNavigate, useParams } from "react-router-dom";
+import FloatingChat from "../../../chat/floating/FloatingChat";
 import {
 	useRecording,
 	useRecordingTranscript,
@@ -126,9 +127,7 @@ export default function RecordingDetailPage() {
 							{rec?.status === "failed" ? "Retry summary" : "Summarize now"}
 						</PvButton>
 					) : rec?.final_note_id ? (
-						<PvButton
-							onClick={() => navigate(`/notes/${rec.final_note_id}`)}
-						>
+						<PvButton onClick={() => navigate(`/notes/${rec.final_note_id}`)}>
 							Open summary note
 						</PvButton>
 					) : null}
@@ -180,6 +179,9 @@ export default function RecordingDetailPage() {
 					)}
 				</PvPanel>
 			</div>
+
+			{/* Ask Piuma about this recording (its saved transcript). */}
+			{id && <FloatingChat recordingId={id} />}
 		</div>
 	);
 }

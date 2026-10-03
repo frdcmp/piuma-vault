@@ -707,15 +707,17 @@ export default function ChatConversation({
 	return (
 		<section className="chatx-conv">
 			<header className="chatx-conv-head">
-				<button
-					type="button"
-					className="chatx-hamburger"
-					onClick={onToggleSidebar}
-					aria-label="Toggle conversations"
-					title="Conversations"
-				>
-					☰
-				</button>
+				{onToggleSidebar ? (
+					<button
+						type="button"
+						className="chatx-hamburger"
+						onClick={onToggleSidebar}
+						aria-label="Toggle conversations"
+						title="Conversations"
+					>
+						☰
+					</button>
+				) : null}
 				<div className="chatx-conv-titlewrap">
 					<span className="chatx-conv-title">
 						{title || (conversationId ? "Untitled" : "New chat")}

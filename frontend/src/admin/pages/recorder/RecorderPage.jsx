@@ -10,6 +10,7 @@ import {
 import Starfield from "../../components/notes/Starfield";
 import { PvButton, PvModal, pvMessage } from "../../components/ui";
 import "../../vault-pixel.css";
+import FloatingChat from "../../../chat/floating/FloatingChat";
 import BlackHole from "./BlackHole";
 import PixelWaveform from "./PixelWaveform";
 import { colorForSpeaker, resetSpeakerColors } from "./speakerColors";
@@ -58,6 +59,8 @@ export default function RecorderPage() {
 	// After a stop, the session id awaiting the user's choice (summarise / append
 	// / keep). Drives the post-stop modal. `appendPick` toggles the target list.
 	const [postStop, setPostStop] = useState(null);
+	// The recording being captured (kept after stop) — its floating chat.
+	const [liveId, setLiveId] = useState(null);
 	const [appendPick, setAppendPick] = useState(false);
 	// null while idle; a status label string while a summarise/append is running
 	// (drives the modal's loader overlay).
@@ -337,6 +340,7 @@ export default function RecorderPage() {
 			setPhase("idle");
 			return;
 		}
+		setLiveId(session.id);
 		await beginCapture(session);
 	}, [createRecording, beginCapture]);
 
@@ -346,6 +350,7 @@ export default function RecorderPage() {
 		async (sessionId) => {
 			setArmed(null);
 			setPhase("connecting");
+			setLiveId(sessionId);
 			await beginCapture({ ws_path: `/recorder/sessions/${sessionId}/ws` });
 		},
 		[beginCapture],
@@ -578,6 +583,9 @@ export default function RecorderPage() {
 					</div>
 				)}
 			</PvModal>
+
+			{/* Ask Piuma about the recording while it's being captured. */}
+			{!isEmbedded && liveId && <FloatingChat recordingId={liveId} />}
 		</div>
 	);
 }

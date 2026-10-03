@@ -5,6 +5,7 @@ import {
 	deleteRecording,
 	getRecorderUsage,
 	getRecording,
+	getRecordingChat,
 	getRecordingTranscript,
 	listRecordings,
 	renameRecording,
@@ -87,3 +88,12 @@ export const useDeleteRecording = () => {
 		onSuccess: () => qc.invalidateQueries({ queryKey: RECORDINGS_KEY }),
 	});
 };
+
+// The recording's chat conversation (get-or-create, so safe to re-run).
+export const useRecordingChat = (id) =>
+	useQuery({
+		queryKey: [...RECORDINGS_KEY, id, "chat"],
+		queryFn: () => getRecordingChat(id),
+		enabled: !!id,
+		staleTime: Number.POSITIVE_INFINITY,
+	});

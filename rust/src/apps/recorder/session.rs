@@ -183,3 +183,95 @@ pub async fn mark_failed(pool: &DbPool, id: Uuid, error: &str) {
     .execute(pool)
     .await;
 }
+
+/// Most transcript text handed to a recording's chat per turn; longer
+/// transcripts keep their most recent part.
+const CHAT_TRANSCRIPT_MAX_CHARS: usize = 120_000;
+
+/// The transcript as speaker-labelled lines ("S1: …"), consecutive segments of
+/// the same speaker merged. Unlabelled segments are plain lines.
+fn speaker_text(segments: &[TranscriptSegment]) -> String {
+    let mut lines: Vec<(Option<String>, String)> = Vec::new();
+    for s in segments.iter().filter(|s| s.is_final) {
+        let text = s.text.trim();
+        if text.is_empty() {
+            continue;
+        }
+        match lines.last_mut() {
+            Some((speaker, line)) if *speaker == s.speaker => {
+                line.push(' ');
+                line.push_str(text);
+            }
+            _ => lines.push((s.speaker.clone(), text.to_string())),
+        }
+    }
+    lines
+        .into_iter()
+        .map(|(speaker, line)| match speaker {
+            Some(sp) => format!("{sp}: {line}"),
+            None => line,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// System-prompt block for a chat attached to recording `id`: its transcript,
+/// live from the relay buffer while still recording, else the saved one.
+/// `None` when the recording doesn't exist or isn't `user_id`'s.
+pub async fn chat_context(
+    pool: &DbPool,
+    registry: &SessionRegistry,
+    id: Uuid,
+    user_id: &str,
+) -> Option<String> {
+    let (title, key): (String, Option<String>) = sqlx::query_as(
+        "SELECT title, transcript_storage_key FROM db_recording_sessions \
+         WHERE id = $1 AND user_id = $2",
+    )
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()?;
+
+    let (segments, live) = match registry.get(&id) {
+        Some(handle) => (handle.buffer.lock().await.segments.clone(), true),
+        None => match key {
+            Some(k) => (read_segments(pool, &k).await.unwrap_or_default(), false),
+            None => (Vec::new(), false),
+        },
+    };
+    let mut text = speaker_text(&segments);
+    let total = text.chars().count();
+    let cut = total > CHAT_TRANSCRIPT_MAX_CHARS;
+    if cut {
+        text = text.chars().skip(total - CHAT_TRANSCRIPT_MAX_CHARS).collect();
+    }
+
+    let state = if live {
+        "still being recorded right now — the transcript below is everything said so far, \
+         and it grows between the user's messages"
+    } else {
+        "finished"
+    };
+    let note = if cut {
+        "\n(The transcript is long: only its most recent part is shown.)"
+    } else {
+        ""
+    };
+    let body = if text.is_empty() {
+        "(nothing transcribed yet)".to_string()
+    } else {
+        text
+    };
+    Some(format!(
+        "# The recording this chat is about\n\n\
+         This chat is attached to the recording \"{title}\" (id {id}), {state}. The user is \
+         asking you about it: answer from the transcript — summarise, quote, pull out \
+         decisions, action items, names and numbers, or help them prepare what to say next. \
+         Speaker labels (S1, S2…) are automatic and may be approximate. You don't need \
+         list_recordings / get_recording for this one; the transcript is here.{note}\n\n\
+         <transcript>\n{body}\n</transcript>"
+    ))
+}

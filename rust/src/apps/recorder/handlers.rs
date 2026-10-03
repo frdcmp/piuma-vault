@@ -463,3 +463,62 @@ async fn fetch(pool: &DbPool, id: Uuid, user_id: &str) -> Option<RecordingSessio
     .ok()
     .flatten()
 }
+
+/// POST /recorder/sessions/{id}/chat — the recording's own chat conversation,
+/// created on first use. Turns in it get the recording's transcript as context
+/// (live while recording, saved afterwards; see `session::chat_context`).
+pub async fn chat_conversation(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden();
+    }
+    let pool = pool.get_ref();
+    let id = path.into_inner();
+    let Some(rec) = fetch(pool, id, &user.user_id).await else {
+        return HttpResponse::NotFound().json(serde_json::json!({ "error": "not found" }));
+    };
+
+    let existing = sqlx::query_as::<_, crate::apps::agents::models::ConversationRow>(
+        "SELECT * FROM db_chat_conversations \
+         WHERE metadata->>'recording_id' = $1 AND archived_at IS NULL \
+         ORDER BY created_at LIMIT 1",
+    )
+    .bind(id.to_string())
+    .fetch_optional(pool)
+    .await;
+    match existing {
+        Ok(Some(conv)) => return HttpResponse::Ok().json(conv),
+        Ok(None) => {}
+        Err(e) => {
+            log::error!("recorder chat: lookup: {e}");
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "error": "database error" }));
+        }
+    }
+
+    let Some(def) = crate::apps::agents::registry::get("vault_agent") else {
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "error": "vault agent not registered" }));
+    };
+    let created = sqlx::query_as::<_, crate::apps::agents::models::ConversationRow>(
+        "INSERT INTO db_chat_conversations (agent, title, model_id, identity, metadata) \
+         VALUES ($1, $2, (SELECT id FROM db_llm_models WHERE is_default AND enabled LIMIT 1), $3, $4) \
+         RETURNING *",
+    )
+    .bind(def.kind)
+    .bind(format!("🎙 {}", rec.title))
+    .bind(def.persona)
+    .bind(serde_json::json!({ "source": "recording", "recording_id": id }))
+    .fetch_one(pool)
+    .await;
+    match created {
+        Ok(conv) => HttpResponse::Ok().json(conv),
+        Err(e) => {
+            log::error!("recorder chat: create: {e}");
+            HttpResponse::InternalServerError().json(serde_json::json!({ "error": "database error" }))
+        }
+    }
+}
