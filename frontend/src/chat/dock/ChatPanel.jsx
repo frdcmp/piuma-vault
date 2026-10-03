@@ -6,14 +6,7 @@ import {
 	FormOutlined,
 	ToolOutlined,
 } from "@ant-design/icons";
-import {
-	useCallback,
-	useEffect,
-	useLayoutEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PvModal, pvMessage } from "@/admin/components/ui";
 import { ACCEPT_ATTR, SUPPORTED_LABEL } from "@/processing";
@@ -45,6 +38,7 @@ import {
 	newMessageId,
 } from "../engine/messageModel";
 import useAttachments from "../engine/useAttachments";
+import useAutoGrow from "../engine/useAutoGrow";
 import useChatScroll from "../engine/useChatScroll";
 import useChatStream from "../engine/useChatStream";
 import useModelCatalog from "../engine/useModelCatalog";
@@ -261,21 +255,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		return () => ro.disconnect();
 	}, []);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: re-measure when input text changes
-	useLayoutEffect(() => {
-		const el = inputRef.current;
-		if (!el) return;
-		el.style.height = "auto";
-		const sh = el.scrollHeight;
-		el.style.height = `${sh}px`;
-		// If content overflows after setting, add border width
-		if (el.scrollHeight > el.clientHeight) {
-			const cs = getComputedStyle(el);
-			const bh =
-				parseInt(cs.borderTopWidth, 10) + parseInt(cs.borderBottomWidth, 10);
-			el.style.height = `${sh + bh}px`;
-		}
-	}, [input]);
+	useAutoGrow(inputRef, input);
 
 	const openTabs = useNotesWorkspaceStore((s) => s.tabs);
 	const lockedContext = useNotesWorkspaceStore((s) => s.lockedContext);
@@ -1275,8 +1255,9 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 									className="chat-send"
 									disabled
 									title="Sending…"
+									aria-label="Sending"
 								>
-									<span className="chat-send-spinner" /> send
+									<span className="chat-send-spinner" />
 								</button>
 							) : showStop ? (
 								<button
@@ -1284,8 +1265,9 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 									className="chat-send chat-stop"
 									onClick={stopStreaming}
 									title="Stop the agent"
+									aria-label="Stop the agent"
 								>
-									stop ◼
+									■
 								</button>
 							) : (
 								<button
@@ -1293,8 +1275,12 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 									className="chat-send"
 									onClick={sendMessage}
 									disabled={!canSend}
+									title={
+										isStreaming ? "Add to the running turn" : "Send (Enter)"
+									}
+									aria-label="Send"
 								>
-									send ↑
+									↑
 								</button>
 							)}
 						</div>

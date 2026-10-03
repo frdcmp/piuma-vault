@@ -562,8 +562,7 @@
 
 .chat-composer {
 	display: flex;
-	gap: 6px;
-	padding: 6px 6px 8px;
+	padding: 6px 8px 8px;
 	border-top: 2px dashed var(--border-strong);
 	background: var(--panel);
 }
@@ -575,10 +574,18 @@
 	flex-direction: column;
 	gap: 4px;
 }
+/* One framed field: [+][/] textarea [↑]. The icon buttons are borderless and
+   small so the textarea gets nearly the full width, even in a narrow dock. */
 .chat-composer-row {
 	display: flex;
-	gap: 6px;
+	gap: 2px;
 	align-items: flex-end;
+	padding: 3px;
+	background: var(--bg);
+	border: 2px solid var(--border-strong);
+}
+.chat-composer-row:focus-within {
+	border-color: var(--accent-2);
 }
 
 /* Context chips — small pixel tags above the input (note paths the gateway
@@ -675,59 +682,72 @@ button.chat-context-tag-main {
 }
 .chat-input {
 	flex: 1;
+	min-width: 0;
 	box-sizing: border-box;
-	/* one line + padding + border; auto-grows up to 5 lines (~1.45em each) */
-	min-height: 38px;
-	max-height: calc(5 * 1.45em + 12px + 4px);
+	/* one line + padding; auto-grows (useAutoGrow) up to ~10 lines, then scrolls */
+	min-height: 30px;
+	max-height: min(calc(10 * 1.45em + 10px), 40vh);
 	resize: none;
 	overflow-y: auto;
-	background: var(--bg);
-	border: 2px solid var(--border-strong);
-	padding: 6px 10px;
+	background: transparent;
+	border: 0;
+	padding: 5px 6px;
 	color: var(--text);
 	font-family: inherit;
-	font-size: 11pt;
+	font-size: 10.5pt;
 	line-height: 1.45;
 }
 .chat-input:focus {
 	outline: none;
-	border-color: var(--accent-2);
 }
-/* Composer "/" button — opens the slash-command picker. Matches the input's
-   height/border so it sits flush at the left edge of the composer row. */
+/* Keep the placeholder on one line — a wrapped placeholder would make the empty
+   box several lines tall. */
+.chat-input::placeholder {
+	color: var(--muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+/* Composer icon buttons ("+" attach, "/" commands) — borderless, inside the
+   field's frame. */
 .chat-slash-btn {
 	flex: 0 0 auto;
-	width: 38px;
-	height: 38px;
+	width: 30px;
+	height: 30px;
 	padding: 0;
-	background: var(--bg-soft);
-	border: 2px solid var(--border-strong);
+	background: transparent;
+	border: 0;
 	color: var(--muted);
 	font-family: inherit;
 	font-weight: 900;
-	font-size: 14pt;
+	font-size: 13pt;
 	line-height: 1;
 	cursor: pointer;
 }
 .chat-slash-btn:hover {
-	border-color: var(--accent-2);
+	background: var(--bg-soft);
 	color: var(--accent-2);
 }
 .chat-slash-btn:active {
 	transform: translate(1px, 1px);
 }
+/* Send / stop — a small filled square at the field's right edge. */
 .chat-send {
-	min-width: 110px;
-	height: 38px;
-	padding: 0 14px;
-	background: var(--bg-soft);
-	border: 2px solid var(--accent-2);
-	color: var(--accent-2);
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	background: var(--accent-2);
+	border: 0;
+	box-shadow: 2px 2px 0 0 #000;
+	color: var(--bg);
 	font-family: inherit;
 	font-weight: 900;
-	font-size: 10pt;
-	letter-spacing: 0.8px;
-	text-transform: uppercase;
+	font-size: 13pt;
+	line-height: 1;
 	cursor: pointer;
 }
 .chat-send:hover:not(:disabled) {
@@ -735,17 +755,18 @@ button.chat-context-tag-main {
 }
 .chat-send:active:not(:disabled) {
 	transform: translate(1px, 1px);
+	box-shadow: none;
 }
 .chat-send:disabled {
-	border-color: var(--border-strong);
-	color: var(--muted);
+	background: var(--bg-soft);
+	box-shadow: none;
+	color: var(--border-strong);
 	cursor: not-allowed;
 }
-/* STOP variant of the action button — red border/label. */
+/* STOP variant of the action button. */
 .chat-send.chat-stop {
-	border-color: var(--accent-3);
-	color: var(--accent-3);
-	background: rgba(255, 107, 107, 0.08);
+	background: var(--accent-3);
+	font-size: 10pt;
 }
 
 /* Pending image chips above the composer — thumbnail + filename + dimensions +
@@ -837,8 +858,6 @@ button.chat-context-tag-main {
 	display: inline-block;
 	width: 11px;
 	height: 11px;
-	margin-right: 6px;
-	vertical-align: -1px;
 	border: 2px solid var(--border-strong);
 	border-top-color: var(--accent-2);
 	border-radius: 50%;
@@ -1443,7 +1462,7 @@ button.chat-context-tag-main {
 .chat-user-files .chat-image-tag {
 	padding-right: 8px;
 }
-/* The dock's attach button sits left of the "/" button, same footprint. */
+/* The attach button sits left of the "/" button, same footprint. */
 .chat-attach-btn {
 	font-size: 12pt;
 }

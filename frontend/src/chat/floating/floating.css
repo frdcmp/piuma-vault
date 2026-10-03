@@ -150,3 +150,14 @@
 .fchat-window .chatx-status {
 	margin-left: auto;
 }
+
+/* Tighter gutters around the composer and messages in the small window. */
+.fchat-window .chat-composer {
+	padding: 6px 8px 8px;
+}
+
+.fchat-window .chat-messages {
+	padding-left: 12px;
+	padding-right: 12px;
+	padding-bottom: 84px;
+}

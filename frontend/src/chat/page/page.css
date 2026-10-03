@@ -445,17 +445,17 @@
 	bottom: 0;
 	z-index: 10;
 	border-top: 0;
-	padding: 16px 16px 18px;
+	padding: 10px 14px 12px;
 	/* No full-width band — the textured chat background shows through behind the
 	   floating card, all the way to the bottom. Only the centered card is opaque. */
 	background: transparent;
 	pointer-events: none;
 }
-/* The floating card itself — re-enable interaction; the docked frame moves from
-   the textarea onto this wrapper. */
+/* The floating card itself — re-enable interaction; the field's frame moves
+   from the input row onto this wrapper (it also holds the attachment chips). */
 .chatx-conv .chat-composer-inner {
 	pointer-events: auto;
-	padding: 8px;
+	padding: 3px;
 	background: var(--panel);
 	border: 2px solid var(--border-strong);
 	box-shadow:
@@ -465,9 +465,9 @@
 .chatx-conv .chat-composer-inner:focus-within {
 	border-color: var(--accent-2);
 }
-/* The textarea blends into the card (the card owns the frame now). */
-.chatx-conv .chat-input,
-.chatx-conv .chat-input:focus {
+.chatx-conv .chat-composer-row,
+.chatx-conv .chat-composer-row:focus-within {
+	padding: 0;
 	border-color: transparent;
 	background: transparent;
 }
@@ -476,57 +476,36 @@
    progressively as they slide under the floating composer — the textured
    background still shows through, only the text fades. */
 .chatx-conv .chat-messages {
-	padding-bottom: 150px;
+	padding-bottom: 96px;
 	-webkit-mask-image: linear-gradient(
 		to bottom,
-		#000 calc(100% - 140px),
-		rgba(0, 0, 0, 0.15) calc(100% - 40px),
-		transparent calc(100% - 8px)
+		#000 calc(100% - 90px),
+		rgba(0, 0, 0, 0.15) calc(100% - 30px),
+		transparent calc(100% - 6px)
 	);
 	mask-image: linear-gradient(
 		to bottom,
-		#000 calc(100% - 140px),
-		rgba(0, 0, 0, 0.15) calc(100% - 40px),
-		transparent calc(100% - 8px)
+		#000 calc(100% - 90px),
+		rgba(0, 0, 0, 0.15) calc(100% - 30px),
+		transparent calc(100% - 6px)
 	);
 }
 /* Lift the jump-to-latest pill above the floating composer. */
 .chatx-conv .chat-jump {
-	bottom: 112px;
+	bottom: 72px;
 }
 /* The slash / title dropdowns anchor to .chat-composer-fields, which sits inside
-   the floating card's 8px padding + 2px border. Pull the menu out to the card's
+   the floating card's 3px padding + 2px border. Pull the menu out to the card's
    outer edges so it matches the card width and lines up with it, and lift it
    clear of the card's top border. */
 .chatx-conv .slash-menu {
-	left: -10px;
-	right: -10px;
-	bottom: calc(100% + 12px);
+	left: -5px;
+	right: -5px;
+	bottom: calc(100% + 8px);
 }
 
 /* Per-message chrome (action row, ‹n/n› switcher, edit-fork editor) is shared
    with the chat dock — its CSS lives in ChatPage.css so both surfaces get it. */
-
-/* Image-attach button left of the composer textarea. */
-.chatx-attach {
-	flex: none;
-	width: 38px;
-	height: 38px;
-	background: var(--bg-soft);
-	border: 2px solid var(--border-strong);
-	color: var(--muted);
-	font-size: 16pt;
-	line-height: 1;
-	cursor: pointer;
-}
-.chatx-attach:hover:not(:disabled) {
-	border-color: var(--accent-2);
-	color: var(--accent-2);
-}
-.chatx-attach:disabled {
-	opacity: 0.35;
-	cursor: not-allowed;
-}
 
 /* Mobile drawer scrim (hidden on desktop). */
 .chatx-scrim {

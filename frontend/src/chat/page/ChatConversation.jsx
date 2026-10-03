@@ -4,14 +4,7 @@ import {
 	EyeOutlined,
 	ToolOutlined,
 } from "@ant-design/icons";
-import {
-	useCallback,
-	useEffect,
-	useLayoutEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { pvMessage } from "@/admin/components/ui";
 import { ACCEPT_ATTR, SUPPORTED_LABEL } from "@/processing";
@@ -37,6 +30,7 @@ import {
 	newMessageId,
 } from "../engine/messageModel";
 import useAttachments from "../engine/useAttachments";
+import useAutoGrow from "../engine/useAutoGrow";
 import useChatScroll from "../engine/useChatScroll";
 import useChatStream from "../engine/useChatStream";
 import useModelCatalog from "../engine/useModelCatalog";
@@ -223,24 +217,7 @@ export default function ChatConversation({
 		};
 	}, [conversationId, focusInput]);
 
-	// Auto-grow the textarea up to its max-height.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: re-measure on text change
-	useLayoutEffect(() => {
-		const el = inputRef.current;
-		if (!el) return;
-		el.style.height = "auto";
-		const sh = el.scrollHeight;
-		el.style.height = `${sh}px`;
-		// With box-sizing: border-box, scrollHeight excludes the border, so the
-		// content sits 4px short of the box and a scrollbar appears before the max
-		// rows. Add the border height back when the content would otherwise overflow.
-		if (el.scrollHeight > el.clientHeight) {
-			const cs = getComputedStyle(el);
-			const bh =
-				parseInt(cs.borderTopWidth, 10) + parseInt(cs.borderBottomWidth, 10);
-			el.style.height = `${sh + bh}px`;
-		}
-	}, [input]);
+	useAutoGrow(inputRef, input);
 
 	useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -857,7 +834,7 @@ export default function ChatConversation({
 						>
 							<button
 								type="button"
-								className="chatx-attach"
+								className="chat-slash-btn chat-attach-btn"
 								onClick={() => fileRef.current?.click()}
 								title={`Attach a file (${SUPPORTED_LABEL}${visionEnabled ? "" : " — images need a vision model"})`}
 								aria-label="Attach a file"
@@ -904,8 +881,9 @@ export default function ChatConversation({
 									className="chat-send"
 									disabled
 									title="Sending…"
+									aria-label="Sending"
 								>
-									<span className="chat-send-spinner" /> send
+									<span className="chat-send-spinner" />
 								</button>
 							) : showStop ? (
 								<button
@@ -913,8 +891,9 @@ export default function ChatConversation({
 									className="chat-send chat-stop"
 									onClick={stopStreaming}
 									title="Stop the agent"
+									aria-label="Stop the agent"
 								>
-									stop ◼
+									■
 								</button>
 							) : (
 								<button
@@ -922,8 +901,12 @@ export default function ChatConversation({
 									className="chat-send"
 									onClick={sendMessage}
 									disabled={!canSend}
+									title={
+										isStreaming ? "Add to the running turn" : "Send (Enter)"
+									}
+									aria-label="Send"
 								>
-									send ↑
+									↑
 								</button>
 							)}
 						</div>
