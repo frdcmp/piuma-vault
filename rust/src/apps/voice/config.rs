@@ -18,7 +18,7 @@ pub struct ResolvedConfig {
 }
 
 /// Default model for a provider when none is configured.
-fn default_model(kind: &str) -> &'static str {
+pub fn default_model(kind: &str) -> &'static str {
     match kind {
         "gemini" => "gemini-3.8-live",
         _ => "",
@@ -61,6 +61,56 @@ pub async fn resolve_with(
 
     Ok(ResolvedConfig { kind, api_key, model })
 }
+
+/// A voice provider's rate card, USD per 1M tokens. Live models bill audio
+/// and text at different rates; thinking tokens bill as text output.
+#[derive(Debug, Clone, Copy)]
+pub struct VoicePrices {
+    pub text_input: f64,
+    pub text_output: f64,
+    pub audio_input: f64,
+    pub audio_output: f64,
+}
+
+impl VoicePrices {
+    /// Cost of `input`/`output` tokens, of which `*_audio` are audio.
+    pub fn cost(&self, input: i64, output: i64, input_audio: i64, output_audio: i64) -> f64 {
+        let text_in = (input - input_audio).max(0) as f64;
+        let text_out = (output - output_audio).max(0) as f64;
+        (text_in * self.text_input
+            + input_audio as f64 * self.audio_input
+            + text_out * self.text_output
+            + output_audio as f64 * self.audio_output)
+            / 1_000_000.0
+    }
+}
+
+/// The configured rate card for provider `kind`, or `None` when any of its
+/// four prices is unset (voice usage then shows as unpriced, never guessed).
+pub async fn prices(pool: &DbPool, kind: &str) -> Option<VoicePrices> {
+    let keys = match kind {
+        "gemini" => [
+            store::VOICE_GEMINI_PRICE_TEXT_INPUT,
+            store::VOICE_GEMINI_PRICE_TEXT_OUTPUT,
+            store::VOICE_GEMINI_PRICE_AUDIO_INPUT,
+            store::VOICE_GEMINI_PRICE_AUDIO_OUTPUT,
+        ],
+        _ => return None,
+    };
+    let mut values = [0.0; 4];
+    for (value, key) in values.iter_mut().zip(keys) {
+        *value = store::get(pool, key).await?.trim().parse().ok()?;
+    }
+    Some(VoicePrices {
+        text_input: values[0],
+        text_output: values[1],
+        audio_input: values[2],
+        audio_output: values[3],
+    })
+}
+
+/// Voice providers with an adapter — the ones a rate card can exist for.
+pub const PROVIDERS: &[&str] = &["gemini"];
 
 /// List the realtime-capable models for the configured (or overridden)
 /// provider, using its saved/unsaved key. Powers the Services "Fetch models"

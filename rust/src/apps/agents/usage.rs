@@ -5,6 +5,8 @@
 //! and per day — with an estimated USD cost. Pricing comes from the per-model
 //! `price_*` columns on `db_llm_models` (USD per 1M tokens); embeddings use a
 //! fixed fallback rate since the Azure deployment isn't a `db_llm_models` row.
+//! Voice (speech-to-speech) rows bill audio and text separately, from the
+//! voice rate card in admin → Services → Voice (`voice::config::prices`).
 
 use std::collections::HashMap;
 
@@ -14,6 +16,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::apps::auth::models::AuthenticatedUser;
+use crate::apps::settings::store;
+use crate::apps::voice::config::{self as voice_config, VoicePrices};
 use crate::db::db::DbPool;
 
 /// USD per 1M tokens for `text-embedding-3-large` (cache-free). Embeddings have
@@ -75,18 +79,28 @@ struct Bucket {
     to: i64,
     tc: i64,
     tw: i64,
+    ai: i64,
+    ao: i64,
     calls: i64,
     cost: f64,
+    // Some usage here has no price configured (voice without a rate card).
+    unpriced: bool,
 }
 
 impl Bucket {
-    fn add(&mut self, ti: i64, to: i64, tc: i64, tw: i64, calls: i64, cost: f64) {
+    #[allow(clippy::too_many_arguments)]
+    fn add(&mut self, ti: i64, to: i64, tc: i64, tw: i64, ai: i64, ao: i64, calls: i64, cost: Option<f64>) {
         self.ti += ti;
         self.to += to;
         self.tc += tc;
         self.tw += tw;
+        self.ai += ai;
+        self.ao += ao;
         self.calls += calls;
-        self.cost += cost;
+        match cost {
+            Some(c) => self.cost += c,
+            None => self.unpriced = true,
+        }
     }
     fn json(&self, key_field: &str, key_val: &str) -> serde_json::Value {
         json!({
@@ -97,9 +111,12 @@ impl Bucket {
             "tokens_output": self.to,
             "tokens_cached": self.tc,
             "tokens_cache_write": self.tw,
+            "tokens_input_audio": self.ai,
+            "tokens_output_audio": self.ao,
             "total_tokens": self.ti + self.to + self.tc + self.tw,
             "calls": self.calls,
             "cost_usd": self.cost,
+            "unpriced": self.unpriced,
         })
     }
 }
@@ -150,13 +167,40 @@ pub async fn usage(
         "price_cached": 0.0,
     }));
 
+    // Voice rate cards (per provider), and their rows on the card: input/output
+    // are the text rates, plus the separate audio rates. Unset → nulls ("—").
+    let mut voice_prices: HashMap<String, VoicePrices> = HashMap::new();
+    for kind in voice_config::PROVIDERS {
+        let p = voice_config::prices(pool.get_ref(), kind).await;
+        let model = match *kind {
+            "gemini" => store::get(pool.get_ref(), store::VOICE_GEMINI_MODEL).await,
+            _ => None,
+        }
+        .unwrap_or_else(|| voice_config::default_model(kind).to_string());
+        pricing.push(json!({
+            "model": model,
+            "provider_kind": kind,
+            "kind": "voice",
+            "price_input": p.map(|p| p.text_input),
+            "price_output": p.map(|p| p.text_output),
+            "price_cached": null,
+            "price_audio_input": p.map(|p| p.audio_input),
+            "price_audio_output": p.map(|p| p.audio_output),
+        }));
+        if let Some(p) = p {
+            voice_prices.insert(kind.to_string(), p);
+        }
+    }
+
     // One detailed grouped read; we fold it into the three views in Rust so the
     // per-row cost (which depends on model pricing) stays correct everywhere.
-    let rows: Vec<(NaiveDate, String, String, Option<String>, String, i64, i64, i64, i64, i64)> =
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(NaiveDate, String, String, Option<String>, String, i64, i64, i64, i64, i64, i64, i64)> =
         sqlx::query_as(
             "SELECT date_trunc('day', created_at)::date AS day, model, source, provider_kind, kind, \
                     SUM(tokens_input)::bigint, SUM(tokens_output)::bigint, \
-                    SUM(tokens_cached)::bigint, SUM(tokens_cache_write)::bigint, COUNT(*)::bigint \
+                    SUM(tokens_cached)::bigint, SUM(tokens_cache_write)::bigint, \
+                    SUM(tokens_input_audio)::bigint, SUM(tokens_output_audio)::bigint, COUNT(*)::bigint \
              FROM db_token_usage \
              WHERE ($1::timestamptz IS NULL OR created_at >= $1) \
                AND ($2::timestamptz IS NULL OR created_at < $2) \
@@ -176,16 +220,20 @@ pub async fn usage(
     let mut by_model: HashMap<String, Bucket> = HashMap::new();
     let mut by_source: HashMap<String, Bucket> = HashMap::new();
     let mut by_day: HashMap<String, Bucket> = HashMap::new();
-    let (mut ti_t, mut to_t, mut tc_t, mut tw_t, mut calls_t, mut cost_t) = (0i64, 0i64, 0i64, 0i64, 0i64, 0f64);
+    let mut total = Bucket::default();
 
-    for (day, model, source, provider_kind, kind, ti, to, tc, tw, calls) in rows {
-        let cost = cost_for(&model, &kind, ti, to, tc, tw, &prices);
-        ti_t += ti;
-        to_t += to;
-        tc_t += tc;
-        tw_t += tw;
-        calls_t += calls;
-        cost_t += cost;
+    for (day, model, source, provider_kind, kind, ti, to, tc, tw, ai, ao, calls) in rows {
+        // Voice bills audio and text apart, from its own rate card; `None` =
+        // no rate card configured (shown as unpriced, not $0).
+        let cost = if source == "voice" {
+            provider_kind
+                .as_deref()
+                .and_then(|p| voice_prices.get(p))
+                .map(|p| p.cost(ti, to, ai, ao))
+        } else {
+            Some(cost_for(&model, &kind, ti, to, tc, tw, &prices))
+        };
+        total.add(ti, to, tc, tw, ai, ao, calls, cost);
 
         let m = by_model.entry(model.clone()).or_default();
         if m.provider_kind.is_none() {
@@ -194,16 +242,16 @@ pub async fn usage(
         if m.kind.is_empty() {
             m.kind = kind.clone();
         }
-        m.add(ti, to, tc, tw, calls, cost);
+        m.add(ti, to, tc, tw, ai, ao, calls, cost);
 
         let s = by_source.entry(source.clone()).or_default();
         if s.kind.is_empty() {
             s.kind = kind.clone();
         }
-        s.add(ti, to, tc, tw, calls, cost);
+        s.add(ti, to, tc, tw, ai, ao, calls, cost);
 
         let d = by_day.entry(day.to_string()).or_default();
-        d.add(ti, to, tc, tw, calls, cost);
+        d.add(ti, to, tc, tw, ai, ao, calls, cost);
     }
 
     let mut by_model: Vec<_> = by_model
@@ -225,15 +273,7 @@ pub async fn usage(
     let by_day: Vec<_> = by_day.iter().map(|(k, b)| b.json("day", k)).collect();
 
     HttpResponse::Ok().json(json!({
-        "summary": {
-            "tokens_input": ti_t,
-            "tokens_output": to_t,
-            "tokens_cached": tc_t,
-            "tokens_cache_write": tw_t,
-            "total_tokens": ti_t + to_t + tc_t + tw_t,
-            "calls": calls_t,
-            "cost_usd": cost_t,
-        },
+        "summary": total.json("scope", "all"),
         "by_model": by_model,
         "by_source": by_source,
         "by_day": by_day,

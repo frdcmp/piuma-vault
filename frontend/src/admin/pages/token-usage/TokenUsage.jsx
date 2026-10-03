@@ -23,6 +23,7 @@ const { RangePicker } = DatePicker;
 
 const SOURCE_OPTIONS = [
 	{ value: "chat", label: "Chat" },
+	{ value: "voice", label: "Voice" },
 	{ value: "embedding:notes", label: "Embedding · Notes" },
 	{ value: "embedding:memory", label: "Embedding · Memory" },
 	{ value: "embedding:search", label: "Embedding · Search" },
@@ -49,6 +50,17 @@ const fmtUsd = (n) => {
 	if (v >= 0.0001) return `$${v.toFixed(4)}`;
 	return `$${v.toExponential(2)}`;
 };
+// A bucket's cost; voice usage without a rate card (Services → Voice) is
+// flagged rather than shown as a misleading $0.
+const fmtCost = (v, row) => {
+	if (!row?.unpriced) return fmtUsd(v);
+	return v ? `${fmtUsd(v)} + unpriced` : "unpriced";
+};
+// Audio subset of a bucket's input / output (voice); "—" when there is none.
+const fmtAudio = (_, row) =>
+	row.tokens_input_audio || row.tokens_output_audio
+		? `${fmtTokens(row.tokens_input_audio)} / ${fmtTokens(row.tokens_output_audio)}`
+		: "—";
 // Rate-card prices (USD per 1M tokens). Two decimals normally; keep more for
 // sub-cent rates like DeepSeek's $0.0028/M cache reads so they don't show $0.00.
 const fmtPrice = (n) => {
@@ -123,8 +135,8 @@ const TokenUsage = () => {
 					<div>
 						<h1 className="vp-page-title">Token Usage</h1>
 						<p className="vp-page-subtitle">
-							Spend and token volume per model, source, and over time — chat and
-							embeddings.
+							Spend and token volume per model, source, and over time — chat,
+							voice and embeddings.
 						</p>
 					</div>
 					<div className="vp-row vp-row--wrap">
@@ -158,7 +170,7 @@ const TokenUsage = () => {
 					<div className="tu-stats">
 						<StatCard
 							label="Total cost"
-							value={fmtUsd(summary.cost_usd)}
+							value={fmtCost(summary.cost_usd, summary)}
 							accent="vp-accent"
 							suffix="est."
 						/>
@@ -339,7 +351,7 @@ const TokenUsage = () => {
 								loading={isLoading}
 								pagination={false}
 								size="small"
-								scroll={{ x: 720 }}
+								scroll={{ x: 840 }}
 							>
 								<Table.Column title="Model" dataIndex="model" key="model" />
 								<Table.Column
@@ -370,6 +382,12 @@ const TokenUsage = () => {
 									render={fmtTokens}
 								/>
 								<Table.Column
+									title="Audio in / out"
+									key="audio"
+									align="right"
+									render={fmtAudio}
+								/>
+								<Table.Column
 									title="Calls"
 									dataIndex="calls"
 									key="calls"
@@ -381,7 +399,7 @@ const TokenUsage = () => {
 									dataIndex="cost_usd"
 									key="cost_usd"
 									align="right"
-									render={fmtUsd}
+									render={fmtCost}
 								/>
 							</Table>
 						</div>
@@ -426,7 +444,7 @@ const TokenUsage = () => {
 									dataIndex="cost_usd"
 									key="cost_usd"
 									align="right"
-									render={fmtUsd}
+									render={fmtCost}
 								/>
 							</Table>
 						</div>
@@ -479,10 +497,26 @@ const TokenUsage = () => {
 									align="right"
 									render={fmtPrice}
 								/>
+								<Table.Column
+									title="Audio in"
+									dataIndex="price_audio_input"
+									key="price_audio_input"
+									align="right"
+									render={fmtPrice}
+								/>
+								<Table.Column
+									title="Audio out"
+									dataIndex="price_audio_output"
+									key="price_audio_output"
+									align="right"
+									render={fmtPrice}
+								/>
 							</Table>
 							<p className="vp-muted" style={{ marginTop: 8, marginBottom: 0 }}>
-								Prices are editable per model in the Agents page. “—” means no
-								price set (local models bill at $0).
+								Prices are editable per model in the Agents page; voice
+								(speech-to- speech) prices in Services → Voice, where
+								input/output are the text rates and audio bills separately. “—”
+								means no price set (local models bill at $0).
 							</p>
 						</div>
 					</section>

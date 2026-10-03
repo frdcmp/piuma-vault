@@ -53,8 +53,16 @@ const newTurn = () => ({
 	interrupted: false,
 	tokensIn: 0,
 	tokensOut: 0,
+	tokensInAudio: 0,
+	tokensOutAudio: 0,
 	latencyMs: null,
 });
+
+// Tokens of one modality in a usage report's per-modality breakdown.
+const modalityTokens = (details, modality) =>
+	(details || [])
+		.filter((d) => d.modality === modality)
+		.reduce((sum, d) => sum + (d.tokenCount || 0), 0);
 
 // Voice failures the backend never sees (mic, provider socket, relays) go to
 // the shared client telemetry channel.
@@ -311,8 +319,19 @@ class VoiceEngine {
 
 	onServerMessage(msg) {
 		if (msg.usageMetadata) {
-			this.turn.tokensIn += msg.usageMetadata.promptTokenCount || 0;
-			this.turn.tokensOut += msg.usageMetadata.responseTokenCount || 0;
+			// One report per generation (a tool exchange has two), each re-billing
+			// the whole context. Audio bills apart from text; whatever isn't
+			// listed as audio (tool declarations included) is text, and thinking
+			// bills as text output.
+			const u = msg.usageMetadata;
+			this.turn.tokensIn += u.promptTokenCount || 0;
+			this.turn.tokensInAudio += modalityTokens(u.promptTokensDetails, "AUDIO");
+			this.turn.tokensOut +=
+				(u.responseTokenCount || 0) + (u.thoughtsTokenCount || 0);
+			this.turn.tokensOutAudio += modalityTokens(
+				u.responseTokensDetails,
+				"AUDIO",
+			);
 		}
 		if (msg.voiceActivity?.type === "ACTIVITY_END") {
 			this.speechEndedAt = performance.now();
@@ -434,8 +453,17 @@ class VoiceEngine {
 	// Persist the finished exchange (your words, then Piuma's) in order, and
 	// have the chat dock re-read the conversation.
 	saveTurn() {
-		const { user, piuma, tools, interrupted, tokensIn, tokensOut, latencyMs } =
-			this.turn;
+		const {
+			user,
+			piuma,
+			tools,
+			interrupted,
+			tokensIn,
+			tokensOut,
+			tokensInAudio,
+			tokensOutAudio,
+			latencyMs,
+		} = this.turn;
 		this.turn = newTurn();
 		this.spokeSinceTool = true;
 		const conversationId = store().conversationId;
@@ -459,6 +487,8 @@ class VoiceEngine {
 						interrupted,
 						tokens_input: tokensIn,
 						tokens_output: tokensOut,
+						tokens_input_audio: tokensInAudio,
+						tokens_output_audio: tokensOutAudio,
 						latency_ms: latencyMs,
 					});
 				focusConversation(conversationId);

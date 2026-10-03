@@ -335,17 +335,22 @@ pub async fn save_turn(
     let model = config::resolve_with(pool, None, None, None).await.ok();
     let tin = req.tokens_input.unwrap_or(0).max(0);
     let tout = req.tokens_output.unwrap_or(0).max(0);
+    let tin_audio = req.tokens_input_audio.unwrap_or(0).clamp(0, tin);
+    let tout_audio = req.tokens_output_audio.unwrap_or(0).clamp(0, tout);
     if req.role == "assistant" && tin + tout > 0 {
         if let Some(cfg) = &model {
             let _ = sqlx::query(
                 "INSERT INTO db_token_usage \
-                   (kind, source, provider_kind, model, tokens_input, tokens_output, conversation_id) \
-                 VALUES ('chat', 'voice', $1, $2, $3, $4, $5)",
+                   (kind, source, provider_kind, model, tokens_input, tokens_output, \
+                    tokens_input_audio, tokens_output_audio, conversation_id) \
+                 VALUES ('chat', 'voice', $1, $2, $3, $4, $5, $6, $7)",
             )
             .bind(&cfg.kind)
             .bind(&cfg.model)
             .bind(tin)
             .bind(tout)
+            .bind(tin_audio)
+            .bind(tout_audio)
             .bind(conv.id)
             .execute(pool)
             .await;
@@ -360,6 +365,8 @@ pub async fn save_turn(
             "tools": req.tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
             "interrupted": req.interrupted,
             "latency_ms": req.latency_ms,
+            "tokens_input_audio": tin_audio,
+            "tokens_output_audio": tout_audio,
         }));
     if let Some(cfg) = &model {
         ev = ev.model(&cfg.model);

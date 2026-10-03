@@ -54,6 +54,12 @@ pub struct TurnReq {
     pub tokens_input: Option<i32>,
     #[serde(default)]
     pub tokens_output: Option<i32>,
+    /// The audio part of `tokens_input` / `tokens_output` (billed at the audio
+    /// rate; the rest is text).
+    #[serde(default)]
+    pub tokens_input_audio: Option<i32>,
+    #[serde(default)]
+    pub tokens_output_audio: Option<i32>,
     /// Assistant turns: ms from the end of your speech to Piuma's first audio,
     /// as measured in the browser.
     #[serde(default)]

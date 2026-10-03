@@ -50,6 +50,12 @@ pub const VOICE_PROVIDER: &str = "voice_provider";
 pub const VOICE_GEMINI_API_KEY: &str = "voice_gemini_api_key";
 pub const VOICE_GEMINI_MODEL: &str = "voice_gemini_model";
 pub const VOICE_GEMINI_VOICE: &str = "voice_gemini_voice";
+// Voice pricing, USD per 1M tokens (Live models bill audio and text apart;
+// thinking counts as text output). Costs voice rows on the Token Usage page.
+pub const VOICE_GEMINI_PRICE_TEXT_INPUT: &str = "voice_gemini_price_text_input";
+pub const VOICE_GEMINI_PRICE_TEXT_OUTPUT: &str = "voice_gemini_price_text_output";
+pub const VOICE_GEMINI_PRICE_AUDIO_INPUT: &str = "voice_gemini_price_audio_input";
+pub const VOICE_GEMINI_PRICE_AUDIO_OUTPUT: &str = "voice_gemini_price_audio_output";
 // Screen lock — idle PIN lock for the web app. Config is global (single-tenant).
 // The PIN is stored only as an argon2 hash; it is never returned to the client.
 pub const SCREEN_LOCK_ENABLED: &str = "screen_lock_enabled"; // "true" / "false"

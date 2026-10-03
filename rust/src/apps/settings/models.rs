@@ -45,6 +45,10 @@ pub struct ServiceConfigResponse {
     pub voice_provider: String,
     pub voice_gemini_model: String,
     pub voice_gemini_voice: String,
+    pub voice_gemini_price_text_input: String,
+    pub voice_gemini_price_text_output: String,
+    pub voice_gemini_price_audio_input: String,
+    pub voice_gemini_price_audio_output: String,
     pub voice_gemini_api_key_set: bool,
 }
 
@@ -83,6 +87,10 @@ pub struct UpdateServiceConfig {
     pub voice_gemini_api_key: Option<String>,
     pub voice_gemini_model: Option<String>,
     pub voice_gemini_voice: Option<String>,
+    pub voice_gemini_price_text_input: Option<String>,
+    pub voice_gemini_price_text_output: Option<String>,
+    pub voice_gemini_price_audio_input: Option<String>,
+    pub voice_gemini_price_audio_output: Option<String>,
 }
 
 /// Optional image-generation overrides for a "try now" check. Blank fields fall

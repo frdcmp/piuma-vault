@@ -74,6 +74,18 @@ async fn current_config(pool: &DbPool) -> ServiceConfigResponse {
         voice_gemini_voice: store::get(pool, store::VOICE_GEMINI_VOICE)
             .await
             .unwrap_or_default(),
+        voice_gemini_price_text_input: store::get(pool, store::VOICE_GEMINI_PRICE_TEXT_INPUT)
+            .await
+            .unwrap_or_default(),
+        voice_gemini_price_text_output: store::get(pool, store::VOICE_GEMINI_PRICE_TEXT_OUTPUT)
+            .await
+            .unwrap_or_default(),
+        voice_gemini_price_audio_input: store::get(pool, store::VOICE_GEMINI_PRICE_AUDIO_INPUT)
+            .await
+            .unwrap_or_default(),
+        voice_gemini_price_audio_output: store::get(pool, store::VOICE_GEMINI_PRICE_AUDIO_OUTPUT)
+            .await
+            .unwrap_or_default(),
         voice_gemini_api_key_set: store::get(pool, store::VOICE_GEMINI_API_KEY).await.is_some(),
     }
 }
@@ -101,6 +113,12 @@ pub async fn update_services(
     let pool = pool.get_ref();
     let body = body.into_inner();
 
+    let body_prices = (
+        body.voice_gemini_price_text_input.clone(),
+        body.voice_gemini_price_text_output.clone(),
+        body.voice_gemini_price_audio_input.clone(),
+        body.voice_gemini_price_audio_output.clone(),
+    );
     let updates = [
         (store::AZURE_EMBEDDING_URL, body.azure_embedding_url),
         (store::AZURE_EMBEDDING_API_KEY, body.azure_embedding_api_key),
@@ -133,7 +151,28 @@ pub async fn update_services(
         (store::VOICE_GEMINI_API_KEY, body.voice_gemini_api_key),
         (store::VOICE_GEMINI_MODEL, body.voice_gemini_model),
         (store::VOICE_GEMINI_VOICE, body.voice_gemini_voice),
+        (store::VOICE_GEMINI_PRICE_TEXT_INPUT, body.voice_gemini_price_text_input),
+        (store::VOICE_GEMINI_PRICE_TEXT_OUTPUT, body.voice_gemini_price_text_output),
+        (store::VOICE_GEMINI_PRICE_AUDIO_INPUT, body.voice_gemini_price_audio_input),
+        (store::VOICE_GEMINI_PRICE_AUDIO_OUTPUT, body.voice_gemini_price_audio_output),
     ];
+
+    // Prices must be plain non-negative numbers (blank clears them).
+    let prices = [
+        &body_prices.0,
+        &body_prices.1,
+        &body_prices.2,
+        &body_prices.3,
+    ];
+    if prices.iter().any(|p| {
+        p.as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .is_some_and(|v| !v.parse::<f64>().is_ok_and(|n| n >= 0.0))
+    }) {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "error": "voice prices must be non-negative numbers" }));
+    }
 
     for (key, maybe_value) in updates {
         if let Some(value) = maybe_value {

@@ -769,6 +769,9 @@ const TABLES: &[TableDefinition] = &[
     // 'embedding:chat'). Token counts use a uniform convention across providers:
     // `tokens_input` = full-price (uncached) input, `tokens_cached` = cache-read
     // (cheap), `tokens_cache_write` = cache-creation (Anthropic, ~1.25x).
+    // `tokens_input_audio` / `tokens_output_audio` are the audio SUBSETS of
+    // input/output, for speech-to-speech models that bill audio at its own rate
+    // (source 'voice'); 0 for text-only calls.
     TableDefinition {
         name: "db_token_usage",
         sql: r#"
@@ -782,6 +785,8 @@ const TABLES: &[TableDefinition] = &[
                 tokens_output INTEGER NOT NULL DEFAULT 0,
                 tokens_cached INTEGER NOT NULL DEFAULT 0,
                 tokens_cache_write INTEGER NOT NULL DEFAULT 0,
+                tokens_input_audio INTEGER NOT NULL DEFAULT 0,
+                tokens_output_audio INTEGER NOT NULL DEFAULT 0,
                 conversation_id UUID REFERENCES db_chat_conversations(id) ON DELETE SET NULL,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )

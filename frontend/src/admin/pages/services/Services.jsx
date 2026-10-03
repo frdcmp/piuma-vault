@@ -53,6 +53,10 @@ const EMPTY = {
 	voice_gemini_api_key: "",
 	voice_gemini_model: "",
 	voice_gemini_voice: "",
+	voice_gemini_price_text_input: "",
+	voice_gemini_price_text_output: "",
+	voice_gemini_price_audio_input: "",
+	voice_gemini_price_audio_output: "",
 };
 
 // Service tabs. Each maps to one panel below; the form state is shared, so a
@@ -108,6 +112,17 @@ const VOICE_PROVIDERS = [
 		voice: "voice_gemini_voice",
 		modelPh: "gemini-3.8-live",
 		voicePh: "Charon",
+		// USD per 1M tokens; placeholders are Google's list prices for Live.
+		prices: [
+			{ key: "voice_gemini_price_text_input", label: "Text in", ph: "0.75" },
+			{ key: "voice_gemini_price_text_output", label: "Text out", ph: "4.50" },
+			{ key: "voice_gemini_price_audio_input", label: "Audio in", ph: "3.00" },
+			{
+				key: "voice_gemini_price_audio_output",
+				label: "Audio out",
+				ph: "12.00",
+			},
+		],
 		hint: "aistudio.google.com — billed to the key's Cloud project, not a Google One / Gemini app subscription",
 	},
 ];
@@ -290,6 +305,13 @@ const Services = () => {
 				voice_provider: data.voice_provider || "gemini",
 				voice_gemini_model: data.voice_gemini_model || "",
 				voice_gemini_voice: data.voice_gemini_voice || "",
+				voice_gemini_price_text_input: data.voice_gemini_price_text_input || "",
+				voice_gemini_price_text_output:
+					data.voice_gemini_price_text_output || "",
+				voice_gemini_price_audio_input:
+					data.voice_gemini_price_audio_input || "",
+				voice_gemini_price_audio_output:
+					data.voice_gemini_price_audio_output || "",
 			}));
 		}
 	}, [data]);
@@ -326,6 +348,9 @@ const Services = () => {
 			voice_gemini_model: form.voice_gemini_model.trim(),
 			voice_gemini_voice: form.voice_gemini_voice.trim(),
 		};
+		for (const pr of VOICE_PROVIDERS.flatMap((p) => p.prices || [])) {
+			payload[pr.key] = form[pr.key].trim();
+		}
 		if (form.github_token.trim())
 			payload.github_token = form.github_token.trim();
 		if (form.azure_embedding_api_key.trim())
@@ -1255,6 +1280,56 @@ const Services = () => {
 											))}
 										</datalist>
 									</div>
+									{voiceMeta.prices && (
+										<div
+											className="vp-field"
+											style={{ marginTop: 16, marginBottom: 0 }}
+										>
+											<span className="vp-label">
+												Pricing{" "}
+												<span className="vp-muted vp-svc-chip">
+													$ / 1M tokens
+												</span>
+											</span>
+											<div
+												style={{
+													display: "grid",
+													gridTemplateColumns:
+														"repeat(auto-fit, minmax(110px, 1fr))",
+													gap: 8,
+												}}
+											>
+												{voiceMeta.prices.map((pr) => (
+													<label
+														key={pr.key}
+														style={{ display: "grid", gap: 4 }}
+													>
+														<span className="vp-muted" style={{ fontSize: 12 }}>
+															{pr.label}
+														</span>
+														<input
+															className="vp-input"
+															type="number"
+															min="0"
+															step="any"
+															inputMode="decimal"
+															placeholder={pr.ph}
+															value={form[pr.key]}
+															onChange={set(pr.key)}
+														/>
+													</label>
+												))}
+											</div>
+											<span
+												className="vp-muted vp-text"
+												style={{ fontSize: 12 }}
+											>
+												Costs voice conversations on the Token Usage page. Audio
+												and text bill separately; thinking counts as text out.
+												Until all four are set, voice usage shows as unpriced.
+											</span>
+										</div>
+									)}
 									<TestRow
 										pending={testVoice.isPending}
 										onTest={() =>
