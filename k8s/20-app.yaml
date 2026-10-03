@@ -16,7 +16,7 @@ spec:
         - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 60}
       containers:
         - name: rust
-          image: __REGISTRY__/piuma-vault-rust:7bee3c6f71b0
+          image: __REGISTRY__/piuma-vault-rust:8dfebc57ee39
           imagePullPolicy: IfNotPresent      # built locally, imported into containerd
           args: ["backend"]
           envFrom:
@@ -69,7 +69,7 @@ spec:
         - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 60}
       containers:
         - name: notification-worker
-          image: __REGISTRY__/piuma-vault-rust:7bee3c6f71b0
+          image: __REGISTRY__/piuma-vault-rust:8dfebc57ee39
           imagePullPolicy: IfNotPresent      # built locally, imported into containerd
           args: ["notification-worker"]
           envFrom:
@@ -104,7 +104,7 @@ spec:
         - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 60}
       containers:
         - name: cron-worker
-          image: __REGISTRY__/piuma-vault-rust:7bee3c6f71b0
+          image: __REGISTRY__/piuma-vault-rust:8dfebc57ee39
           imagePullPolicy: IfNotPresent      # built locally, imported into containerd
           args: ["cron-worker"]
           envFrom:
@@ -139,7 +139,7 @@ spec:
         - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 60}
       containers:
         - name: embedding-worker
-          image: __REGISTRY__/piuma-vault-rust:7bee3c6f71b0
+          image: __REGISTRY__/piuma-vault-rust:8dfebc57ee39
           imagePullPolicy: IfNotPresent      # built locally, imported into containerd
           args: ["embedding-worker"]
           envFrom:
