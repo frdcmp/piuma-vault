@@ -9,8 +9,10 @@ import {
 	useTestImagegen,
 	useTestStorage,
 	useTestTranscription,
+	useTestVoice,
 	useTestWebsearch,
 	useUpdateServices,
+	useVoiceModels,
 } from "../../../queries";
 import { PageContent } from "../../components/layout/PageLayout";
 import { PvButton, PvModal, PvPanel, pvMessage } from "../../components/ui";
@@ -47,6 +49,10 @@ const EMPTY = {
 	imagegen_gemini_api_key: "",
 	imagegen_gemini_model: "",
 	imagegen_stability_api_key: "",
+	voice_provider: "gemini",
+	voice_gemini_api_key: "",
+	voice_gemini_model: "",
+	voice_gemini_voice: "",
 };
 
 // Service tabs. Each maps to one panel below; the form state is shared, so a
@@ -57,6 +63,7 @@ const TABS = [
 	{ id: "transcription", label: "Transcription" },
 	{ id: "storage", label: "Storage" },
 	{ id: "images", label: "Images" },
+	{ id: "voice", label: "Voice" },
 	{ id: "github", label: "GitHub" },
 	{ id: "email", label: "Email" },
 	{ id: "mcp", label: "MCP" },
@@ -88,6 +95,46 @@ const IMAGEGEN_PROVIDERS = [
 		key: "imagegen_stability_api_key",
 		hint: "platform.stability.ai — Stable Image Core",
 	},
+];
+
+// Speech-to-speech providers for the voice agent (see apps::voice). Each has its
+// own key + model + voice setting. Only Gemini Live is implemented in v1.
+const VOICE_PROVIDERS = [
+	{
+		id: "gemini",
+		label: "Google Gemini Live",
+		key: "voice_gemini_api_key",
+		model: "voice_gemini_model",
+		voice: "voice_gemini_voice",
+		modelPh: "gemini-3.8-live",
+		voicePh: "Charon",
+		hint: "aistudio.google.com — billed to the key's Cloud project, not a Google One / Gemini app subscription",
+	},
+];
+
+// Gemini Live prebuilt voices (name — style), offered as suggestions.
+const GEMINI_VOICES = [
+	["Charon", "informative"],
+	["Orus", "firm"],
+	["Iapetus", "clear"],
+	["Fenrir", "excitable"],
+	["Algieba", "smooth"],
+	["Algenib", "gravelly"],
+	["Rasalgethi", "informative"],
+	["Alnilam", "firm"],
+	["Schedar", "even"],
+	["Gacrux", "mature"],
+	["Achird", "friendly"],
+	["Sadaltager", "knowledgeable"],
+	["Enceladus", "breathy"],
+	["Umbriel", "easy-going"],
+	["Zubenelgenubi", "casual"],
+	["Puck", "upbeat"],
+	["Kore", "firm"],
+	["Zephyr", "bright"],
+	["Aoede", "breezy"],
+	["Leda", "youthful"],
+	["Sulafat", "warm"],
 ];
 
 // Streaming-transcription providers we ship adapters for (see apps::transcription).
@@ -190,6 +237,8 @@ const Services = () => {
 	const testGh = useTestGithub();
 	const testImg = useTestImagegen();
 	const fetchImgModels = useImagegenModels();
+	const testVoice = useTestVoice();
+	const fetchVoiceModels = useVoiceModels();
 	const [form, setForm] = useState(EMPTY);
 	const [embResult, setEmbResult] = useState(null);
 	const [s3Result, setS3Result] = useState(null);
@@ -198,6 +247,8 @@ const Services = () => {
 	const [ghResult, setGhResult] = useState(null);
 	const [imgResult, setImgResult] = useState(null);
 	const [imgModels, setImgModels] = useState([]);
+	const [voiceResult, setVoiceResult] = useState(null);
+	const [voiceModels, setVoiceModels] = useState([]);
 	const [vendor, setVendor] = useState("aws");
 	const [activeTab, setActiveTab] = useState("embeddings");
 	const v = VENDORS[vendor];
@@ -236,6 +287,9 @@ const Services = () => {
 				imagegen_openai_model: data.imagegen_openai_model || "",
 				imagegen_openai_base: data.imagegen_openai_base || "",
 				imagegen_gemini_model: data.imagegen_gemini_model || "",
+				voice_provider: data.voice_provider || "gemini",
+				voice_gemini_model: data.voice_gemini_model || "",
+				voice_gemini_voice: data.voice_gemini_voice || "",
 			}));
 		}
 	}, [data]);
@@ -268,6 +322,9 @@ const Services = () => {
 			imagegen_openai_model: form.imagegen_openai_model.trim(),
 			imagegen_openai_base: form.imagegen_openai_base.trim(),
 			imagegen_gemini_model: form.imagegen_gemini_model.trim(),
+			voice_provider: form.voice_provider || "gemini",
+			voice_gemini_model: form.voice_gemini_model.trim(),
+			voice_gemini_voice: form.voice_gemini_voice.trim(),
 		};
 		if (form.github_token.trim())
 			payload.github_token = form.github_token.trim();
@@ -289,6 +346,10 @@ const Services = () => {
 		for (const p of IMAGEGEN_PROVIDERS) {
 			if (form[p.key].trim()) payload[p.key] = form[p.key].trim();
 		}
+		// Any voice-agent key the admin typed (for any provider).
+		for (const p of VOICE_PROVIDERS) {
+			if (form[p.key].trim()) payload[p.key] = form[p.key].trim();
+		}
 
 		try {
 			await update.mutateAsync(payload);
@@ -308,6 +369,7 @@ const Services = () => {
 				imagegen_openai_api_key: "",
 				imagegen_gemini_api_key: "",
 				imagegen_stability_api_key: "",
+				voice_gemini_api_key: "",
 			}));
 			pvMessage.success("Services saved");
 		} catch (err) {
@@ -465,6 +527,40 @@ const Services = () => {
 		}
 	};
 
+	// Active voice-agent provider + its key field/flag.
+	const voiceProvider = form.voice_provider || "gemini";
+	const voiceMeta =
+		VOICE_PROVIDERS.find((p) => p.id === voiceProvider) || VOICE_PROVIDERS[0];
+	const voiceKeySet = data?.[`${voiceMeta.key}_set`];
+
+	const voiceTestPayload = () => {
+		const p = { provider: voiceProvider };
+		if (form[voiceMeta.key].trim()) p.api_key = form[voiceMeta.key].trim();
+		if (form[voiceMeta.model].trim()) p.model = form[voiceMeta.model].trim();
+		return p;
+	};
+
+	// Switch provider and drop any models fetched for the previous one.
+	const selectVoiceProvider = (e) => {
+		setVoiceModels([]);
+		set("voice_provider")(e);
+	};
+
+	// Fetch the provider's realtime-capable models (uses the typed or saved key).
+	const loadVoiceModels = async () => {
+		try {
+			const r = await fetchVoiceModels.mutateAsync(voiceTestPayload());
+			const models = r?.models || [];
+			setVoiceModels(models);
+			if (!models.length)
+				pvMessage.info(
+					r?.error || "No realtime voice models returned for this key",
+				);
+		} catch (err) {
+			pvMessage.error(err?.response?.data?.error || "Failed to fetch models");
+		}
+	};
+
 	const secretPlaceholder = (isSet) =>
 		isSet ? "•••• configured — leave blank to keep" : "not set";
 
@@ -523,12 +619,14 @@ const Services = () => {
 					const imgAnySet = IMAGEGEN_PROVIDERS.some(
 						(p) => data[`${p.key}_set`],
 					);
+					const voiceAnySet = VOICE_PROVIDERS.some((p) => data[`${p.key}_set`]);
 					const configured = {
 						embeddings: !!data.azure_embedding_api_key_set,
 						search: wsAnySet,
 						transcription: trAnySet,
 						storage: !!data.s3_secret_access_key_set,
 						images: imgAnySet,
+						voice: voiceAnySet,
 						github: !!data.github_token_set,
 						email: !!emailAccounts?.some(
 							(a) => a.send_enabled || a.read_enabled,
@@ -1036,6 +1134,141 @@ const Services = () => {
 											/>
 										</div>
 									)}
+								</PvPanel>
+							)}
+
+							{/* Voice agent (speech-to-speech) — pick a provider + key
+								(+ optional model/voice). */}
+							{activeTab === "voice" && (
+								<PvPanel title="voice · speech-to-speech">
+									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
+										Powers the voice agent — a realtime speech-to-speech model
+										you talk to, which acts in the vault through the agent's
+										tools. Pick a provider and set its API key. Swap providers
+										anytime without touching the agent.
+									</p>
+									<div className="vp-field">
+										<span className="vp-label">Provider</span>
+										<select
+											className="vp-input"
+											value={voiceProvider}
+											onChange={selectVoiceProvider}
+										>
+											{VOICE_PROVIDERS.map((p) => (
+												<option key={p.id} value={p.id}>
+													{p.label}
+												</option>
+											))}
+										</select>
+									</div>
+									<div className="vp-field">
+										<span className="vp-label">
+											{voiceMeta.label} API Key{" "}
+											{voiceKeySet ? (
+												<span className="vp-tag vp-tag--green vp-svc-chip">
+													set
+												</span>
+											) : (
+												<span className="vp-tag vp-tag--red vp-svc-chip">
+													unset
+												</span>
+											)}
+										</span>
+										<input
+											className="vp-input"
+											type="password"
+											autoComplete="new-password"
+											placeholder={secretPlaceholder(voiceKeySet)}
+											value={form[voiceMeta.key]}
+											onChange={set(voiceMeta.key)}
+										/>
+										<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
+											{voiceMeta.hint}
+										</span>
+									</div>
+									<div className="vp-field">
+										<span className="vp-label">
+											Model{" "}
+											<span className="vp-muted vp-svc-chip">optional</span>
+										</span>
+										<input
+											className="vp-input"
+											type="text"
+											spellCheck={false}
+											placeholder={voiceMeta.modelPh}
+											value={form[voiceMeta.model]}
+											onChange={set(voiceMeta.model)}
+										/>
+										<div className="vp-svc-test">
+											<PvButton
+												size="sm"
+												onClick={loadVoiceModels}
+												disabled={fetchVoiceModels.isPending}
+											>
+												{fetchVoiceModels.isPending
+													? "Fetching…"
+													: "Fetch models"}
+											</PvButton>
+											{voiceModels.length > 0 && (
+												<select
+													className="vp-input"
+													value=""
+													onChange={(e) => {
+														if (e.target.value)
+															setForm((f) => ({
+																...f,
+																[voiceMeta.model]: e.target.value,
+															}));
+													}}
+												>
+													<option value="">
+														{voiceModels.length} models — pick one…
+													</option>
+													{voiceModels.map((m) => (
+														<option key={m} value={m}>
+															{m}
+														</option>
+													))}
+												</select>
+											)}
+										</div>
+									</div>
+									<div className="vp-field" style={{ marginBottom: 0 }}>
+										<span className="vp-label">
+											Voice{" "}
+											<span className="vp-muted vp-svc-chip">optional</span>
+										</span>
+										<input
+											className="vp-input"
+											type="text"
+											spellCheck={false}
+											placeholder={voiceMeta.voicePh}
+											value={form[voiceMeta.voice]}
+											onChange={set(voiceMeta.voice)}
+											list="voice-name-suggestions"
+										/>
+										<datalist id="voice-name-suggestions">
+											{GEMINI_VOICES.map(([name, style]) => (
+												<option key={name} value={name}>
+													{style}
+												</option>
+											))}
+										</datalist>
+									</div>
+									<TestRow
+										pending={testVoice.isPending}
+										onTest={() =>
+											runTest(testVoice, setVoiceResult, voiceTestPayload())
+										}
+										onClear={() =>
+											requestClear(
+												[voiceMeta.key],
+												setVoiceResult,
+												`${voiceMeta.label} voice`,
+											)
+										}
+										result={voiceResult}
+									/>
 								</PvPanel>
 							)}
 

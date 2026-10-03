@@ -32,6 +32,7 @@ import {
 	updateConversation,
 } from "../../api/agentChatApi";
 import { useAgentList, useDefaultAgent } from "../../queries";
+import useChatDockStore from "../../store/chatDockStore";
 import useNotesWorkspaceStore from "../../store/notesWorkspaceStore";
 import ContextTag from "../components/ContextTag";
 import MessageList from "../components/MessageList";
@@ -724,6 +725,29 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			requestAnimationFrame(() => inputRef.current?.focus());
 		}
 	}, []);
+
+	// The voice agent asks the dock to show its conversation, then again after
+	// every spoken turn: switch to it the first time, quietly re-read it after
+	// (no loader flash) while it's already on screen.
+	const focusRequest = useChatDockStore((s) => s.focusRequest);
+	useEffect(() => {
+		if (!focusRequest) return;
+		const { id } = focusRequest;
+		if (id !== convRef.current) {
+			switchConversation(id);
+			return;
+		}
+		let cancelled = false;
+		fetchConversation(id)
+			.then((d) => {
+				if (!cancelled && convRef.current === id)
+					setMessages((d.messages || []).map(mapServerMessage));
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, [focusRequest, switchConversation]);
 
 	// Delete a conversation straight from the /sessions list. Optimistically
 	// drops it from the list; if it's the open one, reset to a fresh chat.

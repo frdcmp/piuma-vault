@@ -27,7 +27,7 @@ use super::{identities, mcp, registry, tools};
 
 const MAX_ROUNDS: usize = 12;
 
-pub(super) fn blocks_to_text(content: &Value) -> String {
+pub(crate) fn blocks_to_text(content: &Value) -> String {
     match content {
         Value::String(s) => s.clone(),
         Value::Array(blocks) => blocks
@@ -170,7 +170,7 @@ fn friendly_provider_error(e: &str) -> String {
 /// After a mutating tool succeeds, publish to the matching live-update bus so
 /// connected clients (web + mobile) refresh immediately — exactly as the HTTP
 /// handlers do. Read-only tools (and ones with no id) are ignored.
-fn publish_tool_event(
+pub(crate) fn publish_tool_event(
     name: &str,
     result: &Value,
     notes_bus: &NotesEventBus,
@@ -203,7 +203,7 @@ fn publish_tool_event(
 /// Build the "current time" system block. Prefers the client's local time
 /// (RFC3339 with offset) + IANA timezone; falls back to server UTC so the agent
 /// always has *some* clock. Without this the model guesses the date/timezone.
-fn current_time_context(timezone: Option<&str>, client_now: Option<&str>) -> String {
+pub(crate) fn current_time_context(timezone: Option<&str>, client_now: Option<&str>) -> String {
     let tz = timezone.map(str::trim).filter(|s| !s.is_empty());
     let now = client_now.map(str::trim).filter(|s| !s.is_empty());
     let tail = "When you call tools, emit RFC3339 timestamps that include this UTC offset (e.g. 2026-06-05T15:00:00+02:00), and interpret relative dates like \"today\" or \"tomorrow 3pm\" in this timezone.";

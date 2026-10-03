@@ -40,6 +40,12 @@ pub struct ServiceConfigResponse {
     pub imagegen_openai_api_key_set: bool,
     pub imagegen_gemini_api_key_set: bool,
     pub imagegen_stability_api_key_set: bool,
+    // Voice agent (speech-to-speech): the active provider + per-provider
+    // model/voice (plain) and a `*_set` flag per provider key.
+    pub voice_provider: String,
+    pub voice_gemini_model: String,
+    pub voice_gemini_voice: String,
+    pub voice_gemini_api_key_set: bool,
 }
 
 /// Partial update. Any omitted field is left unchanged; a secret sent as an
@@ -73,12 +79,25 @@ pub struct UpdateServiceConfig {
     pub imagegen_gemini_api_key: Option<String>,
     pub imagegen_gemini_model: Option<String>,
     pub imagegen_stability_api_key: Option<String>,
+    pub voice_provider: Option<String>,
+    pub voice_gemini_api_key: Option<String>,
+    pub voice_gemini_model: Option<String>,
+    pub voice_gemini_voice: Option<String>,
 }
 
 /// Optional image-generation overrides for a "try now" check. Blank fields fall
 /// back to saved config.
 #[derive(Debug, Default, Deserialize)]
 pub struct TestImagegenRequest {
+    pub provider: Option<String>,
+    pub api_key: Option<String>,
+    pub model: Option<String>,
+}
+
+/// Optional voice-agent overrides for a "try now" check. Blank fields fall back
+/// to saved config.
+#[derive(Debug, Default, Deserialize)]
+pub struct TestVoiceRequest {
     pub provider: Option<String>,
     pub api_key: Option<String>,
     pub model: Option<String>,

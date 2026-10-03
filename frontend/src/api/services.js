@@ -72,3 +72,21 @@ export const imagegenModels = async (payload) => {
 	);
 	return data;
 };
+
+export const testVoice = async (payload) => {
+	const { data } = await axiosInstance.post(
+		"/admin/settings/services/test/voice",
+		payload,
+	);
+	return data;
+};
+
+// Lists the realtime speech-to-speech models the configured provider exposes
+// for its key. Resolves to { models: string[], error? }.
+export const voiceModels = async (payload) => {
+	const { data } = await axiosInstance.post(
+		"/admin/settings/services/voice/models",
+		payload,
+	);
+	return data;
+};

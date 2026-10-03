@@ -4,6 +4,7 @@ import WorkspaceHeader from "../../components/WorkspaceHeader/WorkspaceHeader";
 import useChatDockStore from "../../store/chatDockStore";
 import useUiStore from "../../store/uiStore";
 import { chatDockMode } from "../../utils/workspaceLayout";
+import VoiceProvider from "../../voice/VoiceProvider";
 import ChatDock from "./ChatDock";
 import "./ChatDock.css";
 
@@ -33,6 +34,7 @@ export default function WorkspaceShell({ children }) {
 
 	return (
 		<div className="workspace-shell">
+			<VoiceProvider />
 			<WorkspaceHeader />
 			<div className="workspace-shell-row">
 				{children}

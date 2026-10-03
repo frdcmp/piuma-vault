@@ -2,7 +2,8 @@ use actix_web::{web, HttpResponse, Responder};
 
 use super::models::{
     ServiceConfigResponse, TestEmbeddingRequest, TestGithubRequest, TestImagegenRequest,
-    TestStorageRequest, TestTranscriptionRequest, TestWebsearchRequest, UpdateServiceConfig,
+    TestStorageRequest, TestTranscriptionRequest, TestVoiceRequest, TestWebsearchRequest,
+    UpdateServiceConfig,
 };
 use super::store;
 use crate::apps::auth::middleware::check_permission;
@@ -64,6 +65,16 @@ async fn current_config(pool: &DbPool) -> ServiceConfigResponse {
         imagegen_openai_api_key_set: store::get(pool, store::IMAGEGEN_OPENAI_API_KEY).await.is_some(),
         imagegen_gemini_api_key_set: store::get(pool, store::IMAGEGEN_GEMINI_API_KEY).await.is_some(),
         imagegen_stability_api_key_set: store::get(pool, store::IMAGEGEN_STABILITY_API_KEY).await.is_some(),
+        voice_provider: store::get(pool, store::VOICE_PROVIDER)
+            .await
+            .unwrap_or_else(|| crate::apps::voice::config::DEFAULT_PROVIDER.to_string()),
+        voice_gemini_model: store::get(pool, store::VOICE_GEMINI_MODEL)
+            .await
+            .unwrap_or_default(),
+        voice_gemini_voice: store::get(pool, store::VOICE_GEMINI_VOICE)
+            .await
+            .unwrap_or_default(),
+        voice_gemini_api_key_set: store::get(pool, store::VOICE_GEMINI_API_KEY).await.is_some(),
     }
 }
 
@@ -118,6 +129,10 @@ pub async fn update_services(
         (store::IMAGEGEN_GEMINI_API_KEY, body.imagegen_gemini_api_key),
         (store::IMAGEGEN_GEMINI_MODEL, body.imagegen_gemini_model),
         (store::IMAGEGEN_STABILITY_API_KEY, body.imagegen_stability_api_key),
+        (store::VOICE_PROVIDER, body.voice_provider),
+        (store::VOICE_GEMINI_API_KEY, body.voice_gemini_api_key),
+        (store::VOICE_GEMINI_MODEL, body.voice_gemini_model),
+        (store::VOICE_GEMINI_VOICE, body.voice_gemini_voice),
     ];
 
     for (key, maybe_value) in updates {
@@ -329,6 +344,43 @@ pub async fn imagegen_models(
     }
     let req = body.map(|b| b.into_inner()).unwrap_or_default();
     match crate::apps::image_gen::list_models(pool.get_ref(), req.provider, req.api_key).await {
+        Ok(models) => HttpResponse::Ok().json(serde_json::json!({ "models": models })),
+        Err(e) => HttpResponse::Ok().json(serde_json::json!({ "models": [], "error": e })),
+    }
+}
+
+/// POST /admin/settings/services/test/voice — check the speech-to-speech
+/// provider key and that the chosen model supports realtime voice (no audio
+/// session is opened). An optional body lets the dashboard test an unsaved
+/// provider/key/model; blank fields fall back to saved config.
+pub async fn test_voice(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    body: Option<web::Json<TestVoiceRequest>>,
+) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden();
+    }
+    let req = body.map(|b| b.into_inner()).unwrap_or_default();
+    match crate::apps::voice::test(pool.get_ref(), req.provider, req.api_key, req.model).await {
+        Ok(msg) => test_result(true, msg),
+        Err(e) => test_result(false, e),
+    }
+}
+
+/// POST /admin/settings/services/voice/models — list the realtime-capable
+/// models the configured provider exposes for its key. An optional body
+/// supplies an unsaved provider/key; blank fields fall back to saved config.
+pub async fn voice_models(
+    user: AuthenticatedUser,
+    pool: web::Data<DbPool>,
+    body: Option<web::Json<TestVoiceRequest>>,
+) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden();
+    }
+    let req = body.map(|b| b.into_inner()).unwrap_or_default();
+    match crate::apps::voice::list_models(pool.get_ref(), req.provider, req.api_key).await {
         Ok(models) => HttpResponse::Ok().json(serde_json::json!({ "models": models })),
         Err(e) => HttpResponse::Ok().json(serde_json::json!({ "models": [], "error": e })),
     }

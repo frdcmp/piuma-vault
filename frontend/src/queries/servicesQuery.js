@@ -7,8 +7,10 @@ import {
 	testImagegen,
 	testStorage,
 	testTranscription,
+	testVoice,
 	testWebsearch,
 	updateServices,
+	voiceModels,
 } from "../api/services";
 
 const SERVICES_KEY = ["services"];
@@ -47,3 +49,7 @@ export const useTestImagegen = () => useMutation({ mutationFn: testImagegen });
 
 export const useImagegenModels = () =>
 	useMutation({ mutationFn: imagegenModels });
+
+export const useTestVoice = () => useMutation({ mutationFn: testVoice });
+
+export const useVoiceModels = () => useMutation({ mutationFn: voiceModels });

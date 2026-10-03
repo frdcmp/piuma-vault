@@ -52,6 +52,10 @@ const useChatDockStore = create((set) => ({
 	width: readWidth(),
 	// Transient — not persisted; true while the user drags the resizer.
 	isResizing: false,
+	// Transient request for the dock to show a conversation (and re-read it when
+	// it is already showing): { id, nonce }. Used by the voice agent so its
+	// conversation fills in live while you talk.
+	focusRequest: null,
 
 	openChat: () => {
 		persist(OPEN_KEY, "1");
@@ -78,6 +82,10 @@ const useChatDockStore = create((set) => ({
 		set({ width: CHAT_DEFAULT });
 	},
 	setResizing: (b) => set({ isResizing: !!b }),
+	focusConversation: (id) =>
+		set((state) => ({
+			focusRequest: { id, nonce: (state.focusRequest?.nonce || 0) + 1 },
+		})),
 }));
 
 export default useChatDockStore;

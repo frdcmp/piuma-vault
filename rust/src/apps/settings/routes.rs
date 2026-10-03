@@ -44,5 +44,13 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     .service(
         web::resource("/admin/settings/services/imagegen/models")
             .route(web::post().to(handlers::imagegen_models)),
+    )
+    .service(
+        web::resource("/admin/settings/services/test/voice")
+            .route(web::post().to(handlers::test_voice)),
+    )
+    .service(
+        web::resource("/admin/settings/services/voice/models")
+            .route(web::post().to(handlers::voice_models)),
     );
 }

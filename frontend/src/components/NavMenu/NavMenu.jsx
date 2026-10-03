@@ -6,6 +6,7 @@ import {
 	FileTextOutlined,
 	FolderOpenOutlined,
 	MessageOutlined,
+	SoundOutlined,
 } from "@ant-design/icons";
 import { Link, useLocation } from "react-router-dom";
 import "./NavMenu.css";
@@ -19,6 +20,7 @@ const ITEMS = [
 	{ key: "/tasks", label: "Tasks", icon: <CheckSquareOutlined /> },
 	{ key: "/calendar", label: "Calendar", icon: <CalendarOutlined /> },
 	{ key: "/chat", label: "Chat", icon: <MessageOutlined /> },
+	{ key: "/voice", label: "Voice", icon: <SoundOutlined /> },
 	{ key: "/recorder", label: "Recorder", icon: <AudioOutlined /> },
 	{ key: "/storage", label: "Storage", icon: <FolderOpenOutlined /> },
 	{ key: "/docs", label: "Docs", icon: <FileTextOutlined /> },

@@ -1,6 +1,7 @@
 import { SettingOutlined } from "@ant-design/icons";
 import { Link, useNavigate } from "react-router-dom";
 import { Sprite, useSprite } from "../../sprites";
+import { VoiceIndicator } from "../../voice/VoiceProvider";
 import NavMenu from "../NavMenu/NavMenu";
 import NotificationBell from "../NotificationBell";
 import UserMenu from "../UserMenu";
@@ -27,6 +28,7 @@ export default function WorkspaceHeader() {
 			<NavMenu className="ws-header-nav" />
 
 			<div className="ws-header-actions">
+				<VoiceIndicator />
 				<button
 					type="button"
 					className="vp-icon-btn"

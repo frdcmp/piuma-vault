@@ -43,6 +43,13 @@ pub const IMAGEGEN_OPENAI_BASE: &str = "imagegen_openai_base";
 pub const IMAGEGEN_GEMINI_API_KEY: &str = "imagegen_gemini_api_key";
 pub const IMAGEGEN_GEMINI_MODEL: &str = "imagegen_gemini_model";
 pub const IMAGEGEN_STABILITY_API_KEY: &str = "imagegen_stability_api_key";
+// Voice agent (speech-to-speech) — pick a provider, set its key (+ optional
+// model/voice). See `apps::voice`. The active provider is `voice_provider`; each
+// provider's settings live in their own `voice_<provider>_*` keys.
+pub const VOICE_PROVIDER: &str = "voice_provider";
+pub const VOICE_GEMINI_API_KEY: &str = "voice_gemini_api_key";
+pub const VOICE_GEMINI_MODEL: &str = "voice_gemini_model";
+pub const VOICE_GEMINI_VOICE: &str = "voice_gemini_voice";
 // Screen lock — idle PIN lock for the web app. Config is global (single-tenant).
 // The PIN is stored only as an argon2 hash; it is never returned to the client.
 pub const SCREEN_LOCK_ENABLED: &str = "screen_lock_enabled"; // "true" / "false"

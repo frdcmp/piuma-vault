@@ -41,6 +41,7 @@ import { ScreenLockGate } from "./components/screenLock";
 import SharedFolderPage from "./share/SharedFolderPage";
 import SharedNotePage from "./share/SharedNotePage";
 import { SpriteProvider } from "./sprites";
+import VoicePage from "./voice/VoicePage";
 
 // Public docs site — code-split so it stays out of the main app bundle.
 const DocsLayout = lazy(() => import("./docs/DocsLayout"));
@@ -102,6 +103,16 @@ function AppContent() {
 						element={
 							<ProtectedRoute requiredPermission="admin_access">
 								<CalendarPage />
+							</ProtectedRoute>
+						}
+					/>
+
+					{/* Voice agent — talk to Piuma (speech-to-speech) */}
+					<Route
+						path="/voice"
+						element={
+							<ProtectedRoute requiredPermission="admin_access">
+								<VoicePage />
 							</ProtectedRoute>
 						}
 					/>
