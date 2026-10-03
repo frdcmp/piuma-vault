@@ -144,6 +144,9 @@ pub async fn start_session(
     if !history.is_empty() {
         blocks.push(history);
     }
+    if let Some(wake) = prompt::wake_block() {
+        blocks.push(wake);
+    }
     let system = blocks.join("\n\n");
 
     let spec = providers::SessionSpec {
@@ -167,6 +170,7 @@ pub async fn start_session(
                     "system_chars": system.chars().count(),
                     "resumed": resumed,
                     "continued": req.conversation_id.is_some(),
+                    "wake_phrase": prompt::wake_phrase(),
                 }))
                 .emit();
             HttpResponse::Ok().json(StartSessionResp {
@@ -175,6 +179,7 @@ pub async fn start_session(
             model: cfg.model,
             ws_url: session.ws_url,
             setup: session.setup,
+            wake_phrase: prompt::wake_phrase().map(str::to_string),
             })
         }
         Err(e) => {

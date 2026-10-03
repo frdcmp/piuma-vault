@@ -8,6 +8,8 @@ const useVoiceStore = create((set) => ({
 	status: "idle",
 	error: null,
 	conversationId: null,
+	// Set when Piuma only answers once addressed ("OK Piuma"); shown as a hint.
+	wakePhrase: null,
 	muted: false,
 	// 0..1 loudness, ~20 Hz: the mic while you talk, Piuma's voice while it talks.
 	micLevel: 0,

@@ -252,7 +252,10 @@ class VoiceEngine {
 			resume_handle: this.resumeHandle,
 		});
 		const firstConnect = !store().conversationId;
-		patch({ conversationId: session.conversation_id });
+		patch({
+			conversationId: session.conversation_id,
+			wakePhrase: session.wake_phrase || null,
+		});
 		if (firstConnect) this.deps.focusConversation(session.conversation_id);
 
 		await new Promise((resolve, reject) => {

@@ -36,6 +36,39 @@ pub const VOICE_TOOLS: &[&str] = &[
 /// system instruction, so the voice model knows what was said before.
 const HISTORY_MESSAGES: i64 = 20;
 
+/// Wake-phrase mode: Piuma stays silent until addressed by name, so a voice
+/// session can stay open in a room without answering the TV or other people.
+/// It is an instruction to the model (gemini-3.8-live's proactive audio lets it
+/// choose not to respond), not a hard gate: everything the mic picks up is
+/// still sent. Set to false to answer every utterance again.
+pub const REQUIRE_WAKE_PHRASE: bool = true;
+/// The phrase that addresses Piuma in wake-phrase mode (shown in the clients).
+pub const WAKE_PHRASE: &str = "OK Piuma";
+
+/// The wake phrase in effect for new sessions, if any.
+pub fn wake_phrase() -> Option<&'static str> {
+    REQUIRE_WAKE_PHRASE.then_some(WAKE_PHRASE)
+}
+
+/// The wake-phrase rule, when enabled. Placed last so it wins over the rest.
+pub fn wake_block() -> Option<String> {
+    let phrase = wake_phrase()?;
+    Some(format!(
+        "# STRICT RULE — you only speak when called by name\n\n\
+         The microphone is always open in a room with other people, a TV, phone calls. \
+         Most of what you hear is NOT for you.\n\
+         - Respond ONLY to an utterance that contains your name: \"{phrase}\", \"Piuma\", \
+           \"Hey Piuma\", \"Ciao Piuma\" (the transcript may spell it \"Puma\").\n\
+         - Every utterance WITHOUT your name gets NO response at all — even when it is a \
+           question that sounds like it is meant for an assistant (\"what's on my agenda \
+           tomorrow?\", \"che tempo fa?\"). No reply, no acknowledgement, no filler, no \
+           tool calls. Silence is the correct and expected behaviour; the user says your \
+           name whenever they want you, follow-ups included.\n\
+         - When unsure whether your name was said, stay silent.\n\
+         - When you are called, just answer — do not repeat or mention the wake phrase."
+    ))
+}
+
 /// Spoken-style rules. Placed after the persona prompt so it wins over any
 /// chat formatting/linking guidance there.
 pub fn voice_block() -> String {

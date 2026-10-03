@@ -21,45 +21,65 @@
 }
 
 .voice-stage {
-	position: relative;
-	width: 260px;
-	height: 260px;
 	display: flex;
+	flex-direction: column;
 	align-items: center;
-	justify-content: center;
+	gap: 22px;
+	/* Headroom for the mascot's bounce, so it never rides into the header. */
+	padding-top: 24px;
 }
 
-.voice-ring {
-	position: absolute;
-	inset: 0;
-	border: 3px dashed var(--border-strong, #3a4150);
-	border-radius: 50%;
-	transition:
-		transform 80ms linear,
-		border-color 200ms;
-	pointer-events: none;
+.voice-eq {
+	--eq-color: var(--vp-faint, #5b6373);
+	display: flex;
+	gap: 4px;
+	align-items: flex-end;
 }
 
-.voice-ring--inner {
-	inset: 36px;
-	border-style: dotted;
+.voice-eq.is-listening {
+	--eq-color: var(--accent-2);
 }
 
-.voice-stage.is-listening .voice-ring {
-	border-color: var(--accent-2);
+.voice-eq.is-speaking {
+	--eq-color: var(--accent);
 }
 
-.voice-stage.is-speaking .voice-ring {
-	border-color: var(--accent);
+.voice-eq.is-thinking {
+	--eq-color: var(--accent-4);
 }
 
-.voice-stage.is-thinking .voice-ring--outer {
-	border-color: var(--accent-4);
-	animation: voice-spin 2.4s linear infinite;
+.voice-eq.is-error {
+	--eq-color: var(--accent-3);
 }
 
-.voice-stage.is-connecting .voice-ring {
-	animation: voice-pulse 1s ease-in-out infinite;
+.voice-eq-col {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.voice-eq-cell {
+	width: 8px;
+	height: 8px;
+	background: var(--border-strong, #3a4150);
+	opacity: 0.35;
+}
+
+.voice-eq-cell.is-lit {
+	background: var(--eq-color);
+	opacity: 1;
+	box-shadow: 2px 2px 0 #000;
+}
+
+/* Thinking: one pixel per column flashes in turn, a left→right scanner. */
+.voice-eq.is-thinking .voice-eq-cell:last-child {
+	animation: voice-scan 1.05s steps(1) infinite;
+	animation-delay: var(--eq-delay);
+}
+
+.voice-eq.is-connecting .voice-eq-cell:last-child {
+	background: var(--eq-color);
+	animation: voice-pulse 1s steps(2) infinite;
 }
 
 .voice-piuma {
@@ -216,9 +236,14 @@
 	letter-spacing: 0.5px;
 }
 
-@keyframes voice-spin {
-	to {
-		transform: rotate(360deg);
+@keyframes voice-scan {
+	0% {
+		background: var(--eq-color);
+		opacity: 1;
+	}
+	14% {
+		background: var(--border-strong, #3a4150);
+		opacity: 0.35;
 	}
 }
 

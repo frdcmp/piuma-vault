@@ -24,6 +24,9 @@ pub struct StartSessionResp {
     pub model: String,
     pub ws_url: String,
     pub setup: Value,
+    /// When set, Piuma only answers when addressed with this phrase (see
+    /// `prompt::REQUIRE_WAKE_PHRASE`); clients show it as a hint.
+    pub wake_phrase: Option<String>,
 }
 
 /// A tool call the model made, relayed by the client for the backend to run.
