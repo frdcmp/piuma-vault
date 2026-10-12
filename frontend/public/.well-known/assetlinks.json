@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.frdcmp.vault",
+      "sha256_cert_fingerprints": [
+        "1D:62:24:FB:C7:3A:A0:5E:52:63:C4:7F:21:FA:2A:2D:B5:C4:1C:C9:98:DB:FE:B0:58:D5:DB:4B:92:D2:D3:75"
+      ]
+    }
+  }
+]

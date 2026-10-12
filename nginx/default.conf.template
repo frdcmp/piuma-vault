@@ -51,6 +51,18 @@ server {
     # sub_filter '<body>' '<body><div style="position:fixed;top:0;left:0;width:100%;background:#c00;color:#fff;font-family:monospace;font-size:14px;padding:6px 12px;z-index:99999;text-align:center;">SERVER: ${SERVER_NAME}</div><div style="height:32px;"></div>';
     sub_filter_once on;
 
+    # App Links / Universal Links association files (/.well-known/assetlinks.json
+    # for Android, apple-app-site-association for iOS later). Served as JSON with
+    # no redirects; unknown paths 404 instead of falling back to the SPA HTML
+    # (which would be silently wrong: the fetchers reject text/html).
+    location ^~ /.well-known/ {
+        root /usr/share/nginx/html;
+        default_type application/json;
+        add_header Cache-Control "public, max-age=300";
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
     # Static Files for main frontend
     location ${BASE_URL} {
         alias /usr/share/nginx/html/;
