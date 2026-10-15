@@ -75,7 +75,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
         ),
         (
             "update_note",
-            "Update an existing note. Only the provided fields change; content fully replaces the body (use append_to_note to add). Tags are inline `#tag`s in the body; the `tags` field is metadata only.",
+            "Update an existing note. Only the provided fields change; content fully replaces the body (use edit_note to change part of it, append_to_note to add). Tags are inline `#tag`s in the body; the `tags` field is metadata only.",
             json!({
                 "type": "object",
                 "properties": {
@@ -98,6 +98,19 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                     "text": { "type": "string", "description": "markdown to append; write tags inline as `#tag`." }
                 },
                 "required": ["id", "text"]
+            }),
+        ),
+        (
+            "edit_note",
+            "Replace one exact passage of a note's body, leaving the rest untouched. Call read_note first and copy `old_text` verbatim from it; it must occur exactly once (include more surrounding text if it is ambiguous). An empty `new_text` removes the passage.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "note UUID — must come from a prior search_notes / read_note / browse_folder result; never invent or guess it" },
+                    "old_text": { "type": "string", "description": "the exact passage to replace, copied verbatim from the current body" },
+                    "new_text": { "type": "string", "description": "the replacement markdown (empty string removes the passage)" }
+                },
+                "required": ["id", "old_text", "new_text"]
             }),
         ),
         (
@@ -427,6 +440,53 @@ pub async fn append_to_note(pool: &DbPool, user_id: &str, args: &Value) -> Resul
         }
         None => Err("note not found for that id — call search_notes to get the correct id, then retry".into()),
     }
+}
+
+pub async fn edit_note(pool: &DbPool, user_id: &str, args: &Value) -> Result<Value, String> {
+    let id = uuid_arg(args, "id")?;
+    let old_text = args
+        .get("old_text")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or("`old_text` is required")?;
+    let new_text = args
+        .get("new_text")
+        .and_then(|v| v.as_str())
+        .ok_or("`new_text` is required")?;
+    // Transaction so the versioning trigger records this change as 'agent'.
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    crate::apps::notes::versions::set_change_source(&mut tx, "agent")
+        .await
+        .map_err(|e| e.to_string())?;
+    let current: Option<(String,)> = sqlx::query_as(
+        "SELECT content FROM notes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL FOR UPDATE",
+    )
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+    let Some((content,)) = current else {
+        return Err("note not found for that id — call search_notes to get the correct id, then retry".into());
+    };
+    match content.matches(old_text).count() {
+        0 => return Err("`old_text` not found in the note — call read_note and copy the passage verbatim".into()),
+        1 => {}
+        n => return Err(format!("`old_text` occurs {n} times — include more surrounding text so it matches once")),
+    }
+    let new_content = content.replacen(old_text, new_text, 1);
+    let (title,): (String,) = sqlx::query_as(
+        "UPDATE notes SET content = $3, updated_at = NOW() WHERE id = $1 AND user_id = $2 RETURNING title",
+    )
+    .bind(id)
+    .bind(user_id)
+    .bind(&new_content)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    enqueue_embedding(pool, id, &new_content).await;
+    Ok(json!({ "id": id, "title": title, "edited": true }))
 }
 
 pub async fn delete_note(pool: &DbPool, user_id: &str, args: &Value) -> Result<Value, String> {

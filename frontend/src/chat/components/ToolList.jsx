@@ -6,7 +6,12 @@ const TOOL_ICON = { running: "⚙", done: "✓", error: "✗" };
 // Note tools that take a note `id` arg — while they run (before the result's
 // title arrives) we resolve the id to a name from the cache so the chip shows
 // the note title, not a raw UUID.
-const NOTE_ID_TOOLS = new Set(["read_note", "update_note", "delete_note"]);
+const NOTE_ID_TOOLS = new Set([
+	"read_note",
+	"update_note",
+	"edit_note",
+	"delete_note",
+]);
 
 // Compact one-line summary of a tool's arguments for the chip.
 const toolArgsSummary = (args) => {

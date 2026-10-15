@@ -49,6 +49,37 @@ async fn load_conversation(pool: &DbPool, id: Uuid) -> Result<Option<Conversatio
         .await
 }
 
+/// The single standing voice conversation: the most recent non-archived one,
+/// created on first use, so every new voice session continues the same chat.
+async fn voice_conversation(
+    pool: &DbPool,
+    agent: &str,
+    persona: &str,
+) -> Result<ConversationRow, sqlx::Error> {
+    let existing = sqlx::query_as::<_, ConversationRow>(
+        "SELECT * FROM db_chat_conversations \
+         WHERE agent = $1 AND metadata->>'source' = 'voice' AND archived_at IS NULL \
+         ORDER BY updated_at DESC LIMIT 1",
+    )
+    .bind(agent)
+    .fetch_optional(pool)
+    .await?;
+    if let Some(c) = existing {
+        return Ok(c);
+    }
+    sqlx::query_as::<_, ConversationRow>(
+        "INSERT INTO db_chat_conversations (agent, title, model_id, identity, metadata) \
+         VALUES ($1, $2, (SELECT id FROM db_llm_models WHERE is_default AND enabled LIMIT 1), $3, $4) \
+         RETURNING *",
+    )
+    .bind(agent)
+    .bind("🎙 Voice")
+    .bind(persona)
+    .bind(json!({ "source": "voice" }))
+    .fetch_one(pool)
+    .await
+}
+
 /// Voice tools this conversation may use: the voice subset ∩ the agent's
 /// subscription ∩ the persona's `allowed_tools`.
 async fn enabled_tools(pool: &DbPool, conv: &ConversationRow) -> Result<Vec<String>, String> {
@@ -104,18 +135,7 @@ pub async fn start_session(
             let Some(def) = registry::get(VOICE_AGENT) else {
                 return bad_request("voice agent not registered");
             };
-            let created = sqlx::query_as::<_, ConversationRow>(
-                "INSERT INTO db_chat_conversations (agent, title, model_id, identity, metadata) \
-                 VALUES ($1, $2, (SELECT id FROM db_llm_models WHERE is_default AND enabled LIMIT 1), $3, $4) \
-                 RETURNING *",
-            )
-            .bind(def.kind)
-            .bind("🎙 Voice")
-            .bind(def.persona)
-            .bind(json!({ "source": "voice" }))
-            .fetch_one(pool)
-            .await;
-            match created {
+            match voice_conversation(pool, def.kind, def.persona).await {
                 Ok(c) => c,
                 Err(e) => return db_error(e),
             }

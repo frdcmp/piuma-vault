@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-/// Open (or resume) a voice session. Omitting `conversation_id` starts a new
-/// voice conversation; passing one continues it (and is how the client
+/// Open (or resume) a voice session. Omitting `conversation_id` continues the
+/// standing voice conversation (created if missing); passing one continues it (and is how the client
 /// reconnects when the provider rotates the connection). `resume_handle` is the
 /// provider's session-resumption handle from the previous connection.
 #[derive(Debug, Deserialize)]

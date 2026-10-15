@@ -104,6 +104,7 @@ pub async fn dispatch(
         "create_note" => notes::create_note(pool, user_id, args).await,
         "update_note" => notes::update_note(pool, user_id, args).await,
         "append_to_note" => notes::append_to_note(pool, user_id, args).await,
+        "edit_note" => notes::edit_note(pool, user_id, args).await,
         "delete_note" => notes::delete_note(pool, user_id, args).await,
         // ── Tasks ──
         "list_tasks" => tasks::list_tasks(pool, user_id, args).await,

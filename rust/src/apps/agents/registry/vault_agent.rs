@@ -35,6 +35,7 @@ pub static DEF: AgentDef = AgentDef {
         "create_note",
         "update_note",
         "append_to_note",
+        "edit_note",
         "create_event",
         "update_event",
         "create_task",

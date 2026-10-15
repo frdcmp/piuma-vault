@@ -28,6 +28,7 @@ pub const VOICE_TOOLS: &[&str] = &[
     "search_folders",
     "create_note",
     "append_to_note",
+    "edit_note",
     "memory_search",
     "memory_save",
     "web_search",
@@ -73,7 +74,9 @@ pub fn voice_block() -> String {
          You are speaking aloud in real time: answer in 1–3 short spoken sentences, with no \
          markdown, lists, links or ids (ignore the formatting rules above). Say dates and \
          numbers naturally. Reply in the user's language. Say a few words before a slow \
-         tool. Use `navigate` to show something on screen. Nothing can be deleted by voice.",
+         tool. Use `navigate` to show something on screen. To change part of a note, read_note \
+         then edit_note. Never say you changed, saved or added something unless a tool \
+         call in this turn did it and succeeded. Nothing can be deleted by voice.",
     )
 }
 

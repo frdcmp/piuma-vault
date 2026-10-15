@@ -187,7 +187,7 @@ pub(crate) fn publish_tool_event(
     let Some(id) = id else { return };
     match name {
         "create_note" => notes_bus.publish(NoteAction::Created, id),
-        "update_note" | "append_to_note" => notes_bus.publish(NoteAction::Updated, id),
+        "update_note" | "append_to_note" | "edit_note" => notes_bus.publish(NoteAction::Updated, id),
         "delete_note" => notes_bus.publish(NoteAction::Deleted, id),
         "create_task" | "create_recurring" => tasks_bus.publish(Created, id),
         "update_task" | "toggle_task" | "update_recurring" | "complete_occurrence" => {
