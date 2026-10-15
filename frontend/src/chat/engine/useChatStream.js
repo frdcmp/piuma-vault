@@ -81,9 +81,10 @@ export default function useChatStream({
 				try {
 					const d = await fetchConversation(convId);
 					if (convRef.current !== convId) return;
-					const msgs = d.messages || [];
-					const last = msgs[msgs.length - 1];
-					if (last && last.role === "assistant") {
+					// The turn is over once the backend no longer reports it running;
+					// until then the active branch still ends at the PREVIOUS reply.
+					if (!d.turn_active) {
+						const msgs = d.messages || [];
 						setMessages(msgs.map(mapServerMessage));
 						return;
 					}

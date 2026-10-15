@@ -11,6 +11,7 @@ use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::settings;
 use crate::db::db::DbPool;
 
+use super::control::TurnControl;
 use super::models::*;
 use super::registry;
 use super::title;
@@ -647,9 +648,13 @@ async fn active_path_json(pool: &DbPool, conv: &ConversationRow) -> serde_json::
     json!({ "conversation": conv, "messages": out })
 }
 
+/// The active branch plus `turn_active`: whether a turn is still running. While
+/// it is, the new user message is off-branch (the active leaf only advances once
+/// the reply is saved), so a client recovering a dropped stream waits for false.
 pub async fn get_conversation(
     _user: AuthenticatedUser,
     pool: web::Data<DbPool>,
+    control: web::Data<TurnControl>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let id = path.into_inner();
@@ -664,7 +669,9 @@ pub async fn get_conversation(
         Ok(None) => return HttpResponse::NotFound().json(ApiError::new("conversation not found")),
         Err(e) => return db_err(e),
     };
-    HttpResponse::Ok().json(active_path_json(pool.get_ref(), &conv).await)
+    let mut body = active_path_json(pool.get_ref(), &conv).await;
+    body["turn_active"] = json!(control.is_active(id));
+    HttpResponse::Ok().json(body)
 }
 
 #[derive(Debug, Deserialize)]
