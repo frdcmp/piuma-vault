@@ -5,9 +5,10 @@ import {
 	InboxOutlined,
 	LoadingOutlined,
 } from "@ant-design/icons";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useNavigate } from "react-router-dom";
+import { PvButton, PvModal, PvPopover } from "@/ui";
 import {
 	useDismissNotification,
 	useMarkAllNotificationsRead,
@@ -17,8 +18,6 @@ import {
 } from "../../queries";
 import { formatDateTime, timeAgo } from "../../utils/dateTime";
 import { remarkPlugins } from "../../utils/markdown";
-import PiumaModal from "../piuma/Modal";
-import PiumaPopover from "../piuma/Popover";
 import "./NotificationBell.css";
 
 // Notification level → dot color (mirrors the vault-pixel accents).
@@ -135,6 +134,7 @@ function NotificationList({
  */
 export default function NotificationBell() {
 	const [open, setOpen] = useState(false);
+	const bellRef = useRef(null);
 	const [detail, setDetail] = useState(null);
 	const navigate = useNavigate();
 	const { data: count = 0 } = useUnreadNotificationCount();
@@ -164,34 +164,36 @@ export default function NotificationBell() {
 
 	return (
 		<>
-			<PiumaPopover
+			<button
+				ref={bellRef}
+				type="button"
+				className="vp-icon-btn nb-bell"
+				title="Notifications"
+				aria-label="Notifications"
+				onClick={() => handleOpenChange(!open)}
+			>
+				<BellOutlined />
+				{count > 0 && (
+					<span className="nb-badge">{count > 99 ? "99+" : count}</span>
+				)}
+			</button>
+			<PvPopover
 				open={open}
-				onOpenChange={handleOpenChange}
+				anchorRef={bellRef}
+				onClose={() => handleOpenChange(false)}
+				align="end"
+				gap={8}
 				width={340}
 				title="Notifications"
-				actions={
-					<button
-						type="button"
-						className="piuma-pop-barbtn"
+				extra={
+					<PvButton
+						variant="text"
+						icon={<CheckOutlined />}
 						disabled={markAll.isPending || items.every((i) => i.read_at)}
 						onClick={() => markAll.mutate()}
 					>
-						<CheckOutlined /> mark all read
-					</button>
-				}
-				trigger={
-					<button
-						type="button"
-						className="vp-icon-btn nb-bell"
-						title="Notifications"
-						aria-label="Notifications"
-						onClick={() => handleOpenChange(!open)}
-					>
-						<BellOutlined />
-						{count > 0 && (
-							<span className="nb-badge">{count > 99 ? "99+" : count}</span>
-						)}
-					</button>
+						mark all read
+					</PvButton>
 				}
 			>
 				<NotificationList
@@ -203,31 +205,27 @@ export default function NotificationBell() {
 					fetchNextPage={fetchNextPage}
 					isFetchingNextPage={isFetchingNextPage}
 				/>
-			</PiumaPopover>
+			</PvPopover>
 
-			<PiumaModal
+			<PvModal
 				open={!!detail}
 				title={detail?.title}
-				onClose={() => setDetail(null)}
+				onCancel={() => setDetail(null)}
+				width={560}
 				footer={
 					<>
-						<button
-							type="button"
-							className="vp-btn vp-btn--danger"
+						<PvButton
+							variant="danger"
 							onClick={() => {
 								if (detail) dismiss.mutate(detail.id);
 								setDetail(null);
 							}}
 						>
 							dismiss
-						</button>
-						<button
-							type="button"
-							className="vp-btn vp-btn--primary"
-							onClick={() => setDetail(null)}
-						>
+						</PvButton>
+						<PvButton variant="primary" onClick={() => setDetail(null)}>
 							close
-						</button>
+						</PvButton>
 					</>
 				}
 			>
@@ -244,7 +242,7 @@ export default function NotificationBell() {
 						</div>
 					</>
 				)}
-			</PiumaModal>
+			</PvModal>
 		</>
 	);
 }

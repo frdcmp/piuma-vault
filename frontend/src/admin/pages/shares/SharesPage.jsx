@@ -1,5 +1,6 @@
 import { ReloadOutlined } from "@ant-design/icons";
 import { useMemo, useState } from "react";
+import { PvButton, PvModal, PvPanel, PvTable, pvMessage } from "@/ui";
 import {
 	useAllNoteShares,
 	useDeleteFolderShare,
@@ -12,13 +13,6 @@ import {
 } from "../../../queries";
 import { formatDateTime, timeAgo } from "../../../utils/dateTime";
 import { PageContent } from "../../components/layout/PageLayout";
-import {
-	PvButton,
-	PvModal,
-	PvPanel,
-	PvTable,
-	pvMessage,
-} from "../../components/ui";
 
 // Prepend the current origin to a relative URL returned by the backend.
 const absoluteUrl = (url) => {

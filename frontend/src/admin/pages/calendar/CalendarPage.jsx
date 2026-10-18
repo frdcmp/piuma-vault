@@ -8,6 +8,7 @@ import {
 	useState,
 } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { PvButton, PvPopover, PvTag, pvMessage } from "@/ui";
 import {
 	BucketTagFilter,
 	ManageBucketsModal,
@@ -26,12 +27,6 @@ import {
 } from "../../../queries";
 import { expandRecurrence } from "../../../utils/recurrence";
 import { tagColor } from "../../../utils/tagColor";
-import {
-	PvButton,
-	PvPopover,
-	PvTag,
-	pvMessage,
-} from "../../components/ui";
 import RecurringTaskModal from "../tasks/RecurringTaskModal";
 import TaskModal from "../tasks/TaskModal";
 import "./Calendar.css";

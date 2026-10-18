@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { PvButton, PvPanel } from "@/ui";
 import {
 	useDeleteRecording,
 	useRecorderUsage,
@@ -6,7 +7,6 @@ import {
 } from "../../../queries";
 import { formatDateTime } from "../../../utils/dateTime";
 import Starfield from "../../components/notes/Starfield";
-import { PvButton, PvPanel } from "../../components/ui";
 import "./recorder.css";
 
 // Archive of recorded sessions — the list that used to live on the recorder

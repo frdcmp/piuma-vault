@@ -1,5 +1,6 @@
 import { Button, Switch } from "antd";
 import { useEffect, useState } from "react";
+import { pvMessage } from "@/ui";
 import {
 	useNotificationPreferences,
 	useSendTestNotification,
@@ -12,7 +13,6 @@ import {
 	notificationPermission,
 	webPushSupported,
 } from "../../../utils/webPush";
-import { pvMessage } from "../../components/ui";
 
 /**
  * Real notification settings. "Browser notifications" drives both the Web Push
@@ -57,9 +57,7 @@ export default function NotificationSettings() {
 				pvMessage.info("Browser notifications disabled");
 			}
 		} catch (e) {
-			pvMessage.error(
-				e?.message || "Could not update browser notifications",
-			);
+			pvMessage.error(e?.message || "Could not update browser notifications");
 		} finally {
 			setBusy(false);
 		}

@@ -13,10 +13,10 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { PvButton } from "@/ui";
 import { useTokenUsage } from "../../../queries";
 import { useTheme } from "../../../theme";
 import { PageContent } from "../../components/layout/PageLayout";
-import { PvButton } from "../../components/ui";
 import "./token-usage.css";
 
 const { RangePicker } = DatePicker;

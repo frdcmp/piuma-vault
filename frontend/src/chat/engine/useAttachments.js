@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from "react";
-import { pvMessage } from "@/admin/components/ui";
 import {
 	extractFile,
 	kindOf,
@@ -7,6 +6,7 @@ import {
 	SUPPORTED_LABEL,
 	turnChars,
 } from "@/processing";
+import { pvMessage } from "@/ui";
 import { attachmentMeta } from "@/utils/attachments";
 import { uploadChatImage } from "../../api/storage";
 import { reportClientError } from "../../api/telemetry";

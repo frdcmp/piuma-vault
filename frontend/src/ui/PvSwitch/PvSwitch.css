@@ -1,0 +1,67 @@
+.pv-switch {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0;
+	background: none;
+	border: 0;
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+	font-size: 12px;
+	cursor: pointer;
+}
+.pv-switch:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+.pv-switch.is-loading {
+	cursor: progress;
+}
+
+.pv-switch-track {
+	position: relative;
+	display: inline-block;
+	width: 36px;
+	height: 18px;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	transition: border-color 0.1s;
+}
+.pv-switch-thumb {
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 10px;
+	height: 10px;
+	background: var(--vp-muted);
+	transition:
+		left 0.12s steps(3, end),
+		background 0.1s;
+}
+.pv-switch.is-on .pv-switch-track {
+	border-color: var(--vp-success);
+}
+.pv-switch.is-on .pv-switch-thumb {
+	left: 20px;
+	background: var(--vp-success);
+}
+.pv-switch:not(:disabled):hover .pv-switch-track {
+	border-color: var(--vp-accent);
+}
+.pv-switch:focus-visible .pv-switch-track {
+	outline: 2px solid var(--vp-accent);
+	outline-offset: 2px;
+}
+
+.pv-switch--sm .pv-switch-track {
+	width: 28px;
+	height: 14px;
+}
+.pv-switch--sm .pv-switch-thumb {
+	width: 6px;
+	height: 6px;
+}
+.pv-switch--sm.is-on .pv-switch-thumb {
+	left: 16px;
+}

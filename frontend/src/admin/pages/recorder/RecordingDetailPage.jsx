@@ -1,4 +1,5 @@
 import { useNavigate, useParams } from "react-router-dom";
+import { PvButton, PvPanel, pvMessage } from "@/ui";
 import FloatingChat from "../../../chat/floating/FloatingChat";
 import {
 	useRecording,
@@ -7,7 +8,6 @@ import {
 } from "../../../queries";
 import { formatDateTime } from "../../../utils/dateTime";
 import Starfield from "../../components/notes/Starfield";
-import { PvButton, PvPanel, pvMessage } from "../../components/ui";
 import { colorForSpeaker } from "./speakerColors";
 import "./recorder.css";
 

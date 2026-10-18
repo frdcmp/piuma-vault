@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { PvMenu, pvMessage, pvToast } from "@/admin/components/ui";
+import { PvMenu, pvMessage, pvToast } from "@/ui";
 import {
 	getShareMeta,
 	listShareFolder,

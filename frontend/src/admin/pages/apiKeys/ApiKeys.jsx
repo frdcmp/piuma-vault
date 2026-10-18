@@ -26,6 +26,7 @@ import relativeTime from "dayjs/plugin/relativeTime";
 dayjs.extend(relativeTime);
 
 import { useState } from "react";
+import { PvButton, PvPanel } from "@/ui";
 import {
 	useCreateApiKey,
 	useDeleteApiKey,
@@ -35,7 +36,6 @@ import {
 } from "../../../queries";
 import { formatDate, timeAgo } from "../../../utils/dateTime";
 import { PageContent } from "../../components/layout/PageLayout";
-import { PvButton, PvPanel } from "../../components/ui";
 import "./apiKeys.css";
 
 const SCOPE_OPTIONS = [

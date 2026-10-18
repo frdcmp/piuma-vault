@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PvButton, PvModal, PvPanel, pvMessage } from "@/ui";
 import {
 	useEmailAccounts,
 	useImagegenModels,
@@ -15,7 +16,6 @@ import {
 	useVoiceModels,
 } from "../../../queries";
 import { PageContent } from "../../components/layout/PageLayout";
-import { PvButton, PvModal, PvPanel, pvMessage } from "../../components/ui";
 import "./services.css";
 import EmailAccounts from "./EmailAccounts";
 import McpServers from "./McpServers";

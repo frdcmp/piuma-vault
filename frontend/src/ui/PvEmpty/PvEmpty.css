@@ -1,0 +1,39 @@
+.pv-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 10px;
+	padding: 32px 16px;
+	color: var(--vp-muted);
+	font-family: var(--vp-font);
+	text-align: center;
+}
+.pv-empty--compact {
+	padding: 14px 8px;
+	gap: 6px;
+}
+
+.pv-empty-glyph {
+	color: var(--vp-faint);
+	font-size: 28px;
+	line-height: 1;
+}
+.pv-empty-box {
+	display: block;
+	width: 28px;
+	height: 22px;
+	border: 2px dashed var(--vp-border);
+}
+.pv-empty--compact .pv-empty-glyph {
+	display: none;
+}
+
+.pv-empty-text {
+	margin: 0;
+	font-size: 12px;
+	letter-spacing: 0.3px;
+}
+
+.pv-empty-actions {
+	margin-top: 4px;
+}

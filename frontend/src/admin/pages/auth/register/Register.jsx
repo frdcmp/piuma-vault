@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { LockGlyph, PvButton } from "@/ui";
 import PixelLoader from "../../../../components/PixelLoader";
 import { useAuthStatus, useRegister } from "../../../../queries";
 import Starfield from "../../../components/notes/Starfield";
-import { LockGlyph, PvButton } from "../../../components/ui";
 import "../auth-chrome.css";
 
 /**

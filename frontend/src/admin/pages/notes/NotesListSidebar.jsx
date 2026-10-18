@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import FtreeScene from "@/admin/components/notes/FtreeScene";
-import { PvModal } from "@/admin/components/ui";
+import { PvModal } from "@/ui";
 import {
 	notesKeys,
 	useBrowseFolder,

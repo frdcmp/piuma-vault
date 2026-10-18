@@ -1,0 +1,38 @@
+.pv-avatar {
+	--pv-avatar-tone: var(--vp-muted);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	overflow: hidden;
+	background: color-mix(in srgb, var(--pv-avatar-tone) 18%, var(--vp-bg-soft));
+	border: 2px solid var(--pv-avatar-tone);
+	box-shadow: var(--vp-shadow);
+	color: var(--pv-avatar-tone);
+	font-family: var(--vp-font);
+	font-weight: 800;
+	text-transform: uppercase;
+	image-rendering: pixelated;
+	box-sizing: border-box;
+}
+.pv-avatar img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.pv-avatar--accent {
+	--pv-avatar-tone: var(--vp-accent);
+}
+.pv-avatar--success {
+	--pv-avatar-tone: var(--vp-success);
+}
+.pv-avatar--danger {
+	--pv-avatar-tone: var(--vp-danger);
+}
+.pv-avatar--info {
+	--pv-avatar-tone: var(--vp-info);
+}
+.pv-avatar--violet {
+	--pv-avatar-tone: var(--vp-violet);
+}

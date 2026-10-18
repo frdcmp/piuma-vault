@@ -1,9 +1,6 @@
 import { useState } from "react";
+import { PvButton, PvModal, PvPanel, pvMessage } from "@/ui";
 import { useScreenLockSettings, useUpdateScreenLock } from "../../../queries";
-import PvButton from "../ui/PvButton";
-import pvMessage from "../ui/PvMessage";
-import PvModal from "../ui/PvModal";
-import PvPanel from "../ui/PvPanel";
 
 // Inactivity-lock config. After the chosen timeout with no activity, a
 // full-screen overlay blocks the app until the 6-digit PIN is entered. The PIN

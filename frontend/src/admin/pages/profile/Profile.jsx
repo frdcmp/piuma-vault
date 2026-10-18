@@ -8,9 +8,9 @@ import {
 } from "@ant-design/icons";
 import { Avatar, Select, Spin, Switch, Upload } from "antd";
 import { useState } from "react";
+import { PvPanel } from "@/ui";
 import { useUserMe } from "../../../queries";
 import { PageContent } from "../../components/layout/PageLayout";
-import { PvPanel } from "../../components/ui";
 import NotificationSettings from "./NotificationSettings";
 import "./profile.css";
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PvButton, PvCheckbox, PvModal, pvMessage } from "@/ui";
 import {
 	useCreateCronJob,
 	useCronJobs,
@@ -9,12 +10,6 @@ import {
 	useUpdateCronJob,
 } from "../../../queries";
 import { formatDateTime, timeAgo } from "../../../utils/dateTime";
-import {
-	PvButton,
-	PvCheckbox,
-	PvModal,
-	pvMessage,
-} from "../../components/ui";
 import "./cron.css";
 
 const browserTz = () => {

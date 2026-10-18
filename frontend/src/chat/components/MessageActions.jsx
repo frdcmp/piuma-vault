@@ -6,7 +6,7 @@ import {
 	RightOutlined,
 } from "@ant-design/icons";
 import { useCallback, useState } from "react";
-import { pvMessage } from "@/admin/components/ui";
+import { pvMessage } from "@/ui";
 
 // Shared per-message chrome for both the standalone /chat page and the chat dock.
 

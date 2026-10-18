@@ -9,8 +9,8 @@ import {
 } from "@ant-design/icons";
 import { Avatar, Segmented, Table, Tooltip } from "antd";
 import { useNavigate } from "react-router-dom";
+import { PvButton, PvPanel } from "@/ui";
 import { PageContent } from "../../components/layout/PageLayout";
-import { PvButton, PvPanel } from "../../components/ui";
 import "./projects.css";
 
 /** Mini stat card — pixel vault style */

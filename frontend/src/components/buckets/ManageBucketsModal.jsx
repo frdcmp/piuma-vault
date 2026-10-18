@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTheme } from "@/theme";
-import { PvModal } from "../../admin/components/ui";
+import { PvModal } from "@/ui";
 import {
 	useBuckets,
 	useCreateBucket,

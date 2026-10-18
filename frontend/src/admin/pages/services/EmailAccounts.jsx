@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PvButton, PvCheckbox, PvModal, PvPanel, pvMessage } from "@/ui";
 import {
 	useCreateEmailAccount,
 	useDeleteEmailAccount,
@@ -8,13 +9,6 @@ import {
 	useTestEmailSmtp,
 	useUpdateEmailAccount,
 } from "../../../queries";
-import {
-	PvButton,
-	PvCheckbox,
-	PvModal,
-	PvPanel,
-	pvMessage,
-} from "../../components/ui";
 
 const SECURITY_OPTS = [
 	{ id: "starttls", label: "STARTTLS (587)" },
@@ -544,9 +538,7 @@ const EmailAccounts = () => {
 
 			{!draft && (
 				<div className="vp-row" style={{ marginTop: 16 }}>
-					<PvButton onClick={() => setDraft(true)}>
-						＋ Add account
-					</PvButton>
+					<PvButton onClick={() => setDraft(true)}>＋ Add account</PvButton>
 				</div>
 			)}
 

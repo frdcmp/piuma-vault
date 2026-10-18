@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { PvButton, PvModal, pvMessage } from "@/ui";
 import { recorderWsUrl } from "../../../api/recorder";
 import FloatingChat from "../../../chat/floating/FloatingChat";
 import {
@@ -9,7 +10,6 @@ import {
 	useSummariseRecording,
 } from "../../../queries";
 import Starfield from "../../components/notes/Starfield";
-import { PvButton, PvModal, pvMessage } from "../../components/ui";
 import BlackHole from "./BlackHole";
 import PixelWaveform from "./PixelWaveform";
 import { colorForSpeaker, resetSpeakerColors } from "./speakerColors";

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PvModal, pvMessage } from "@/admin/components/ui";
+import { PvModal, pvMessage } from "@/ui";
 import {
 	useCreateFolderShare,
 	useDeleteFolderShare,

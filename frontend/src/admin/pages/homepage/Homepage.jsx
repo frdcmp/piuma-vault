@@ -9,8 +9,8 @@ import {
 	ShareAltOutlined,
 	ThunderboltOutlined,
 } from "@ant-design/icons";
+import { PvButton, PvPanel } from "@/ui";
 import { PageContent } from "../../components/layout/PageLayout";
-import { PvButton, PvPanel } from "../../components/ui";
 import "./homepage.css";
 
 const FEATURES = [

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { PvButton } from "../ui";
+import { PvButton } from "@/ui";
 import PixelCanvas from "./PixelCanvas";
 import { AnimatedPreview, SpritePreview } from "./pixelRender";
 

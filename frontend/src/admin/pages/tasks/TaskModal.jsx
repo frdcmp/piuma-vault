@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import { PvButton, PvDateTimePicker, PvModal } from "@/ui";
 import { BucketSelect, TagPicker } from "../../../components/buckets";
 import {
 	useBuckets,
@@ -10,7 +11,6 @@ import {
 import { formatDateTime } from "../../../utils/dateTime";
 import { remarkPlugins } from "../../../utils/markdown";
 import AlertsField from "../../components/AlertsField";
-import { PvButton, PvDateTimePicker, PvModal } from "../../components/ui";
 
 const PRIORITY_LABELS = ["none", "low", "medium", "high"];
 

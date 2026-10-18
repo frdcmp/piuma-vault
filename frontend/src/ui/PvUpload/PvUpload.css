@@ -1,0 +1,35 @@
+.pv-upload {
+	display: inline-flex;
+}
+
+.pv-upload-drop {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	width: 100%;
+	padding: 24px 16px;
+	background: var(--vp-bg-soft);
+	border: 2px dashed var(--vp-border);
+	color: var(--vp-muted);
+	font-family: var(--vp-font);
+	font-size: 12px;
+	text-align: center;
+	cursor: pointer;
+	transition:
+		border-color 0.1s,
+		color 0.1s;
+}
+.pv-upload-drop:hover,
+.pv-upload-drop.is-over {
+	border-color: var(--vp-accent);
+	color: var(--vp-text);
+}
+.pv-upload-drop.is-over {
+	background: color-mix(in srgb, var(--vp-accent) 6%, var(--vp-bg-soft));
+}
+.pv-upload-drop.is-disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}

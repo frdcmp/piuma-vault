@@ -1,0 +1,43 @@
+.pv-tabs-strip {
+	display: flex;
+	align-items: flex-end;
+	gap: 4px;
+	border-bottom: 2px solid var(--vp-border);
+	margin-bottom: 16px;
+	overflow-x: auto;
+}
+
+.pv-tabs-tab {
+	position: relative;
+	bottom: -2px;
+	padding: 7px 14px;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border-soft);
+	border-bottom-color: var(--vp-border);
+	color: var(--vp-muted);
+	font-family: var(--vp-font);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.pv-tabs-tab:not(:disabled):hover {
+	color: var(--vp-accent);
+}
+.pv-tabs-tab.is-active {
+	background: var(--vp-panel);
+	border-color: var(--vp-border);
+	border-bottom-color: var(--vp-panel);
+	color: var(--vp-accent);
+}
+.pv-tabs-tab:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.pv-tabs-extra {
+	margin-left: auto;
+	padding-bottom: 6px;
+}

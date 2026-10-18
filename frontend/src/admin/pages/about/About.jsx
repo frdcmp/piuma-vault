@@ -9,8 +9,8 @@ import {
 	ShareAltOutlined,
 	ThunderboltOutlined,
 } from "@ant-design/icons";
+import { PvPanel } from "@/ui";
 import { PageContent } from "../../components/layout/PageLayout";
-import { PvPanel } from "../../components/ui";
 import "./about.css";
 
 const ARCHITECTURE = [

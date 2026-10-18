@@ -21,6 +21,7 @@ import {
 } from "antd";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { PvButton, PvExpander, PvPopconfirm, pvMessage } from "@/ui";
 import {
 	useConfirmMemoryEntry,
 	useDeleteMemoryEntry,
@@ -33,12 +34,6 @@ import {
 } from "../../../queries";
 import { formatDateTime, timeAgo } from "../../../utils/dateTime";
 import { PageContent } from "../../components/layout/PageLayout";
-import {
-	PvButton,
-	PvExpander,
-	PvPopconfirm,
-	pvMessage,
-} from "../../components/ui";
 import "./memory.css";
 
 const AGENT = "vault_agent";

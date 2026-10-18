@@ -1,0 +1,49 @@
+/* prefix / suffix / reveal: the wrapper draws the field, the input goes bare */
+.pv-input-wrap {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0 10px;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	transition: border-color 0.1s;
+}
+.pv-input-wrap:focus-within {
+	border-color: var(--vp-accent);
+}
+.pv-input-wrap > .vp-input {
+	flex: 1;
+	min-width: 0;
+	padding-left: 0;
+	padding-right: 0;
+	border: 0;
+	box-shadow: none;
+	background: transparent;
+}
+.pv-input-wrap:has(.vp-invalid) {
+	border-color: var(--vp-danger);
+}
+
+.pv-input-affix {
+	display: inline-flex;
+	align-items: center;
+	color: var(--vp-muted);
+	font-size: 12px;
+}
+
+.pv-input-reveal {
+	background: none;
+	border: 0;
+	padding: 0;
+	color: var(--vp-muted);
+	font-family: var(--vp-font);
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	cursor: pointer;
+}
+.pv-input-reveal:hover {
+	color: var(--vp-accent);
+}

@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
-import { PvModal } from "@/admin/components/ui";
+import { PvModal } from "@/ui";
 import { deleteConversation } from "../../api/agentChatApi";
 import "../chat-shared.css";
 import ChatConversation from "./ChatConversation";

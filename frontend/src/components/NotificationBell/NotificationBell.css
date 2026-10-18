@@ -1,5 +1,5 @@
-/* Bell trigger + unread badge. The panel/modal chrome comes from the piuma
- * primitives; this file styles the bell button and the inbox rows. */
+/* Bell trigger + unread badge. The panel/modal chrome comes from PvPopover /
+ * PvModal (@/ui); this file styles the bell button and the inbox rows. */
 
 .nb-bell {
 	position: relative;

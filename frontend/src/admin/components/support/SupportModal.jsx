@@ -1,5 +1,5 @@
 import { GithubOutlined } from "@ant-design/icons";
-import PvModal from "../ui/PvModal";
+import { PvModal } from "@/ui";
 
 const supportOptions = [
 	{

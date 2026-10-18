@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { PvModal, pvMessage } from "@/admin/components/ui";
+import { PvModal, pvMessage } from "@/ui";
 import useShareDefaultsStore, {
 	SHARE_DEFAULTS,
 	SHARE_EXPIRY_OPTIONS,

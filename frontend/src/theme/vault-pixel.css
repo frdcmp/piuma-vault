@@ -281,6 +281,27 @@ a.vp-card:hover {
 	background: transparent;
 	border-color: var(--vp-border-soft);
 }
+.vp-btn--text {
+	padding: 3px 4px;
+	background: none;
+	border: 0;
+	box-shadow: none;
+	color: var(--vp-muted);
+	font-size: 10px;
+	gap: 4px;
+}
+.vp-btn--text:hover {
+	color: var(--vp-success);
+	transform: none;
+	box-shadow: none;
+}
+.vp-btn--text:active {
+	transform: none;
+}
+.vp-btn--text:disabled {
+	border: 0;
+	box-shadow: none;
+}
 .vp-btn--block {
 	width: 100%;
 }

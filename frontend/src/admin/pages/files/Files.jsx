@@ -24,6 +24,7 @@ import {
 	Upload,
 } from "antd";
 import { useMemo, useState } from "react";
+import { PvButton } from "@/ui";
 import {
 	useStorageBulkDelete,
 	useStorageDeleteFolder,
@@ -36,7 +37,6 @@ import {
 } from "../../../queries";
 import { formatDate } from "../../../utils/dateTime";
 import { PageContent } from "../../components/layout/PageLayout";
-import { PvButton } from "../../components/ui";
 import "./files.css";
 
 const { Dragger } = Upload;

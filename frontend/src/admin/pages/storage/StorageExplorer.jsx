@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { PvButton } from "@/ui";
 import { useStorageWorkspace } from "../../../store/storageWorkspaceStore";
-import { PvButton } from "../../components/ui";
 import "../tasks/Tasks.css";
 import "../notes/NotesSidebar.css";
 import "./Storage.css";

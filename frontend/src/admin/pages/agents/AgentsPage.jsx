@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PvCheckbox, PvModal } from "@/ui";
 import { fetchModelMeta } from "../../../api/agentChatApi";
 import {
 	useAgentList,
@@ -17,7 +18,6 @@ import {
 	useUpdateModel,
 	useUpdatePersona,
 } from "../../../queries";
-import { PvCheckbox, PvModal } from "../../components/ui";
 import "./agents.css";
 
 const PROVIDER_KINDS = [
@@ -284,11 +284,7 @@ function ModelsList({ providerId, providerKind }) {
 						onChange={setThinking}
 						label="thinking"
 					/>
-					<PvCheckbox
-						checked={vision}
-						onChange={setVision}
-						label="vision"
-					/>
+					<PvCheckbox checked={vision} onChange={setVision} label="vision" />
 					<button
 						type="button"
 						className="ag-btn ag-btn--sm ag-btn--primary"

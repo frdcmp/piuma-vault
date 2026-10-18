@@ -6,8 +6,8 @@ import {
 } from "@ant-design/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { pvMessage } from "@/admin/components/ui";
 import { ACCEPT_ATTR, SUPPORTED_LABEL } from "@/processing";
+import { pvMessage } from "@/ui";
 import {
 	clearConversation,
 	createConversation,

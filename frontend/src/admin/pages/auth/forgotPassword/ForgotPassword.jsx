@@ -1,8 +1,8 @@
 import { Alert, Form, Input } from "antd";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { PvButton } from "@/ui";
 import { useResetPassword } from "../../../../queries";
-import { PvButton } from "../../../components/ui";
 import "./forgotPassword.css";
 
 const ForgotPassword = () => {

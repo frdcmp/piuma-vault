@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PvMenu, PvModal, pvMessage } from "@/admin/components/ui";
+import { PvMenu, PvModal, pvMessage } from "@/ui";
 import {
 	useStorageDeleteFolder,
 	useStorageDeleteObject,

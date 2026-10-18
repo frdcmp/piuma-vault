@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PvAlarm } from "@/ui";
 import { useUpcomingAlarms, useUserMe } from "../../../queries";
 import { startAlarm, stopAlarm } from "../../../utils/alarmSound";
 import { formatDateTime } from "../../../utils/dateTime";
 import { formatOffset } from "../AlertsField";
-import { PvAlarm } from "../ui";
 
 // If an alert's fire_at is already in the past by more than this, don't ring
 // (the OS notification covered it) — but a fire within this window when the tab

@@ -1,0 +1,24 @@
+.pv-spin {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--vp-accent);
+	font-family: var(--vp-font);
+	font-size: 12px;
+}
+.pv-spin--block {
+	display: flex;
+	justify-content: center;
+	padding: 24px 0;
+}
+.pv-spin-label {
+	color: var(--vp-muted);
+}
+.pv-sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}

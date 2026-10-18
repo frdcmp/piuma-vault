@@ -1,6 +1,7 @@
 import dayjs from "dayjs";
 import { useState } from "react";
 import { useTheme } from "@/theme";
+import { PvButton, PvDateTimePicker, PvModal } from "@/ui";
 import { TagPicker } from "../../../components/buckets";
 import {
 	useCreateEvent,
@@ -8,7 +9,6 @@ import {
 	useUpdateEvent,
 } from "../../../queries";
 import AlertsField from "../../components/AlertsField";
-import { PvButton, PvDateTimePicker, PvModal } from "../../components/ui";
 
 /**
  * Create / edit / delete a calendar event. `event` set → edit mode; otherwise

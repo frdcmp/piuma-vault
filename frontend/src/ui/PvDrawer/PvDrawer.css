@@ -1,0 +1,66 @@
+.pv-drawer-root {
+	position: fixed;
+	inset: 0;
+	z-index: 1100;
+}
+
+.pv-drawer-backdrop {
+	position: absolute;
+	inset: 0;
+	padding: 0;
+	border: 0;
+	background: color-mix(in srgb, var(--vp-shadow-color) 55%, transparent);
+	cursor: default;
+}
+
+.pv-drawer {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	max-width: 90vw;
+	display: flex;
+	flex-direction: column;
+	background: var(--vp-panel);
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+	box-shadow: var(--vp-shadow-lg);
+	animation: pv-drawer-in 0.14s steps(4, end);
+}
+.pv-drawer--left {
+	left: 0;
+	border-right: 2px solid var(--vp-border);
+}
+.pv-drawer--right {
+	right: 0;
+	border-left: 2px solid var(--vp-border);
+	animation-name: pv-drawer-in-right;
+}
+
+.pv-drawer-body {
+	flex: 1;
+	overflow-y: auto;
+}
+
+.pv-drawer-close {
+	background: none;
+	border: 0;
+	padding: 0 4px;
+	color: var(--vp-muted);
+	font-size: 18px;
+	line-height: 1;
+	cursor: pointer;
+}
+.pv-drawer-close:hover {
+	color: var(--vp-danger);
+}
+
+@keyframes pv-drawer-in {
+	from {
+		transform: translateX(-100%);
+	}
+}
+@keyframes pv-drawer-in-right {
+	from {
+		transform: translateX(100%);
+	}
+}

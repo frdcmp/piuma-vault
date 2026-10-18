@@ -1,10 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-	PvMenu,
-	PvModal,
-	pvMessage,
-	pvToast,
-} from "@/admin/components/ui";
+import { PvMenu, PvModal, pvMessage, pvToast } from "@/ui";
 import {
 	useStorageBulkDelete,
 	useStorageDeleteFolder,

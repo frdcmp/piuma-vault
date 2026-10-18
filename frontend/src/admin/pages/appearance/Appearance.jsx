@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PvButton, PvModal, pvMessage } from "@/ui";
 import {
 	useCreateSprite,
 	useDeleteSprite,
@@ -16,7 +17,6 @@ import SpriteEditor, {
 	NEW_TEMPLATE,
 } from "../../components/appearance/SpriteEditor";
 import { PageContent } from "../../components/layout/PageLayout";
-import { PvButton, PvModal, pvMessage } from "../../components/ui";
 import "./appearance.css";
 
 const errMsg = (e, fallback) => e?.response?.data?.error || fallback;

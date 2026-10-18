@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
 import { useState } from "react";
+import { PvButton, PvDateTimePicker, PvModal } from "@/ui";
 import { BucketSelect } from "../../../components/buckets";
 import {
 	useBuckets,
@@ -9,11 +10,6 @@ import {
 } from "../../../queries";
 import { parseRrule } from "../../../utils/recurrence";
 import AlertsField from "../../components/AlertsField";
-import {
-	PvButton,
-	PvDateTimePicker,
-	PvModal,
-} from "../../components/ui";
 
 const DOW = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
 const DOW_LABEL = {

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { PvModal } from "@/ui";
 import { useLogout } from "../../../queries";
 import { useSprite } from "../../../sprites";
 import useChatDockStore from "../../../store/chatDockStore";
-import { PvModal } from "../ui";
 import ComingSoonModal from "./ComingSoonModal";
 import SpriteStage from "./SpriteStage";
 import Starfield from "./Starfield";

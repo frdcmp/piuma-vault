@@ -5,8 +5,8 @@ import {
 } from "@ant-design/icons";
 import { useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { PvButton } from "@/ui";
 import { useVerifyEmail } from "../../../../queries";
-import { PvButton } from "../../../components/ui";
 import "./verifyEmail.css";
 
 const VerifyEmail = () => {

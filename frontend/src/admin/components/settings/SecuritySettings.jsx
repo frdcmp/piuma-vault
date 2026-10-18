@@ -1,5 +1,6 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
+import { PvButton, PvModal, PvPanel, pvMessage } from "@/ui";
 import {
 	deleteTrustedDevice,
 	getTrustedDevices,
@@ -9,10 +10,6 @@ import {
 } from "../../../api/auth";
 import { useUserMe } from "../../../queries";
 import { formatDate } from "../../../utils/dateTime";
-import PvButton from "../ui/PvButton";
-import pvMessage from "../ui/PvMessage";
-import PvModal from "../ui/PvModal";
-import PvPanel from "../ui/PvPanel";
 import ScreenLockSettings from "./ScreenLockSettings";
 
 // Security settings tab.

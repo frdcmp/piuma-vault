@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { pvMessage } from "@/admin/components/ui";
+import { pvMessage } from "@/ui";
 import {
 	useNoteVersion,
 	useNoteVersions,

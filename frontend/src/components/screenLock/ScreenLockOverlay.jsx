@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { PvButton } from "@/ui";
 import SpriteStage from "../../admin/components/notes/SpriteStage";
 import Starfield from "../../admin/components/notes/Starfield";
-import { PvButton } from "../../admin/components/ui";
 import { verifyScreenLockPin } from "../../api/screenLock";
 import useScreenLockStore from "../../store/screenLockStore";
 import PixelLoader from "../PixelLoader";

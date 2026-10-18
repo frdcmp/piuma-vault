@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PvButton, PvCheckbox, PvModal, PvPanel, pvMessage } from "@/ui";
 import {
 	useCreateMcpServer,
 	useDeleteMcpServer,
@@ -7,13 +8,6 @@ import {
 	useTestMcpServer,
 	useUpdateMcpServer,
 } from "../../../queries";
-import {
-	PvButton,
-	PvCheckbox,
-	PvModal,
-	PvPanel,
-	pvMessage,
-} from "../../components/ui";
 
 const TRANSPORTS = [
 	{ id: "http", label: "HTTP (remote server)" },

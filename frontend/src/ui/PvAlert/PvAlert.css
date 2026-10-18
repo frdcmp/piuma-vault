@@ -1,0 +1,61 @@
+.pv-alert {
+	--pv-alert-tone: var(--vp-info);
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 10px 12px;
+	background: color-mix(in srgb, var(--pv-alert-tone) 8%, var(--vp-bg-soft));
+	border: 2px solid var(--pv-alert-tone);
+	box-shadow: var(--vp-shadow);
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+	font-size: 12px;
+	line-height: 1.6;
+}
+.pv-alert--success {
+	--pv-alert-tone: var(--vp-success);
+}
+.pv-alert--warning {
+	--pv-alert-tone: var(--vp-warning);
+}
+.pv-alert--error {
+	--pv-alert-tone: var(--vp-danger);
+}
+
+.pv-alert-glyph {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 18px;
+	height: 18px;
+	background: var(--pv-alert-tone);
+	color: var(--vp-on-accent);
+	font-size: 11px;
+	font-weight: 800;
+}
+
+.pv-alert-body {
+	flex: 1;
+	min-width: 0;
+}
+.pv-alert-title {
+	font-weight: 800;
+	color: var(--pv-alert-tone);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	font-size: 11px;
+}
+
+.pv-alert-close {
+	background: none;
+	border: 0;
+	padding: 0 2px;
+	color: var(--vp-muted);
+	font-size: 16px;
+	line-height: 1;
+	cursor: pointer;
+}
+.pv-alert-close:hover {
+	color: var(--vp-text);
+}

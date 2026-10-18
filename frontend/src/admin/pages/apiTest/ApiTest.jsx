@@ -6,9 +6,9 @@ import {
 	SyncOutlined,
 } from "@ant-design/icons";
 import { Spin } from "antd";
+import { PvPanel } from "@/ui";
 import { useGetHello } from "../../../queries";
 import { PageContent } from "../../components/layout/PageLayout";
-import { PvPanel } from "../../components/ui";
 import "./apiTest.css";
 
 const METHOD_TAG_CLASSES = {

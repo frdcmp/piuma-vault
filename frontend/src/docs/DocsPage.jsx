@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import { Link, Navigate, useParams } from "react-router-dom";
 import rehypeHighlight from "rehype-highlight";
-import PvPanel from "../admin/components/ui/PvPanel/PvPanel";
+import { PvPanel } from "@/ui";
 import piumaIcon from "../img/piuma-icon.png";
 import { remarkPlugins } from "../utils/markdown";
 import { DOC_BY_SLUG, FIRST_SLUG } from "./docsManifest";

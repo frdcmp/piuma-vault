@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { LockGlyph, PvButton, PvCheckbox } from "@/ui";
 import PixelLoader from "../../../../components/PixelLoader";
 import {
 	useAuthStatus,
@@ -8,7 +9,6 @@ import {
 	useResendVerification,
 } from "../../../../queries";
 import Starfield from "../../../components/notes/Starfield";
-import { LockGlyph, PvButton, PvCheckbox } from "../../../components/ui";
 import "../auth-chrome.css";
 
 const RESEND_COOLDOWN = 30; // seconds
