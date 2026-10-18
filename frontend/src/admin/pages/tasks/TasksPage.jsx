@@ -49,10 +49,10 @@ import "./Tasks.css";
 const PRIORITY = ["", "low", "med", "high"];
 // Checkbox tint by priority: none → muted, low → green, med → yellow, high → red.
 const PRIORITY_COLOR = [
-	"var(--muted)",
-	"var(--accent-2)",
-	"var(--accent)",
-	"var(--accent-3)",
+	"var(--vp-muted)",
+	"var(--vp-success)",
+	"var(--vp-accent)",
+	"var(--vp-danger)",
 ];
 
 const ALL = { key: "all", names: null, label: "All" };
@@ -685,9 +685,7 @@ export default function TasksPage() {
 								<h2 className="tasks-panel-title">
 									Recurring · {recurring.length}
 								</h2>
-								<PvButton onClick={() => setRecModal({})}>
-									+ recurring
-								</PvButton>
+								<PvButton onClick={() => setRecModal({})}>+ recurring</PvButton>
 							</div>
 							<ul className="tasks-list">
 								{recurring.map((r) => (

@@ -1,6 +1,5 @@
 /* Mirrors the screen-lock overlay: flat base colour + a soft accent glow behind
-   the sprite, with the animated starfield canvas providing the texture. The
-   --accent/--text tokens are what the starfield canvas reads. */
+   the sprite, with the animated starfield canvas providing the texture. */
 .vp-pixloader {
 	position: fixed;
 	inset: 0;
@@ -12,12 +11,10 @@
 	overflow: hidden;
 	opacity: 1;
 	transition: opacity 0.35s ease;
-	--accent: var(--vp-accent);
-	--text: var(--vp-text);
 	background-color: var(--vp-bg);
 	background-image: radial-gradient(
 		60% 50% at 50% 40%,
-		rgba(247, 201, 72, 0.06),
+		color-mix(in srgb, var(--vp-accent) 6%, transparent),
 		transparent 70%
 	);
 }
@@ -39,13 +36,13 @@
 
 .vp-pixloader-text {
 	margin: 0;
-	font-family: "Press Start 2P", var(--vp-font);
+	font-family: var(--vp-font-display);
 	font-size: 13px;
 	line-height: 1.6;
 	letter-spacing: 2px;
 	text-transform: uppercase;
 	color: var(--vp-accent);
-	text-shadow: 2px 2px 0 #000;
+	text-shadow: 2px 2px 0 var(--vp-shadow-color);
 }
 
 /* Cycling pixel ellipsis after the label. */

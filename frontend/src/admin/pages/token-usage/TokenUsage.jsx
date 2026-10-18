@@ -14,6 +14,7 @@ import {
 	YAxis,
 } from "recharts";
 import { useTokenUsage } from "../../../queries";
+import { useTheme } from "../../../theme";
 import { PageContent } from "../../components/layout/PageLayout";
 import { PvButton } from "../../components/ui";
 import "./token-usage.css";
@@ -69,16 +70,27 @@ const fmtPrice = (n) => {
 	return `$${v.toFixed(4)}`;
 };
 
-// Chart series colors — mapped to the vault-pixel accent tokens. (SVG `stroke`
-// / `fill` attributes can't resolve CSS vars, so these mirror the hex values.)
-const SERIES = {
-	input: "#6ab0ff", // --vp-accent-4 (blue)
-	cached: "#3f6e8c", // dim blue
-	output: "#5cd0a9", // --vp-accent-2 (green)
-	cost: "#f7c948", // --vp-accent (yellow)
+// Blend two "#rrggbb" colours: `t` = weight of `a` (0..1). SVG `stroke` /
+// `fill` attributes can't resolve CSS vars or color-mix(), so chart colours are
+// computed from the theme tokens in JS.
+const mixHex = (a, b, t) => {
+	const ch = (hex, i) => Number.parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+	return `#${[0, 1, 2]
+		.map((i) =>
+			Math.round(ch(a, i) * t + ch(b, i) * (1 - t))
+				.toString(16)
+				.padStart(2, "0"),
+		)
+		.join("")}`;
 };
-const AXIS = "#8a93a3"; // --vp-muted
-const GRID = "#2a2f39"; // --vp-border-soft
+
+const TOOLTIP_STYLE = {
+	background: "var(--vp-panel)",
+	border: "2px solid var(--vp-border)",
+	borderRadius: 0,
+	fontFamily: "var(--vp-font)",
+};
+const TOOLTIP_LABEL_STYLE = { color: "var(--vp-text)" };
 
 const StatCard = ({ label, value, accent, suffix, title }) => (
 	<section className="vp-panel tu-stat">
@@ -97,6 +109,15 @@ const StatCard = ({ label, value, accent, suffix, title }) => (
 );
 
 const TokenUsage = () => {
+	const { tokens } = useTheme();
+	const SERIES = {
+		input: tokens.info,
+		cached: mixHex(tokens.info, tokens.bg, 0.5), // dim blue
+		output: tokens.success,
+		cost: tokens.accent,
+	};
+	const AXIS = tokens.muted;
+	const GRID = tokens.borderSoft;
 	const [range, setRange] = useState(null); // [dayjs, dayjs] | null
 	const [source, setSource] = useState(undefined);
 
@@ -240,13 +261,8 @@ const TokenUsage = () => {
 										tickFormatter={(v) => `$${v.toFixed(2)}`}
 									/>
 									<Tooltip
-										contentStyle={{
-											background: "#1b1e25",
-											border: "2px solid #3a4150",
-											borderRadius: 0,
-											fontFamily: "var(--vp-font)",
-										}}
-										labelStyle={{ color: "#d6dbe5" }}
+										contentStyle={TOOLTIP_STYLE}
+										labelStyle={TOOLTIP_LABEL_STYLE}
 									/>
 									<Legend />
 									<Line
@@ -300,14 +316,9 @@ const TokenUsage = () => {
 									/>
 									<YAxis fontSize={11} stroke={AXIS} tick={{ fill: AXIS }} />
 									<Tooltip
-										cursor={{ fill: "rgba(255,255,255,0.04)" }}
-										contentStyle={{
-											background: "#1b1e25",
-											border: "2px solid #3a4150",
-											borderRadius: 0,
-											fontFamily: "var(--vp-font)",
-										}}
-										labelStyle={{ color: "#d6dbe5" }}
+										cursor={{ fill: tokens.highlight, fillOpacity: 0.04 }}
+										contentStyle={TOOLTIP_STYLE}
+										labelStyle={TOOLTIP_LABEL_STYLE}
 									/>
 									<Legend />
 									<Bar

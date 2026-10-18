@@ -1,7 +1,8 @@
 // Enforces the design system: colours and fonts come only from the --vp-* tokens
 // (src/theme/tokens.json), UI primitives only from @/ui.
 //
-//   bun scripts/lint-theme.mjs            colour/font violations; exit 1 if any
+//   bun scripts/lint-theme.mjs            colour/font violations + var(--x) that nothing defines;
+//                                         exit 1 if any
 //   bun scripts/lint-theme.mjs --report   also print the UI-adoption counters (raw elements,
 //                                         inline styles, antd imports) tracked by the plan
 //
@@ -15,13 +16,20 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(ROOT, "src");
 
-// Art, not theme: pixel-sprite palettes and per-speaker colours are data.
+// Colour literals allowed here — art and data, not theme.
 const ALLOW = [
 	"theme/",
-	"sprites/",
-	"admin/components/appearance/",
-	"admin/pages/recorder/speakerColors.js",
+	"sprites/", // pixel-sprite palettes
+	"admin/components/appearance/", // sprite editor palettes
+	"admin/pages/recorder/speakerColors.js", // per-speaker colours (data)
+	"admin/pages/recorder/BlackHole.jsx", // accretion-disk heat palette (art)
+	"admin/pages/recorder/PixelWaveform.jsx", // 3-step meter colour ramps (art)
+	"admin/components/notes/Starfield.jsx", // nebula/galaxy tints (art); stars use tokens
+	"utils/tagColor.js", // hash → hsl tag colours, mirrors mobile (data)
 ];
+
+// Custom properties set by libraries at runtime, not by our CSS.
+const EXTERNAL_VARS = [/^--bn-/, /^--mantine-/, /^--crepe-/, /^--color-/];
 
 const report = process.argv.includes("--report");
 
@@ -53,11 +61,20 @@ const counters = {
 	antdFiles: 0,
 };
 
-for (const file of walk(SRC)) {
+const files = walk(SRC).filter((f) => /\.(css|jsx?|mjs)$/.test(f));
+const sources = new Map(files.map((f) => [f, readFileSync(f, "utf8")]));
+
+// Every custom property defined anywhere: `--x:` in CSS, "--x" keys / setProperty in JS.
+const defined = new Set();
+for (const text of sources.values()) {
+	for (const m of text.matchAll(/(--[a-zA-Z0-9-]+)\s*:/g)) defined.add(m[1]);
+	for (const m of text.matchAll(/["'`](--[a-zA-Z0-9-]+)["'`]/g))
+		defined.add(m[1]);
+}
+
+for (const [file, text] of sources) {
 	const rel = relative(SRC, file);
 	const css = file.endsWith(".css");
-	if (!css && !/\.(jsx?|mjs)$/.test(file)) continue;
-	const text = readFileSync(file, "utf8");
 
 	if (!css && report) {
 		counters.button += (text.match(/<button\b/g) || []).length;
@@ -68,8 +85,18 @@ for (const file of walk(SRC)) {
 		if (/from "antd"/.test(text)) counters.antdFiles++;
 	}
 
-	if (ALLOW.some((a) => rel.startsWith(a))) continue;
 	const lines = stripComments(text, css);
+	lines.forEach((line, i) => {
+		for (const m of line.matchAll(/var\((--[a-zA-Z0-9-]+)/g)) {
+			const name = m[1];
+			if (!defined.has(name) && !EXTERNAL_VARS.some((re) => re.test(name)))
+				violations.push(
+					`${rel}:${i + 1}  undefined ${name}  ${line.trim().slice(0, 90)}`,
+				);
+		}
+	});
+
+	if (ALLOW.some((a) => rel.startsWith(a))) continue;
 	lines.forEach((line, i) => {
 		const font = css && line.match(/font-family\s*:(.*)$/);
 		// a value wrapped onto the next line (Biome does that for long stacks)
@@ -98,4 +125,6 @@ if (violations.length) {
 	console.error(`\n✗ ${violations.length} theme violations in ${files} files`);
 	process.exit(1);
 }
-console.log("✓ theme: no literal colours or fonts outside src/theme");
+console.log(
+	"✓ theme: no literal colours/fonts outside src/theme, no undefined custom properties",
+);

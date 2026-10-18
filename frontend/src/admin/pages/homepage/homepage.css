@@ -12,7 +12,7 @@
 	letter-spacing: 2px;
 	text-transform: uppercase;
 	color: var(--vp-accent);
-	text-shadow: 4px 4px 0 #000;
+	text-shadow: 4px 4px 0 var(--vp-shadow-color);
 	line-height: 1.1;
 }
 .vp-home-hero-sub {

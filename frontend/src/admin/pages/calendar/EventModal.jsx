@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
 import { useState } from "react";
+import { useTheme } from "@/theme";
 import { TagPicker } from "../../../components/buckets";
 import {
 	useCreateEvent,
@@ -7,11 +8,7 @@ import {
 	useUpdateEvent,
 } from "../../../queries";
 import AlertsField from "../../components/AlertsField";
-import {
-	PvButton,
-	PvDateTimePicker,
-	PvModal,
-} from "../../components/ui";
+import { PvButton, PvDateTimePicker, PvModal } from "../../components/ui";
 
 /**
  * Create / edit / delete a calendar event. `event` set → edit mode; otherwise
@@ -19,6 +16,7 @@ import {
  * Date/time state is stored as UTC ISO (PvDateTimePicker handles local I/O).
  */
 export default function EventModal({ event, initialDate, onClose }) {
+	const { tokens } = useTheme();
 	const isEdit = !!event;
 	const createEvent = useCreateEvent();
 	const updateEvent = useUpdateEvent();
@@ -35,7 +33,7 @@ export default function EventModal({ event, initialDate, onClose }) {
 	const [startsAt, setStartsAt] = useState(event?.starts_at ?? defaultStart);
 	const [endsAt, setEndsAt] = useState(event?.ends_at ?? null);
 	const [location, setLocation] = useState(event?.location ?? "");
-	const [color, setColor] = useState(event?.color ?? "#6cb6ff");
+	const [color, setColor] = useState(event?.color ?? tokens.info);
 	const [description, setDescription] = useState(event?.description ?? "");
 	const [tags, setTags] = useState(event?.tags ?? []);
 	const [alerts, setAlerts] = useState(event?.alerts ?? []);

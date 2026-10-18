@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTheme } from "@/theme";
 import { PvModal } from "../../admin/components/ui";
 import {
 	useBuckets,
@@ -24,6 +25,7 @@ const onCommitKey = (fn) => (e) => {
 };
 
 export default function ManageBucketsModal({ onClose }) {
+	const { tokens } = useTheme();
 	const { data: buckets = [] } = useBuckets();
 	const { data: tags = [] } = useTagRegistry();
 	const createBucket = useCreateBucket();
@@ -98,7 +100,7 @@ export default function ManageBucketsModal({ onClose }) {
 								<input
 									type="color"
 									className="mbm-color"
-									value={b.color || "#5cd0a9"}
+									value={b.color || tokens.success}
 									onChange={(e) =>
 										updateBucket.mutate({ id: b.id, color: e.target.value })
 									}

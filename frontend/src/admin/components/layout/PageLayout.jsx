@@ -46,7 +46,7 @@ const PageLayout = () => {
 				onClose={() => setSidebarOpen(false)}
 				open={isPhone && sidebarOpen}
 				width={240}
-				styles={{ body: { padding: 0, background: "#1b1e25" } }}
+				styles={{ body: { padding: 0, background: "var(--vp-panel)" } }}
 			>
 				<Sidebar inDrawer onNavigate={() => setSidebarOpen(false)} />
 			</Drawer>

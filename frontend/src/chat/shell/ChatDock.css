@@ -1,34 +1,17 @@
-/* Shared right-side chat dock (Storage + Tasks). The pixel palette is hard-coded
-   in literal hex (matching the Notes layout) rather than via var(), because the
-   dock can sit outside the .notes-pixel-layout/.tasks-page token scopes — and an
-   ambient (e.g. AntD) --border would otherwise resolve to a light value, showing
-   a white delimiter instead of the dark one. */
+/* Shared right-side chat dock (Storage + Tasks). Colours come from the global
+   --vp-* tokens, so the dock renders the same inside or outside any page scope. */
 
 /* Shared layout shell (WorkspaceShell.jsx): a [page content | chat] flex row
-   used by Notes, Storage, Tasks and Calendar. The dark background matches
-   .notes-pixel-layout's --bg so the 6px resizer's transparent track shows the
-   dark layout color instead of the ambient (white) page. The pixel design
-   tokens are re-declared here so descendant content resolves var(--*) even
-   though the page's own wrapper may sit inside this shell. */
+   used by Notes, Storage, Tasks and Calendar. The dark background
+   means the 6px resizer's transparent track shows the dark layout color instead
+   of the ambient (white) page. */
 .workspace-shell {
-	--bg: #0e0f12;
-	--bg-soft: #15171c;
-	--panel: #1b1e25;
-	--border: #2a2f3a;
-	--border-strong: #3a4150;
-	--text: #d6dbe5;
-	--muted: #8a93a3;
-	--accent: #f7c948;
-	--accent-2: #5cd0a9;
-	--accent-3: #ff6b6b;
-	--accent-4: #6cb6ff;
-
 	display: flex;
 	flex-direction: column;
 	height: 100vh;
 	width: 100%;
 	overflow: hidden;
-	background: #0e0f12;
+	background: var(--vp-bg);
 }
 
 /* Inner row: page content + chat dock side-by-side under the topbar. The
@@ -50,8 +33,8 @@
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
-	background: #1b1e25;
-	border-left: 1px solid #2a2f3a;
+	background: var(--vp-panel);
+	border-left: 1px solid var(--vp-border-soft);
 }
 
 /* Single-column tier: too narrow for [content | chat], so the chat takes the
@@ -81,15 +64,15 @@
 	bottom: 0;
 	left: 2px;
 	width: 2px;
-	background: #3a4150;
+	background: var(--vp-border);
 	transition: background 80ms steps(2, end);
 }
 
 .chat-dock-resizer:hover::before,
 .chat-dock-resizer:focus-visible::before,
 .chat-dock-resizer.active::before {
-	background: #f7c948;
-	box-shadow: 0 0 0 1px #f7c948;
+	background: var(--vp-accent);
+	box-shadow: 0 0 0 1px var(--vp-accent);
 }
 
 .chat-dock-resizer:focus-visible {
@@ -97,7 +80,7 @@
 }
 
 .chat-dock-resizer.active {
-	background: rgba(247, 201, 72, 0.05);
+	background: color-mix(in srgb, var(--vp-accent) 5%, transparent);
 }
 
 /* Floating toggle shown when the dock is closed. */
@@ -114,15 +97,16 @@
 	font-size: 22px;
 	line-height: 1;
 	cursor: pointer;
-	background: #1b1e25;
-	color: #f7c948;
-	border: 1px solid #3a4150;
-	box-shadow: 2px 2px 0 0 rgba(0, 0, 0, 0.4);
+	background: var(--vp-panel);
+	color: var(--vp-accent);
+	border: 1px solid var(--vp-border);
+	box-shadow: 2px 2px 0 0
+		color-mix(in srgb, var(--vp-shadow-color) 40%, transparent);
 	image-rendering: pixelated;
 }
 
 .chat-dock-fab:hover,
 .chat-dock-fab:focus-visible {
-	border-color: #f7c948;
+	border-color: var(--vp-accent);
 	outline: none;
 }

@@ -224,7 +224,7 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 						marginTop: 8,
 						zIndex: 100,
 						width: 320,
-						boxShadow: "4px 4px 0 0 #000",
+						boxShadow: "var(--vp-shadow-lg)",
 					}}
 				>
 					<div
@@ -236,7 +236,7 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 							margin: "0 0 12px 0",
 						}}
 					>
-						<h3 style={{ margin: 0, color: "var(--accent)" }}>
+						<h3 style={{ margin: 0, color: "var(--vp-accent)" }}>
 							Share this note
 						</h3>
 						<button
@@ -337,7 +337,7 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 
 					{shares.length > 0 && (
 						<div style={{ marginTop: 16 }}>
-							<strong style={{ fontSize: 12, color: "var(--muted)" }}>
+							<strong style={{ fontSize: 12, color: "var(--vp-muted)" }}>
 								Active shares:
 							</strong>
 							<div style={{ marginTop: 6, maxHeight: 160, overflowY: "auto" }}>
@@ -349,7 +349,7 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 											alignItems: "center",
 											gap: 4,
 											padding: "4px 0",
-											borderBottom: `1px dashed var(--border-strong)`,
+											borderBottom: `1px dashed var(--vp-border)`,
 										}}
 									>
 										<span
@@ -357,8 +357,8 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 											style={{
 												color:
 													share.access_level === "edit"
-														? "var(--accent-3)"
-														: "var(--accent-4)",
+														? "var(--vp-danger)"
+														: "var(--vp-info)",
 											}}
 										>
 											{share.access_level}
@@ -398,7 +398,7 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 										<span
 											style={{
 												fontSize: 10,
-												color: "var(--muted)",
+												color: "var(--vp-muted)",
 												width: 40,
 												textAlign: "right",
 											}}

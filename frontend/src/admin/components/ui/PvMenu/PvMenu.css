@@ -5,25 +5,16 @@
 }
 
 .pv-menu {
-	--menu-bg: #1b1e25;
-	--menu-bg-soft: #15171c;
-	--menu-border: #3a4150;
-	--menu-text: #d6dbe5;
-	--menu-muted: #8b93a3;
-	--menu-accent: #f7c948;
-	--menu-danger: #ff6b6b;
-
 	position: fixed;
 	min-width: 184px;
 	max-width: 280px;
 	padding: 4px;
-	background: var(--menu-bg);
-	border: 2px solid var(--menu-border);
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
 	box-shadow:
-		3px 3px 0 0 #000,
-		inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-	font-family:
-		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+		3px 3px 0 0 var(--vp-shadow-color),
+		inset 0 0 0 1px color-mix(in srgb, var(--vp-highlight) 3%, transparent);
+	font-family: var(--vp-font);
 	image-rendering: pixelated;
 	animation: pv-menu-pop 90ms steps(3, end);
 }
@@ -47,7 +38,7 @@
 	padding: 7px 10px;
 	border: 0;
 	background: transparent;
-	color: var(--menu-text);
+	color: var(--vp-text);
 	font: inherit;
 	font-size: 10pt;
 	text-align: left;
@@ -55,17 +46,17 @@
 }
 
 .pv-menu-item:hover:not(:disabled) {
-	background: var(--menu-bg-soft);
-	color: var(--menu-accent);
+	background: var(--vp-bg-soft);
+	color: var(--vp-accent);
 }
 
 .pv-menu-item.danger:hover:not(:disabled) {
-	color: var(--menu-danger);
-	background: rgba(255, 107, 107, 0.12);
+	color: var(--vp-danger);
+	background: color-mix(in srgb, var(--vp-danger) 12%, transparent);
 }
 
 .pv-menu-item:disabled {
-	color: var(--menu-muted);
+	color: var(--vp-muted);
 	opacity: 0.5;
 	cursor: not-allowed;
 }
@@ -89,5 +80,5 @@
 .pv-menu-sep {
 	height: 0;
 	margin: 4px 6px;
-	border-top: 1px dashed var(--menu-border);
+	border-top: 1px dashed var(--vp-border);
 }

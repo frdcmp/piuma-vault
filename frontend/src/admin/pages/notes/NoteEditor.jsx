@@ -55,7 +55,6 @@ export default function NoteEditor() {
 
 	const { isMobile } = useUiStore();
 	// Single mono (dark) theme — the editors only understand "dark" / "light".
-	const currentTheme = "dark";
 
 	const { data: note, isLoading, isError } = useNote(noteId);
 	const { data: folders = [] } = useFolders();
@@ -376,26 +375,26 @@ export default function NoteEditor() {
 	);
 
 	const saveIcon = () => {
-		const bgColor = "var(--bg-soft)";
-		const borderColor = "var(--border-strong)";
+		const bgColor = "var(--vp-bg-soft)";
+		const borderColor = "var(--vp-border)";
 
 		let innerIcon = null;
-		let iconColor = "var(--text)";
+		let iconColor = "var(--vp-text)";
 
 		switch (saveStatus) {
 			case SAVE_STATUS.SAVING:
 				innerIcon = "⏳";
-				iconColor = "var(--accent)";
+				iconColor = "var(--vp-accent)";
 				break;
 			case SAVE_STATUS.ERROR:
 				innerIcon = "×";
-				iconColor = "var(--accent-3)";
+				iconColor = "var(--vp-danger)";
 				break;
 			case SAVE_STATUS.SAVED:
 			case SAVE_STATUS.IDLE:
 			default:
 				innerIcon = "✓";
-				iconColor = "var(--accent-2)";
+				iconColor = "var(--vp-success)";
 				break;
 		}
 
@@ -483,7 +482,7 @@ export default function NoteEditor() {
 										autoFocus
 										style={{
 											flex: 1,
-											color: "var(--accent-4)",
+											color: "var(--vp-info)",
 											height: 32,
 											boxSizing: "border-box",
 											paddingRight: searchQuery ? "60px" : "28px",
@@ -510,7 +509,7 @@ export default function NoteEditor() {
 												position: "absolute",
 												right: 24,
 												fontSize: 10,
-												color: "var(--muted)",
+												color: "var(--vp-muted)",
 												pointerEvents: "none",
 											}}
 										>
@@ -524,7 +523,7 @@ export default function NoteEditor() {
 											position: "absolute",
 											right: 8,
 											fontSize: 14,
-											color: "var(--muted)",
+											color: "var(--vp-muted)",
 											cursor: "pointer",
 											display: "flex",
 											alignItems: "center",
@@ -548,8 +547,8 @@ export default function NoteEditor() {
 												flexDirection: "column",
 												height: 32,
 												width: 20,
-												border: "2px solid var(--border-strong)",
-												background: "var(--bg-soft)",
+												border: "2px solid var(--vp-border)",
+												background: "var(--vp-bg-soft)",
 												boxSizing: "border-box",
 											}}
 										>
@@ -559,14 +558,14 @@ export default function NoteEditor() {
 													flex: 1,
 													border: "none",
 													background: "transparent",
-													color: "var(--text)",
+													color: "var(--vp-text)",
 													fontSize: 8,
 													padding: 0,
 													cursor: "pointer",
 													display: "flex",
 													alignItems: "center",
 													justifyContent: "center",
-													borderBottom: "1px solid var(--border-strong)",
+													borderBottom: "1px solid var(--vp-border)",
 												}}
 												onClick={() =>
 													setSearchAction({ dir: "prev", ts: Date.now() })
@@ -581,7 +580,7 @@ export default function NoteEditor() {
 													flex: 1,
 													border: "none",
 													background: "transparent",
-													color: "var(--text)",
+													color: "var(--vp-text)",
 													fontSize: 8,
 													padding: 0,
 													cursor: "pointer",
@@ -607,7 +606,7 @@ export default function NoteEditor() {
 								style={{
 									flex: 1,
 									fontWeight: "bold",
-									color: "var(--accent)",
+									color: "var(--vp-accent)",
 									maxWidth: isMobile ? "none" : "300px",
 									height: 32,
 									boxSizing: "border-box",
@@ -623,7 +622,7 @@ export default function NoteEditor() {
 								style={{
 									flex: 1,
 									fontWeight: "bold",
-									color: "var(--accent)",
+									color: "var(--vp-accent)",
 									cursor: "text",
 									whiteSpace: "nowrap",
 									overflow: "hidden",
@@ -674,7 +673,6 @@ export default function NoteEditor() {
 						key={`${initializedNoteIdRef.current}-${externalVersion}`}
 						initialMarkdown={content}
 						onChange={handleContentChange}
-						currentTheme={currentTheme}
 						isMobile={isMobile}
 						searchQuery={searchOpen ? searchQuery : ""}
 						searchAction={searchAction}
@@ -708,7 +706,7 @@ export default function NoteEditor() {
 					<span key={t} className="pixel-tag">
 						{t}{" "}
 						<span
-							style={{ cursor: "pointer", color: "var(--accent-3)" }}
+							style={{ cursor: "pointer", color: "var(--vp-danger)" }}
 							onClick={() => handleRemoveTag(t)}
 						>
 							×
@@ -736,7 +734,7 @@ export default function NoteEditor() {
 						style={{
 							background: "none",
 							border: "none",
-							color: "var(--muted)",
+							color: "var(--vp-muted)",
 							cursor: "pointer",
 							fontSize: 16,
 							lineHeight: 1,

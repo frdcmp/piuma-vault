@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import { useTheme } from "../../../theme";
 import "./Starfield.css";
 
 // ───────────────────────── Tunable mix ─────────────────────────
@@ -71,6 +72,13 @@ const QUASAR = [
 ];
 
 const ALPHA = { o: 0.28, "*": 0.55, "#": 0.85, "@": 1 };
+// Artistic tints (no UI role): deep-sky objects and the moon.
+const OBJECT_COLORS = {
+	nebula: "#b06ab3",
+	galaxy: "#8fb7ff",
+	quasar: "#7fe7ff",
+};
+const MOON_COLOR = "#f7e9b0";
 const SPRITES = { nebula: NEBULA, galaxy: GALAXY, quasar: QUASAR };
 
 // Animated pixel starfield drawn on a canvas (one rAF loop, no per-star DOM
@@ -80,21 +88,13 @@ const SPRITES = { nebula: NEBULA, galaxy: GALAXY, quasar: QUASAR };
 // behind the empty-state content.
 export default function Starfield() {
 	const canvasRef = useRef(null);
+	const { tokens } = useTheme();
+	const { accent, text: textColor } = tokens;
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
 		if (!canvas) return;
 		const ctx = canvas.getContext("2d");
-
-		const cs = getComputedStyle(canvas);
-		const accent = cs.getPropertyValue("--accent").trim() || "#f7c948";
-		const textColor = cs.getPropertyValue("--text").trim() || "#d6dbe5";
-		// Optional per-object tints (fall back to pleasant defaults).
-		const colors = {
-			nebula: cs.getPropertyValue("--nebula").trim() || "#b06ab3",
-			galaxy: cs.getPropertyValue("--galaxy").trim() || "#8fb7ff",
-			quasar: cs.getPropertyValue("--quasar").trim() || "#7fe7ff",
-		};
 
 		let stars = [];
 		let objects = [];
@@ -224,7 +224,7 @@ export default function Starfield() {
 
 		const drawMoon = () => {
 			ctx.globalAlpha = 1;
-			ctx.fillStyle = "#f7e9b0";
+			ctx.fillStyle = MOON_COLOR;
 			for (let r = 0; r < MOON.length; r++) {
 				const row = MOON[r];
 				for (let c = 0; c < row.length; c++) {
@@ -255,7 +255,7 @@ export default function Starfield() {
 					ob.x,
 					ob.y,
 					ob.scale,
-					colors[ob.type],
+					OBJECT_COLORS[ob.type],
 					brightness,
 				);
 			}
@@ -301,7 +301,7 @@ export default function Starfield() {
 			cancelAnimationFrame(raf);
 			ro.disconnect();
 		};
-	}, []);
+	}, [accent, textColor]);
 
 	return <canvas ref={canvasRef} className="piuma-starfield" />;
 }

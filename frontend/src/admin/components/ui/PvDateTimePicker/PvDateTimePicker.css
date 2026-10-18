@@ -1,10 +1,9 @@
-/* PvDateTimePicker — themed date/time selector. Inherits the pixel palette
-   tokens from its host (modals declare them; falls back to literals if absent). */
+/* PvDateTimePicker — themed date/time selector, styled from the --vp-* tokens. */
 
 .fdt {
 	position: relative;
 	width: 100%;
-	font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+	font-family: var(--vp-font);
 }
 
 .fdt-field {
@@ -13,10 +12,10 @@
 	justify-content: space-between;
 	gap: 8px;
 	width: 100%;
-	background: var(--bg, #0e0f12);
-	border: 1px solid var(--border, #2a2f3a);
+	background: var(--vp-bg);
+	border: 1px solid var(--vp-border-soft);
 	border-radius: 4px;
-	color: var(--text, #d6dbe5);
+	color: var(--vp-text);
 	padding: 6px 8px;
 	font: inherit;
 	cursor: pointer;
@@ -24,15 +23,15 @@
 }
 
 .fdt-field:hover {
-	border-color: var(--border-strong, #3a4150);
+	border-color: var(--vp-border);
 }
 
 .fdt-field.is-empty .fdt-value {
-	color: var(--muted, #8a93a3);
+	color: var(--vp-muted);
 }
 
 .fdt-glyph {
-	color: var(--accent, #f7c948);
+	color: var(--vp-accent);
 	flex-shrink: 0;
 }
 
@@ -44,11 +43,12 @@
 	z-index: 50;
 	display: flex;
 	gap: 10px;
-	background: var(--panel, #1b1e25);
-	border: 1px solid var(--border-strong, #3a4150);
+	background: var(--vp-panel);
+	border: 1px solid var(--vp-border);
 	border-radius: 6px;
 	padding: 10px;
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	box-shadow: 0 8px 24px
+		color-mix(in srgb, var(--vp-shadow-color) 50%, transparent);
 	flex-wrap: wrap;
 }
 
@@ -66,15 +66,15 @@
 
 .fdt-month {
 	font-size: 0.82rem;
-	color: var(--text, #d6dbe5);
+	color: var(--vp-text);
 	letter-spacing: 0.03em;
 }
 
 .fdt-nav {
 	background: none;
-	border: 1px solid var(--border, #2a2f3a);
+	border: 1px solid var(--vp-border-soft);
 	border-radius: 4px;
-	color: var(--text, #d6dbe5);
+	color: var(--vp-text);
 	cursor: pointer;
 	width: 26px;
 	height: 26px;
@@ -82,8 +82,8 @@
 }
 
 .fdt-nav:hover {
-	border-color: var(--accent, #f7c948);
-	color: var(--accent, #f7c948);
+	border-color: var(--vp-accent);
+	color: var(--vp-accent);
 }
 
 .fdt-weekdays,
@@ -95,7 +95,7 @@
 .fdt-weekday {
 	text-align: center;
 	font-size: 0.62rem;
-	color: var(--muted, #8a93a3);
+	color: var(--vp-muted);
 	padding: 2px 0;
 }
 
@@ -104,29 +104,29 @@
 	background: none;
 	border: none;
 	border-radius: 4px;
-	color: var(--text, #d6dbe5);
+	color: var(--vp-text);
 	cursor: pointer;
 	font: inherit;
 	font-size: 0.74rem;
 }
 
 .fdt-day:hover {
-	background: var(--bg-soft, #15171c);
+	background: var(--vp-bg-soft);
 }
 
 .fdt-day.is-other {
-	color: var(--muted, #8a93a3);
+	color: var(--vp-muted);
 	opacity: 0.5;
 }
 
 .fdt-day.is-today {
-	outline: 1px solid var(--accent-4, #6cb6ff);
+	outline: 1px solid var(--vp-info);
 	outline-offset: -1px;
 }
 
 .fdt-day.is-sel {
-	background: var(--accent, #f7c948);
-	color: #000;
+	background: var(--vp-accent);
+	color: var(--vp-on-accent);
 }
 
 /* Time columns */
@@ -138,7 +138,7 @@
 
 .fdt-time-sep {
 	align-self: center;
-	color: var(--muted, #8a93a3);
+	color: var(--vp-muted);
 }
 
 .fdt-timecol {
@@ -152,10 +152,10 @@
 }
 
 .fdt-time-item {
-	background: var(--bg, #0e0f12);
-	border: 1px solid var(--border, #2a2f3a);
+	background: var(--vp-bg);
+	border: 1px solid var(--vp-border-soft);
 	border-radius: 4px;
-	color: var(--text, #d6dbe5);
+	color: var(--vp-text);
 	cursor: pointer;
 	font: inherit;
 	font-size: 0.74rem;
@@ -163,13 +163,13 @@
 }
 
 .fdt-time-item:hover {
-	border-color: var(--accent, #f7c948);
+	border-color: var(--vp-accent);
 }
 
 .fdt-time-item.is-on {
-	background: var(--accent, #f7c948);
-	color: #000;
-	border-color: var(--accent, #f7c948);
+	background: var(--vp-accent);
+	color: var(--vp-on-accent);
+	border-color: var(--vp-accent);
 }
 
 /* Footer */
@@ -179,14 +179,14 @@
 	justify-content: space-between;
 	gap: 8px;
 	width: 100%;
-	border-top: 1px solid var(--border, #2a2f3a);
+	border-top: 1px solid var(--vp-border-soft);
 	padding-top: 8px;
 }
 
 .fdt-action {
 	background: none;
 	border: none;
-	color: var(--accent-4, #6cb6ff);
+	color: var(--vp-info);
 	cursor: pointer;
 	font: inherit;
 	font-size: 0.74rem;
@@ -198,5 +198,5 @@
 }
 
 .fdt-action--done {
-	color: var(--accent-2, #5cd0a9);
+	color: var(--vp-success);
 }

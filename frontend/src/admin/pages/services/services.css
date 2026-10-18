@@ -18,14 +18,14 @@
 	letter-spacing: 0.5px;
 	text-transform: uppercase;
 	color: var(--vp-muted);
-	background: var(--vp-surface);
+	background: transparent;
 	border: 2px solid var(--vp-border);
 	padding: 8px 14px;
 	cursor: pointer;
 }
 
 .vp-svc-tab:hover {
-	color: var(--vp-fg);
+	color: var(--vp-text);
 	border-color: var(--vp-success);
 }
 
@@ -48,7 +48,7 @@
 	background: var(--vp-border);
 }
 .vp-svc-tab.is-active .vp-svc-tab-dot.is-off {
-	background: rgba(0, 0, 0, 0.35);
+	background: color-mix(in srgb, var(--vp-shadow-color) 35%, transparent);
 }
 
 .vp-svc-chip {

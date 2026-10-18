@@ -66,9 +66,7 @@ const SecuritySettings = () => {
 
 	const confirmEnroll = async () => {
 		if (!/^\d{6}$/.test(verifyCode.trim())) {
-			pvMessage.warning(
-				"Enter the 6-digit code from your authenticator app",
-			);
+			pvMessage.warning("Enter the 6-digit code from your authenticator app");
 			return;
 		}
 		setBusy(true);
@@ -151,11 +149,7 @@ const SecuritySettings = () => {
 							Authenticator, 1Password, Bitwarden, Authy, and others.
 						</p>
 						<div>
-							<PvButton
-								variant="primary"
-								onClick={startEnroll}
-								disabled={busy}
-							>
+							<PvButton variant="primary" onClick={startEnroll} disabled={busy}>
 								Enable two-factor authentication
 							</PvButton>
 						</div>
@@ -169,7 +163,7 @@ const SecuritySettings = () => {
 							6-digit code below to confirm.
 						</p>
 						<div className="vp-row vp-row--wrap" style={{ gap: 24 }}>
-							<div style={{ background: "#fff", padding: 12 }}>
+							<div style={{ background: "var(--vp-highlight)", padding: 12 }}>
 								<QRCodeSVG value={setupData.otpauth_uri} size={184} />
 							</div>
 							<div style={{ flex: 1, minWidth: 260 }}>
@@ -198,10 +192,7 @@ const SecuritySettings = () => {
 									>
 										Verify and enable
 									</PvButton>
-									<PvButton
-										variant="ghost"
-										onClick={() => setPhase("idle")}
-									>
+									<PvButton variant="ghost" onClick={() => setPhase("idle")}>
 										Cancel
 									</PvButton>
 								</div>
@@ -252,10 +243,7 @@ const SecuritySettings = () => {
 							</span>
 						</div>
 						<div>
-							<PvButton
-								variant="danger"
-								onClick={() => setDisableOpen(true)}
-							>
+							<PvButton variant="danger" onClick={() => setDisableOpen(true)}>
 								Disable two-factor authentication
 							</PvButton>
 						</div>

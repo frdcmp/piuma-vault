@@ -1,13 +1,4 @@
 .pv-message-stack {
-	--msg-bg: #1b1e25;
-	--msg-bg-soft: #15171c;
-	--msg-border: #3a4150;
-	--msg-text: #d6dbe5;
-	--msg-success: #5cd0a9;
-	--msg-error: #ff6b6b;
-	--msg-info: #f7c948;
-	--msg-warning: #ffa94d;
-
 	position: fixed;
 	top: 24px;
 	left: 50%;
@@ -23,15 +14,14 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 10px;
-	background: var(--msg-bg);
-	border: 2px solid var(--msg-border);
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
 	box-shadow:
-		3px 3px 0 0 #000,
-		inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-	color: var(--msg-text);
+		3px 3px 0 0 var(--vp-shadow-color),
+		inset 0 0 0 1px color-mix(in srgb, var(--vp-highlight) 3%, transparent);
+	color: var(--vp-text);
 	padding: 6px 14px 6px 8px;
-	font-family:
-		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+	font-family: var(--vp-font);
 	font-size: 10pt;
 	image-rendering: pixelated;
 	cursor: pointer;
@@ -52,7 +42,7 @@
 }
 
 .pv-message:hover {
-	border-color: var(--msg-text);
+	border-color: var(--vp-text);
 }
 
 .pv-message-icon {
@@ -63,45 +53,45 @@
 	height: 22px;
 	font-size: 11pt;
 	font-weight: 700;
-	background: var(--msg-bg-soft);
-	border: 2px solid var(--msg-border);
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
 }
 
 .pv-message-icon-success {
-	color: var(--msg-success);
-	border-color: var(--msg-success);
+	color: var(--vp-success);
+	border-color: var(--vp-success);
 }
 
 .pv-message-icon-error {
-	color: var(--msg-error);
-	border-color: var(--msg-error);
+	color: var(--vp-danger);
+	border-color: var(--vp-danger);
 }
 
 .pv-message-icon-info {
-	color: var(--msg-info);
-	border-color: var(--msg-info);
+	color: var(--vp-accent);
+	border-color: var(--vp-accent);
 	font-style: italic;
 }
 
 .pv-message-icon-warning {
-	color: var(--msg-warning);
-	border-color: var(--msg-warning);
+	color: var(--vp-warning);
+	border-color: var(--vp-warning);
 }
 
 .pv-message-success {
-	border-color: var(--msg-success);
+	border-color: var(--vp-success);
 }
 
 .pv-message-error {
-	border-color: var(--msg-error);
+	border-color: var(--vp-danger);
 }
 
 .pv-message-info {
-	border-color: var(--msg-info);
+	border-color: var(--vp-accent);
 }
 
 .pv-message-warning {
-	border-color: var(--msg-warning);
+	border-color: var(--vp-warning);
 }
 
 .pv-message-text {

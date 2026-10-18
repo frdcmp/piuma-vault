@@ -6,15 +6,12 @@
 	min-height: 0;
 	height: 100%;
 	overflow: hidden;
-	background: #0b0c10;
+	background: var(--vp-bg);
 	display: flex;
 	flex-direction: column;
 	align-items: center;
 	/* Sit the hole + waveform up near the top rather than dead-center. */
 	justify-content: flex-start;
-	/* Vars the shared Starfield canvas reads for its star colors. */
-	--accent: var(--vp-accent);
-	--text: var(--vp-text);
 }
 
 .recorder-scene-inner {
@@ -67,7 +64,7 @@
 	letter-spacing: 2px;
 	text-transform: uppercase;
 	color: var(--vp-muted);
-	text-shadow: 2px 2px 0 #000;
+	text-shadow: 2px 2px 0 var(--vp-shadow-color);
 	animation: recorder-label-blink 2.4s steps(2) infinite;
 }
 .recorder-hole-label--recording {
@@ -104,7 +101,7 @@
 	gap: 14px;
 	padding: 12px 16px;
 	border: 2px solid var(--vp-border);
-	background: rgba(11, 12, 16, 0.72);
+	background: color-mix(in srgb, var(--vp-bg) 72%, transparent);
 	box-shadow: var(--vp-shadow);
 }
 
@@ -120,7 +117,7 @@
 
 .recorder-meter-sprite {
 	line-height: 0;
-	filter: drop-shadow(2px 2px 0 #000);
+	filter: drop-shadow(2px 2px 0 var(--vp-shadow-color));
 }
 .recorder-meter-sprite.is-walking {
 	animation: recorder-sprite-bob 0.5s steps(2) infinite;
@@ -157,14 +154,19 @@
 	/* Past lines: plain grey mono. The latest line gets accent color below. */
 	color: var(--vp-muted);
 	text-align: left;
-	text-shadow: 1px 1px 0 #000;
+	text-shadow: 1px 1px 0 var(--vp-shadow-color);
 	-webkit-mask-image: linear-gradient(
 		to top,
-		#000 0%,
-		#000 42%,
+		var(--vp-shadow-color) 0%,
+		var(--vp-shadow-color) 42%,
 		transparent 100%
 	);
-	mask-image: linear-gradient(to top, #000 0%, #000 42%, transparent 100%);
+	mask-image: linear-gradient(
+		to top,
+		var(--vp-shadow-color) 0%,
+		var(--vp-shadow-color) 42%,
+		transparent 100%
+	);
 	pointer-events: none;
 }
 
@@ -230,7 +232,7 @@
 	text-decoration: none;
 	color: var(--vp-info);
 	border: 2px solid var(--vp-border);
-	background: rgba(11, 12, 16, 0.72);
+	background: color-mix(in srgb, var(--vp-bg) 72%, transparent);
 	box-shadow: var(--vp-shadow);
 	padding: 8px 16px;
 }
@@ -450,7 +452,7 @@
 	justify-content: space-between;
 	gap: 16px;
 	border: 2px solid var(--vp-border);
-	background: rgba(21, 23, 28, 0.88);
+	background: color-mix(in srgb, var(--vp-bg-soft) 88%, transparent);
 	box-shadow: var(--vp-shadow);
 	padding: 12px 14px;
 }

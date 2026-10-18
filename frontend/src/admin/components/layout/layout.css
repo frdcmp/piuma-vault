@@ -34,7 +34,7 @@
 .vp-shell-overlay {
 	position: fixed;
 	inset: 0;
-	background: rgba(0, 0, 0, 0.6);
+	background: color-mix(in srgb, var(--vp-shadow-color) 60%, transparent);
 	z-index: 10;
 }
 
@@ -87,7 +87,7 @@
 	letter-spacing: 1px;
 	text-transform: uppercase;
 	color: var(--vp-accent);
-	text-shadow: 2px 2px 0 #000;
+	text-shadow: 2px 2px 0 var(--vp-shadow-color);
 }
 
 .vp-icon-btn {

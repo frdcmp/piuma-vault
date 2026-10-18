@@ -1,30 +1,16 @@
 /* Tasks — pixel/terminal aesthetic, matching the Calendar + Home. */
 
 .tasks-page {
-	/* Pixel palette — kept local so the page is self-contained (the shared
-	   tokens are scoped to .notes-pixel-layout / .chat-root, not :root). */
-	--bg: #0e0f12;
-	--bg-soft: #15171c;
-	--panel: #1b1e25;
-	--border: #2a2f3a;
-	--border-strong: #3a4150;
-	--text: #d6dbe5;
-	--muted: #8a93a3;
-	--accent: #f7c948;
-	--accent-2: #5cd0a9;
-	--accent-3: #ff6b6b;
-	--accent-4: #6cb6ff;
-
 	/* Fills the flex row beside the chat dock (already sized to the viewport
 	   minus the WorkspaceHeader) and scrolls internally. */
 	flex: 1;
 	min-width: 0;
 	height: 100%;
 	overflow-y: auto;
-	background: var(--bg);
-	color: var(--text);
+	background: var(--vp-bg);
+	color: var(--vp-text);
 	padding: 16px clamp(12px, 4vw, 40px);
-	font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+	font-family: var(--vp-font);
 }
 
 .tasks-header {
@@ -49,7 +35,7 @@
 }
 
 .tasks-glyph {
-	color: var(--accent-2);
+	color: var(--vp-success);
 	font-size: 1.4rem;
 }
 
@@ -73,9 +59,9 @@
 }
 
 .tasks-sidebar {
-	border: 1px solid var(--border);
+	border: 1px solid var(--vp-border-soft);
 	border-radius: 6px;
-	background: var(--panel);
+	background: var(--vp-panel);
 	padding: 12px;
 }
 
@@ -89,9 +75,9 @@
 
 .tasks-manage-btn {
 	background: none;
-	border: 1px solid var(--border);
+	border: 1px solid var(--vp-border-soft);
 	border-radius: 4px;
-	color: var(--muted);
+	color: var(--vp-muted);
 	font: inherit;
 	font-size: 0.72rem;
 	padding: 3px 6px;
@@ -99,8 +85,8 @@
 }
 
 .tasks-manage-btn:hover {
-	color: var(--text);
-	border-color: var(--accent-2);
+	color: var(--vp-text);
+	border-color: var(--vp-success);
 }
 
 .tag-search {
@@ -108,21 +94,21 @@
 	box-sizing: border-box;
 	margin-bottom: 8px;
 	padding: 6px 8px;
-	background: var(--bg);
-	border: 1px solid var(--border);
+	background: var(--vp-bg);
+	border: 1px solid var(--vp-border-soft);
 	border-radius: 4px;
-	color: var(--text);
+	color: var(--vp-text);
 	font: inherit;
 	font-size: 0.78rem;
 }
 
 .tag-search::placeholder {
-	color: var(--muted);
+	color: var(--vp-muted);
 }
 
 .tag-search:focus {
 	outline: none;
-	border-color: var(--accent);
+	border-color: var(--vp-accent);
 }
 
 .tag-nav {
@@ -144,20 +130,20 @@
 	border: 1px solid transparent;
 	border-radius: 4px;
 	background: none;
-	color: var(--text);
+	color: var(--vp-text);
 	font: inherit;
 	font-size: 0.8rem;
 	cursor: pointer;
 }
 
 .tag-nav-btn:hover {
-	background: var(--bg-soft);
+	background: var(--vp-bg-soft);
 }
 
 .tag-nav-btn.is-active {
-	background: var(--bg-soft);
-	border-color: var(--accent-2);
-	color: var(--accent-2);
+	background: var(--vp-bg-soft);
+	border-color: var(--vp-success);
+	color: var(--vp-success);
 }
 
 .tag-nav-name {
@@ -169,17 +155,17 @@
 
 .tag-nav-divider {
 	height: 1px;
-	background: var(--border);
+	background: var(--vp-border-soft);
 	margin: 8px 0;
 }
 
 .tag-nav-count {
-	color: var(--muted);
+	color: var(--vp-muted);
 	font-size: 0.7rem;
 }
 
 .tag-nav-btn.is-active .tag-nav-count {
-	color: var(--accent-2);
+	color: var(--vp-success);
 }
 
 .tasks-cols {
@@ -189,9 +175,9 @@
 }
 
 .tasks-panel {
-	border: 1px solid var(--border);
+	border: 1px solid var(--vp-border-soft);
 	border-radius: 6px;
-	background: var(--panel);
+	background: var(--vp-panel);
 	padding: 12px;
 }
 
@@ -207,7 +193,7 @@
 	font-size: 0.8rem;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
-	color: var(--muted);
+	color: var(--vp-muted);
 }
 
 /* In the sidebar head the title sits in a centred flex row next to the manage
@@ -230,29 +216,29 @@
 	align-items: center;
 	gap: 8px;
 	padding: 6px 8px;
-	border: 1px solid var(--border);
+	border: 1px solid var(--vp-border-soft);
 	/* Thicker left edge: it carries the task's priority colour (see .prio-*). */
 	border-left-width: 3px;
 	border-radius: 4px;
-	background: var(--bg-soft);
+	background: var(--vp-bg-soft);
 }
 
 /* Priority is shown by tinting the card (left bar + faint wash), not a label.
    color-mix gives the wash; if unsupported the declaration is dropped and the
    row keeps its plain --bg-soft background. */
 .task-row.prio-1 {
-	border-left-color: var(--accent-2);
-	background: color-mix(in srgb, var(--accent-2) 7%, var(--bg-soft));
+	border-left-color: var(--vp-success);
+	background: color-mix(in srgb, var(--vp-success) 7%, var(--vp-bg-soft));
 }
 
 .task-row.prio-2 {
-	border-left-color: var(--accent);
-	background: color-mix(in srgb, var(--accent) 7%, var(--bg-soft));
+	border-left-color: var(--vp-accent);
+	background: color-mix(in srgb, var(--vp-accent) 7%, var(--vp-bg-soft));
 }
 
 .task-row.prio-3 {
-	border-left-color: var(--accent-3);
-	background: color-mix(in srgb, var(--accent-3) 9%, var(--bg-soft));
+	border-left-color: var(--vp-danger);
+	background: color-mix(in srgb, var(--vp-danger) 9%, var(--vp-bg-soft));
 }
 
 .task-row.is-done,
@@ -263,7 +249,7 @@
 .task-check {
 	background: none;
 	border: none;
-	color: var(--accent-2);
+	color: var(--vp-success);
 	font-size: 1rem;
 	cursor: pointer;
 	padding: 0;
@@ -275,7 +261,7 @@
 .task-drag {
 	background: none;
 	border: none;
-	color: var(--muted);
+	color: var(--vp-muted);
 	font-size: 0.9rem;
 	line-height: 1;
 	padding: 0 2px;
@@ -296,8 +282,9 @@
 /* Lifted row while dragging — sits above siblings with a subtle outline. */
 .task-row.is-dragging {
 	z-index: 2;
-	border-color: var(--accent-2);
-	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+	border-color: var(--vp-success);
+	box-shadow: 0 4px 14px
+		color-mix(in srgb, var(--vp-shadow-color) 35%, transparent);
 }
 
 /* Spinner shown in the checkbox while a toggle is in flight. Inherits the
@@ -334,7 +321,7 @@
 }
 
 .task-title {
-	color: var(--text);
+	color: var(--vp-text);
 	font-size: 0.85rem;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -353,16 +340,16 @@
 	flex-wrap: wrap;
 	gap: 6px;
 	font-size: 0.68rem;
-	color: var(--muted);
+	color: var(--vp-muted);
 	align-items: center;
 }
 
 .task-due {
-	color: var(--accent);
+	color: var(--vp-accent);
 }
 /* Overdue due-dates (and the Overdue group heading) read in the alert colour. */
 .task-due.is-overdue {
-	color: var(--accent-3);
+	color: var(--vp-danger);
 	font-weight: 600;
 }
 
@@ -380,10 +367,10 @@
 	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
-	color: var(--muted);
+	color: var(--vp-muted);
 }
 .tasks-group-title.is-overdue {
-	color: var(--accent-3);
+	color: var(--vp-danger);
 }
 
 /* Non-draggable rows (dated groups) keep the drag column's width so the check
@@ -396,7 +383,7 @@
 
 /* Bell shown when a task has one or more alerts configured. */
 .task-alert {
-	color: var(--accent);
+	color: var(--vp-accent);
 	font-size: 0.72rem;
 }
 
@@ -414,7 +401,7 @@
 }
 
 .task-rrule {
-	color: var(--accent-4);
+	color: var(--vp-info);
 	font-size: 0.64rem;
 }
 
@@ -437,7 +424,7 @@
 	padding: 0;
 	font: inherit;
 	font-size: 0.68rem;
-	color: var(--accent-2);
+	color: var(--vp-success);
 	cursor: pointer;
 }
 
@@ -448,18 +435,18 @@
 .task-del {
 	background: none;
 	border: none;
-	color: var(--muted);
+	color: var(--vp-muted);
 	cursor: pointer;
 	font-size: 0.8rem;
 	padding: 2px 4px;
 }
 
 .task-del:hover {
-	color: var(--accent-3);
+	color: var(--vp-danger);
 }
 
 .tasks-empty {
-	color: var(--muted);
+	color: var(--vp-muted);
 	font-size: 0.78rem;
 	padding: 8px;
 	font-style: italic;
@@ -471,7 +458,7 @@
 
 .tasks-done summary {
 	cursor: pointer;
-	color: var(--muted);
+	color: var(--vp-muted);
 	font-size: 0.74rem;
 	margin-bottom: 6px;
 }
@@ -484,19 +471,8 @@
 }
 
 /* Forms (shared by both modals) — rendered through a portal (outside
-   .tasks-page), so they redeclare the palette tokens to stay themed. */
+   .tasks-page). */
 .tasks-form {
-	--bg: #0e0f12;
-	--bg-soft: #15171c;
-	--panel: #1b1e25;
-	--border: #2a2f3a;
-	--text: #d6dbe5;
-	--muted: #8a93a3;
-	--accent: #f7c948;
-	--accent-2: #5cd0a9;
-	--accent-3: #ff6b6b;
-	--accent-4: #6cb6ff;
-
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
@@ -507,7 +483,7 @@
 	flex-direction: column;
 	gap: 4px;
 	font-size: 0.8rem;
-	color: var(--muted);
+	color: var(--vp-muted);
 }
 
 /* Completion toggle — reflects (and edits) the task's done state in the editor. */
@@ -517,22 +493,22 @@
 	gap: 8px;
 	align-self: flex-start;
 	padding: 5px 12px;
-	border: 1px solid var(--border);
+	border: 1px solid var(--vp-border-soft);
 	border-radius: 4px;
-	background: var(--bg-soft);
-	color: var(--muted);
+	background: var(--vp-bg-soft);
+	color: var(--vp-muted);
 	font: inherit;
 	font-size: 0.8rem;
 	cursor: pointer;
 }
 
 .task-done-toggle:hover {
-	border-color: var(--accent-2);
+	border-color: var(--vp-success);
 }
 
 .task-done-toggle.is-done {
-	border-color: var(--accent-2);
-	color: var(--accent-2);
+	border-color: var(--vp-success);
+	color: var(--vp-success);
 }
 
 .task-done-toggle .task-done-box {
@@ -549,10 +525,10 @@
 .tasks-field input,
 .tasks-field textarea,
 .tasks-field select {
-	background: var(--bg);
-	border: 1px solid var(--border);
+	background: var(--vp-bg);
+	border: 1px solid var(--vp-border-soft);
 	border-radius: 4px;
-	color: var(--text);
+	color: var(--vp-text);
 	padding: 6px 8px;
 	font: inherit;
 	/* Render native controls (date/time popup + spinners) in dark mode. */
@@ -570,7 +546,7 @@
 .tasks-field textarea:focus,
 .tasks-field select:focus {
 	outline: none;
-	border-color: var(--accent);
+	border-color: var(--vp-accent);
 }
 
 /* Native <select> arrow: drop the OS chevron and draw a consistent, evenly
@@ -603,39 +579,39 @@
 .dow-btn {
 	width: 30px;
 	height: 30px;
-	border: 1px solid var(--border);
+	border: 1px solid var(--vp-border-soft);
 	border-radius: 4px;
-	background: var(--bg);
-	color: var(--muted);
+	background: var(--vp-bg);
+	color: var(--vp-muted);
 	cursor: pointer;
 	font: inherit;
 }
 
 .dow-btn.is-on {
-	background: var(--accent-2);
-	color: #000;
-	border-color: var(--accent-2);
+	background: var(--vp-success);
+	color: var(--vp-on-accent);
+	border-color: var(--vp-success);
 }
 
 .tasks-hint {
 	font-size: 0.72rem;
-	color: var(--muted);
+	color: var(--vp-muted);
 	margin: 0;
 }
 
 .tasks-hint code {
-	color: var(--accent-4);
+	color: var(--vp-info);
 }
 
 .tasks-error {
-	color: var(--accent-3);
+	color: var(--vp-danger);
 	font-size: 0.78rem;
 	margin: 0;
 }
 
 /* ── Task detail VIEW (inline click-to-edit) ──────────────────────────────────
    Opening an existing task shows a read view; each value is a button that swaps
-   to its editor in place and auto-saves. Reuses the .tasks-form palette tokens. */
+   to its editor in place and auto-saves. */
 .task-view {
 	gap: 14px;
 }
@@ -651,21 +627,21 @@
 	font: inherit;
 	font-size: 1.15rem;
 	font-weight: 600;
-	color: var(--text);
+	color: var(--vp-text);
 	cursor: text;
 }
 .task-view-title:hover {
-	border-bottom-color: var(--border);
+	border-bottom-color: var(--vp-border-soft);
 }
 .task-view-title.is-done {
 	text-decoration: line-through;
-	color: var(--muted);
+	color: var(--vp-muted);
 }
 .task-view-title-input {
-	background: var(--bg);
-	border: 1px solid var(--accent);
+	background: var(--vp-bg);
+	border: 1px solid var(--vp-accent);
 	border-radius: 4px;
-	color: var(--text);
+	color: var(--vp-text);
 	padding: 6px 8px;
 	font: inherit;
 	font-size: 1.15rem;
@@ -695,7 +671,7 @@
 	font-size: 0.72rem;
 	letter-spacing: 0.4px;
 	text-transform: uppercase;
-	color: var(--muted);
+	color: var(--vp-muted);
 }
 .task-view-value {
 	display: inline-flex;
@@ -711,18 +687,18 @@
 	width: 100%;
 	font: inherit;
 	font-size: 0.9rem;
-	color: var(--text);
+	color: var(--vp-text);
 	cursor: pointer;
 }
 .task-view-value:hover {
-	border-color: var(--border);
-	background: var(--bg-soft);
+	border-color: var(--vp-border-soft);
+	background: var(--vp-bg-soft);
 }
 .task-view-tags {
 	flex-wrap: wrap;
 }
 .task-view-empty {
-	color: var(--muted);
+	color: var(--vp-muted);
 	font-style: italic;
 }
 /* The editor that replaces a value occupies the value column. */
@@ -742,16 +718,16 @@
 	flex: 0 0 auto;
 }
 .prio-dot.prio-0 {
-	background: var(--muted);
+	background: var(--vp-muted);
 }
 .prio-dot.prio-1 {
-	background: var(--accent-2);
+	background: var(--vp-success);
 }
 .prio-dot.prio-2 {
-	background: var(--accent);
+	background: var(--vp-accent);
 }
 .prio-dot.prio-3 {
-	background: var(--accent-3);
+	background: var(--vp-danger);
 }
 
 /* Notes: rendered markdown when viewing, textarea when editing. */
@@ -769,12 +745,12 @@
 	margin: -1px;
 	min-height: 48px;
 	font: inherit;
-	color: var(--text);
+	color: var(--vp-text);
 	cursor: text;
 }
 .task-view-notes-display:hover {
-	border-color: var(--border);
-	background: var(--bg-soft);
+	border-color: var(--vp-border-soft);
+	background: var(--vp-bg-soft);
 }
 .task-view-md {
 	font-size: 0.9rem;
@@ -790,7 +766,7 @@
 	margin: 0 0 8px;
 }
 .task-view-md code {
-	color: var(--accent-4);
+	color: var(--vp-info);
 }
 
 /* The inline editors live OUTSIDE .tasks-field, so they don't inherit the dark
@@ -799,10 +775,10 @@
    replace so swapping view->edit doesn't resize/recenter the modal. */
 .task-view-select,
 .task-view .tasks-textarea-auto {
-	background: var(--bg);
-	border: 1px solid var(--accent);
+	background: var(--vp-bg);
+	border: 1px solid var(--vp-accent);
 	border-radius: 4px;
-	color: var(--text);
+	color: var(--vp-text);
 	font: inherit;
 	font-size: 0.9rem;
 	color-scheme: dark;

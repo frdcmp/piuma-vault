@@ -1,33 +1,23 @@
 /* PvAlarm — pixel-style must-dismiss alarm dialog.
-   Palette/primitives mirror vault-pixel.css + PvModal.css so it stays
-   consistent. Tokens fall back to the :root --vp-* set when present. */
+   Primitives mirror PvModal.css; colours come from the --vp-* tokens. */
 .pv-alarm-overlay {
-	--al-bg: var(--vp-panel);
-	--al-bg-soft: var(--vp-bg-soft);
-	--al-border: var(--vp-border);
-	--al-text: var(--vp-text);
-	--al-muted: var(--vp-muted);
-	--al-accent: var(--vp-accent);
-	--al-accent-2: var(--vp-success);
-	--al-danger: var(--vp-danger);
-	--al-font: var(
-		--vp-font,
-		"JetBrainsMono Nerd Font",
-		"JetBrains Mono",
-		"Courier New",
-		monospace
-	);
-
 	position: fixed;
 	inset: 0;
 	z-index: 10000;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(0, 0, 0, 0.6);
+	background: color-mix(in srgb, var(--vp-shadow-color) 60%, transparent);
 	background-image:
-		linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-		linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+		linear-gradient(
+			color-mix(in srgb, var(--vp-highlight) 1.5%, transparent) 1px,
+			transparent 1px
+		),
+		linear-gradient(
+			90deg,
+			color-mix(in srgb, var(--vp-highlight) 1.5%, transparent) 1px,
+			transparent 1px
+		);
 	background-size: 8px 8px;
 	animation: pv-alarm-fade 90ms steps(3, end);
 }
@@ -55,24 +45,24 @@
 	0%,
 	100% {
 		box-shadow:
-			4px 4px 0 0 #000,
-			0 0 0 0 rgba(247, 201, 72, 0);
+			var(--vp-shadow-lg),
+			0 0 0 0 color-mix(in srgb, var(--vp-accent) 0%, transparent);
 	}
 	50% {
 		box-shadow:
-			4px 4px 0 0 #000,
-			0 0 0 3px rgba(247, 201, 72, 0.35);
+			var(--vp-shadow-lg),
+			0 0 0 3px color-mix(in srgb, var(--vp-accent) 35%, transparent);
 	}
 }
 
 .pv-alarm {
 	width: min(92vw, 420px);
-	background: var(--al-bg);
-	border: 2px solid var(--al-border);
-	color: var(--al-text);
-	font-family: var(--al-font);
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	color: var(--vp-text);
+	font-family: var(--vp-font);
 	image-rendering: pixelated;
-	box-shadow: 4px 4px 0 0 #000;
+	box-shadow: var(--vp-shadow-lg);
 	animation:
 		pv-alarm-pop 90ms steps(3, end),
 		pv-alarm-throb 1.2s steps(2, end) 90ms infinite;
@@ -84,8 +74,8 @@
 	align-items: center;
 	gap: 8px;
 	padding: 7px 10px 7px 12px;
-	background: var(--al-bg-soft);
-	border-bottom: 2px solid var(--al-border);
+	background: var(--vp-bg-soft);
+	border-bottom: 2px solid var(--vp-border);
 }
 
 .pv-alarm-bell {
@@ -118,7 +108,7 @@
 	font-weight: 700;
 	letter-spacing: 1px;
 	text-transform: uppercase;
-	color: var(--al-accent);
+	color: var(--vp-accent);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -132,9 +122,9 @@
 	height: 16px;
 	font-size: 11px;
 	font-weight: 800;
-	color: var(--al-bg-soft);
-	background: var(--al-danger);
-	box-shadow: 2px 2px 0 0 #000;
+	color: var(--vp-bg-soft);
+	background: var(--vp-danger);
+	box-shadow: var(--vp-shadow);
 	animation: pv-alarm-blink 0.8s steps(1, end) infinite;
 }
 
@@ -159,14 +149,14 @@
 	font-size: 13pt;
 	font-weight: 800;
 	line-height: 1.35;
-	color: var(--al-text);
+	color: var(--vp-text);
 	letter-spacing: 0.3px;
 }
 
 .pv-alarm-time {
 	margin: 8px 0 0;
 	font-size: 10pt;
-	color: var(--al-accent);
+	color: var(--vp-accent);
 	letter-spacing: 0.5px;
 }
 
@@ -174,7 +164,7 @@
 	margin: 10px 0 0;
 	font-size: 10pt;
 	line-height: 1.5;
-	color: var(--al-muted);
+	color: var(--vp-muted);
 	white-space: pre-wrap;
 }
 
@@ -184,15 +174,15 @@
 	justify-content: flex-end;
 	gap: 8px;
 	padding: 10px 12px;
-	background: var(--al-bg-soft);
-	border-top: 2px dashed var(--al-border);
+	background: var(--vp-bg-soft);
+	border-top: 2px dashed var(--vp-border);
 }
 
 .pv-alarm-btn {
-	background: var(--al-bg-soft);
-	border: 2px solid var(--al-border);
-	box-shadow: 2px 2px 0 0 #000;
-	color: var(--al-text);
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	color: var(--vp-text);
 	padding: 5px 14px;
 	font-family: inherit;
 	font-size: 10pt;
@@ -204,23 +194,23 @@
 }
 
 .pv-alarm-btn:hover {
-	border-color: var(--al-accent);
-	color: var(--al-accent);
+	border-color: var(--vp-accent);
+	color: var(--vp-accent);
 }
 
 .pv-alarm-btn:active {
 	transform: translate(2px, 2px);
-	box-shadow: 0 0 0 0 #000;
+	box-shadow: 0 0 0 0 var(--vp-shadow-color);
 }
 
 .pv-alarm-btn.danger {
-	color: var(--al-danger);
-	border-color: var(--al-danger);
+	color: var(--vp-danger);
+	border-color: var(--vp-danger);
 }
 
 .pv-alarm-btn.danger:hover {
-	background: var(--al-danger);
-	color: var(--al-bg);
+	background: var(--vp-danger);
+	color: var(--vp-panel);
 }
 
 /* ---- Snooze inline menu ---------------------------------------------------- */
@@ -235,17 +225,17 @@
 	min-width: 100%;
 	display: flex;
 	flex-direction: column;
-	background: var(--al-bg);
-	border: 2px solid var(--al-border);
-	box-shadow: 2px 2px 0 0 #000;
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
 	animation: pv-alarm-pop 90ms steps(3, end);
 }
 
 .pv-alarm-snooze-item {
 	background: none;
 	border: none;
-	border-bottom: 1px solid var(--al-border);
-	color: var(--al-text);
+	border-bottom: 1px solid var(--vp-border);
+	color: var(--vp-text);
 	font-family: inherit;
 	font-size: 10pt;
 	letter-spacing: 0.5px;
@@ -259,6 +249,6 @@
 }
 
 .pv-alarm-snooze-item:hover {
-	background: var(--al-accent-2);
-	color: var(--al-bg);
+	background: var(--vp-success);
+	color: var(--vp-panel);
 }

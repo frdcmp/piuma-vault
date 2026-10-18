@@ -23,7 +23,14 @@
 }
 
 .ftree-moon {
-	filter: drop-shadow(0 0 1px rgba(154, 131, 64, 0.4));
+	filter: drop-shadow(
+		0 0 1px
+			color-mix(
+				in srgb,
+				color-mix(in srgb, var(--vp-accent) 60%, var(--vp-bg)) 40%,
+				transparent
+			)
+	);
 }
 
 @keyframes ftree-twinkle {

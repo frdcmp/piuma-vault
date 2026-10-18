@@ -6,13 +6,13 @@ import SharePopover from "../../components/notes/SharePopover";
 // Save-status pill — mirrors the icon the editor header used to show.
 function SaveDot({ status }) {
 	let icon = "✓";
-	let color = "var(--accent-2)";
+	let color = "var(--vp-success)";
 	if (status === "saving") {
 		icon = "⏳";
-		color = "var(--accent)";
+		color = "var(--vp-accent)";
 	} else if (status === "error") {
 		icon = "×";
-		color = "var(--accent-3)";
+		color = "var(--vp-danger)";
 	}
 	return (
 		<span

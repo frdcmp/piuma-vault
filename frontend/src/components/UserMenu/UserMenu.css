@@ -10,30 +10,29 @@
 .user-menu {
 	position: relative;
 	display: inline-flex;
-	font-family:
-		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+	font-family: var(--vp-font);
 }
 
 /* ---------- Login button (logged out) ---------- */
 .user-menu-login {
 	display: inline-block;
 	padding: 8px 12px;
-	background: var(--panel, #1b1e25);
-	border: 2px solid var(--accent, #f7c948);
-	color: var(--accent, #f7c948);
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-accent);
+	color: var(--vp-accent);
 	text-decoration: none;
 	font-size: 10pt;
 	font-weight: 700;
-	box-shadow: 3px 3px 0 0 #000;
+	box-shadow: 3px 3px 0 0 var(--vp-shadow-color);
 	transition: transform 0.05s ease;
 }
 .user-menu-login:hover {
-	background: var(--accent, #f7c948);
-	color: #0e0f12;
+	background: var(--vp-accent);
+	color: var(--vp-on-accent);
 }
 .user-menu-login:active {
 	transform: translate(2px, 2px);
-	box-shadow: 1px 1px 0 0 #000;
+	box-shadow: 1px 1px 0 0 var(--vp-shadow-color);
 }
 
 /* ---------- Avatar (logged in) ---------- */
@@ -43,25 +42,25 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: var(--panel, #1b1e25);
-	border: 2px solid var(--accent-2, #5cd0a9);
-	color: var(--accent-2, #5cd0a9);
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-success);
+	color: var(--vp-success);
 	font-family: inherit;
 	font-size: 12pt;
 	font-weight: 700;
 	letter-spacing: 1px;
 	cursor: pointer;
-	box-shadow: 3px 3px 0 0 #000;
+	box-shadow: 3px 3px 0 0 var(--vp-shadow-color);
 	transition: transform 0.05s ease;
 	padding: 0;
 }
 .user-menu-avatar:hover {
-	background: var(--accent-2, #5cd0a9);
-	color: #0e0f12;
+	background: var(--vp-success);
+	color: var(--vp-on-accent);
 }
 .user-menu-avatar:active {
 	transform: translate(2px, 2px);
-	box-shadow: 1px 1px 0 0 #000;
+	box-shadow: 1px 1px 0 0 var(--vp-shadow-color);
 }
 
 /* ---------- Dropdown ---------- */
@@ -71,9 +70,9 @@
 	right: 0;
 	z-index: 1000;
 	min-width: 220px;
-	background: var(--panel, #1b1e25);
-	border: 2px solid var(--border-strong, #3a4150);
-	box-shadow: 4px 4px 0 0 #000;
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow-lg);
 	padding: 12px;
 	display: flex;
 	flex-direction: column;
@@ -91,28 +90,28 @@
 	padding: 2px 4px 6px;
 }
 .user-menu-name {
-	color: var(--accent, #f7c948);
+	color: var(--vp-accent);
 	font-size: 11pt;
 	font-weight: 700;
 }
 .user-menu-email {
-	color: var(--muted, #8a93a3);
+	color: var(--vp-muted);
 	font-size: 9pt;
 	word-break: break-all;
 	margin-top: 2px;
 }
 .user-menu-role {
-	color: var(--text, #d6dbe5);
+	color: var(--vp-text);
 	font-size: 9pt;
 	margin-top: 4px;
 }
 .user-menu-role-label {
-	color: var(--accent-4, #6cb6ff);
+	color: var(--vp-info);
 }
 
 .user-menu-divider {
 	height: 0;
-	border-top: 1px dashed var(--border, #2a2f3a);
+	border-top: 1px dashed var(--vp-border-soft);
 	margin: 6px 0;
 }
 
@@ -123,16 +122,16 @@
 	background: none;
 	border: none;
 	padding: 6px 4px;
-	color: var(--text, #d6dbe5);
+	color: var(--vp-text);
 	font-family: inherit;
 	font-size: 10pt;
 	text-decoration: none;
 	cursor: pointer;
 }
 .user-menu-item:hover {
-	background: var(--bg-soft, #15171c);
-	color: var(--accent-2, #5cd0a9);
+	background: var(--vp-bg-soft);
+	color: var(--vp-success);
 }
 .user-menu-logout:hover {
-	color: var(--accent-3, #ff6b6b);
+	color: var(--vp-danger);
 }

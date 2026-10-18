@@ -5,7 +5,7 @@
 	padding: 3px 9px;
 	border: 1px solid currentColor;
 	border-radius: 999px;
-	color: #8a93a3;
+	color: var(--vp-muted);
 	font-family: inherit;
 	font-size: 0.78rem;
 	line-height: 1.3;
@@ -17,7 +17,7 @@
 }
 
 .pv-tag.is-clickable:hover {
-	background: rgba(255, 255, 255, 0.06);
+	background: color-mix(in srgb, var(--vp-highlight) 6%, transparent);
 }
 
 .pv-tag-label {

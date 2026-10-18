@@ -109,7 +109,7 @@ const Profile = () => {
 										<Avatar
 											size={120}
 											style={{
-												backgroundColor: "#1890ff",
+												backgroundColor: "var(--vp-info)",
 												fontSize: "36px",
 											}}
 											icon={<UserOutlined />}

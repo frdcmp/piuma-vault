@@ -79,8 +79,8 @@
 	gap: 10px;
 	flex-wrap: wrap;
 	padding: 10px 14px;
-	background: var(--panel);
-	border-bottom: 2px dashed var(--border-strong);
+	background: var(--vp-panel);
+	border-bottom: 2px dashed var(--vp-border);
 }
 
 .storage-breadcrumb {
@@ -96,7 +96,7 @@
 .storage-crumb {
 	border: 0;
 	background: transparent;
-	color: var(--accent-4);
+	color: var(--vp-info);
 	font-family: inherit;
 	font-size: inherit;
 	cursor: pointer;
@@ -104,19 +104,19 @@
 }
 
 .storage-crumb:hover {
-	color: var(--accent);
+	color: var(--vp-accent);
 	text-decoration: underline;
 }
 
 .storage-crumb.current {
-	color: var(--accent);
+	color: var(--vp-accent);
 	font-weight: 700;
 	cursor: default;
 	text-decoration: none;
 }
 
 .storage-crumb-sep {
-	color: var(--muted);
+	color: var(--vp-muted);
 	opacity: 0.7;
 }
 
@@ -142,8 +142,8 @@
 
 /* Rubber-band selection rectangle (positioned inline, fixed to the viewport). */
 .storage-marquee {
-	border: 1px solid var(--accent-2);
-	background: rgba(92, 208, 169, 0.12);
+	border: 1px solid var(--vp-success);
+	background: color-mix(in srgb, var(--vp-success) 12%, transparent);
 	pointer-events: none;
 	z-index: 50;
 }
@@ -152,15 +152,15 @@
 /* Dropping files on the body uploads to the current prefix; dropping on a
    folder tile uploads into that folder. Both highlight while dragging over. */
 .storage-body.drag-over {
-	outline: 2px dashed var(--accent);
+	outline: 2px dashed var(--vp-accent);
 	outline-offset: -6px;
-	background: rgba(247, 201, 72, 0.05);
+	background: color-mix(in srgb, var(--vp-accent) 5%, transparent);
 }
 
 .storage-tile.folder.drag-over {
-	border-color: var(--accent);
-	background: rgba(247, 201, 72, 0.1);
-	box-shadow: 2px 2px 0 0 var(--accent);
+	border-color: var(--vp-accent);
+	background: color-mix(in srgb, var(--vp-accent) 10%, transparent);
+	box-shadow: 2px 2px 0 0 var(--vp-accent);
 }
 
 /* ── File rows in the left tree ────────────────────────────────── */
@@ -171,7 +171,7 @@
 
 .ftree-file-name {
 	flex: 1;
-	color: var(--accent-4);
+	color: var(--vp-info);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -183,13 +183,13 @@
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	color: var(--accent-2);
+	color: var(--vp-success);
 	font-size: 10px;
 	font-weight: 900;
 	letter-spacing: 1.4px;
 	text-transform: uppercase;
 	padding: 10px 2px 6px;
-	border-bottom: 1px dashed var(--border);
+	border-bottom: 1px dashed var(--vp-border-soft);
 	margin-bottom: 8px;
 }
 
@@ -207,9 +207,9 @@
 	flex-direction: column;
 	gap: 6px;
 	padding: 12px 12px 10px;
-	border: 2px solid var(--border-strong);
-	background: var(--bg-soft);
-	box-shadow: 2px 2px 0 0 #000;
+	border: 2px solid var(--vp-border);
+	background: var(--vp-bg-soft);
+	box-shadow: 2px 2px 0 0 var(--vp-shadow-color);
 	cursor: pointer;
 	min-width: 0;
 	/* Double-click selects/opens — never let it highlight the tile's text. */
@@ -217,12 +217,12 @@
 }
 
 .storage-tile:hover {
-	border-color: var(--accent);
+	border-color: var(--vp-accent);
 }
 
 .storage-tile.selected {
-	border-color: var(--accent-2);
-	background: rgba(92, 208, 169, 0.08);
+	border-color: var(--vp-success);
+	background: color-mix(in srgb, var(--vp-success) 8%, transparent);
 }
 
 .storage-tile-top {
@@ -238,11 +238,11 @@
 }
 
 .storage-tile.folder .storage-tile-glyph {
-	color: var(--accent);
+	color: var(--vp-accent);
 }
 
 .storage-tile.file .storage-tile-glyph {
-	color: var(--accent-4);
+	color: var(--vp-info);
 	/* A small type icon inline with the size/date meta row. */
 	font-size: 13px;
 	line-height: 1;
@@ -253,14 +253,14 @@
 	height: 32px;
 	flex: none;
 	object-fit: cover;
-	border: 1px solid var(--border);
+	border: 1px solid var(--vp-border-soft);
 	image-rendering: pixelated;
 }
 
 .storage-tile-name {
 	flex: 1;
 	min-width: 0;
-	color: var(--text);
+	color: var(--vp-text);
 	font-size: 10pt;
 	font-weight: 700;
 	word-break: break-word;
@@ -275,12 +275,12 @@
 	align-items: center;
 	gap: 8px;
 	flex-wrap: wrap;
-	color: var(--muted);
+	color: var(--vp-muted);
 	font-size: 9px;
 }
 
 .storage-tile-size {
-	color: var(--accent-2);
+	color: var(--vp-success);
 }
 
 /* ── Preview modal image ───────────────────────────────────────── */
@@ -290,7 +290,7 @@
 	display: block;
 	margin: 0 auto;
 	image-rendering: auto;
-	border: 1px solid var(--border);
+	border: 1px solid var(--vp-border-soft);
 }
 
 .storage-share-url {
@@ -312,7 +312,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(0, 0, 0, 0.55);
+	background: color-mix(in srgb, var(--vp-shadow-color) 55%, transparent);
 }
 
 .storage-busy-card {
@@ -320,10 +320,10 @@
 	align-items: center;
 	gap: 12px;
 	padding: 16px 22px;
-	background: var(--panel);
-	border: 2px solid var(--border-strong);
-	box-shadow: 4px 4px 0 0 #000;
-	color: var(--text);
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	box-shadow: 4px 4px 0 0 var(--vp-shadow-color);
+	color: var(--vp-text);
 	font-size: 11pt;
 	font-weight: 700;
 }
@@ -345,7 +345,7 @@
 
 /* Header brand block in the sidebar (mirrors notes header) */
 .storage-sidebar-sub {
-	color: var(--muted);
+	color: var(--vp-muted);
 	font-size: 9px;
 	letter-spacing: 0.4px;
 	margin-top: 2px;
@@ -407,7 +407,7 @@
 	padding: 10px 10px 8px;
 	border: 2px solid var(--vp-border);
 	background: var(--vp-bg-soft);
-	box-shadow: 2px 2px 0 0 #000;
+	box-shadow: 2px 2px 0 0 var(--vp-shadow-color);
 }
 
 .fshare-row--inactive {

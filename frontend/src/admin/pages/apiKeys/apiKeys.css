@@ -25,7 +25,7 @@
 	font-size: 32px;
 	font-weight: 800;
 	line-height: 1;
-	text-shadow: 2px 2px 0 #000;
+	text-shadow: 2px 2px 0 var(--vp-shadow-color);
 }
 .vp-keys-stat-value--accent {
 	color: var(--vp-accent);
@@ -76,7 +76,8 @@
 	position: relative;
 	background: var(--vp-bg-soft);
 	border: 2px solid var(--vp-border);
-	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+	box-shadow: inset 0 0 0 1px
+		color-mix(in srgb, var(--vp-highlight) 2%, transparent);
 	padding: 16px 44px 16px 16px;
 	word-break: break-all;
 }

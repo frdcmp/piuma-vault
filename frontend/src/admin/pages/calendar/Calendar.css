@@ -1,28 +1,14 @@
 /* Calendar — pixel/terminal aesthetic, matching Home / StorageExplorer. */
 
 .cal-page {
-	/* Pixel palette — kept local so the page is self-contained (the shared
-	   tokens are scoped to .notes-pixel-layout / .chat-root, not :root). */
-	--bg: #0e0f12;
-	--bg-soft: #15171c;
-	--panel: #1b1e25;
-	--border: #2a2f3a;
-	--border-strong: #3a4150;
-	--text: #d6dbe5;
-	--muted: #8a93a3;
-	--accent: #f7c948;
-	--accent-2: #5cd0a9;
-	--accent-3: #ff6b6b;
-	--accent-4: #6cb6ff;
-
 	height: 100%;
 	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
-	background: var(--bg);
-	color: var(--text);
+	background: var(--vp-bg);
+	color: var(--vp-text);
 	padding: 16px clamp(12px, 4vw, 40px);
-	font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+	font-family: var(--vp-font);
 	overflow: hidden;
 }
 
@@ -36,20 +22,8 @@
 	flex: 0 0 auto;
 }
 
-/* Tags filter popover — portaled to <body> (outside .cal-page), so it redeclares
-   the palette tokens the BucketTagFilter consumes, and styles its own head
-   buttons since Calendar doesn't load Tasks.css. */
-.cal-filter-popover {
-	--bg: #0e0f12;
-	--bg-soft: #15171c;
-	--panel: #1b1e25;
-	--border: #2a2f3a;
-	--text: #d6dbe5;
-	--muted: #8a93a3;
-	--accent: #f7c948;
-	--accent-2: #5cd0a9;
-}
-
+/* Tags filter popover — portaled to <body> (outside .cal-page); styles its own
+   head buttons since Calendar doesn't load Tasks.css. */
 .cal-filter-head {
 	display: flex;
 	justify-content: space-between;
@@ -58,10 +32,10 @@
 }
 
 .cal-filter-popover .tasks-manage-btn {
-	background: var(--bg-soft);
-	border: 1px solid var(--border);
+	background: var(--vp-bg-soft);
+	border: 1px solid var(--vp-border-soft);
 	border-radius: 4px;
-	color: var(--muted);
+	color: var(--vp-muted);
 	font: inherit;
 	font-size: 0.74rem;
 	padding: 3px 8px;
@@ -69,8 +43,8 @@
 }
 
 .cal-filter-popover .tasks-manage-btn:hover {
-	border-color: var(--accent);
-	color: var(--accent);
+	border-color: var(--vp-accent);
+	color: var(--vp-accent);
 }
 
 .cal-title {
@@ -83,11 +57,11 @@
 	margin: 0;
 	font-size: 1.25rem;
 	letter-spacing: 0.04em;
-	color: var(--text);
+	color: var(--vp-text);
 }
 
 .cal-glyph {
-	color: var(--accent);
+	color: var(--vp-accent);
 	font-size: 1.4rem;
 }
 
@@ -103,11 +77,11 @@
 	display: grid;
 	grid-template-columns: repeat(7, 1fr);
 	flex: 0 0 auto;
-	border: 1px solid var(--border);
+	border: 1px solid var(--vp-border-soft);
 	border-bottom: none;
 	border-top-left-radius: 6px;
 	border-top-right-radius: 6px;
-	background: var(--bg-soft);
+	background: var(--vp-bg-soft);
 }
 
 .cal-weekday {
@@ -115,7 +89,7 @@
 	font-size: 0.7rem;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
-	color: var(--muted);
+	color: var(--vp-muted);
 	text-align: left;
 }
 
@@ -126,10 +100,10 @@
 	overflow-y: auto;
 	overflow-x: hidden;
 	scrollbar-gutter: stable;
-	border: 1px solid var(--border);
+	border: 1px solid var(--vp-border-soft);
 	border-bottom-left-radius: 6px;
 	border-bottom-right-radius: 6px;
-	background: var(--panel);
+	background: var(--vp-panel);
 }
 
 .cal-month {
@@ -146,9 +120,9 @@
 	font-size: 0.82rem;
 	font-weight: 600;
 	letter-spacing: 0.04em;
-	color: var(--accent);
-	background: var(--bg-soft);
-	border-bottom: 1px solid var(--border);
+	color: var(--vp-accent);
+	background: var(--vp-bg-soft);
+	border-bottom: 1px solid var(--vp-border-soft);
 }
 
 .cal-week {
@@ -168,8 +142,8 @@
 	align-items: stretch;
 	gap: 3px;
 	padding: 4px;
-	border-right: 1px solid var(--border);
-	border-bottom: 1px solid var(--border);
+	border-right: 1px solid var(--vp-border-soft);
+	border-bottom: 1px solid var(--vp-border-soft);
 	background: transparent;
 	text-align: left;
 	cursor: pointer;
@@ -178,40 +152,41 @@
 }
 
 .cal-cell:hover {
-	background: var(--bg-soft);
+	background: var(--vp-bg-soft);
 }
 
 /* Days outside the rendered month — blank, non-interactive padding. */
 .cal-cell.is-empty {
-	background: rgba(0, 0, 0, 0.18);
+	background: color-mix(in srgb, var(--vp-shadow-color) 18%, transparent);
 	cursor: default;
 }
 
 .cal-cell.is-empty:hover {
-	background: rgba(0, 0, 0, 0.18);
+	background: color-mix(in srgb, var(--vp-shadow-color) 18%, transparent);
 }
 
 /* Today — a faint accent wash + ring so the current day reads apart from the
    other cells (the day-number badge alone is easy to miss). */
 .cal-cell.is-today {
-	background: rgba(247, 201, 72, 0.07);
-	box-shadow: inset 0 0 0 1px rgba(247, 201, 72, 0.22);
+	background: color-mix(in srgb, var(--vp-accent) 7%, transparent);
+	box-shadow: inset 0 0 0 1px
+		color-mix(in srgb, var(--vp-accent) 22%, transparent);
 }
 
 .cal-cell.is-today:hover {
-	background: rgba(247, 201, 72, 0.12);
+	background: color-mix(in srgb, var(--vp-accent) 12%, transparent);
 }
 
 .cal-cell.is-today .cal-daynum {
-	background: var(--accent);
-	color: #000;
+	background: var(--vp-accent);
+	color: var(--vp-on-accent);
 	border-radius: 4px;
 	padding: 0 5px;
 }
 
 .cal-daynum {
 	font-size: 0.72rem;
-	color: var(--muted);
+	color: var(--vp-muted);
 	align-self: flex-start;
 }
 
@@ -222,9 +197,9 @@
 	gap: 4px;
 	width: 100%;
 	border: none;
-	border-left: 3px solid var(--accent-4);
-	background: var(--bg-soft);
-	color: var(--text);
+	border-left: 3px solid var(--vp-info);
+	background: var(--vp-bg-soft);
+	color: var(--vp-text);
 	font: inherit;
 	font-size: 0.68rem;
 	padding: 2px 5px;
@@ -240,11 +215,11 @@
 }
 
 .cal-pill--event {
-	border-left-color: var(--accent-4);
+	border-left-color: var(--vp-info);
 }
 
 .cal-pill--task {
-	border-left-color: var(--accent-2);
+	border-left-color: var(--vp-success);
 }
 
 .cal-pill.is-done {
@@ -252,7 +227,7 @@
 }
 
 .cal-pill-time {
-	color: var(--muted);
+	color: var(--vp-muted);
 	font-size: 0.62rem;
 	flex: 0 0 auto;
 }
@@ -269,7 +244,7 @@
 }
 
 .cal-check {
-	color: var(--accent-2);
+	color: var(--vp-success);
 	flex: 0 0 auto;
 	/* Rendered as a <button> so only the checkbox toggles done (the rest of the
 	   pill opens the editor); strip the native button chrome. */
@@ -284,7 +259,7 @@
 }
 
 .cal-check:hover {
-	color: var(--accent);
+	color: var(--vp-accent);
 }
 
 /* Event modal — wider than the default modal so the date/time pickers, color
@@ -325,18 +300,8 @@
 	resize: vertical;
 }
 
-/* Event modal form — rendered through a portal (outside .cal-page), so it
-   redeclares the palette tokens to stay themed. */
+/* Event modal form — rendered through a portal (outside .cal-page). */
 .cal-form {
-	--bg: #0e0f12;
-	--bg-soft: #15171c;
-	--panel: #1b1e25;
-	--border: #2a2f3a;
-	--text: #d6dbe5;
-	--muted: #8a93a3;
-	--accent: #f7c948;
-	--accent-3: #ff6b6b;
-
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
@@ -349,7 +314,7 @@
 	flex-direction: column;
 	gap: 4px;
 	font-size: 0.8rem;
-	color: var(--muted);
+	color: var(--vp-muted);
 }
 
 .cal-field--inline {
@@ -360,10 +325,10 @@
 
 .cal-field input,
 .cal-field textarea {
-	background: var(--bg);
-	border: 1px solid var(--border);
+	background: var(--vp-bg);
+	border: 1px solid var(--vp-border-soft);
 	border-radius: 4px;
-	color: var(--text);
+	color: var(--vp-text);
 	padding: 6px 8px;
 	font: inherit;
 	/* Render native controls (date/time popup + spinners) in dark mode. */
@@ -387,11 +352,11 @@
 .cal-field input:focus,
 .cal-field textarea:focus {
 	outline: none;
-	border-color: var(--accent);
+	border-color: var(--vp-accent);
 }
 
 .cal-error {
-	color: var(--accent-3);
+	color: var(--vp-danger);
 	font-size: 0.78rem;
 	margin: 0;
 }

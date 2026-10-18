@@ -8,7 +8,7 @@
 	align-items: center;
 	justify-content: center;
 	min-height: 100vh;
-	background: var(--bg, #0f1115);
+	background: var(--vp-bg);
 	padding: 24px;
 }
 
@@ -19,12 +19,11 @@
 	width: 320px;
 	max-width: 90vw;
 	padding: 22px;
-	border: 2px solid var(--border-strong, #3a4150);
-	background: var(--bg-soft, #15171c);
-	box-shadow: 3px 3px 0 0 #000;
-	color: var(--text, #d6dbe5);
-	font-family:
-		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+	border: 2px solid var(--vp-border);
+	background: var(--vp-bg-soft);
+	box-shadow: 3px 3px 0 0 var(--vp-shadow-color);
+	color: var(--vp-text);
+	font-family: var(--vp-font);
 	text-align: center;
 }
 

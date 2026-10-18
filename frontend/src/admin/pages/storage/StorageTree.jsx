@@ -368,7 +368,9 @@ export default function StorageTree({
 							</button>
 							<div>
 								<h3 className="notes-sidebar-title">Storage</h3>
-								<div className="storage-sidebar-sub">bunny · zone your-zone</div>
+								<div className="storage-sidebar-sub">
+									bunny · zone your-zone
+								</div>
 							</div>
 						</div>
 					</div>
@@ -383,7 +385,7 @@ export default function StorageTree({
 							className="storage-crumb ftree-banner-text"
 							onClick={() => onNavigate("")}
 							style={{
-								color: currentPrefix === "" ? "var(--accent)" : undefined,
+								color: currentPrefix === "" ? "var(--vp-accent)" : undefined,
 							}}
 						>
 							~/storage ▒▒

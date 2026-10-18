@@ -1,7 +1,7 @@
 /* ── Milkdown Editor Styles ── */
 .pv-milkdown-wrapper .milkdown {
-	background: var(--pv-bg);
-	color: var(--pv-text);
+	background: var(--vp-panel);
+	color: var(--vp-text);
 	border-radius: 6px;
 	padding: 12px 16px;
 	min-height: 200px;
@@ -50,33 +50,33 @@
 }
 
 .pv-milkdown-wrapper .milkdown .editor blockquote {
-	border-left: 3px solid var(--pv-border);
+	border-left: 3px solid var(--vp-border);
 	padding-left: 1em;
 	margin: 0.5em 0;
-	color: var(--pv-text-secondary);
+	color: var(--vp-muted);
 }
 
 .pv-milkdown-wrapper .milkdown .editor code {
-	background: var(--pv-code-bg);
-	color: var(--pv-code-text);
+	background: var(--vp-bg-soft);
+	color: var(--vp-danger);
 	padding: 0.15em 0.4em;
 	border-radius: 4px;
 	font-size: 0.9em;
-	font-family: "Fira Code", Menlo, Monaco, "Courier New", monospace;
+	font-family: var(--vp-font);
 }
 
 .pv-milkdown-wrapper .milkdown .editor pre {
 	position: relative;
-	background: var(--pv-code-bg);
+	background: var(--vp-bg-soft);
 	border-radius: 8px;
-	border-left: 3px solid var(--pv-primary, #5cd0a9);
+	border-left: 3px solid var(--vp-accent);
 	padding: 28px 14px 14px 14px;
 	margin: 0.75em 0;
 	overflow-x: auto;
 	white-space: pre;
 	box-shadow:
-		0 1px 0 rgba(0, 0, 0, 0.3),
-		inset 0 1px 0 rgba(255, 255, 255, 0.02);
+		0 1px 0 color-mix(in srgb, var(--vp-shadow-color) 30%, transparent),
+		inset 0 1px 0 color-mix(in srgb, var(--vp-highlight) 2%, transparent);
 }
 
 /* macOS-style traffic-light dots top-left, decorative only */
@@ -88,10 +88,10 @@
 	width: 8px;
 	height: 8px;
 	border-radius: 50%;
-	background: #ff6b6b;
+	background: var(--vp-danger);
 	box-shadow:
-		14px 0 0 #f7c948,
-		28px 0 0 #5cd0a9;
+		14px 0 0 var(--vp-accent),
+		28px 0 0 var(--vp-success);
 	opacity: 0.75;
 	pointer-events: none;
 }
@@ -101,8 +101,7 @@
 	background: transparent;
 	color: inherit;
 	padding: 0;
-	font-family:
-		"JetBrains Mono", "Fira Code", Menlo, Monaco, "Courier New", monospace;
+	font-family: var(--vp-font);
 	font-size: 13px;
 	line-height: 1.55;
 	white-space: pre;
@@ -116,21 +115,21 @@
 	background: transparent;
 }
 .pv-milkdown-wrapper .milkdown .editor pre::-webkit-scrollbar-thumb {
-	background: var(--pv-border, rgba(255, 255, 255, 0.15));
+	background: var(--vp-border);
 	border-radius: 3px;
 }
 .pv-milkdown-wrapper .milkdown .editor pre::-webkit-scrollbar-thumb:hover {
-	background: var(--pv-primary, #5cd0a9);
+	background: var(--vp-accent);
 }
 
 .pv-milkdown-wrapper .milkdown .editor hr {
 	border: none;
-	border-top: 1px solid var(--pv-border);
+	border-top: 1px solid var(--vp-border);
 	margin: 1em 0;
 }
 
 .pv-milkdown-wrapper .milkdown .editor a {
-	color: var(--pv-primary);
+	color: var(--vp-accent);
 	text-decoration: none;
 }
 
@@ -159,7 +158,7 @@
 }
 
 .pv-milkdown-wrapper .milkdown .editor .pv-img-wrap.selected .pv-img {
-	outline: 2px solid var(--pv-primary, #f7c948);
+	outline: 2px solid var(--vp-accent);
 	outline-offset: 2px;
 }
 
@@ -170,8 +169,8 @@
 	width: 14px;
 	height: 14px;
 	box-sizing: border-box;
-	border: 2px solid var(--pv-primary, #f7c948);
-	background: var(--pv-bg, #1b1e25);
+	border: 2px solid var(--vp-accent);
+	background: var(--vp-panel);
 	border-radius: 3px;
 	cursor: nwse-resize;
 	opacity: 0;
@@ -196,15 +195,15 @@
 .pv-milkdown-wrapper .milkdown .editor .pv-att-pdf {
 	width: 100%;
 	height: 480px;
-	border: 1px solid var(--pv-border, #2a2f3a);
+	border: 1px solid var(--vp-border);
 	border-radius: 6px;
-	background: #fff;
+	background: var(--vp-highlight);
 }
 
 .pv-milkdown-wrapper .milkdown .editor .pv-att-video {
 	max-width: 100%;
 	border-radius: 6px;
-	background: #000;
+	background: var(--vp-shadow-color);
 }
 
 .pv-milkdown-wrapper .milkdown .editor .pv-att-audio {
@@ -222,15 +221,15 @@
 
 .pv-milkdown-wrapper .milkdown .editor th,
 .pv-milkdown-wrapper .milkdown .editor td {
-	border: 1px solid var(--pv-border);
+	border: 1px solid var(--vp-border);
 	padding: 0.1em 0.8em;
 	text-align: left;
 }
 
 .pv-milkdown-wrapper .milkdown .editor th {
-	background: var(--pv-code-bg);
+	background: var(--vp-bg-soft);
 	font-weight: 600;
-	color: var(--pv-primary, #f7c948);
+	color: var(--vp-accent);
 	font-size: 13px;
 	text-transform: uppercase;
 	letter-spacing: 0.4px;
@@ -238,7 +237,7 @@
 
 /* Zebra striping — same alternating row colors as the public share view */
 .pv-milkdown-wrapper .milkdown .editor tr:nth-child(even) td {
-	background: rgba(255, 255, 255, 0.02);
+	background: color-mix(in srgb, var(--vp-highlight) 2%, transparent);
 }
 
 /* Prosemirror focus ring */
@@ -263,21 +262,22 @@
 
 /* Search highlight */
 .pv-milkdown-wrapper .milkdown .editor .search-highlight {
-	background-color: rgba(247, 201, 72, 0.4);
-	color: var(--pv-text);
+	background-color: color-mix(in srgb, var(--vp-accent) 40%, transparent);
+	color: var(--vp-text);
 	border-radius: 3px;
 	padding: 0 2px;
-	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+	box-shadow: 0 0 0 1px
+		color-mix(in srgb, var(--vp-shadow-color) 20%, transparent);
 }
 
 .pv-cell-copy-btn:hover {
-	color: var(--accent) !important;
+	color: var(--vp-accent) !important;
 }
 
 .pv-milkdown-wrapper .milkdown .editor .search-highlight.active {
-	background-color: var(--pv-primary) !important;
-	color: var(--pv-bg) !important;
-	outline: 2px solid var(--pv-primary);
+	background-color: var(--vp-accent) !important;
+	color: var(--vp-on-accent) !important;
+	outline: 2px solid var(--vp-accent);
 	z-index: 1;
 	position: relative;
 }
@@ -293,24 +293,24 @@
 	right: 6px;
 	z-index: 2;
 	padding: 2px 10px;
-	font-family: "JetBrains Mono", "Fira Code", Menlo, Monaco, monospace;
+	font-family: var(--vp-font);
 	font-size: 11px;
 	text-transform: uppercase;
 	letter-spacing: 1px;
-	color: var(--pv-text-secondary);
-	background: var(--pv-bg);
-	border: 1px solid var(--pv-border);
+	color: var(--vp-muted);
+	background: var(--vp-panel);
+	border: 1px solid var(--vp-border);
 	cursor: pointer;
 }
 .pv-mermaid-toggle:hover {
-	color: var(--pv-bg);
-	background: var(--accent);
-	border-color: var(--accent);
+	color: var(--vp-on-accent);
+	background: var(--vp-accent);
+	border-color: var(--vp-accent);
 }
 .pv-codeblock--mermaid .pv-mermaid {
 	padding: 12px;
-	background: var(--pv-code-bg);
-	border: 1px solid var(--pv-border);
+	background: var(--vp-bg-soft);
+	border: 1px solid var(--vp-border);
 	overflow-x: auto;
 }
 .pv-codeblock--mermaid .pv-mermaid svg {
@@ -320,8 +320,8 @@
 	margin: 0 auto;
 }
 .pv-mermaid-error {
-	color: var(--accent);
+	color: var(--vp-accent);
 	font-size: 12px;
 	white-space: pre-wrap;
-	font-family: "JetBrains Mono", "Fira Code", Menlo, Monaco, monospace;
+	font-family: var(--vp-font);
 }

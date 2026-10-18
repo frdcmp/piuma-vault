@@ -153,8 +153,8 @@
 	border-color: var(--vp-danger);
 }
 .cron-status--run {
-	color: #f7c948;
-	border-color: #f7c948;
+	color: var(--vp-accent);
+	border-color: var(--vp-accent);
 }
 .cron-status--muted {
 	color: var(--vp-faint);
@@ -209,7 +209,7 @@
 .cron-day.is-on {
 	color: var(--vp-success);
 	border-color: var(--vp-success);
-	background: rgba(92, 208, 169, 0.1);
+	background: color-mix(in srgb, var(--vp-success) 10%, transparent);
 }
 .cron-opts {
 	display: flex;

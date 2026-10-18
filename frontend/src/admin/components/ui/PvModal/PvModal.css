@@ -1,19 +1,17 @@
 .pv-modal-overlay {
-	--modal-bg: #1b1e25;
-	--modal-bg-soft: #15171c;
-	--modal-border: #3a4150;
-	--modal-text: #d6dbe5;
-	--modal-muted: #8a93a3;
-	--modal-accent: #f7c948;
-	--modal-accent-2: #5cd0a9;
-	--modal-accent-3: #ff6b6b;
-
 	position: fixed;
 	inset: 0;
-	background: rgba(0, 0, 0, 0.55);
+	background: color-mix(in srgb, var(--vp-shadow-color) 55%, transparent);
 	background-image:
-		linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-		linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+		linear-gradient(
+			color-mix(in srgb, var(--vp-highlight) 1.5%, transparent) 1px,
+			transparent 1px
+		),
+		linear-gradient(
+			90deg,
+			color-mix(in srgb, var(--vp-highlight) 1.5%, transparent) 1px,
+			transparent 1px
+		);
 	background-size: 8px 8px;
 	display: flex;
 	align-items: center;
@@ -41,16 +39,15 @@
 }
 
 .pv-modal {
-	background: var(--modal-bg);
-	border: 2px solid var(--modal-border);
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
 	box-shadow:
-		4px 4px 0 0 #000,
-		inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+		var(--vp-shadow-lg),
+		inset 0 0 0 1px color-mix(in srgb, var(--vp-highlight) 3%, transparent);
 	min-width: 320px;
 	max-width: min(90vw, 480px);
-	color: var(--modal-text);
-	font-family:
-		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+	color: var(--vp-text);
+	font-family: var(--vp-font);
 	image-rendering: pixelated;
 	animation: pv-pop-in 90ms steps(3, end);
 }
@@ -60,8 +57,8 @@
 	align-items: center;
 	gap: 8px;
 	padding: 6px 8px 6px 12px;
-	background: var(--modal-bg-soft);
-	border-bottom: 2px solid var(--modal-border);
+	background: var(--vp-bg-soft);
+	border-bottom: 2px solid var(--vp-border);
 }
 
 .pv-modal-titlebar-dots {
@@ -73,27 +70,27 @@
 .pv-modal-titlebar-dots span {
 	width: 8px;
 	height: 8px;
-	background: var(--modal-border);
+	background: var(--vp-border);
 	display: block;
 }
 
 .pv-modal-titlebar-dots span:nth-child(1) {
-	background: var(--modal-accent-3);
+	background: var(--vp-danger);
 }
 
 .pv-modal-titlebar-dots span:nth-child(2) {
-	background: var(--modal-accent);
+	background: var(--vp-accent);
 }
 
 .pv-modal-titlebar-dots span:nth-child(3) {
-	background: var(--modal-accent-2);
+	background: var(--vp-success);
 }
 
 .pv-modal-title {
 	margin: 0;
 	font-size: 10pt;
 	font-weight: 700;
-	color: var(--modal-accent);
+	color: var(--vp-accent);
 	text-transform: uppercase;
 	letter-spacing: 1px;
 	flex: 1;
@@ -105,7 +102,7 @@
 .pv-modal-close {
 	background: none;
 	border: none;
-	color: var(--modal-muted);
+	color: var(--vp-muted);
 	cursor: pointer;
 	font-size: 14px;
 	font-family: inherit;
@@ -114,7 +111,7 @@
 }
 
 .pv-modal-close:hover {
-	color: var(--modal-accent-3);
+	color: var(--vp-danger);
 }
 
 .pv-modal-body {
@@ -129,15 +126,15 @@
 	display: flex;
 	justify-content: flex-end;
 	gap: 8px;
-	border-top: 2px dashed var(--modal-border);
-	background: var(--modal-bg-soft);
+	border-top: 2px dashed var(--vp-border);
+	background: var(--vp-bg-soft);
 }
 
 .pv-modal-btn {
-	background: var(--modal-bg-soft);
-	border: 2px solid var(--modal-border);
-	box-shadow: 2px 2px 0 0 #000;
-	color: var(--modal-text);
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	color: var(--vp-text);
 	padding: 4px 14px;
 	font-family: inherit;
 	font-size: 10pt;
@@ -146,31 +143,31 @@
 }
 
 .pv-modal-btn:hover {
-	border-color: var(--modal-accent);
-	color: var(--modal-accent);
+	border-color: var(--vp-accent);
+	color: var(--vp-accent);
 }
 
 .pv-modal-btn:active {
 	transform: translate(2px, 2px);
-	box-shadow: 0 0 0 0 #000;
+	box-shadow: 0 0 0 0 var(--vp-shadow-color);
 }
 
 .pv-modal-btn.primary {
-	color: var(--modal-accent-2);
-	border-color: var(--modal-accent-2);
+	color: var(--vp-success);
+	border-color: var(--vp-success);
 }
 
 .pv-modal-btn.primary:hover {
-	background: var(--modal-accent-2);
-	color: var(--modal-bg);
+	background: var(--vp-success);
+	color: var(--vp-panel);
 }
 
 .pv-modal-btn.danger {
-	color: var(--modal-accent-3);
-	border-color: var(--modal-accent-3);
+	color: var(--vp-danger);
+	border-color: var(--vp-danger);
 }
 
 .pv-modal-btn.danger:hover {
-	background: var(--modal-accent-3);
-	color: var(--modal-bg);
+	background: var(--vp-danger);
+	color: var(--vp-panel);
 }

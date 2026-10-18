@@ -13,7 +13,7 @@
 	background-color: var(--vp-bg);
 	background-image: radial-gradient(
 		60% 50% at 50% 40%,
-		rgba(247, 201, 72, 0.06),
+		color-mix(in srgb, var(--vp-accent) 6%, transparent),
 		transparent 70%
 	);
 	backdrop-filter: blur(14px);
@@ -35,14 +35,14 @@
 /* Pixel-art title to match the Piuma sprite. */
 .vp-lock-title {
 	margin: 0;
-	font-family: "Press Start 2P", var(--vp-font);
+	font-family: var(--vp-font-display);
 	font-size: 18px;
 	line-height: 1.5;
 	font-weight: 400;
 	letter-spacing: 1px;
 	text-transform: uppercase;
 	color: var(--vp-accent);
-	text-shadow: 3px 3px 0 #000;
+	text-shadow: 3px 3px 0 var(--vp-shadow-color);
 }
 
 /* Segmented PIN: the real input sits invisibly on top of six pixel cells. */
@@ -94,7 +94,8 @@
 	justify-content: center;
 	background: var(--vp-bg-soft);
 	border: 2px solid var(--vp-border);
-	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+	box-shadow: inset 0 0 0 1px
+		color-mix(in srgb, var(--vp-highlight) 2%, transparent);
 	transition: border-color 0.1s;
 }
 

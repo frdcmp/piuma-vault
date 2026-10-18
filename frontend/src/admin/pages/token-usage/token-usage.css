@@ -18,7 +18,7 @@
 	font-size: 1.6rem;
 	font-weight: 700;
 	line-height: 1;
-	text-shadow: 2px 2px 0 #000;
+	text-shadow: 2px 2px 0 var(--vp-shadow-color);
 }
 
 .tu-stat-suffix {

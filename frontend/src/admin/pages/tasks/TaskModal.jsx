@@ -364,7 +364,7 @@ export default function TaskModal({
 								<>
 									<span
 										className="bucket-dot"
-										style={{ background: bucket.color || "var(--muted)" }}
+										style={{ background: bucket.color || "var(--vp-muted)" }}
 										aria-hidden="true"
 									/>
 									{bucket.name}

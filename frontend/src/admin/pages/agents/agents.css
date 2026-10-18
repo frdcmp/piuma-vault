@@ -49,7 +49,7 @@
 }
 .ag-btn--primary {
 	background: var(--vp-success);
-	color: #0e0f12;
+	color: var(--vp-on-accent);
 	border-color: var(--vp-success);
 	font-weight: 600;
 }
@@ -149,7 +149,8 @@
 	overflow-y: auto;
 	background: var(--vp-panel);
 	border: 1px solid var(--vp-border);
-	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+	box-shadow: 0 6px 18px
+		color-mix(in srgb, var(--vp-shadow-color) 40%, transparent);
 }
 .ag-combo-item {
 	display: flex;
@@ -239,8 +240,8 @@
 	color: var(--vp-muted);
 }
 .ag-tag--purple {
-	color: #c084fc;
-	border-color: #c084fc;
+	color: var(--vp-violet);
+	border-color: var(--vp-violet);
 }
 .ag-tag--red {
 	color: var(--vp-danger);
@@ -279,7 +280,7 @@
 	color: var(--vp-faint);
 }
 .ag-star[data-on="true"] {
-	color: #f7c948;
+	color: var(--vp-accent);
 }
 /* Name + wire id stacked; takes the slack so caps + actions sit at the right. */
 .ag-model-id {
@@ -327,8 +328,8 @@
 	opacity: 1;
 }
 .ag-cap--purple.is-on {
-	color: #c084fc;
-	border-color: #c084fc;
+	color: var(--vp-violet);
+	border-color: var(--vp-violet);
 }
 .ag-cap--green.is-on {
 	color: var(--vp-success);

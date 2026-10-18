@@ -59,7 +59,7 @@
 	background: var(--vp-panel-alt);
 }
 .nb-item-unread {
-	background: rgba(106, 176, 255, 0.07);
+	background: color-mix(in srgb, var(--vp-info) 7%, transparent);
 }
 
 /* While a dismiss request is in flight: grey the row out and let the spinner

@@ -583,7 +583,7 @@ function MilkdownEditor({
 				// so you can see exactly which line a dropped image will land on.
 				ctx.set(dropCursorConfig.key, {
 					width: 3,
-					color: "#f7c948",
+					color: "var(--vp-accent)",
 					class: "milkdown-drop-indicator",
 				});
 				ctx.update(editorViewOptionsCtx, (prev) => ({
@@ -700,7 +700,6 @@ function MilkdownEditor({
 export default function MilkdownEditorComp({
 	initialMarkdown,
 	onChange,
-	currentTheme,
 	isMobile,
 	searchQuery,
 	searchAction,
@@ -786,7 +785,7 @@ export default function MilkdownEditorComp({
 					fontSize: 12,
 					background: "transparent",
 					border: "none",
-					color: isCopied ? "var(--accent-2)" : "var(--muted)",
+					color: isCopied ? "var(--vp-success)" : "var(--vp-muted)",
 					cursor: isCopied ? "default" : "pointer",
 					display: "flex",
 					alignItems: "center",
@@ -804,15 +803,7 @@ export default function MilkdownEditorComp({
 		<div
 			ref={wrapperRef}
 			className="pv-milkdown-wrapper"
-			data-theme={currentTheme === "dark" ? "dark" : "light"}
 			style={{
-				"--pv-bg": "var(--panel)",
-				"--pv-text": "var(--text)",
-				"--pv-text-secondary": "var(--muted)",
-				"--pv-border": "var(--border-strong)",
-				"--pv-primary": "var(--accent)",
-				"--pv-code-bg": "var(--bg-soft)",
-				"--pv-code-text": "var(--accent-3)",
 				paddingBottom: 0,
 				position: "relative",
 			}}
@@ -826,7 +817,6 @@ export default function MilkdownEditorComp({
 				<MilkdownEditor
 					initialMarkdown={initialMarkdown}
 					onChange={onChange}
-					currentTheme={currentTheme}
 					isMobile={isMobile}
 					searchQuery={searchQuery}
 					searchAction={searchAction}

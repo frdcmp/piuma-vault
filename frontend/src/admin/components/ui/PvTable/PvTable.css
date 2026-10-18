@@ -56,3 +56,65 @@
 .pv-table tbody tr.pv-table-state:hover td {
 	background: transparent;
 }
+
+/* Small size */
+.pv-table--sm thead th {
+	padding: 8px 10px;
+}
+.pv-table--sm tbody td {
+	padding: 7px 10px;
+	font-size: 12px;
+}
+
+/* Sortable header */
+.pv-table-sort {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 0;
+	background: none;
+	border: 0;
+	color: inherit;
+	font: inherit;
+	letter-spacing: inherit;
+	text-transform: inherit;
+	cursor: pointer;
+}
+.pv-table-sort:hover {
+	color: var(--vp-accent);
+}
+.pv-table-sort-mark {
+	font-size: 8px;
+	color: var(--vp-faint);
+}
+th[aria-sort] .pv-table-sort-mark {
+	color: var(--vp-accent);
+}
+
+/* Expandable rows */
+.pv-table .pv-table-expand-col {
+	width: 34px;
+	padding-right: 0;
+}
+.pv-table tbody tr.pv-table-expanded > td {
+	background: var(--vp-bg-soft);
+	padding: 14px 16px;
+}
+.pv-table tbody tr.pv-table-expanded:hover > td {
+	background: var(--vp-bg-soft);
+}
+
+/* Pager */
+.pv-table-pager {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 10px;
+	padding: 10px 12px;
+	border-top: 1px solid var(--vp-border-soft);
+}
+.pv-table-pager-info {
+	font-family: var(--vp-font);
+	font-size: 11px;
+	color: var(--vp-muted);
+}

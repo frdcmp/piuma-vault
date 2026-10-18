@@ -2,6 +2,8 @@
 // imported on first use and initialised once with the vault-pixel theme. Used by
 // both the docs site and the notes editor's mermaid code-block preview.
 
+import { currentTokens, staticTokens } from "../theme";
+
 let mermaidMod = null;
 let initialised = false;
 let renderKey = 0;
@@ -11,32 +13,33 @@ async function ensureMermaid() {
 		mermaidMod = (await import("mermaid")).default;
 	}
 	if (!initialised) {
+		const t = currentTokens();
 		mermaidMod.initialize({
 			startOnLoad: false,
 			theme: "base",
 			themeVariables: {
-				background: "#14171c",
-				primaryColor: "#1b1e25",
-				primaryTextColor: "#d6dbe5",
-				primaryBorderColor: "#3a4150",
-				secondaryColor: "#1f232b",
-				tertiaryColor: "#15171c",
-				lineColor: "#8a93a3",
-				fontFamily: '"JetBrains Mono", "Fira Code", Menlo, Monaco, monospace',
+				background: t.bg,
+				primaryColor: t.panel,
+				primaryTextColor: t.text,
+				primaryBorderColor: t.border,
+				secondaryColor: t.panelAlt,
+				tertiaryColor: t.bgSoft,
+				lineColor: t.muted,
+				fontFamily: staticTokens.font,
 			},
 			themeCSS: `
 				.node rect, .node circle, .node polygon, .node path {
-					stroke: #3a4150 !important;
+					stroke: ${t.border} !important;
 					stroke-width: 2px !important;
-					fill: #1b1e25 !important;
+					fill: ${t.panel} !important;
 					rx: 0px !important;
 					ry: 0px !important;
 				}
 				.cluster rect {
-					stroke: #3a4150 !important;
+					stroke: ${t.border} !important;
 					stroke-dasharray: 4px !important;
 					stroke-width: 2px !important;
-					fill: #15171c !important;
+					fill: ${t.bgSoft} !important;
 					rx: 0px !important;
 					ry: 0px !important;
 				}
@@ -45,14 +48,14 @@ async function ensureMermaid() {
 					letter-spacing: 1px !important;
 					text-transform: uppercase !important;
 					font-weight: bold !important;
-					fill: #f7c948 !important;
+					fill: ${t.accent} !important;
 				}
-				.edgePath .path { stroke: #8a93a3 !important; stroke-width: 2px !important; }
-				.edgeLabel rect { fill: #14171c !important; rx: 0px !important; ry: 0px !important; }
-				.edgeLabel { font-size: 11px !important; fill: #8a93a3 !important; }
-				.node .label { font-size: 12px !important; fill: #d6dbe5 !important; }
-				.node .label b, .node .label strong { color: #f7c948 !important; }
-				.arrowheadPath { fill: #8a93a3 !important; stroke: none !important; }
+				.edgePath .path { stroke: ${t.muted} !important; stroke-width: 2px !important; }
+				.edgeLabel rect { fill: ${t.bg} !important; rx: 0px !important; ry: 0px !important; }
+				.edgeLabel { font-size: 11px !important; fill: ${t.muted} !important; }
+				.node .label { font-size: 12px !important; fill: ${t.text} !important; }
+				.node .label b, .node .label strong { color: ${t.accent} !important; }
+				.arrowheadPath { fill: ${t.muted} !important; stroke: none !important; }
 			`,
 			flowchart: { curve: "basis", htmlLabels: true },
 			stateDiagram: { htmlLabels: true },

@@ -1,24 +1,10 @@
-/* Floating recording chat (FloatingChat.jsx). Redeclares the chat page's
-   color tokens so the embedded ChatConversation renders the same anywhere. */
+/* Floating recording chat (FloatingChat.jsx). */
 .fchat-window,
 .fchat-pill {
-	--bg: #0e0f12;
-	--bg-soft: #15171c;
-	--panel: #1b1e25;
-	--border: #2a2f3a;
-	--border-strong: #3a4150;
-	--text: #d6dbe5;
-	--muted: #8a93a3;
-	--accent: #f7c948;
-	--accent-2: #5cd0a9;
-	--accent-3: #ff6b6b;
-	--accent-4: #6cb6ff;
-
 	position: fixed;
 	z-index: 900;
-	color: var(--text);
-	font-family:
-		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
+	color: var(--vp-text);
+	font-family: var(--vp-font);
 	font-size: 10.5pt;
 	line-height: 1.5;
 }
@@ -32,9 +18,9 @@
 	min-height: 280px;
 	max-width: calc(100vw - 24px);
 	max-height: calc(100vh - 24px);
-	background: var(--bg);
-	border: 2px solid var(--accent-2);
-	box-shadow: 4px 4px 0 #000;
+	background: var(--vp-bg);
+	border: 2px solid var(--vp-success);
+	box-shadow: 4px 4px 0 var(--vp-shadow-color);
 	/* Drag the bottom-right corner to resize. */
 	resize: both;
 	overflow: hidden;
@@ -45,8 +31,8 @@
 	align-items: center;
 	gap: 8px;
 	padding: 6px 8px;
-	background: var(--panel);
-	border-bottom: 2px solid var(--border-strong);
+	background: var(--vp-panel);
+	border-bottom: 2px solid var(--vp-border);
 	cursor: grab;
 	user-select: none;
 	touch-action: none;
@@ -57,14 +43,14 @@
 }
 
 .fchat-grip {
-	color: var(--muted);
+	color: var(--vp-muted);
 	font-size: 12px;
 }
 
 .fchat-bar-title {
 	flex: 1;
 	min-width: 0;
-	color: var(--accent-2);
+	color: var(--vp-success);
 	font-size: 11px;
 	font-weight: 700;
 	letter-spacing: 1px;
@@ -78,17 +64,17 @@
 	width: 26px;
 	height: 22px;
 	padding: 0;
-	background: var(--bg-soft);
-	border: 2px solid var(--border-strong);
-	color: var(--text);
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	color: var(--vp-text);
 	font-family: inherit;
 	font-weight: 700;
 	cursor: pointer;
 }
 
 .fchat-bar-btn:hover {
-	border-color: var(--accent);
-	color: var(--accent);
+	border-color: var(--vp-accent);
+	color: var(--vp-accent);
 }
 
 .fchat-body {
@@ -99,7 +85,7 @@
 
 .fchat-status {
 	margin: auto;
-	color: var(--muted);
+	color: var(--vp-muted);
 	font-size: 12px;
 }
 
@@ -108,9 +94,9 @@
 	align-items: center;
 	gap: 8px;
 	padding: 4px 4px 4px 8px;
-	background: var(--panel);
-	border: 2px solid var(--accent-2);
-	box-shadow: 3px 3px 0 #000;
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-success);
+	box-shadow: 3px 3px 0 var(--vp-shadow-color);
 	cursor: grab;
 	user-select: none;
 	touch-action: none;
@@ -118,9 +104,9 @@
 
 .fchat-pill-btn {
 	padding: 6px 10px;
-	background: var(--bg-soft);
-	border: 2px solid var(--border-strong);
-	color: var(--accent-2);
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	color: var(--vp-success);
 	font-family: inherit;
 	font-size: 11px;
 	font-weight: 700;
@@ -129,7 +115,7 @@
 }
 
 .fchat-pill-btn:hover {
-	border-color: var(--accent-2);
+	border-color: var(--vp-success);
 }
 
 /* Phones: the window spans the width; it still drags vertically. */

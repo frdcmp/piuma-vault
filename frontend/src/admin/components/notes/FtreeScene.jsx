@@ -25,15 +25,45 @@ function hillPath(top, offset = 0) {
 	return `${d} L${COLS} ${ROWS} Z`;
 }
 
+// Fills go through `style` (not the `fill` attribute) so they can use the
+// --vp-* tokens and follow the active theme.
+const PINE_TIP =
+	"color-mix(in srgb, var(--vp-border) 40%, var(--vp-border-soft))";
+const MOON = "color-mix(in srgb, var(--vp-accent) 60%, var(--vp-bg))";
+
 // Tiny pine sitting with its base at the given column's hill top.
 function Pine({ cx }) {
 	const base = frontTop[cx];
 	return (
 		<g>
-			<rect x={cx} y={base - 1} width={1} height={1} fill="#23252b" />
-			<rect x={cx - 2} y={base - 2} width={5} height={1} fill="#282c33" />
-			<rect x={cx - 1} y={base - 3} width={3} height={1} fill="#282c33" />
-			<rect x={cx} y={base - 4} width={1} height={1} fill="#30343d" />
+			<rect
+				x={cx}
+				y={base - 1}
+				width={1}
+				height={1}
+				style={{ fill: "var(--vp-panel-alt)" }}
+			/>
+			<rect
+				x={cx - 2}
+				y={base - 2}
+				width={5}
+				height={1}
+				style={{ fill: "var(--vp-border-soft)" }}
+			/>
+			<rect
+				x={cx - 1}
+				y={base - 3}
+				width={3}
+				height={1}
+				style={{ fill: "var(--vp-border-soft)" }}
+			/>
+			<rect
+				x={cx}
+				y={base - 4}
+				width={1}
+				height={1}
+				style={{ fill: PINE_TIP }}
+			/>
 		</g>
 	);
 }
@@ -61,10 +91,10 @@ export default function FtreeScene() {
 			>
 				{/* Moon */}
 				<g className="ftree-moon">
-					<rect x={50} y={3} width={3} height={1} fill="#9a8340" />
-					<rect x={49} y={4} width={5} height={1} fill="#9a8340" />
-					<rect x={49} y={5} width={5} height={1} fill="#9a8340" />
-					<rect x={50} y={6} width={3} height={1} fill="#9a8340" />
+					<rect x={50} y={3} width={3} height={1} style={{ fill: MOON }} />
+					<rect x={49} y={4} width={5} height={1} style={{ fill: MOON }} />
+					<rect x={49} y={5} width={5} height={1} style={{ fill: MOON }} />
+					<rect x={50} y={6} width={3} height={1} style={{ fill: MOON }} />
 				</g>
 
 				{/* Stars */}
@@ -76,17 +106,19 @@ export default function FtreeScene() {
 						y={s.y}
 						width={1}
 						height={1}
-						fill="#5b6373"
-						style={{ animationDelay: `${s.d}s` }}
+						style={{ fill: "var(--vp-faint)", animationDelay: `${s.d}s` }}
 					/>
 				))}
 
 				{/* Distant hills */}
-				<path d={hillPath(backTop)} fill="#21242b" />
+				<path d={hillPath(backTop)} style={{ fill: "var(--vp-panel-alt)" }} />
 
 				{/* Foreground hill: grass cap (muted) over body (dark) */}
-				<path d={hillPath(frontTop)} fill="#2b2f37" />
-				<path d={hillPath(frontTop, 1)} fill="#1d2027" />
+				<path
+					d={hillPath(frontTop)}
+					style={{ fill: "var(--vp-border-soft)" }}
+				/>
+				<path d={hillPath(frontTop, 1)} style={{ fill: "var(--vp-panel)" }} />
 
 				{/* A couple of pines */}
 				<Pine cx={16} />

@@ -16,19 +16,19 @@
 	flex: none;
 	margin-top: 1px;
 	font-size: 15px;
-	color: #e8b339;
+	color: var(--vp-accent);
 }
 .pv-popconfirm-title {
 	font-size: 13px;
 	font-weight: 700;
 	line-height: 1.4;
-	color: #d6dbe5;
+	color: var(--vp-text);
 }
 .pv-popconfirm-desc {
 	margin-top: 3px;
 	font-size: 12px;
 	line-height: 1.4;
-	color: #9aa3b2;
+	color: var(--vp-muted);
 }
 .pv-popconfirm-actions {
 	display: flex;

@@ -8,7 +8,7 @@
 	justify-content: center;
 	align-items: flex-start;
 	padding: 12vh 16px 16px;
-	background: rgba(0, 0, 0, 0.55);
+	background: color-mix(in srgb, var(--vp-shadow-color) 55%, transparent);
 	backdrop-filter: blur(3px);
 }
 

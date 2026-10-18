@@ -41,22 +41,26 @@
 
 /* The auth screen is the only page seen before the app shell loads, so it
    carries the vault's signature backdrop: the animated pixel starfield plus an
-   accent glow, with the panel floating on top. --accent/--text are the tokens
-   the starfield canvas reads for its palette. */
+   accent glow, with the panel floating on top. */
 .vp-auth-immersive.vp-auth-layout {
 	position: relative;
 	overflow: hidden;
 	padding: 24px 16px;
-	--accent: var(--vp-accent);
-	--text: var(--vp-text);
 	background-image:
 		radial-gradient(
 			70% 55% at 50% 38%,
-			rgba(247, 201, 72, 0.07),
+			color-mix(in srgb, var(--vp-accent) 7%, transparent),
 			transparent 72%
 		),
-		linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
-		linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+		linear-gradient(
+			color-mix(in srgb, var(--vp-highlight) 1.2%, transparent) 1px,
+			transparent 1px
+		),
+		linear-gradient(
+			90deg,
+			color-mix(in srgb, var(--vp-highlight) 1.2%, transparent) 1px,
+			transparent 1px
+		);
 	background-size:
 		cover,
 		8px 8px,
@@ -95,7 +99,7 @@
 .vp-auth-glyph {
 	flex: none;
 	fill: var(--vp-accent);
-	filter: drop-shadow(2px 2px 0 #000);
+	filter: drop-shadow(2px 2px 0 var(--vp-shadow-color));
 	transition: fill 0.15s;
 }
 
@@ -118,7 +122,7 @@
 	font-weight: 700;
 	letter-spacing: 4px;
 	color: var(--vp-text);
-	text-shadow: 2px 2px 0 #000;
+	text-shadow: 2px 2px 0 var(--vp-shadow-color);
 }
 
 .vp-auth-brand-tag {
@@ -177,7 +181,7 @@
 
 .vp-auth-alert {
 	border: 2px solid var(--vp-danger);
-	background: rgba(255, 107, 107, 0.1);
+	background: color-mix(in srgb, var(--vp-danger) 10%, transparent);
 	color: var(--vp-text);
 	padding: 12px;
 	margin-bottom: 20px;
@@ -187,7 +191,7 @@
 
 .vp-auth-alert--warning {
 	border-color: var(--vp-accent);
-	background: rgba(247, 201, 72, 0.1);
+	background: color-mix(in srgb, var(--vp-accent) 10%, transparent);
 }
 
 .vp-auth-alert-title {

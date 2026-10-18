@@ -761,7 +761,7 @@ const Memory = () => {
 						title="Pending review"
 						subtitle="low-trust L2 guesses, awaiting confirmation"
 						count={byStatus.pending ?? 0}
-						accent="#b07cff"
+						accent="var(--vp-violet)"
 						active={tab === "entries" && status === "pending"}
 						onClick={() => focusLayer({ status: "pending" })}
 					/>

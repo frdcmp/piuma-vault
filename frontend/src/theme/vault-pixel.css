@@ -351,6 +351,27 @@ a.vp-card:hover {
 	resize: vertical;
 	line-height: 1.6;
 }
+.vp-textarea--auto {
+	resize: none;
+	overflow: hidden;
+}
+.vp-input--sm {
+	padding: 4px 8px;
+	font-size: 12px;
+}
+.vp-input.vp-invalid,
+.vp-textarea.vp-invalid,
+.vp-select.vp-invalid {
+	border-color: var(--vp-danger);
+}
+.vp-field-hint {
+	font-size: 11px;
+	color: var(--vp-faint);
+}
+.vp-field-error {
+	font-size: 11px;
+	color: var(--vp-danger);
+}
 
 /* ---- Tags / chips ---------------------------------------------------------- */
 .vp-tag {

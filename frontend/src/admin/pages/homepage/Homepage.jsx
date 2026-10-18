@@ -19,7 +19,7 @@ const FEATURES = [
 		title: "Markdown Notes",
 		tag: "Notes",
 		description:
-			"A fast, folder-and-tag organized note vault with rich Markdown editors (BlockNote & Milkdown), tabs, and live updates over SSE.",
+			"A fast, folder-and-tag organized note vault with a rich Markdown editor (Milkdown), tabs, and live updates over SSE.",
 	},
 	{
 		icon: <SearchOutlined />,

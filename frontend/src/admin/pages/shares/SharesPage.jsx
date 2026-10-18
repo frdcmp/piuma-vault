@@ -259,7 +259,7 @@ const SharesPage = () => {
 				<span
 					className="vp-tag"
 					style={{
-						color: type === "note" ? "var(--accent-4)" : "var(--accent-3)",
+						color: type === "note" ? "var(--vp-info)" : "var(--vp-danger)",
 					}}
 				>
 					{type === "note" ? "📝 Note" : "📁 Folder"}

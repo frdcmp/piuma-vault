@@ -53,7 +53,7 @@
 	font-weight: 800;
 	letter-spacing: 0.5px;
 	color: var(--vp-text);
-	text-shadow: 2px 2px 0 #000;
+	text-shadow: 2px 2px 0 var(--vp-shadow-color);
 }
 
 .vp-stat-icon {

@@ -39,7 +39,7 @@ export default function BucketSelect({ value, onChange, buckets = [] }) {
 						<>
 							<span
 								className="bucket-dot"
-								style={{ background: selected.color || "#5cd0a9" }}
+								style={{ background: selected.color || "var(--vp-success)" }}
 							/>
 							{selected.name}
 						</>
@@ -74,7 +74,7 @@ export default function BucketSelect({ value, onChange, buckets = [] }) {
 							>
 								<span
 									className="bucket-dot"
-									style={{ background: b.color || "#5cd0a9" }}
+									style={{ background: b.color || "var(--vp-success)" }}
 								/>
 								{b.name}
 							</button>

@@ -32,7 +32,7 @@
 	font-size: 0.95rem;
 	border: 2px solid var(--vp-border);
 	border-radius: 6px;
-	background: var(--vp-input-bg);
+	background: var(--vp-bg);
 	color: inherit;
 }
 

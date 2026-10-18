@@ -56,7 +56,7 @@
 	font-weight: 800;
 	line-height: 1;
 	margin-top: 10px;
-	text-shadow: 2px 2px 0 #000;
+	text-shadow: 2px 2px 0 var(--vp-shadow-color);
 }
 .mem-layer-title {
 	margin-top: 8px;
@@ -121,8 +121,8 @@
 	color: var(--vp-info);
 }
 .mem-tag--purple {
-	border-color: #b07cff;
-	color: #b07cff;
+	border-color: var(--vp-violet);
+	color: var(--vp-violet);
 }
 .mem-tag--red {
 	border-color: var(--vp-danger);
