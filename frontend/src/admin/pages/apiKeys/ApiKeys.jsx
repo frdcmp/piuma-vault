@@ -78,6 +78,12 @@ const SCOPE_OPTIONS = [
 		description:
 			"Full control of calendar events: list, create, update, and delete",
 	},
+	{
+		label: "Agents (chat)",
+		value: "agents.chat",
+		description:
+			"Hold conversations and run chat turns. A turn runs the agent's tools, so it can write notes, tasks and events whatever the key's other scopes",
+	},
 ];
 
 const SCOPE_TAG_CLASSES = {
@@ -86,6 +92,7 @@ const SCOPE_TAG_CLASSES = {
 	"storage.access": "vp-tag--accent",
 	"tasks.manage": "vp-tag--blue",
 	"calendar.manage": "vp-tag--green",
+	"agents.chat": "vp-tag--accent",
 };
 
 const SCOPE_LABELS = {
@@ -94,6 +101,9 @@ const SCOPE_LABELS = {
 	"storage.access": "Storage",
 	"tasks.manage": "Tasks",
 	"calendar.manage": "Calendar",
+	"tasks.read": "Tasks (read)",
+	"calendar.read": "Calendar (read)",
+	"agents.chat": "Agents (chat)",
 };
 
 const STATUS_FILTERS = [

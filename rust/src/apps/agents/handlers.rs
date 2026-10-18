@@ -7,10 +7,10 @@ use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::settings;
 use crate::db::db::DbPool;
 
+use super::access::{AgentAdmin, AgentChat};
 use super::control::TurnControl;
 use super::models::*;
 use super::registry;
@@ -32,7 +32,7 @@ fn db_err(e: sqlx::Error) -> HttpResponse {
 
 // ── Agents ───────────────────────────────────────────────────────────────────
 
-pub async fn list_agents(_user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
+pub async fn list_agents(_user: AgentChat, pool: web::Data<DbPool>) -> impl Responder {
     let mut out: Vec<AgentInfo> = Vec::new();
     for def in registry::all() {
         let row: Option<(String, serde_json::Value)> =
@@ -62,7 +62,7 @@ pub async fn list_agents(_user: AuthenticatedUser, pool: web::Data<DbPool>) -> i
 
 // ── Default agent (new conversations start with this) ───────────────────────
 
-pub async fn get_default_agent(_user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
+pub async fn get_default_agent(_user: AgentChat, pool: web::Data<DbPool>) -> impl Responder {
     let stored = settings::store::get(pool.get_ref(), DEFAULT_AGENT_KEY).await;
     let agent = stored
         .filter(|s| registry::get(s).is_some())
@@ -71,7 +71,7 @@ pub async fn get_default_agent(_user: AuthenticatedUser, pool: web::Data<DbPool>
 }
 
 pub async fn set_default_agent(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     body: web::Json<DefaultAgentReq>,
 ) -> impl Responder {
@@ -86,7 +86,7 @@ pub async fn set_default_agent(
 
 // ── Providers ────────────────────────────────────────────────────────────────
 
-pub async fn list_providers(_user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
+pub async fn list_providers(_user: AgentAdmin, pool: web::Data<DbPool>) -> impl Responder {
     match sqlx::query_as::<_, ProviderRow>("SELECT * FROM db_llm_providers ORDER BY display_name")
         .fetch_all(pool.get_ref())
         .await
@@ -100,7 +100,7 @@ pub async fn list_providers(_user: AuthenticatedUser, pool: web::Data<DbPool>) -
 }
 
 pub async fn create_provider(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     body: web::Json<CreateProviderReq>,
 ) -> impl Responder {
@@ -123,7 +123,7 @@ pub async fn create_provider(
 }
 
 pub async fn update_provider(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
     body: web::Json<UpdateProviderReq>,
@@ -156,7 +156,7 @@ pub async fn update_provider(
 }
 
 pub async fn delete_provider(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
@@ -173,7 +173,7 @@ pub async fn delete_provider(
 // ── Models ───────────────────────────────────────────────────────────────────
 
 pub async fn list_models(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
@@ -196,7 +196,7 @@ pub async fn list_models(
 /// would swallow the real "connection refused / bad key" detail before it
 /// reaches the admin UI.)
 pub async fn list_available_models(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
@@ -233,7 +233,7 @@ pub struct ModelMetaQuery {
 /// auto-detect for the add-model form. Only Ollama exposes this (native
 /// `/api/show`); other kinds return nulls so the UI keeps its manual toggles.
 pub async fn model_meta(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
     q: web::Query<ModelMetaQuery>,
@@ -261,7 +261,7 @@ pub async fn model_meta(
 }
 
 /// All enabled models across providers — for the `/models` chat command picker.
-pub async fn list_all_models(_user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
+pub async fn list_all_models(_user: AgentChat, pool: web::Data<DbPool>) -> impl Responder {
     let rows: Vec<(Uuid, String, String, bool, String, f64, f64, f64, bool, bool, bool)> = sqlx::query_as(
         "SELECT m.id, m.model_id, m.display_name, m.is_default, p.display_name, \
                 m.price_input, m.price_output, m.price_cached, \
@@ -282,7 +282,7 @@ pub async fn list_all_models(_user: AuthenticatedUser, pool: web::Data<DbPool>) 
 }
 
 pub async fn create_model(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
     body: web::Json<CreateModelReq>,
@@ -325,7 +325,7 @@ pub async fn create_model(
 }
 
 pub async fn update_model(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
     body: web::Json<UpdateModelReq>,
@@ -380,7 +380,7 @@ pub async fn update_model(
 }
 
 pub async fn delete_model(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
@@ -397,7 +397,7 @@ pub async fn delete_model(
 // ── Agent profile + personas ────────────────────────────────────────────────
 
 pub async fn get_profile(
-    _user: AuthenticatedUser,
+    _user: AgentChat,
     pool: web::Data<DbPool>,
     path: web::Path<String>,
 ) -> impl Responder {
@@ -413,7 +413,7 @@ pub async fn get_profile(
 }
 
 pub async fn patch_profile(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<String>,
     body: web::Json<UpdateProfileReq>,
@@ -448,7 +448,7 @@ pub async fn patch_profile(
 }
 
 pub async fn list_personas(
-    _user: AuthenticatedUser,
+    _user: AgentChat,
     pool: web::Data<DbPool>,
     path: web::Path<String>,
 ) -> impl Responder {
@@ -465,7 +465,7 @@ pub async fn list_personas(
 }
 
 pub async fn patch_persona(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
     body: web::Json<UpdatePersonaReq>,
@@ -511,7 +511,7 @@ pub struct ListConvQuery {
 }
 
 pub async fn list_conversations(
-    _user: AuthenticatedUser,
+    _user: AgentChat,
     pool: web::Data<DbPool>,
     q: web::Query<ListConvQuery>,
 ) -> impl Responder {
@@ -549,7 +549,7 @@ pub async fn list_conversations(
 }
 
 pub async fn create_conversation(
-    _user: AuthenticatedUser,
+    _user: AgentChat,
     pool: web::Data<DbPool>,
     body: web::Json<CreateConversationReq>,
 ) -> impl Responder {
@@ -652,7 +652,7 @@ async fn active_path_json(pool: &DbPool, conv: &ConversationRow) -> serde_json::
 /// it is, the new user message is off-branch (the active leaf only advances once
 /// the reply is saved), so a client recovering a dropped stream waits for false.
 pub async fn get_conversation(
-    _user: AuthenticatedUser,
+    _user: AgentChat,
     pool: web::Data<DbPool>,
     control: web::Data<TurnControl>,
     path: web::Path<Uuid>,
@@ -682,7 +682,7 @@ pub struct SwitchBranchReq {
 }
 
 pub async fn switch_branch(
-    _user: AuthenticatedUser,
+    _user: AgentChat,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
     body: web::Json<SwitchBranchReq>,
@@ -736,7 +736,7 @@ pub async fn switch_branch(
 }
 
 pub async fn update_conversation(
-    _user: AuthenticatedUser,
+    _user: AgentChat,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
     body: web::Json<UpdateConversationReq>,
@@ -767,7 +767,7 @@ pub async fn update_conversation(
 }
 
 pub async fn delete_conversation(
-    _user: AuthenticatedUser,
+    _user: AgentChat,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
@@ -784,7 +784,7 @@ pub async fn delete_conversation(
 /// Force an AI re-title of a conversation (the `/title → auto-rename` action).
 /// Returns the new title, or 400 if there's nothing to summarize / no model.
 pub async fn retitle_conversation(
-    _user: AuthenticatedUser,
+    _user: AgentChat,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
@@ -801,7 +801,7 @@ pub async fn retitle_conversation(
 /// conversation row and its id are preserved, so the thread keeps streaming to
 /// the same session.
 pub async fn clear_conversation(
-    _user: AuthenticatedUser,
+    _user: AgentChat,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {

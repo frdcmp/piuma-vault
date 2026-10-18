@@ -15,10 +15,10 @@ use chrono::{DateTime, NaiveDate, Utc};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::settings::store;
 use crate::apps::voice::config::{self as voice_config, VoicePrices};
 use crate::db::db::DbPool;
+use super::access::AgentAdmin;
 
 /// USD per 1M tokens for `text-embedding-3-large` (cache-free). Embeddings have
 /// no `db_llm_models` row, so this is the fallback used when costing them.
@@ -124,7 +124,7 @@ impl Bucket {
 /// GET /agents/usage — aggregated token spend with optional date/source/model
 /// filters. Returns `{ summary, by_model, by_source, by_day }`.
 pub async fn usage(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     q: web::Query<UsageQuery>,
 ) -> impl Responder {

@@ -13,7 +13,6 @@ use futures::channel::mpsc;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::calendar::events::CalendarEventBus;
 use crate::apps::notes::events::{NoteAction, NotesEventBus};
 use crate::apps::realtime::ResourceAction;
@@ -21,6 +20,7 @@ use crate::apps::recorder::session::SessionRegistry;
 use crate::apps::tasks::events::TasksEventBus;
 use crate::db::db::DbPool;
 
+use super::access::AgentChat;
 use super::control::TurnControl;
 use super::models::{ApiError, ChatTurnReq, ConversationRow, ModelRow, ProviderRow};
 use super::providers;
@@ -294,7 +294,7 @@ impl Drop for TurnGuard {
 }
 
 pub async fn chat(
-    user: AuthenticatedUser,
+    AgentChat(user): AgentChat,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
     body: web::Json<ChatTurnReq>,
@@ -1011,7 +1011,7 @@ pub async fn chat(
 /// token so the running turn halts mid-stream. Idempotent / safe if no turn is
 /// active. Returns 202 with whether a turn was actually cancelled.
 pub async fn stop(
-    _user: AuthenticatedUser,
+    _user: AgentChat,
     path: web::Path<Uuid>,
     control: web::Data<TurnControl>,
 ) -> impl Responder {
@@ -1031,7 +1031,7 @@ pub struct InjectReq {
 /// NOT open a stream. If no turn is active the client should POST `/chat` instead,
 /// so this returns 409 `{ queued: false }` in that case.
 pub async fn inject(
-    _user: AuthenticatedUser,
+    _user: AgentChat,
     path: web::Path<Uuid>,
     body: web::Json<InjectReq>,
     control: web::Data<TurnControl>,

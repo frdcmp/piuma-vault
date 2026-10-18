@@ -1,6 +1,7 @@
 //! Agents — multi-provider, multi-agent LLM chat. Agent-agnostic `/agents/*`
 //! API; the agent is a parameter on the conversation row. See md/ plan.
 
+pub mod access;
 pub mod chat;
 pub mod control;
 pub mod dialectic;

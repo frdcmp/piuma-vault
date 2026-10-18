@@ -13,9 +13,9 @@ use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::apps::auth::models::AuthenticatedUser;
 use crate::db::db::DbPool;
 
+use super::access::AgentAdmin;
 use super::models::ApiError;
 
 // L1 caps mirror `tools::self_config`.
@@ -62,7 +62,7 @@ pub struct EntriesQuery {
 /// GET /agents/memory/entries — filterable list of L2/L4 entries (embedding
 /// omitted). Shows all statuses (incl. rejected) so the admin can audit.
 pub async fn list_entries(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     q: web::Query<EntriesQuery>,
 ) -> impl Responder {
@@ -102,7 +102,7 @@ pub struct AgentQuery {
 
 /// GET /agents/memory/overview — L1 usage + L2/L4 aggregate stats for one agent.
 pub async fn overview(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     q: web::Query<AgentQuery>,
 ) -> impl Responder {
@@ -207,7 +207,7 @@ struct TurnLogOut {
 
 /// GET /agents/memory/turn-logs — Phase 0 inspector: what was retrieved per turn.
 pub async fn turn_logs(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     q: web::Query<TurnLogsQuery>,
 ) -> impl Responder {
@@ -241,7 +241,7 @@ pub struct ConvSearchQuery {
 /// uses; with an empty query it **browses** the agent's recent conversations
 /// (so the tab shows the indexed history instead of sitting empty).
 pub async fn search_conversations(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     q: web::Query<ConvSearchQuery>,
 ) -> impl Responder {
@@ -265,7 +265,7 @@ pub async fn search_conversations(
 // ── Moderation actions ───────────────────────────────────────────────────────
 
 pub async fn confirm_entry(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
@@ -286,7 +286,7 @@ pub async fn confirm_entry(
 }
 
 pub async fn reject_entry(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
@@ -310,7 +310,7 @@ pub async fn reject_entry(
 /// verdict on the pair. This is exactly what governs whether a re-derivation of
 /// this fact would be promoted to `confirmed`.
 pub async fn entry_stats(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
@@ -419,7 +419,7 @@ pub struct DedupQuery {
 /// linked to the survivor via `related_ids`. `?apply=false` (default) returns
 /// the plan as a dry-run; `?apply=true` executes it.
 pub async fn dedup_pending(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     q: web::Query<DedupQuery>,
 ) -> impl Responder {
@@ -556,7 +556,7 @@ pub struct TestDeriveBody {
 }
 
 pub async fn test_derive(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     body: web::Json<TestDeriveBody>,
 ) -> impl Responder {
@@ -568,7 +568,7 @@ pub async fn test_derive(
 
 /// DELETE /agents/memory/entries/{id} — hard delete (admin housekeeping).
 pub async fn delete_entry(
-    _user: AuthenticatedUser,
+    _user: AgentAdmin,
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
