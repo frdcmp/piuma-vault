@@ -45,13 +45,9 @@
 }
 
 /* ── Recharts (dark theme) ──────────────────────────────────────────────── */
+/* Legend text colour comes from <Legend labelStyle> (Recharts sets it inline);
+   the tooltip box from <Tooltip contentStyle>. */
 .tu-root .recharts-legend-item-text {
-	color: var(--vp-text) !important;
 	font-family: var(--vp-font);
 	font-size: 12px;
-}
-.tu-root .recharts-default-tooltip {
-	background: var(--vp-panel) !important;
-	border: 2px solid var(--vp-border) !important;
-	border-radius: 0 !important;
 }

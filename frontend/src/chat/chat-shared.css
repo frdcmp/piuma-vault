@@ -568,11 +568,6 @@
 .chat-context-tag.transient:hover {
 	opacity: 1;
 }
-/* Preview-tab chip: italic, mirroring the editor's transient tab. Only applies
-   while the chip is still transient (not yet locked into context). */
-.chat-context-tag.preview .chat-context-tag-label {
-	font-style: italic;
-}
 .chat-context-tag-main {
 	display: inline-flex;
 	align-items: center;
@@ -595,6 +590,11 @@ button.chat-context-tag-main {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+/* Preview-tab chip: italic, mirroring the editor's transient tab. Only applies
+   while the chip is still transient (not yet locked into context). */
+.chat-context-tag.preview .chat-context-tag-label {
+	font-style: italic;
 }
 .chat-context-tag-x {
 	display: inline-flex;
@@ -620,29 +620,22 @@ button.chat-context-tag-main {
 	border-color: color-mix(in srgb, var(--vp-accent) 40%, transparent);
 	background: color-mix(in srgb, var(--vp-accent) 10%, transparent);
 }
-.chat-input {
+/* The composer's PvTextarea (variant="bare", autoSize + maxHeight). Compound
+   selectors so these beat the kit's .vp-textarea rules regardless of
+   stylesheet order. */
+.chat-input.vp-textarea {
 	flex: 1;
 	min-width: 0;
-	box-sizing: border-box;
-	/* one line + padding; auto-grows (useAutoGrow) up to ~10 lines, then scrolls */
+	/* one line + padding; grows up to maxHeight, then scrolls */
 	min-height: 30px;
-	max-height: min(calc(10 * 1.45em + 10px), 40vh);
-	resize: none;
-	overflow-y: auto;
-	background: transparent;
-	border: 0;
 	padding: 5px 6px;
-	color: var(--vp-text);
 	font-family: inherit;
 	font-size: 10.5pt;
 	line-height: 1.45;
 }
-.chat-input:focus {
-	outline: none;
-}
 /* Keep the placeholder on one line — a wrapped placeholder would make the empty
    box several lines tall. */
-.chat-input::placeholder {
+.chat-input.vp-textarea::placeholder {
 	color: var(--vp-muted);
 	white-space: nowrap;
 	overflow: hidden;

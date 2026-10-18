@@ -309,11 +309,6 @@
 	line-height: 1.5;
 }
 
-.shared-note-body th + th,
-.shared-note-body td + td {
-	border-left: 1px solid var(--vp-border-soft);
-}
-
 .shared-note-body th {
 	background: var(--vp-panel);
 	font-weight: 600;
@@ -321,6 +316,11 @@
 	font-size: 13px;
 	text-transform: uppercase;
 	letter-spacing: 0.4px;
+}
+
+.shared-note-body th + th,
+.shared-note-body td + td {
+	border-left: 1px solid var(--vp-border-soft);
 }
 
 .shared-note-body tbody tr:nth-child(even) {
@@ -382,7 +382,9 @@
 	background: var(--vp-paper);
 }
 
-.attachment-box {
+/* Scoped under .shared-note-body so its text colour beats the generic
+   `.shared-note-body a` link colour. */
+.shared-note-body .attachment-box {
 	display: flex;
 	align-items: center;
 	gap: 12px;
@@ -392,7 +394,7 @@
 	border: 1px solid var(--vp-border-soft);
 	border-radius: 8px;
 	text-decoration: none;
-	color: var(--vp-text) !important;
+	color: var(--vp-text);
 	transition: border-color 0.15s ease;
 }
 

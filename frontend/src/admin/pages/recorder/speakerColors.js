@@ -30,6 +30,6 @@ export const colorForSpeaker = (label) => {
 
 /** Reset all speaker→color assignments (call when starting a new session). */
 export const resetSpeakerColors = () => {
-	Object.keys(speakerMap).forEach((k) => delete speakerMap[k]);
+	for (const k of Object.keys(speakerMap)) delete speakerMap[k];
 	colorIdx = 0;
 };

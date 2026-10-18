@@ -40,7 +40,7 @@
 }
 
 .notes-pixel-sidebar.mobile {
-	width: 100% !important;
+	width: 100%;
 	border-right: none;
 }
 
@@ -442,6 +442,12 @@
 	background: color-mix(in srgb, var(--vp-highlight) 3%, transparent);
 }
 
+/* Rows are focusable treeitems (Enter / Space = click). */
+.ftree-row:focus-visible {
+	outline: 1px solid var(--vp-accent);
+	outline-offset: -1px;
+}
+
 /* Active context-menu target — show which row the dropdown applies to */
 .ftree-row.context-active {
 	background: var(--vp-bg-soft);
@@ -606,6 +612,7 @@
 }
 
 .ftree-row:hover .ftree-delete,
+.ftree-row:focus-visible .ftree-delete,
 .ftree-delete:focus-visible {
 	opacity: 1;
 }

@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ACCEPT_ATTR, SUPPORTED_LABEL } from "@/processing";
-import { PvButton, PvIconButton, PvUpload, pvMessage } from "@/ui";
+import { PvButton, PvIconButton, PvTextarea, PvUpload, pvMessage } from "@/ui";
 import {
 	clearConversation,
 	createConversation,
@@ -30,10 +30,13 @@ import {
 	newMessageId,
 } from "../engine/messageModel";
 import useAttachments from "../engine/useAttachments";
-import useAutoGrow from "../engine/useAutoGrow";
 import useChatScroll from "../engine/useChatScroll";
 import useChatStream from "../engine/useChatStream";
 import useModelCatalog from "../engine/useModelCatalog";
+
+// Composer grows with its text up to ~10 lines (never past 40% of the
+// viewport), then scrolls.
+const COMPOSER_MAX_HEIGHT = "min(calc(10 * 1.45em + 10px), 40vh)";
 
 // Universal client commands (same for every agent). Agent-specific commands are
 // the prompt macros from the agent profile, merged in at render time.
@@ -215,8 +218,6 @@ export default function ChatConversation({
 			cancelled = true;
 		};
 	}, [conversationId, focusInput]);
-
-	useAutoGrow(inputRef, input);
 
 	useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -852,8 +853,11 @@ export default function ChatConversation({
 								title="Commands"
 								onClick={toggleSlashMenu}
 							/>
-							<textarea
+							<PvTextarea
 								ref={inputRef}
+								variant="bare"
+								autoSize
+								maxHeight={COMPOSER_MAX_HEIGHT}
 								className="chat-input"
 								value={input}
 								onChange={(e) => {

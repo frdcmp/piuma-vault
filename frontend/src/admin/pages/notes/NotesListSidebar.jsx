@@ -37,6 +37,7 @@ const TreePrefix = ({ parentLines, isLast }) => (
 	<span className="ftree-prefix">
 		{parentLines.map((more, i) => (
 			<span
+				// biome-ignore lint/suspicious/noArrayIndexKey: the index is the ancestor depth — the segment's identity; the list only ever changes as a whole
 				key={`p${i}-${more ? "t" : "g"}`}
 				className={more ? "ftree-trunk" : "ftree-gap"}
 			>
@@ -46,6 +47,17 @@ const TreePrefix = ({ parentLines, isLast }) => (
 		<span className="ftree-branch">{isLast ? "└─ " : "├─ "}</span>
 	</span>
 );
+
+// Rows are focusable treeitems rather than <button>s: they're draggable and
+// hold their own delete button. Enter / Space on the focused row = click
+// (ignored when the key event comes from a child control).
+const activateOnKey = (action) => (e) => {
+	if (e.target !== e.currentTarget) return;
+	if (e.key === "Enter" || e.key === " ") {
+		e.preventDefault();
+		action();
+	}
+};
 
 const TreeFile = ({
 	file,
@@ -67,6 +79,10 @@ const TreeFile = ({
 		className={`ftree-row ftree-file ${selected ? "selected" : ""} ${
 			dragging ? "dragging" : ""
 		} ${contextActive ? "context-active" : ""}`}
+		role="treeitem"
+		tabIndex={0}
+		aria-selected={selected}
+		aria-level={parentLines.length + 1}
 		draggable
 		onDragStart={(e) => {
 			e.stopPropagation();
@@ -75,6 +91,7 @@ const TreeFile = ({
 			onDragStartItem({ type: "file", id: file.id, folder });
 		}}
 		onClick={() => onSelect(file.id)}
+		onKeyDown={activateOnKey(() => onSelect(file.id))}
 		onDoubleClick={() => onOpenPermanent(file.id, file)}
 		onContextMenu={(e) => {
 			e.preventDefault();
@@ -152,6 +169,11 @@ const TreeFolder = ({
 					} ${isDraggingThisFolder ? "dragging" : ""} ${
 						isContextActive ? "context-active" : ""
 					} ${isSelectedFolder ? "selected" : ""}`}
+					role="treeitem"
+					tabIndex={0}
+					aria-selected={isSelectedFolder}
+					aria-expanded={expanded}
+					aria-level={depth}
 					draggable
 					onDragStart={(e) => {
 						e.stopPropagation();
@@ -174,6 +196,10 @@ const TreeFolder = ({
 						onSelectFolder(path);
 						toggleFolder(path);
 					}}
+					onKeyDown={activateOnKey(() => {
+						onSelectFolder(path);
+						toggleFolder(path);
+					})}
 					onContextMenu={(e) => {
 						e.preventDefault();
 						onSetContextTarget({
@@ -292,16 +318,19 @@ const SearchResultItem = ({
 			`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
 			"gi",
 		);
-		const parts = text.split(regex);
-		return parts.map((part, i) =>
-			regex.test(part) ? (
-				<b key={i} className="search-match-highlight">
+		// Key each match by its character offset in the title.
+		let offset = 0;
+		return text.split(regex).map((part) => {
+			const at = offset;
+			offset += part.length;
+			return regex.test(part) ? (
+				<b key={at} className="search-match-highlight">
 					{part}
 				</b>
 			) : (
 				part
-			),
-		);
+			);
+		});
 	};
 
 	// Search snippets come from Postgres `ts_headline`, which echoes the note
@@ -310,17 +339,25 @@ const SearchResultItem = ({
 	// somehow reaches us, so the innerHTML below can never run markup.
 	const safeHeadline = (h) => String(h ?? "").replace(/<(?!\/?b>)[^>]*>/g, "");
 
-	const highlights =
-		note.highlights?.length > 0
-			? note.highlights
-			: note.headline
-				? [note.headline]
-				: [];
+	// Deduped so each snippet can key on its own text.
+	const highlights = [
+		...new Set(
+			note.highlights?.length > 0
+				? note.highlights
+				: note.headline
+					? [note.headline]
+					: [],
+		),
+	];
 
 	return (
 		<div
 			className={`ftree-row ftree-search ${isSelected ? "selected" : ""}`}
+			role="treeitem"
+			tabIndex={0}
+			aria-selected={isSelected}
 			onClick={() => onSelect(note.id)}
+			onKeyDown={activateOnKey(() => onSelect(note.id))}
 			onDoubleClick={() => onOpenPermanent(note.id, note)}
 			onContextMenu={(e) => {
 				e.preventDefault();
@@ -358,10 +395,11 @@ const SearchResultItem = ({
 				<div className="ftree-search-path">📁 {note.folder}</div>
 			)}
 
-			{highlights.map((highlight, i) => (
+			{highlights.map((highlight) => (
 				<div
-					key={i}
+					key={highlight}
 					className="ftree-search-headline note-search-headline"
+					// biome-ignore lint/security/noDangerouslySetInnerHtml: ts_headline snippet, escaped server-side (notes::handlers::render_headline re-adds only <b>/</b>) and stripped of every other tag by safeHeadline above
 					dangerouslySetInnerHTML={{ __html: safeHeadline(highlight) }}
 				/>
 			))}
@@ -821,6 +859,7 @@ export default function NotesListSidebar({
 			/>
 
 			{/* Body */}
+			{/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only shortcut — right-clicking empty space opens the root-folder menu, whose actions (new note / new folder) are also on the "+ New" button */}
 			<div
 				className="notes-sidebar-tree"
 				onContextMenu={(e) => {
@@ -921,18 +960,20 @@ export default function NotesListSidebar({
 									No results for "{debouncedSearch}"
 								</div>
 							) : (
-								dedupedResults.map((note) => (
-									<SearchResultItem
-										key={note.id}
-										note={note}
-										isSelected={selectedNoteId === note.id}
-										onSelect={handleSelectNote}
-										onOpenPermanent={handleOpenPermanent}
-										onRequestDelete={setPendingDeleteId}
-										onSetContextTarget={setContextTarget}
-										searchQuery={debouncedSearch}
-									/>
-								))
+								<div role="tree" aria-label="Search results">
+									{dedupedResults.map((note) => (
+										<SearchResultItem
+											key={note.id}
+											note={note}
+											isSelected={selectedNoteId === note.id}
+											onSelect={handleSelectNote}
+											onOpenPermanent={handleOpenPermanent}
+											onRequestDelete={setPendingDeleteId}
+											onSetContextTarget={setContextTarget}
+											searchQuery={debouncedSearch}
+										/>
+									))}
+								</div>
 							)
 						) : !showFolders || !folderMatches?.length ? (
 							<div className="notes-sidebar-status">
@@ -945,6 +986,8 @@ export default function NotesListSidebar({
 						className={`ftree-root ${
 							dragOverPath === "/" ? "drag-over-root" : ""
 						}`}
+						role="tree"
+						aria-label="Notes"
 						onDragOver={(e) => {
 							// Only the root area itself (rows stop propagation) — lets you
 							// drop notes/folders back to the top level.

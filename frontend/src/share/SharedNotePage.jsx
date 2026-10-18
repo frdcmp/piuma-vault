@@ -93,8 +93,8 @@ const markdownComponents = {
 				);
 			}
 			if (meta.category === "audio") {
-				// biome-ignore lint/a11y/useMediaCaption: user-uploaded audio has no caption track
 				return (
+					// biome-ignore lint/a11y/useMediaCaption: user-uploaded audio has no caption source to point a <track> at
 					<audio
 						className="shared-note-audio"
 						src={href}

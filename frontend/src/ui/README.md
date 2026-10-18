@@ -21,7 +21,7 @@ import { PvButton, PvField, PvInput, PvModal, pvMessage } from "@/ui";
 | `PvButton` | Action / link button | `variant` default·primary·danger·accent·ghost·text, `size` md·sm, `block`, `loading`, `icon`, `iconEnd`, `plain` (keep case, for user text), `to` (router), `href` |
 | `PvIconButton` | Square icon-only button (toolbars, bars, row actions) | `icon`, `label` (required: title + aria-label), `variant` default·ghost·ghost-danger·danger·accent, `size` sm·md·lg, `active`, `to`, `href` |
 | `PvInput` | Text input (`.vp-input`) | native input props, `size`, `invalid`, `prefix`, `suffix` (pass the prop, even null, to keep the wrapper stable), `reveal` (password show/hide) |
-| `PvTextarea` | Multi-line input | native props, `autoSize`, `invalid` |
+| `PvTextarea` | Multi-line input | native props, `autoSize` (grows with content, re-measures on width change), `maxHeight` (px number or CSS length: with `autoSize`, grow up to it then scroll), `variant` default·bare (no border/background/padding/min-height), `invalid`, `ref` |
 | `PvSelect` | Native dropdown | `options` [{value,label}]·string[], `value`, `onChange(value)`, `placeholder`, `allowClear`, `size`, `invalid` |
 | `PvField` | Label + control + hint/error | `label`, `hint`, `error`, `required`, `as` label·div (div for composite controls), children = control |
 | `PvCheckbox` | Checkbox | `checked`, `onChange(checked)`, `label`, `disabled`, `indeterminate` |

@@ -34,6 +34,15 @@
 	vertical-align: middle;
 }
 
+/* Small size */
+.pv-table--sm thead th {
+	padding: 8px 10px;
+}
+.pv-table--sm tbody td {
+	padding: 7px 10px;
+	font-size: 12px;
+}
+
 .pv-table tbody tr:last-child td {
 	border-bottom: none;
 }
@@ -53,17 +62,23 @@
 	color: var(--vp-faint);
 	font-size: 13px;
 }
+
+/* Expandable rows */
+.pv-table .pv-table-expand-col {
+	width: 34px;
+	padding-right: 0;
+}
+.pv-table tbody tr.pv-table-expanded > td {
+	background: var(--vp-bg-soft);
+	padding: 14px 16px;
+}
+
+/* Hover overrides for the state / expanded rows — most specific, so last. */
 .pv-table tbody tr.pv-table-state:hover td {
 	background: transparent;
 }
-
-/* Small size */
-.pv-table--sm thead th {
-	padding: 8px 10px;
-}
-.pv-table--sm tbody td {
-	padding: 7px 10px;
-	font-size: 12px;
+.pv-table tbody tr.pv-table-expanded:hover > td {
+	background: var(--vp-bg-soft);
 }
 
 /* Sortable header */
@@ -89,19 +104,6 @@
 }
 th[aria-sort] .pv-table-sort-mark {
 	color: var(--vp-accent);
-}
-
-/* Expandable rows */
-.pv-table .pv-table-expand-col {
-	width: 34px;
-	padding-right: 0;
-}
-.pv-table tbody tr.pv-table-expanded > td {
-	background: var(--vp-bg-soft);
-	padding: 14px 16px;
-}
-.pv-table tbody tr.pv-table-expanded:hover > td {
-	background: var(--vp-bg-soft);
 }
 
 /* Pager */

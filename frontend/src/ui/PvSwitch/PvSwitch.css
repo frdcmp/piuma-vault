@@ -39,21 +39,8 @@
 		left 0.12s steps(3, end),
 		background 0.1s;
 }
-.pv-switch.is-on .pv-switch-track {
-	border-color: var(--vp-success);
-}
-.pv-switch.is-on .pv-switch-thumb {
-	left: 20px;
-	background: var(--vp-success);
-}
-.pv-switch:not(:disabled):hover .pv-switch-track {
-	border-color: var(--vp-accent);
-}
-.pv-switch:focus-visible .pv-switch-track {
-	outline: 2px solid var(--vp-accent);
-	outline-offset: 2px;
-}
-
+/* Size first: these (0,2,0) rules only set width/height, which no state rule
+   below touches. */
 .pv-switch--sm .pv-switch-track {
 	width: 28px;
 	height: 14px;
@@ -62,6 +49,20 @@
 	width: 6px;
 	height: 6px;
 }
+.pv-switch.is-on .pv-switch-track {
+	border-color: var(--vp-success);
+}
+.pv-switch.is-on .pv-switch-thumb {
+	left: 20px;
+	background: var(--vp-success);
+}
 .pv-switch--sm.is-on .pv-switch-thumb {
 	left: 16px;
+}
+.pv-switch:focus-visible .pv-switch-track {
+	outline: 2px solid var(--vp-accent);
+	outline-offset: 2px;
+}
+.pv-switch:not(:disabled):hover .pv-switch-track {
+	border-color: var(--vp-accent);
 }

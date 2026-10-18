@@ -4,7 +4,6 @@ import { PvIconButton, PvInput, PvTag, PvUpload } from "@/ui";
 import { useUploadAttachment } from "../../../queries";
 import {
 	useCreateNote,
-	useFolders,
 	useNote,
 	useUpdateNote,
 } from "../../../queries/notesQuery";
@@ -59,7 +58,6 @@ export default function NoteEditor() {
 	// Single mono (dark) theme — the editors only understand "dark" / "light".
 
 	const { data: note, isLoading, isError } = useNote(noteId);
-	const { data: folders = [] } = useFolders();
 	const createMutation = useCreateNote();
 	const updateMutation = useUpdateNote();
 	const uploadAttachment = useUploadAttachment();
@@ -336,17 +334,6 @@ export default function NoteEditor() {
 			triggerSave(currentId, title, content, newTags, folder);
 		},
 		[title, content, folder, tags, triggerSave, note, noteId],
-	);
-
-	const handleFolderChange = useCallback(
-		(e) => {
-			const val = e.target.value;
-			setFolder(val);
-			isDirtyRef.current = true;
-			const currentId = note?.id || noteId;
-			triggerSave(currentId, title, content, tags, val);
-		},
-		[title, content, tags, triggerSave, note, noteId],
 	);
 
 	const handleAddTagConfirm = useCallback(

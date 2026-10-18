@@ -1,6 +1,6 @@
 import dayjs from "dayjs";
 import { forwardRef } from "react";
-import { formatTime } from "../../../utils/dateTime";
+import { formatDate, formatTime } from "../../../utils/dateTime";
 
 const EMPTY = { events: [], deadlines: [], occurrences: [] };
 
@@ -63,13 +63,18 @@ const MonthBlock = forwardRef(function MonthBlock(
 						const cell = byDay.get(k) || EMPTY;
 						const isToday = k === today;
 						return (
-							<button
-								type="button"
-								key={k}
-								className={`cal-cell${isToday ? " is-today" : ""}`}
-								onClick={() => onDayClick(day)}
-							>
-								<span className="cal-daynum">{day.date()}</span>
+							<div key={k} className={`cal-cell${isToday ? " is-today" : ""}`}>
+								{/* The day number is the "add event" button; its ::after
+								    stretches over the whole cell so clicking empty space
+								    still opens the day. Pills sit above it as siblings. */}
+								<button
+									type="button"
+									className="cal-daynum"
+									aria-label={`Add event on ${formatDate(day.toDate())}`}
+									onClick={() => onDayClick(day)}
+								>
+									{day.date()}
+								</button>
 
 								{cell.events.map((ev) => (
 									<button
@@ -77,10 +82,7 @@ const MonthBlock = forwardRef(function MonthBlock(
 										key={ev.id}
 										className="cal-pill cal-pill--event"
 										style={ev.color ? { borderLeftColor: ev.color } : undefined}
-										onClick={(e) => {
-											e.stopPropagation();
-											onEventClick(ev);
-										}}
+										onClick={() => onEventClick(ev)}
 										title={ev.title}
 									>
 										{!ev.all_day ? (
@@ -93,15 +95,9 @@ const MonthBlock = forwardRef(function MonthBlock(
 								))}
 
 								{cell.occurrences.map((occ) => (
-									<button
-										type="button"
+									<div
 										key={`${occ.template.id}-${occ.date}`}
 										className={`cal-pill cal-pill--task${occ.done ? " is-done" : ""}`}
-										onClick={(e) => {
-											e.stopPropagation();
-											onOccurrenceClick(occ);
-										}}
-										title={`${occ.template.title} (recurring)`}
 									>
 										<button
 											type="button"
@@ -110,44 +106,48 @@ const MonthBlock = forwardRef(function MonthBlock(
 											aria-label={
 												occ.done ? "Mark incomplete" : "Mark complete"
 											}
-											onClick={(e) => {
-												e.stopPropagation();
-												onToggleOccurrence(occ);
-											}}
+											onClick={() => onToggleOccurrence(occ)}
 										>
 											{occ.done ? "☑" : "☐"}
 										</button>
-										<span className="cal-pill-label">{occ.template.title}</span>
-									</button>
+										<button
+											type="button"
+											className="cal-pill-open"
+											onClick={() => onOccurrenceClick(occ)}
+											title={`${occ.template.title} (recurring)`}
+										>
+											<span className="cal-pill-label">
+												{occ.template.title}
+											</span>
+										</button>
+									</div>
 								))}
 
 								{cell.deadlines.map((t) => (
-									<button
-										type="button"
+									<div
 										key={t.id}
 										className={`cal-pill cal-pill--task${t.done ? " is-done" : ""}`}
-										onClick={(e) => {
-											e.stopPropagation();
-											onDeadlineClick(t);
-										}}
-										title={`${t.title} (due)`}
 									>
 										<button
 											type="button"
 											className="cal-check"
 											aria-pressed={t.done}
 											aria-label={t.done ? "Mark incomplete" : "Mark complete"}
-											onClick={(e) => {
-												e.stopPropagation();
-												onToggleDeadline(t);
-											}}
+											onClick={() => onToggleDeadline(t)}
 										>
 											{t.done ? "☑" : "☐"}
 										</button>
-										<span className="cal-pill-label">{t.title}</span>
-									</button>
+										<button
+											type="button"
+											className="cal-pill-open"
+											onClick={() => onDeadlineClick(t)}
+											title={`${t.title} (due)`}
+										>
+											<span className="cal-pill-label">{t.title}</span>
+										</button>
+									</div>
 								))}
-							</button>
+							</div>
 						);
 					})}
 				</div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	PvButton,
 	PvField,
@@ -54,7 +54,9 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 		if (open && passwordEnabled) passwordRef.current?.focus();
 	}, [open, passwordEnabled]);
 
-	const loadShares = async () => {
+	// Stable per note, so the reset effect below still re-runs exactly on
+	// open / note change / defaults change.
+	const loadShares = useCallback(async () => {
 		if (!noteId) return;
 		try {
 			const data = await listShareLinks(noteId);
@@ -62,7 +64,7 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 		} catch {
 			// Silently fail
 		}
-	};
+	}, [noteId]);
 
 	useEffect(() => {
 		if (open) {
@@ -76,7 +78,7 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 			setExpireEnabled(defaults.expireEnabled);
 			loadShares();
 		}
-	}, [open, noteId, defaults]);
+	}, [open, defaults, loadShares]);
 
 	useEffect(() => {
 		// The settings modal renders in a portal outside this subtree, so clicks
@@ -141,7 +143,7 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 			} else {
 				pvMessage.info("Share link created");
 			}
-		} catch (err) {
+		} catch {
 			pvMessage.error("Failed to create share link");
 		} finally {
 			setLoading(false);

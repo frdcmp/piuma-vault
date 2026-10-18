@@ -43,7 +43,7 @@ export function normalizeChatMarkdown(src) {
 		// The header is the line directly above the delimiter; bail if it is blank
 		// (then this isn't actually a table — likely a thematic rule).
 		const header = lines[i - 1];
-		if (!header || !header.trim()) continue;
+		if (!header?.trim()) continue;
 
 		// Block = header + delimiter + following non-blank lines (a GFM table ends
 		// at the next blank line or end of input).

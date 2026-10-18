@@ -314,10 +314,11 @@
 	text-align: left;
 }
 
+/* Font: mermaid's own #id rule sets it from themeVariables.fontFamily
+   (utils/mermaid.js), already the --vp-font stack. */
 .vp-docs-mermaid svg {
 	max-width: 100%;
 	height: auto;
-	font-family: var(--vp-font) !important;
 }
 
 .vp-docs-mermaid--error {

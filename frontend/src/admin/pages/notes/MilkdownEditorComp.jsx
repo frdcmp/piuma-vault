@@ -97,9 +97,7 @@ const searchHighlightPlugin = $prose(() => {
 					);
 					tr.doc.descendants((node, pos) => {
 						if (node.isText) {
-							regex.lastIndex = 0;
-							let match;
-							while ((match = regex.exec(node.text)) !== null) {
+							for (const match of node.text.matchAll(regex)) {
 								matches.push({
 									from: pos + match.index,
 									to: pos + match.index + match[0].length,
@@ -139,7 +137,7 @@ const searchHighlightPlugin = $prose(() => {
 				return this.getState(state).decos;
 			},
 		},
-		view(editorView) {
+		view() {
 			return {
 				update: (view, prevState) => {
 					const newState = searchPluginKey.getState(view.state);
@@ -626,7 +624,7 @@ function MilkdownEditor({
 		try {
 			editorRef.current.action((ctx) => {
 				const view = ctx.get(editorViewCtx);
-				if (!view || !view.state) return;
+				if (!view?.state) return;
 				const tr = view.state.tr.setMeta(searchPluginKey, searchQuery || "");
 				view.dispatch(tr);
 
@@ -645,7 +643,7 @@ function MilkdownEditor({
 					);
 				}
 			});
-		} catch (e) {
+		} catch {
 			// ignore errors if view is destroyed
 		}
 	}, [searchQuery]);
@@ -655,13 +653,13 @@ function MilkdownEditor({
 		try {
 			editorRef.current.action((ctx) => {
 				const view = ctx.get(editorViewCtx);
-				if (!view || !view.state) return;
+				if (!view?.state) return;
 				const tr = view.state.tr.setMeta(searchPluginKey, {
 					action: searchAction.dir,
 				});
 				view.dispatch(tr);
 			});
-		} catch (e) {}
+		} catch {}
 	}, [searchAction]);
 
 	// Expose an imperative `insertMarkdown` so the toolbar can drop attachment
@@ -686,7 +684,7 @@ function MilkdownEditor({
 						);
 						view.focus();
 					});
-				} catch (e) {}
+				} catch {}
 			},
 		};
 		return () => {

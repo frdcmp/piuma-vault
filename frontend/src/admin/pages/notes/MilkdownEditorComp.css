@@ -303,8 +303,8 @@
 }
 
 .pv-milkdown-wrapper .milkdown .editor .search-highlight.active {
-	background-color: var(--vp-accent) !important;
-	color: var(--vp-on-accent) !important;
+	background-color: var(--vp-accent);
+	color: var(--vp-on-accent);
 	outline: 2px solid var(--vp-accent);
 	z-index: 1;
 	position: relative;

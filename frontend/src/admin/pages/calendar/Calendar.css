@@ -114,6 +114,8 @@
 }
 
 .cal-cell {
+	/* Containing block for the day button's full-cell ::after hit area. */
+	position: relative;
 	min-height: 96px;
 	/* Grid items default to min-width:auto, so a long no-wrap pill would force
 	   its column wider than 1fr (blowing out the equal 7-column layout). Pin
@@ -160,6 +162,28 @@
 	background: color-mix(in srgb, var(--vp-accent) 12%, transparent);
 }
 
+/* The day number is the cell's "add event" button (strip native chrome); its
+   ::after stretches over the whole cell so clicking empty space opens the day.
+   Pills are positioned above it, so they stay separately clickable. */
+.cal-daynum {
+	appearance: none;
+	background: none;
+	border: none;
+	padding: 0;
+	margin: 0;
+	font: inherit;
+	font-size: 0.72rem;
+	color: var(--vp-muted);
+	align-self: flex-start;
+	cursor: pointer;
+}
+
+.cal-daynum::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+}
+
 .cal-cell.is-today .cal-daynum {
 	background: var(--vp-accent);
 	color: var(--vp-on-accent);
@@ -167,14 +191,10 @@
 	padding: 0 5px;
 }
 
-.cal-daynum {
-	font-size: 0.72rem;
-	color: var(--vp-muted);
-	align-self: flex-start;
-}
-
 /* Pills */
 .cal-pill {
+	position: relative;
+	z-index: 1;
 	display: flex;
 	align-items: center;
 	gap: 4px;
@@ -226,7 +246,35 @@
 	text-decoration: line-through;
 }
 
+/* Task pills are a <div> holding two sibling buttons (check + open). The open
+   button's ::after covers the whole pill so clicking anywhere but the check
+   opens the task, as when the pill itself was the button. */
+.cal-pill-open {
+	display: flex;
+	align-items: center;
+	flex: 1 1 auto;
+	min-width: 0;
+	appearance: none;
+	background: none;
+	border: none;
+	padding: 0;
+	margin: 0;
+	font: inherit;
+	color: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.cal-pill-open::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+}
+
 .cal-check {
+	/* Above the open button's full-pill ::after. */
+	position: relative;
+	z-index: 1;
 	color: var(--vp-success);
 	flex: 0 0 auto;
 	/* Rendered as a <button> so only the checkbox toggles done (the rest of the

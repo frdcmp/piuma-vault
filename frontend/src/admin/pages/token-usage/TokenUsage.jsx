@@ -205,6 +205,8 @@ const TOOLTIP_STYLE = {
 	fontFamily: "var(--vp-font)",
 };
 const TOOLTIP_LABEL_STYLE = { color: "var(--vp-text)" };
+// Recharts colours legend text with the series colour (inline) by default.
+const LEGEND_LABEL_STYLE = { color: "var(--vp-text)" };
 
 const StatCard = ({ label, value, accent, suffix, title }) => (
 	<section className="vp-panel tu-stat">
@@ -380,7 +382,7 @@ const TokenUsage = () => {
 									contentStyle={TOOLTIP_STYLE}
 									labelStyle={TOOLTIP_LABEL_STYLE}
 								/>
-								<Legend />
+								<Legend labelStyle={LEGEND_LABEL_STYLE} />
 								<Line
 									yAxisId="left"
 									type="monotone"
@@ -426,7 +428,7 @@ const TokenUsage = () => {
 									contentStyle={TOOLTIP_STYLE}
 									labelStyle={TOOLTIP_LABEL_STYLE}
 								/>
-								<Legend />
+								<Legend labelStyle={LEGEND_LABEL_STYLE} />
 								<Bar
 									dataKey="input"
 									name="Input"

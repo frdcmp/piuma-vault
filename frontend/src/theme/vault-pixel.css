@@ -380,6 +380,18 @@ a.vp-card:hover {
 	resize: none;
 	overflow: hidden;
 }
+/* autoSize + maxHeight: grow up to the cap, then scroll. */
+.vp-textarea--capped {
+	overflow-y: auto;
+}
+/* Borderless, backgroundless — the surrounding composer draws the box. */
+.vp-textarea--bare {
+	min-height: 0;
+	padding: 0;
+	background: transparent;
+	border: 0;
+	box-shadow: none;
+}
 .vp-input--sm {
 	padding: 4px 8px;
 	font-size: 12px;
