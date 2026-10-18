@@ -17,6 +17,8 @@ const TASK_CAP: usize = 25;
 const EVENT_CAP: usize = 25;
 const DEFAULT_DAYS: i64 = 7;
 const MAX_DAYS: i64 = 31;
+const RANGE_CAP: usize = 300;
+const MAX_RANGE_DAYS: i64 = 62;
 
 fn err(msg: impl Into<String>) -> WidgetError {
     WidgetError { error: msg.into() }
@@ -36,7 +38,61 @@ fn date_to_instant(d: NaiveDate) -> DateTime<Utc> {
     Utc.from_utc_datetime(&d.and_hms_opt(0, 0, 0).expect("valid midnight"))
 }
 
-/// GET /widgets/summary?days=N
+/// Every event overlapping [from, to): one-off rows by overlap, recurring
+/// templates expanded day by day (each occurrence keeps the template's UTC
+/// time-of-day and duration). Past occurrences are kept — a month grid shows
+/// them — so this is separate from the "upcoming" list above.
+async fn range_events(
+    pool: &DbPool,
+    user_id: &str,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+) -> Result<Vec<WidgetEvent>, String> {
+    let mut events: Vec<WidgetEvent> = sqlx::query_as::<_, (Uuid, String, DateTime<Utc>, Option<DateTime<Utc>>, bool)>(
+        "SELECT id, title, starts_at, ends_at, all_day FROM db_calendar_events \
+         WHERE user_id = $1 AND rrule IS NULL \
+           AND starts_at < $2 AND COALESCE(ends_at, starts_at) >= $3 \
+         ORDER BY starts_at ASC",
+    )
+    .bind(user_id)
+    .bind(to)
+    .bind(from)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("range events query failed: {e}"))?
+    .into_iter()
+    .map(|(id, title, starts_at, ends_at, all_day)| WidgetEvent { id: id.to_string(), title, starts_at, ends_at, all_day })
+    .collect();
+
+    let templates = sqlx::query_as::<_, (Uuid, String, DateTime<Utc>, Option<DateTime<Utc>>, bool, String)>(
+        "SELECT id, title, starts_at, ends_at, all_day, rrule FROM db_calendar_events \
+         WHERE user_id = $1 AND rrule IS NOT NULL AND starts_at < $2",
+    )
+    .bind(user_id)
+    .bind(to)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("range recurring query failed: {e}"))?;
+    // One day of slack each side: an occurrence's local day can differ from its UTC day.
+    let (first, last) = (from.date_naive() - Duration::days(1), to.date_naive() + Duration::days(1));
+    for (id, title, starts_at, ends_at, all_day, rrule) in &templates {
+        let time_of_day = starts_at.time();
+        let duration = ends_at.map(|e| e - *starts_at);
+        for date in expand_dates(rrule, *starts_at, None, first, last) {
+            let occ_start = Utc.from_utc_datetime(&date.and_time(time_of_day));
+            let occ_end = duration.map(|d| occ_start + d);
+            if occ_start >= to || occ_end.unwrap_or(occ_start) < from {
+                continue;
+            }
+            events.push(WidgetEvent { id: id.to_string(), title: title.clone(), starts_at: occ_start, ends_at: occ_end, all_day: *all_day });
+        }
+    }
+    events.sort_by(|a, b| a.starts_at.cmp(&b.starts_at));
+    events.truncate(RANGE_CAP);
+    Ok(events)
+}
+
+/// GET /widgets/summary?days=N[&from=…&to=…]
 ///
 /// Compact, capped overview for the Android home-screen widgets: open tasks
 /// (overdue + due within the horizon, including expanded recurring occurrences)
@@ -240,5 +296,21 @@ pub async fn summary(
         events.truncate(EVENT_CAP);
     }
 
-    HttpResponse::Ok().json(WidgetSummary { now, tasks, events })
+    let range = match (query.from, query.to) {
+        (Some(from), Some(to)) if read_calendar && to > from && (to - from) <= Duration::days(MAX_RANGE_DAYS) => {
+            match range_events(pool.get_ref(), &user.user_id, from, to).await {
+                Ok(list) => Some(list),
+                Err(e) => {
+                    log::error!("widgets {e}");
+                    return HttpResponse::InternalServerError().json(err("Failed to fetch events for the range"));
+                }
+            }
+        }
+        (Some(_), Some(_)) if read_calendar => {
+            return HttpResponse::BadRequest().json(err("from/to must be an ascending window of at most 62 days"));
+        }
+        _ => None,
+    };
+
+    HttpResponse::Ok().json(WidgetSummary { now, tasks, events, range_events: range })
 }
