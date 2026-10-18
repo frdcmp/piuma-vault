@@ -25,7 +25,7 @@ export default function ThemePicker() {
 	return (
 		<PvPanel title="Theme">
 			<p className="vp-text vp-muted vp-theme-hint">
-				One palette for the whole vault (web; saved for every device). Edit or
+				One palette for the whole vault — web and mobile follow it. Edit or
 				add themes in <code>frontend/src/theme/tokens.json</code>.
 			</p>
 			<div className="vp-theme-cards">
