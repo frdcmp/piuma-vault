@@ -4,6 +4,7 @@ use super::models::{
     AuthenticatedUser, User, RegisterRequest, LoginRequest,
     RefreshTokenRequest, AuthResponse, Claims, UpdateProfileRequest,
 };
+use super::access::AccountUser;
 use super::keys;
 use super::rate_limit::{client_ip, RateLimiter};
 use crate::apps::telemetry::{Event, Severity};
@@ -590,7 +591,7 @@ pub async fn get_me(
 
 pub async fn update_profile(
     pool: web::Data<DbPool>,
-    user: AuthenticatedUser,
+    AccountUser(user): AccountUser,
     item: web::Json<UpdateProfileRequest>,
 ) -> impl Responder {
     let result = sqlx::query(

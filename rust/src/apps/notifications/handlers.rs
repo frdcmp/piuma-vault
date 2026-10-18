@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse, Responder};
 use serde_json::json;
 
-use crate::apps::auth::models::AuthenticatedUser;
+use super::access::NotificationsUser;
 use crate::db::db::DbPool;
 
 use super::events::NotificationsEventBus;
@@ -27,7 +27,7 @@ pub async fn vapid_public_key() -> impl Responder {
 }
 
 pub async fn subscribe_web_push(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     body: web::Json<WebPushSubscribeRequest>,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
@@ -56,7 +56,7 @@ pub async fn subscribe_web_push(
 }
 
 pub async fn unsubscribe_web_push(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     body: web::Json<WebPushUnsubscribeRequest>,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
@@ -77,7 +77,7 @@ pub async fn unsubscribe_web_push(
 // ── Expo device tokens ──────────────────────────────────────────────────────
 
 pub async fn register_expo_token(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     body: web::Json<ExpoTokenRequest>,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
@@ -101,7 +101,7 @@ pub async fn register_expo_token(
 }
 
 pub async fn delete_expo_token(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     body: web::Json<ExpoTokenDeleteRequest>,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
@@ -122,7 +122,7 @@ pub async fn delete_expo_token(
 // ── Preferences ─────────────────────────────────────────────────────────────
 
 pub async fn get_preferences(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
     let row: Option<NotificationPrefs> = sqlx::query_as(
@@ -142,7 +142,7 @@ pub async fn get_preferences(
 }
 
 pub async fn update_preferences(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     body: web::Json<UpdatePrefsRequest>,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
@@ -174,7 +174,7 @@ pub async fn update_preferences(
 // ── Test ─────────────────────────────────────────────────────────────────────
 
 pub async fn test_notification(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
     let title = "Piuma Vault";
@@ -197,7 +197,7 @@ pub async fn test_notification(
 // that opened right after a fire still catch it. Independent of `sent_at` (which
 // only tracks push dispatch), since the alarm is a separate in-app channel.
 pub async fn get_upcoming(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     query: web::Query<UpcomingQuery>,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
@@ -227,7 +227,7 @@ pub async fn get_upcoming(
 // pagination via `before` (the created_at of the last item seen). Archived rows
 // are always excluded.
 pub async fn list_inbox(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     query: web::Query<InboxQuery>,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
@@ -257,7 +257,7 @@ pub async fn list_inbox(
 
 // Unread count — drives the bell badge. Fast (partial index).
 pub async fn unread_count(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
     let count: i64 = sqlx::query_scalar(
@@ -274,7 +274,7 @@ pub async fn unread_count(
 
 // Mark one notification read (idempotent — only sets read_at when still null).
 pub async fn mark_read(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     path: web::Path<uuid::Uuid>,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
@@ -298,7 +298,7 @@ pub async fn mark_read(
 // Mark all unread notifications read — fired when the bell popover opens
 // ("open = seen"). Returns how many were affected.
 pub async fn mark_all_read(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
     match sqlx::query(
@@ -319,7 +319,7 @@ pub async fn mark_all_read(
 
 // Dismiss (soft-archive) a notification so it leaves the inbox.
 pub async fn dismiss_notification(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     path: web::Path<uuid::Uuid>,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
@@ -343,7 +343,7 @@ pub async fn dismiss_notification(
 // Manual compose — send a notification to yourself (single-tenant). Goes to the
 // inbox always, plus any push channels in `channels` (["web","push"]).
 pub async fn compose_notification(
-    user: AuthenticatedUser,
+    NotificationsUser(user): NotificationsUser,
     body: web::Json<ComposeRequest>,
     bus: web::Data<NotificationsEventBus>,
     pool: web::Data<DbPool>,

@@ -78,6 +78,7 @@ impl actix_web::FromRequest for AuthenticatedUser {
                                     last_name: claims.last_name,
                                     permissions: claims.permissions,
                                     groups: claims.groups,
+                                    via_api_key: false,
                                 });
                             }
                             Err(e) => {
@@ -116,6 +117,7 @@ impl actix_web::FromRequest for AuthenticatedUser {
                                     last_name: Some(row.name.clone()),
                                     permissions: row.permissions,
                                     groups: vec!["api-key".to_string()],
+                                    via_api_key: true,
                                 });
                             }
                             Ok(None) => {

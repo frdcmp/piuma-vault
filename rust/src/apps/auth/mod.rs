@@ -1,3 +1,4 @@
+pub mod access;
 pub mod keys;
 pub mod middleware;
 pub mod models;

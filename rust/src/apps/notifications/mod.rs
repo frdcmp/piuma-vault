@@ -1,3 +1,4 @@
+pub mod access;
 pub mod events;
 pub mod expo;
 pub mod handlers;

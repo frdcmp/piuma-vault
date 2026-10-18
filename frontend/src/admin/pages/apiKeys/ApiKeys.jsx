@@ -84,6 +84,12 @@ const SCOPE_OPTIONS = [
 		description:
 			"Hold conversations and run chat turns. A turn runs the agent's tools, so it can write notes, tasks and events whatever the key's other scopes",
 	},
+	{
+		label: "Notifications",
+		value: "notifications",
+		description:
+			"Read, send and clear the notification inbox, change preferences, and register push tokens that receive every notification",
+	},
 ];
 
 const SCOPE_TAG_CLASSES = {
@@ -93,6 +99,7 @@ const SCOPE_TAG_CLASSES = {
 	"tasks.manage": "vp-tag--blue",
 	"calendar.manage": "vp-tag--green",
 	"agents.chat": "vp-tag--accent",
+	notifications: "vp-tag--blue",
 };
 
 const SCOPE_LABELS = {
@@ -104,6 +111,7 @@ const SCOPE_LABELS = {
 	"tasks.read": "Tasks (read)",
 	"calendar.read": "Calendar (read)",
 	"agents.chat": "Agents (chat)",
+	notifications: "Notifications",
 };
 
 const STATUS_FILTERS = [

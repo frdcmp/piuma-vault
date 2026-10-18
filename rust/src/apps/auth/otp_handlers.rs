@@ -1,7 +1,7 @@
 // HTTP handlers for the OTP / TOTP feature.
 //
 // Endpoints (all under /auth/otp/* unless noted):
-//   POST /auth/otp/setup           — issue secret + otpauth URI (requires login)
+//   POST /auth/otp/setup           — issue secret + otpauth URI (OTP must be off)
 //   POST /auth/otp/verify-setup    — confirm code, enable OTP, return backup codes
 //   POST /auth/otp/disable         — turn OTP off (requires password + code)
 //   POST /auth/login/otp           — second step of login: verify code or backup
@@ -18,7 +18,7 @@ use argon2::{
 use serde::Deserialize;
 
 use crate::db::db::DbPool;
-use super::models::AuthenticatedUser;
+use super::access::AccountUser;
 use super::handlers::{argon2_instance_pub, fetch_user_full_pub, generate_tokens_pub};
 use super::rate_limit::{client_ip, RateLimiter};
 use super::otp;
@@ -77,8 +77,25 @@ async fn enforce(
 
 pub async fn otp_setup(
     pool: web::Data<DbPool>,
-    user: AuthenticatedUser,
+    AccountUser(user): AccountUser,
 ) -> impl Responder {
+    // Staging a new secret resets `otp_enabled`, so on an enrolled account this
+    // would switch 2FA off with no password. Re-enrolling goes through
+    // /otp/disable (password + code) first.
+    match sqlx::query_scalar::<_, bool>("SELECT otp_enabled FROM db_users WHERE id = $1")
+        .bind(&user.user_id)
+        .fetch_optional(pool.get_ref())
+        .await
+    {
+        Ok(Some(false)) => {}
+        Ok(Some(true)) => return HttpResponse::Conflict().json("OTP already enabled; disable it first"),
+        Ok(None) => return HttpResponse::Unauthorized().finish(),
+        Err(e) => {
+            log::error!("otp setup lookup: {}", e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    }
+
     let secret = otp::generate_secret_b32();
     let issuer = otp_issuer();
     let uri = otp::build_otpauth_uri(&secret, &user.email, &issuer);
@@ -113,7 +130,7 @@ pub struct VerifySetupRequest {
 
 pub async fn otp_verify_setup(
     pool: web::Data<DbPool>,
-    user: AuthenticatedUser,
+    AccountUser(user): AccountUser,
     item: web::Json<VerifySetupRequest>,
 ) -> impl Responder {
     let row: Result<(Option<String>, bool), _> = sqlx::query_as(
@@ -199,7 +216,7 @@ pub async fn otp_disable(
     req: HttpRequest,
     pool: web::Data<DbPool>,
     limiter: web::Data<RateLimiter>,
-    user: AuthenticatedUser,
+    AccountUser(user): AccountUser,
     item: web::Json<DisableRequest>,
 ) -> impl Responder {
     let ip = client_ip(&req);
@@ -365,7 +382,7 @@ pub async fn login_otp(
 
 pub async fn list_trusted_devices(
     pool: web::Data<DbPool>,
-    user: AuthenticatedUser,
+    AccountUser(user): AccountUser,
 ) -> impl Responder {
     let rows: Result<Vec<(String, Option<String>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>, Option<chrono::DateTime<chrono::Utc>>)>, _> =
         sqlx::query_as(
@@ -396,7 +413,7 @@ pub async fn list_trusted_devices(
 
 pub async fn revoke_trusted_device(
     pool: web::Data<DbPool>,
-    user: AuthenticatedUser,
+    AccountUser(user): AccountUser,
     path: web::Path<String>,
 ) -> impl Responder {
     let id = path.into_inner();

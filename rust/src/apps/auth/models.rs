@@ -113,4 +113,7 @@ pub struct AuthenticatedUser {
     pub last_name: Option<String>,
     pub permissions: Vec<String>,
     pub groups: Vec<String>,
+    /// True when the caller sent an API key, not an account JWT.
+    #[serde(skip)]
+    pub via_api_key: bool,
 }
