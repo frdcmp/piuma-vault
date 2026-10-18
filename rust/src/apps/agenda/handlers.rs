@@ -18,7 +18,7 @@ const TASK_FIELDS: &str = "id, user_id, title, notes, done, completed_at, due_at
       JOIN db_tags tg ON tg.id = tt.tag_id WHERE tt.task_id = db_tasks.id) AS tags, \
      rank, recurrence_id, occurrence_date, alerts, created_at, updated_at";
 
-const RECURRING_FIELDS: &str = "id, user_id, title, notes, priority, \
+const RECURRING_FIELDS: &str = "id, user_id, title, notes, priority, bucket_id, \
      (SELECT COALESCE(array_agg(tg.name ORDER BY tg.name), '{}') FROM db_recurring_task_tags rtt \
       JOIN db_tags tg ON tg.id = rtt.tag_id WHERE rtt.recurring_id = db_recurring_tasks.id) AS tags, \
      rrule, dtstart, until, active, alerts, created_at, updated_at";

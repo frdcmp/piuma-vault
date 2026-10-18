@@ -26,12 +26,7 @@ import {
 } from "../../../queries";
 import { expandRecurrence } from "../../../utils/recurrence";
 import { tagColor } from "../../../utils/tagColor";
-import {
-	PvButton,
-	PvPopover,
-	PvTag,
-	pvMessage,
-} from "../../components/ui";
+import { PvButton, PvPopover, PvTag, pvMessage } from "../../components/ui";
 import RecurringTaskModal from "../tasks/RecurringTaskModal";
 import TaskModal from "../tasks/TaskModal";
 import "./Calendar.css";
@@ -41,6 +36,15 @@ import MonthBlock from "./MonthGrid";
 const ALL = { key: "all", names: null, label: "All" };
 
 const KEY = (d) => d.format("YYYY-MM-DD");
+
+// Last local day an event occupies. An end exactly at midnight means "through the
+// previous day" (22:00→00:00 must not spill over), hence the 1 ms step back; an end
+// before the start (or none) keeps the event on its start day.
+const lastDayOf = (ev, first) => {
+	if (!ev.ends_at) return first;
+	const last = dayjs(ev.ends_at).subtract(1, "millisecond").startOf("day");
+	return last.isBefore(first) ? first : last;
+};
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // How many months sit on each side of the current month at first paint, and how
@@ -170,7 +174,17 @@ export default function CalendarPage() {
 
 		for (const ev of events) {
 			if (!matches(ev.tags)) continue;
-			bucket(KEY(dayjs(ev.starts_at))).events.push(ev);
+			// A multi-day event sits in every day it spans (clamped to the window).
+			// Days after the first carry `continues` so cells show "→" instead of
+			// repeating the start time.
+			const first = dayjs(ev.starts_at).startOf("day");
+			const last = lastDayOf(ev, first);
+			let d = first.isBefore(rangeStart) ? rangeStart.startOf("day") : first;
+			for (; !d.isAfter(last) && !d.isAfter(rangeEnd); d = d.add(1, "day")) {
+				bucket(KEY(d)).events.push(
+					d.isSame(first) ? ev : { ...ev, continues: true },
+				);
+			}
 		}
 		for (const t of tasks) {
 			if (t.recurrence_id) continue; // materialized occurrences handled below
