@@ -19,6 +19,7 @@ import { PvButton, PvField, PvInput, PvModal, pvMessage } from "@/ui";
 | Component | Purpose | Key props |
 | --- | --- | --- |
 | `PvButton` | Action / link button | `variant` default·primary·danger·accent·ghost, `size` md·sm, `block`, `loading`, `icon`, `to` (router), `href` |
+| `PvIconButton` | Square icon-only button (toolbars, bars, row actions) | `icon`, `label` (required: title + aria-label), `variant` default·ghost·danger·accent, `size` sm·md·lg, `active`, `to`, `href` |
 | `PvInput` | Text input (`.vp-input`) | native input props, `size`, `invalid`, `prefix`, `suffix`, `reveal` (password show/hide) |
 | `PvTextarea` | Multi-line input | native props, `autoSize`, `invalid` |
 | `PvSelect` | Native dropdown | `options` [{value,label}]·string[], `value`, `onChange(value)`, `placeholder`, `allowClear`, `size`, `invalid` |
@@ -46,6 +47,7 @@ import { PvButton, PvField, PvInput, PvModal, pvMessage } from "@/ui";
 | `PvAlarm` | Ringing alarm card | `open`, `kind`, `title`, `timeText`, `body`, `snoozeOptions`, `onSnooze(min)`, `onDismiss` |
 | `LockGlyph` | Pixel padlock icon | `open`, `size` |
 | `pvMessage` | Toast line | `.success/.error/.info/.warning(text, ms)` → id, `.dismiss(id)` |
+| `pvConfirm` | Imperative confirm dialog (replaces window.confirm / Modal.confirm) | `await pvConfirm({ title, content, okText, cancelText, danger })` → boolean |
 | `pvToast` | Progress toast | `pvToast.show({ label, progress })` → `{ update({label, progress}), success(label), error(label), dismiss() }` |
 
 ## Theming
