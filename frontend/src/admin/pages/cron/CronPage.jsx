@@ -32,13 +32,13 @@ const browserTz = () => {
 };
 
 const WEEKDAYS = [
-	{ key: "MO", label: "Mon" },
-	{ key: "TU", label: "Tue" },
-	{ key: "WE", label: "Wed" },
-	{ key: "TH", label: "Thu" },
-	{ key: "FR", label: "Fri" },
-	{ key: "SA", label: "Sat" },
-	{ key: "SU", label: "Sun" },
+	{ value: "MO", label: "Mon" },
+	{ value: "TU", label: "Tue" },
+	{ value: "WE", label: "Wed" },
+	{ value: "TH", label: "Thu" },
+	{ value: "FR", label: "Fri" },
+	{ value: "SA", label: "Sat" },
+	{ value: "SU", label: "Sun" },
 ];
 
 // Build an ISO instant for "today at HH:MM local" → UTC (the backend reads the
@@ -124,7 +124,7 @@ const scheduleLabel = (job) => {
 			return `Weekdays · ${t}`;
 		}
 		const names = list
-			.map((k) => WEEKDAYS.find((w) => w.key === k)?.label || k)
+			.map((k) => WEEKDAYS.find((w) => w.value === k)?.label || k)
 			.join(", ");
 		return `Weekly ${names} · ${t}`;
 	}
@@ -256,14 +256,6 @@ export default function CronPage() {
 		}
 	};
 
-	const toggleDay = (key) =>
-		setForm((f) => ({
-			...f,
-			days: f.days.includes(key)
-				? f.days.filter((d) => d !== key)
-				: [...f.days, key],
-		}));
-
 	const isNew = editing === "new";
 	const modalTitle = isNew ? "New scheduled job" : "Edit scheduled job";
 
@@ -338,9 +330,8 @@ export default function CronPage() {
 										onClick={() => openEdit(job)}
 									/>
 									<PvIconButton
-										variant="ghost"
+										variant="ghost-danger"
 										size="sm"
-										className="cron-del"
 										icon="✕"
 										label="Delete"
 										onClick={() => setPendingDelete(job)}
@@ -377,32 +368,25 @@ export default function CronPage() {
 					/>
 				</PvField>
 
-				<div className="vp-field">
-					<span className="vp-label">Schedule</span>
+				<PvField as="div" label="Schedule">
 					<PvSegmented
 						size="sm"
 						options={PRESETS}
 						value={form.preset}
 						onChange={(preset) => setForm((f) => ({ ...f, preset }))}
 					/>
-				</div>
+				</PvField>
 
 				{form.preset === "weekly" && (
-					<div className="vp-field">
-						<span className="vp-label">Days</span>
-						<div className="cron-days">
-							{WEEKDAYS.map((w) => (
-								<button
-									type="button"
-									key={w.key}
-									className={`cron-day${form.days.includes(w.key) ? " is-on" : ""}`}
-									onClick={() => toggleDay(w.key)}
-								>
-									{w.label}
-								</button>
-							))}
-						</div>
-					</div>
+					<PvField as="div" label="Days">
+						<PvSegmented
+							multiple
+							size="sm"
+							options={WEEKDAYS}
+							value={form.days}
+							onChange={(days) => setForm((f) => ({ ...f, days }))}
+						/>
+					</PvField>
 				)}
 
 				{form.preset === "once" ? (
@@ -425,7 +409,7 @@ export default function CronPage() {
 					</PvField>
 				)}
 
-				<div className="vp-field cron-opts">
+				<PvField as="div" className="cron-opts">
 					<PvCheckbox
 						checked={form.notify}
 						onChange={(v) => setForm((f) => ({ ...f, notify: v }))}
@@ -455,18 +439,17 @@ export default function CronPage() {
 							/>
 						</>
 					)}
-				</div>
-				<div className="vp-field">
+				</PvField>
+				<PvField
+					as="div"
+					hint="Off by default — unattended runs can't delete your data unless enabled."
+				>
 					<PvCheckbox
 						checked={form.allow_destructive}
 						onChange={(v) => setForm((f) => ({ ...f, allow_destructive: v }))}
 						label="Allow destructive tools (delete notes/tasks/events)"
 					/>
-					<span className="vp-field-hint">
-						Off by default — unattended runs can't delete your data unless
-						enabled.
-					</span>
-				</div>
+				</PvField>
 				{error && <div className="cron-error">{error}</div>}
 			</PvModal>
 

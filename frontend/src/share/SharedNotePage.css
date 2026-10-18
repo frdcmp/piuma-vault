@@ -379,7 +379,7 @@
 	border: 1px solid var(--vp-border-soft);
 	border-radius: 6px;
 	margin: 12px 0;
-	background: var(--vp-highlight);
+	background: var(--vp-paper);
 }
 
 .attachment-box {

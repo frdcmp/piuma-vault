@@ -7,7 +7,7 @@
 	gap: 24px;
 }
 .ss-otp-qr {
-	background: var(--vp-highlight);
+	background: var(--vp-paper);
 	padding: 12px;
 }
 .ss-otp-form {

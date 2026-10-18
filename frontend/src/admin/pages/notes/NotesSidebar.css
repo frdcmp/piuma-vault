@@ -373,13 +373,6 @@
 	gap: 6px;
 }
 
-/* Keeps the search field's width steady while the clear button is hidden. */
-.notes-search-clear-slot {
-	flex: none;
-	width: 24px;
-	height: 24px;
-}
-
 .notes-sidebar-tree {
 	user-select: none;
 	padding: 8px 6px;

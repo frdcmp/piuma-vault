@@ -140,11 +140,11 @@ const SharesPage = () => {
 		return [...noteRows, ...folderRows];
 	}, [notesQuery.data, foldersQuery.data]);
 
-	// Apply filters; newest first until a column header picks another order.
+	// Apply filters (the table opens sorted newest first).
 	const visible = useMemo(() => {
 		const now = Date.now();
 		const q = search.trim().toLowerCase();
-		const filtered = rows.filter((r) => {
+		return rows.filter((r) => {
 			if (typeFilter !== "all" && r.type !== typeFilter) return false;
 			if (statusFilter === "active" && !r.is_active) return false;
 			if (statusFilter === "disabled" && r.is_active) return false;
@@ -161,8 +161,6 @@ const SharesPage = () => {
 			if (q && !`${r.name} ${r.slug}`.toLowerCase().includes(q)) return false;
 			return true;
 		});
-		const byCreated = sortBy("created");
-		return [...filtered].sort((a, b) => byCreated(b, a));
 	}, [rows, search, typeFilter, statusFilter, pwdFilter, expiryFilter]);
 
 	const copy = async (text, label) => {
@@ -422,6 +420,7 @@ const SharesPage = () => {
 					data={visible}
 					rowKey="key"
 					loading={loading}
+					defaultSort={{ key: "created", dir: "desc" }}
 					emptyText="No shares match your filters"
 				/>
 			</PvPanel>

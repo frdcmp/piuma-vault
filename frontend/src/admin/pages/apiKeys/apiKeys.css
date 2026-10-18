@@ -57,10 +57,6 @@
 .vp-keys-actions {
 	gap: 4px;
 }
-.vp-keys-actions .vp-keys-danger,
-.vp-keys-actions .vp-keys-danger:hover {
-	color: var(--vp-danger);
-}
 
 /* ---- Create / edit dialogs ------------------------------------------------- */
 .vp-keys-scopes {

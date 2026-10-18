@@ -74,11 +74,6 @@
 .ag-providers {
 	margin-top: 12px;
 }
-.ag-del.pv-icon-btn,
-.ag-del.pv-icon-btn:hover {
-	color: var(--vp-danger);
-}
-
 .ag-tag {
 	font-size: 11px;
 	padding: 1px 6px;

@@ -117,8 +117,7 @@ export default function ManageBucketsModal({ onClose }) {
 								/>
 								<PvIconButton
 									size="sm"
-									variant="ghost"
-									className="mbm-del"
+									variant="ghost-danger"
 									icon={
 										deleteBucket.isPending &&
 										deleteBucket.variables === b.id ? (
@@ -166,8 +165,7 @@ export default function ManageBucketsModal({ onClose }) {
 								/>
 								<PvIconButton
 									size="sm"
-									variant="ghost"
-									className="mbm-del"
+									variant="ghost-danger"
 									icon="✕"
 									label={`Remove #${t.name} from the registry`}
 									onClick={() => deleteTag.mutate(t.id)}

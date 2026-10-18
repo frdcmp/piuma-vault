@@ -1086,7 +1086,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 											: "Switch conversation"}
 									</strong>
 									<PvIconButton
-										variant="ghost"
+										variant="ghost-danger"
 										size="sm"
 										icon={<CloseOutlined />}
 										label="Close picker"
@@ -1169,7 +1169,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 													{c.title || "Untitled"}
 												</button>
 												<PvIconButton
-													variant="ghost"
+													variant="ghost-danger"
 													size="sm"
 													icon={<DeleteOutlined />}
 													label="Delete conversation"

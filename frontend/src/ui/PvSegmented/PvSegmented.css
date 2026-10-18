@@ -1,5 +1,6 @@
 .pv-segmented {
 	display: inline-flex;
+	align-self: flex-start; /* don't stretch inside column layouts like .vp-field */
 	border: 2px solid var(--vp-border);
 	background: var(--vp-bg-soft);
 	box-shadow: var(--vp-shadow);
@@ -35,6 +36,7 @@
 
 .pv-segmented--block {
 	display: flex;
+	align-self: stretch;
 	width: 100%;
 }
 .pv-segmented--block .pv-segmented-item {

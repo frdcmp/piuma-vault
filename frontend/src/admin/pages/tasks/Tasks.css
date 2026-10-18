@@ -419,10 +419,6 @@
 	text-decoration: underline;
 }
 
-.task-row .task-del:hover {
-	color: var(--vp-danger);
-}
-
 .tasks-empty {
 	color: var(--vp-muted);
 	font-size: 0.78rem;
@@ -472,28 +468,6 @@
 	min-height: 64px;
 	max-height: 320px;
 	line-height: 1.5;
-}
-
-.dow-picker {
-	display: flex;
-	gap: 4px;
-}
-
-.dow-btn {
-	width: 30px;
-	height: 30px;
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 4px;
-	background: var(--vp-bg);
-	color: var(--vp-muted);
-	cursor: pointer;
-	font: inherit;
-}
-
-.dow-btn.is-on {
-	background: var(--vp-success);
-	color: var(--vp-on-accent);
-	border-color: var(--vp-success);
 }
 
 .tasks-hint {

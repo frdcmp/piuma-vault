@@ -299,6 +299,7 @@ const Files = () => {
 
 	const allFilesSelected =
 		files.length > 0 && files.every((f) => selected.has(f.key));
+	const someFilesSelected = files.some((f) => selected.has(f.key));
 
 	const expiryLabel =
 		shareExpiry === 300
@@ -445,6 +446,7 @@ const Files = () => {
 									<div className="vp-files-selectall">
 										<PvCheckbox
 											checked={allFilesSelected}
+											indeterminate={someFilesSelected && !allFilesSelected}
 											onChange={toggleAllFiles}
 											label={`Select all files (${files.length})`}
 										/>
@@ -602,8 +604,7 @@ const Files = () => {
 							Generate share link
 						</PvButton>
 						{shareUrl ? (
-							<div className="vp-field">
-								<span className="vp-label">Signed URL</span>
+							<PvField as="div" label="Signed URL">
 								<div className="vp-row vp-files-shareurl">
 									<PvInput value={shareUrl} readOnly aria-label="Signed URL" />
 									<PvButton
@@ -617,7 +618,7 @@ const Files = () => {
 								<span className="vp-muted vp-files-shareexpiry">
 									This link will expire in {expiryLabel}.
 								</span>
-							</div>
+							</PvField>
 						) : null}
 					</div>
 				</PvModal>

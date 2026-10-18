@@ -714,7 +714,9 @@ export default function ChatConversation({
 				<div className="chatx-model">
 					<PvButton
 						size="sm"
+						plain
 						className="chatx-model-btn"
+						iconEnd={<DownOutlined className="chatx-model-caret" />}
 						onClick={() => setModelMenuOpen((o) => !o)}
 						title="Model for this chat"
 						aria-expanded={modelMenuOpen}
@@ -722,7 +724,6 @@ export default function ChatConversation({
 						<span className="chatx-model-name">
 							{activeModel?.display_name || "default model"}
 						</span>
-						<DownOutlined className="chatx-model-caret" />
 					</PvButton>
 					{modelMenuOpen ? (
 						<>

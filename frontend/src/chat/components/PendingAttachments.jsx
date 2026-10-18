@@ -56,7 +56,7 @@ export default function PendingAttachments({ items, onRemove }) {
 							<span className="chat-image-tag-spin" aria-hidden="true" />
 						) : (
 							<PvIconButton
-								variant="ghost"
+								variant="ghost-danger"
 								size="sm"
 								icon="×"
 								label={`Remove ${it.name}`}

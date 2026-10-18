@@ -1,7 +1,7 @@
 /*
- * Pixel-art storage explorer. Reuses the Notes vault primitives (accent/panel/
- * border CSS vars, .pixel-btn, .pixel-input, .ftree-* tree rows, .notes-pixel-*
- * layout) which are imported alongside this file from ../notes/NotesSidebar.css.
+ * Pixel-art storage explorer. Reuses the Notes vault primitives (--vp-* tokens,
+ * .ftree-* tree rows, .notes-pixel-* layout) which are imported alongside this
+ * file from ../notes/NotesSidebar.css; buttons and fields come from the @/ui kit.
  * Only explorer-specific bits (breadcrumb, toolbar, drop-zone, tile grid,
  * preview) live here.
  */

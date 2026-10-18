@@ -126,16 +126,6 @@
 	gap: 12px;
 	flex-wrap: wrap;
 }
-.vp-field {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-	font-family: var(--vp-font);
-	font-size: 11px;
-	text-transform: uppercase;
-	letter-spacing: 1px;
-	color: var(--vp-muted);
-}
 /* AI-generate bar: prompt input + button, sits between meta and the editor. */
 .vp-sprite-ai {
 	display: flex;
@@ -187,25 +177,6 @@
 	margin: 12px 0;
 }
 
-.vp-pose-tabs {
-	display: flex;
-	gap: 4px;
-}
-.vp-pose-tab {
-	font-family: var(--vp-font);
-	font-size: 11px;
-	text-transform: uppercase;
-	letter-spacing: 1px;
-	padding: 4px 10px;
-	border: 1px solid var(--vp-border);
-	background: var(--vp-bg-soft);
-	color: var(--vp-muted);
-	cursor: pointer;
-}
-.vp-pose-tab.is-active {
-	border-color: var(--vp-accent);
-	color: var(--vp-accent);
-}
 .vp-frame-bar {
 	display: flex;
 	align-items: center;
@@ -282,13 +253,6 @@
 	padding: 0;
 	border: 1px solid var(--vp-border);
 	background: none;
-	cursor: pointer;
-}
-.vp-palette-del {
-	flex: 0 0 auto;
-	border: none;
-	background: none;
-	color: var(--vp-muted);
 	cursor: pointer;
 }
 

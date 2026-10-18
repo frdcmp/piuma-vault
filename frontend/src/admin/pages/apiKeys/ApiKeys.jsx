@@ -320,16 +320,14 @@ const ApiKeysPage = () => {
 					/>
 					{record.is_active && (
 						<PvIconButton
-							variant="ghost"
-							className="vp-keys-danger"
+							variant="ghost-danger"
 							icon={<StopOutlined />}
 							label="Revoke key"
 							onClick={() => handleRevoke(record.id)}
 						/>
 					)}
 					<PvIconButton
-						variant="ghost"
-						className="vp-keys-danger"
+						variant="ghost-danger"
 						icon={<DeleteOutlined />}
 						label="Delete key"
 						onClick={() => handleDelete(record.id)}
@@ -343,17 +341,14 @@ const ApiKeysPage = () => {
 	const activeKeys = apiKeys?.filter((k) => k.is_active).length || 0;
 	const revokedKeys = apiKeys?.filter((k) => !k.is_active).length || 0;
 
-	// Newest first (the table's own sorter can still flip it); then the status
-	// filter that used to live in the antd column header.
-	const tableData = [...(apiKeys || [])]
-		.sort((a, b) => dayjs(b.created_at).unix() - dayjs(a.created_at).unix())
-		.filter((k) =>
-			statusFilter === "all"
-				? true
-				: statusFilter === "active"
-					? k.is_active
-					: !k.is_active,
-		);
+	// The status filter that used to live in the antd column header.
+	const tableData = (apiKeys || []).filter((k) =>
+		statusFilter === "all"
+			? true
+			: statusFilter === "active"
+				? k.is_active
+				: !k.is_active,
+	);
 
 	return (
 		<PageContent>
@@ -423,6 +418,7 @@ const ApiKeysPage = () => {
 					data={tableData}
 					rowKey="id"
 					loading={isLoading}
+					defaultSort={{ key: "created_at", dir: "desc" }}
 					pagination={{ pageSize: 10, hideOnSinglePage: true }}
 				/>
 			</PvPanel>
@@ -447,20 +443,19 @@ const ApiKeysPage = () => {
 							}}
 						/>
 					</PvField>
-					<div className="vp-field">
-						<span className="vp-label">Permissions</span>
+					<PvField
+						as="div"
+						label="Permissions"
+						hint="Select the scopes this key will have access to"
+					>
 						<ScopeChecklist
 							value={createForm.permissions}
 							onChange={(permissions) =>
 								setCreateForm((f) => ({ ...f, permissions }))
 							}
 						/>
-						<span className="vp-field-hint">
-							Select the scopes this key will have access to
-						</span>
-					</div>
-					<div className="vp-field">
-						<span className="vp-label">Expiration (optional)</span>
+					</PvField>
+					<PvField as="div" label="Expiration (optional)">
 						<PvDateTimePicker
 							value={createForm.expires_at}
 							onChange={(expires_at) =>
@@ -468,7 +463,7 @@ const ApiKeysPage = () => {
 							}
 							placeholder="Select expiration date"
 						/>
-					</div>
+					</PvField>
 					<div className="vp-row vp-row--wrap">
 						<PvButton
 							variant="primary"
@@ -546,17 +541,15 @@ const ApiKeysPage = () => {
 								}}
 							/>
 						</PvField>
-						<div className="vp-field">
-							<span className="vp-label">Permissions</span>
+						<PvField as="div" label="Permissions">
 							<ScopeChecklist
 								value={editForm.permissions}
 								onChange={(permissions) =>
 									setEditForm((f) => ({ ...f, permissions }))
 								}
 							/>
-						</div>
-						<div className="vp-field">
-							<span className="vp-label">Active</span>
+						</PvField>
+						<PvField as="div" label="Active">
 							<PvCheckbox
 								checked={editForm.is_active}
 								onChange={(is_active) =>
@@ -564,7 +557,7 @@ const ApiKeysPage = () => {
 								}
 								label="Key is active"
 							/>
-						</div>
+						</PvField>
 						<div className="vp-row vp-row--wrap">
 							<PvButton
 								variant="primary"

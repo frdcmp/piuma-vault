@@ -100,8 +100,7 @@ export default function EventModal({ event, initialDate, onClose }) {
 
 				<PvCheckbox checked={allDay} onChange={setAllDay} label="All day" />
 
-				<div className="vp-field">
-					<span className="vp-label">Starts</span>
+				<PvField as="div" label="Starts">
 					<PvDateTimePicker
 						value={startsAt}
 						onChange={setStartsAt}
@@ -109,17 +108,16 @@ export default function EventModal({ event, initialDate, onClose }) {
 						clearable={false}
 						placeholder="Pick start"
 					/>
-				</div>
+				</PvField>
 
-				<div className="vp-field">
-					<span className="vp-label">Ends</span>
+				<PvField as="div" label="Ends">
 					<PvDateTimePicker
 						value={endsAt}
 						onChange={setEndsAt}
 						mode={allDay ? "date" : "datetime"}
 						placeholder="Optional"
 					/>
-				</div>
+				</PvField>
 
 				<PvField label="Location">
 					<PvInput
@@ -138,10 +136,9 @@ export default function EventModal({ event, initialDate, onClose }) {
 					/>
 				</PvField>
 
-				<div className="vp-field">
-					<span className="vp-label">Tags</span>
+				<PvField as="div" label="Tags">
 					<TagPicker value={tags} onChange={setTags} />
-				</div>
+				</PvField>
 
 				<PvField label="Notes" className="cal-field--notes">
 					<PvTextarea
@@ -152,10 +149,9 @@ export default function EventModal({ event, initialDate, onClose }) {
 					/>
 				</PvField>
 
-				<div className="vp-field">
-					<span className="vp-label">Alerts</span>
+				<PvField as="div" label="Alerts">
 					<AlertsField value={alerts} onChange={setAlerts} />
-				</div>
+				</PvField>
 
 				{error ? <p className="cal-error">{error}</p> : null}
 

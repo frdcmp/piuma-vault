@@ -190,11 +190,6 @@
 	flex: none;
 }
 
-/* Ghost row action that only turns red on hover. */
-.mbm-row .mbm-del:hover {
-	color: var(--vp-danger);
-}
-
 /* Delete-confirm popup: spinner on the Delete button + while a row deletes. */
 .mbm-confirm-text {
 	margin: 0;

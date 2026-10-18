@@ -165,12 +165,11 @@ const SecuritySettings = () => {
 								<QRCodeSVG value={setupData.otpauth_uri} size={184} />
 							</div>
 							<div className="ss-otp-form">
-								<div className="vp-field">
-									<span className="vp-label">Can't scan? Enter this key</span>
+								<PvField as="div" label="Can't scan? Enter this key">
 									<code className="vp-input ss-otp-secret">
 										{setupData.secret}
 									</code>
-								</div>
+								</PvField>
 								<PvField label="Verification code">
 									<PvInput
 										placeholder="123456"

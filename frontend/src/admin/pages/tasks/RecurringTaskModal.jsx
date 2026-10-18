@@ -7,6 +7,7 @@ import {
 	PvField,
 	PvInput,
 	PvModal,
+	PvSegmented,
 	PvSelect,
 } from "@/ui";
 import { BucketSelect } from "../../../components/buckets";
@@ -29,6 +30,7 @@ const DOW_LABEL = {
 	SA: "S",
 	SU: "S",
 };
+const DOW_OPTIONS = DOW.map((d) => ({ value: d, label: DOW_LABEL[d] }));
 const FREQ_OPTIONS = [
 	{ value: "DAILY", label: "daily" },
 	{ value: "WEEKLY", label: "weekly" },
@@ -78,11 +80,6 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 	const [error, setError] = useState("");
 
 	const busy = create.isPending || update.isPending;
-
-	const toggleDay = (d) =>
-		setByday((prev) =>
-			prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d],
-		);
 
 	const handleConfirm = () => {
 		if (!title.trim()) {
@@ -148,26 +145,18 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 				</PvField>
 
 				{freq === "WEEKLY" ? (
-					<div className="vp-field">
-						<span className="vp-label">On</span>
-						<div className="dow-picker">
-							{DOW.map((d) => (
-								<button
-									type="button"
-									key={d}
-									className={`dow-btn${byday.includes(d) ? " is-on" : ""}`}
-									aria-pressed={byday.includes(d)}
-									onClick={() => toggleDay(d)}
-								>
-									{DOW_LABEL[d]}
-								</button>
-							))}
-						</div>
-					</div>
+					<PvField as="div" label="On">
+						<PvSegmented
+							multiple
+							size="sm"
+							options={DOW_OPTIONS}
+							value={byday}
+							onChange={setByday}
+						/>
+					</PvField>
 				) : null}
 
-				<div className="vp-field">
-					<span className="vp-label">Starts</span>
+				<PvField as="div" label="Starts">
 					<PvDateTimePicker
 						value={dtstart}
 						onChange={setDtstart}
@@ -175,26 +164,24 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 						clearable={false}
 						placeholder="Pick start"
 					/>
-				</div>
+				</PvField>
 
-				<div className="vp-field">
-					<span className="vp-label">Until (optional)</span>
+				<PvField as="div" label="Until (optional)">
 					<PvDateTimePicker
 						value={until}
 						onChange={setUntil}
 						mode="date"
 						placeholder="No end"
 					/>
-				</div>
+				</PvField>
 
-				<div className="vp-field">
-					<span className="vp-label">Bucket</span>
+				<PvField as="div" label="Bucket">
 					<BucketSelect
 						value={bucketId}
 						onChange={setBucketId}
 						buckets={buckets}
 					/>
-				</div>
+				</PvField>
 
 				<PvField label="Tags">
 					<PvInput
@@ -206,10 +193,9 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 
 				<PvCheckbox checked={active} onChange={setActive} label="Active" />
 
-				<div className="vp-field">
-					<span className="vp-label">Alerts</span>
+				<PvField as="div" label="Alerts">
 					<AlertsField value={alerts} onChange={setAlerts} />
-				</div>
+				</PvField>
 
 				<p className="tasks-hint">
 					rule: <code>{buildRrule(freq, Number(interval), byday)}</code>

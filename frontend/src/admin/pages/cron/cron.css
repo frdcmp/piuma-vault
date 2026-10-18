@@ -70,10 +70,6 @@
 	display: flex;
 	gap: 2px;
 }
-.cron-del.pv-icon-btn:hover {
-	color: var(--vp-danger);
-}
-
 /* Run history (expanded) */
 .cron-runs {
 	padding: 4px 4px 12px 28px;
@@ -136,25 +132,6 @@
 }
 
 /* Create/edit modal form */
-.cron-days {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-}
-.cron-day {
-	padding: 4px 10px;
-	border: 1px solid var(--vp-border);
-	background: none;
-	color: var(--vp-muted);
-	font-family: inherit;
-	font-size: 12px;
-	cursor: pointer;
-}
-.cron-day.is-on {
-	color: var(--vp-success);
-	border-color: var(--vp-success);
-	background: color-mix(in srgb, var(--vp-success) 10%, transparent);
-}
 .vp-field.cron-opts {
 	flex-direction: row;
 	flex-wrap: wrap;

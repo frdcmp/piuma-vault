@@ -1107,11 +1107,17 @@ const Services = () => {
 						))}
 					</datalist>
 					{voiceMeta.prices && (
-						<div className="vp-field vp-svc-pricing">
-							<span className="vp-label">
-								Pricing{" "}
-								<span className="vp-muted vp-svc-chip">$ / 1M tokens</span>
-							</span>
+						<PvField
+							as="div"
+							className="vp-svc-pricing"
+							label={
+								<>
+									Pricing{" "}
+									<span className="vp-muted vp-svc-chip">$ / 1M tokens</span>
+								</>
+							}
+							hint="Costs voice conversations on the Token Usage page. Audio and text bill separately; thinking counts as text out. Until all four are set, voice usage shows as unpriced."
+						>
 							<div className="vp-svc-prices">
 								{voiceMeta.prices.map((pr) => (
 									<PvField
@@ -1131,12 +1137,7 @@ const Services = () => {
 									</PvField>
 								))}
 							</div>
-							<span className="vp-field-hint">
-								Costs voice conversations on the Token Usage page. Audio and
-								text bill separately; thinking counts as text out. Until all
-								four are set, voice usage shows as unpriced.
-							</span>
-						</div>
+						</PvField>
 					)}
 					<TestRow
 						pending={testVoice.isPending}

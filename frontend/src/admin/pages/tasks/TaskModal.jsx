@@ -171,8 +171,7 @@ export default function TaskModal({
 					autoFocus
 				/>
 			</PvField>
-			<div className="vp-field">
-				<span className="vp-label">Due</span>
+			<PvField as="div" label="Due">
 				<PvDateTimePicker
 					value={dueAt}
 					onChange={(v) => {
@@ -182,7 +181,7 @@ export default function TaskModal({
 					mode="datetime"
 					placeholder="No due date"
 				/>
-			</div>
+			</PvField>
 			<PvField label="Priority">
 				<PvSelect
 					options={PRIORITY_OPTIONS}
@@ -190,18 +189,16 @@ export default function TaskModal({
 					onChange={setPriority}
 				/>
 			</PvField>
-			<div className="vp-field">
-				<span className="vp-label">Bucket</span>
+			<PvField as="div" label="Bucket">
 				<BucketSelect
 					value={bucketId}
 					onChange={setBucketId}
 					buckets={buckets}
 				/>
-			</div>
-			<div className="vp-field">
-				<span className="vp-label">Tags</span>
+			</PvField>
+			<PvField as="div" label="Tags">
 				<TagPicker value={tags} onChange={setTags} />
-			</div>
+			</PvField>
 			<PvField label="Notes">
 				<PvTextarea
 					autoSize
@@ -211,14 +208,13 @@ export default function TaskModal({
 					onChange={(e) => setNotes(e.target.value)}
 				/>
 			</PvField>
-			<div className="vp-field">
-				<span className="vp-label">Alerts</span>
+			<PvField as="div" label="Alerts">
 				{dueAt ? (
 					<AlertsField value={alerts} onChange={setAlerts} />
 				) : (
 					<p className="tasks-hint">Set a due date to add alerts.</p>
 				)}
-			</div>
+			</PvField>
 			{error ? <p className="tasks-error">{error}</p> : null}
 		</div>
 	);

@@ -247,21 +247,15 @@
 	position: relative;
 	flex: none;
 }
-/* Model picker trigger (a PvButton): capped width, the name ellipsises. Model
-   ids keep their case. */
+/* Model picker trigger (a plain PvButton, ▾ as iconEnd). The name is capped
+   so the button stays ≤ ~220px, and ellipsises. */
 .chatx-model .chatx-model-btn {
 	box-sizing: border-box;
 	height: 30px;
-	max-width: 220px;
-	text-transform: none;
-}
-.chatx-model-btn > span {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	min-width: 0;
 }
 .chatx-model-name {
+	display: block;
+	max-width: 176px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;

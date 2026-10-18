@@ -259,8 +259,16 @@ const ServerForm = ({ server, onClose }) => {
 							/>
 						</PvField>
 					</div>
-					<div className="vp-field vp-svc-field--last">
-						<span className="vp-label">Environment variables</span>
+					<PvField
+						as="div"
+						className="vp-svc-field--last"
+						label="Environment variables"
+						hint={
+							isNew
+								? null
+								: "Values are write-only. Editing any row re-sends the whole set — re-enter every value when changing env."
+						}
+					>
 						{form.envRows.map((r, i) => (
 							<div
 								// biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
@@ -303,13 +311,7 @@ const ServerForm = ({ server, onClose }) => {
 								＋ Add variable
 							</PvButton>
 						</div>
-						{!isNew && (
-							<span className="vp-field-hint">
-								Values are write-only. Editing any row re-sends the whole set —
-								re-enter every value when changing env.
-							</span>
-						)}
-					</div>
+					</PvField>
 				</>
 			)}
 

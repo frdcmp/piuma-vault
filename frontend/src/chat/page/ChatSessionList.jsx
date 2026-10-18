@@ -95,7 +95,7 @@ export default function ChatSessionList({
 				suffix={
 					raw ? (
 						<PvIconButton
-							variant="ghost"
+							variant="ghost-danger"
 							size="sm"
 							icon="×"
 							label="Clear search"
@@ -137,7 +137,7 @@ export default function ChatSessionList({
 									) : null}
 								</button>
 								<PvIconButton
-									variant="ghost"
+									variant="ghost-danger"
 									size="sm"
 									className="chatx-session-del"
 									icon={<DeleteOutlined />}

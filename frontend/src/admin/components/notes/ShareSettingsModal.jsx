@@ -79,7 +79,7 @@ export default function ShareSettingsModal({ open, onClose }) {
 				/>
 			</PvField>
 
-			<div className="vp-field">
+			<PvField as="div">
 				<PvSwitch
 					size="sm"
 					label="Require password by default"
@@ -93,9 +93,9 @@ export default function ShareSettingsModal({ open, onClose }) {
 					value={draft.defaultPassword}
 					onChange={(e) => patch({ defaultPassword: e.target.value })}
 				/>
-			</div>
+			</PvField>
 
-			<div className="vp-field">
+			<PvField as="div">
 				<PvSwitch
 					size="sm"
 					label="Expire links by default"
@@ -109,7 +109,7 @@ export default function ShareSettingsModal({ open, onClose }) {
 					onChange={(v) => patch({ expiresInHours: v })}
 					aria-label="Default expiry"
 				/>
-			</div>
+			</PvField>
 
 			<PvField label="Copy on link creation">
 				<PvSelect

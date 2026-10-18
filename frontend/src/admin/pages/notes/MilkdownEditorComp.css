@@ -202,7 +202,7 @@
 	height: 480px;
 	border: 1px solid var(--vp-border);
 	border-radius: 6px;
-	background: var(--vp-highlight);
+	background: var(--vp-paper);
 }
 
 .pv-milkdown-wrapper .milkdown .editor .pv-att-video {

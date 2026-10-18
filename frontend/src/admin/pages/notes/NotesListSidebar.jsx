@@ -797,9 +797,7 @@ export default function NotesListSidebar({
 										clearTimeout(searchTimerRef.current);
 								}}
 							/>
-						) : (
-							<span className="notes-search-clear-slot" />
-						)
+						) : null
 					}
 				/>
 			</div>

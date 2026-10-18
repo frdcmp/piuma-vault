@@ -66,6 +66,7 @@ function AssistantBubble({ parts, isStreaming, label, onNavigate }) {
 										key={p.id}
 										variant="accent"
 										size="sm"
+										plain
 										className="chat-nav-action"
 										icon="↗"
 										onClick={() => onNavigate?.(to)}

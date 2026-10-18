@@ -6,6 +6,7 @@ import {
 	PvMenu,
 	PvModal,
 	PvSelect,
+	PvUpload,
 	pvMessage,
 	pvToast,
 } from "@/ui";
@@ -113,7 +114,7 @@ export default function StorageGrid({ prefix, onNavigate }) {
 	const [marquee, setMarquee] = useState(null);
 	const bodyRef = useRef(null);
 	// Hidden file picker for the "Upload files…" menu action.
-	const fileInputRef = useRef(null);
+	const uploadRef = useRef(null);
 	// Right-click context menu anchor: { x, y, bg? } in viewport coords, or null.
 	// `bg: true` means it was opened on empty space (the new/upload menu).
 	const [menu, setMenu] = useState(null);
@@ -515,14 +516,14 @@ export default function StorageGrid({ prefix, onNavigate }) {
 	};
 
 	// ── Empty-space (background) context menu ────────────────────
-	const openFilePicker = () => fileInputRef.current?.click();
+	const openFilePicker = () => uploadRef.current?.open();
 
 	// Expose the new-folder + upload flows to the page header (StorageExplorer)
 	// via the shared store. The setter and ref are stable, so register once.
 	useEffect(() => {
 		setActions({
 			newFolder: () => setNewFolderOpen(true),
-			upload: () => fileInputRef.current?.click(),
+			upload: () => uploadRef.current?.open(),
 		});
 		return () => setActions(null);
 	}, [setActions]);
@@ -773,16 +774,11 @@ export default function StorageGrid({ prefix, onNavigate }) {
 				</PvField>
 			</PvModal>
 
-			{/* Hidden picker for the "Upload files…" menu action */}
-			<input
-				ref={fileInputRef}
-				type="file"
+			{/* Hidden picker for the header "+ upload" and the "Upload files…" menu action */}
+			<PvUpload
+				ref={uploadRef}
 				multiple
-				hidden
-				onChange={(e) => {
-					uploadFiles(e.target.files);
-					e.target.value = "";
-				}}
+				onFiles={(files) => uploadFiles(files)}
 			/>
 
 			{/* Confirm (delete) modal */}

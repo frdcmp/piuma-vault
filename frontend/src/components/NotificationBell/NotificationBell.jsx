@@ -60,7 +60,7 @@ function NotificationItem({ n, onSelect, onDismiss }) {
 				</span>
 			</button>
 			<PvIconButton
-				variant="ghost"
+				variant="ghost-danger"
 				size="sm"
 				className="nb-item-dismiss"
 				icon={dismissing ? <LoadingOutlined /> : <CloseOutlined />}

@@ -302,7 +302,7 @@ export default function SpriteEditor({
 									onChange={(e) => setColor(code, e.target.value)}
 								/>
 								<PvIconButton
-									variant="ghost"
+									variant="ghost-danger"
 									size="sm"
 									icon="✕"
 									label="remove color"

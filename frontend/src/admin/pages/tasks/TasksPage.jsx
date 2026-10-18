@@ -714,9 +714,8 @@ export default function TasksPage() {
 											</span>
 										</button>
 										<PvIconButton
-											variant="ghost"
+											variant="ghost-danger"
 											size="sm"
-											className="task-del"
 											icon="✕"
 											label="Delete recurring task"
 											onClick={() => deleteRecurring.mutate(r.id)}

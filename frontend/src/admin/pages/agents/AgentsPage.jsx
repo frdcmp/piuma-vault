@@ -222,9 +222,8 @@ function ModelsList({ providerId, providerKind }) {
 							${m.price_input ?? 0}/${m.price_output ?? 0}
 						</button>
 						<PvIconButton
-							variant="ghost"
+							variant="ghost-danger"
 							size="sm"
-							className="ag-del"
 							label="Delete model"
 							icon="✕"
 							onClick={() => setPendingDelete(m)}
@@ -500,9 +499,8 @@ function ProvidersTab() {
 								)}
 							</div>
 							<PvIconButton
-								variant="ghost"
+								variant="ghost-danger"
 								size="sm"
-								className="ag-del"
 								label="Delete provider"
 								icon="✕"
 								onClick={() => setPendingDelete(p)}
@@ -640,10 +638,10 @@ function ConfigTab({ agent }) {
 								onChange={(e) => setPf({ ...pf, memory: e.target.value })}
 							/>
 						</PvField>
-						<div className="vp-field">
-							<span className="vp-label">
-								Slash commands (chat macros for this agent)
-							</span>
+						<PvField
+							as="div"
+							label="Slash commands (chat macros for this agent)"
+						>
 							{commands.map((cmd, i) => (
 								<div
 									// biome-ignore lint/suspicious/noArrayIndexKey: rows are positional and have no stable id
@@ -682,9 +680,8 @@ function ConfigTab({ agent }) {
 										}}
 									/>
 									<PvIconButton
-										variant="ghost"
+										variant="ghost-danger"
 										size="sm"
-										className="ag-del"
 										label="Remove command"
 										icon="✕"
 										onClick={() =>
@@ -705,7 +702,7 @@ function ConfigTab({ agent }) {
 							>
 								+ Add command
 							</PvButton>
-						</div>
+						</PvField>
 						<PvButton variant="primary" onClick={saveProfile}>
 							Save profile
 						</PvButton>
