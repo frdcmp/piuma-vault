@@ -179,3 +179,15 @@ pub struct TestStorageRequest {
     pub s3_cdn_url: Option<String>,
     pub s3_cdn_token_key: Option<String>,
 }
+
+/// Appearance settings. `theme` is a theme id from the frontend's tokens.json;
+/// `None` means the default theme.
+#[derive(Debug, Serialize)]
+pub struct AppearanceConfig {
+    pub theme: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateAppearance {
+    pub theme: String,
+}

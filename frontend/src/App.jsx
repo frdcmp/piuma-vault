@@ -38,6 +38,7 @@ import ChatPage from "./chat/page/ChatPage";
 import WorkspaceLayout from "./chat/shell/WorkspaceLayout";
 import PixelLoader from "./components/PixelLoader";
 import { ScreenLockGate } from "./components/screenLock";
+import ThemeSync from "./components/ThemeSync";
 import SharedFolderPage from "./share/SharedFolderPage";
 import SharedNotePage from "./share/SharedNotePage";
 import { SpriteProvider } from "./sprites";
@@ -245,6 +246,8 @@ function AppContent() {
 			<AlarmHost />
 			{/* Idle screen lock — blocks the whole app after inactivity. */}
 			<ScreenLockGate />
+			{/* Applies the vault's saved UI theme (public read, all routes). */}
+			<ThemeSync />
 		</BrowserRouter>
 	);
 }

@@ -1,9 +1,16 @@
 use actix_web::web;
 
-use super::{handlers, screen_lock};
+use super::{appearance, handlers, screen_lock};
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
+        web::resource("/settings/appearance").route(web::get().to(appearance::get_appearance)),
+    )
+    .service(
+        web::resource("/admin/settings/appearance")
+            .route(web::put().to(appearance::update_appearance)),
+    )
+    .service(
         web::resource("/admin/settings/screen-lock")
             .route(web::get().to(screen_lock::get_screen_lock))
             .route(web::put().to(screen_lock::update_screen_lock)),

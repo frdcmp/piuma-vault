@@ -326,3 +326,88 @@
 .vp-sprite-error {
 	color: var(--vp-danger);
 }
+
+/* ---- Theme picker ---------------------------------------------------------- */
+.vp-theme-hint {
+	margin: 0 0 14px;
+}
+.vp-theme-cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+	gap: 16px;
+}
+/* Each card carries its own data-theme, so everything inside resolves that
+   theme's --vp-* tokens. */
+.vp-theme-card {
+	display: flex;
+	flex-direction: column;
+	padding: 0;
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	color: var(--vp-text);
+	font-family: var(--vp-font);
+	text-align: left;
+	cursor: pointer;
+	transition:
+		transform 0.1s steps(2, end),
+		box-shadow 0.1s steps(2, end);
+}
+.vp-theme-card:hover:not(:disabled) {
+	transform: translate(-1px, -1px);
+	box-shadow: var(--vp-shadow-lg);
+}
+.vp-theme-card.is-active {
+	outline: 2px solid var(--vp-accent);
+	outline-offset: 3px;
+}
+.vp-theme-card:disabled {
+	cursor: progress;
+}
+.vp-theme-card-body {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 12px;
+	background: var(--vp-bg);
+}
+.vp-theme-card-text {
+	font-size: 12px;
+}
+.vp-theme-swatches {
+	display: flex;
+	gap: 6px;
+}
+.vp-theme-swatch {
+	width: 16px;
+	height: 16px;
+	border: 2px solid var(--vp-shadow-color);
+}
+.vp-theme-swatch--accent {
+	background: var(--vp-accent);
+}
+.vp-theme-swatch--success {
+	background: var(--vp-success);
+}
+.vp-theme-swatch--danger {
+	background: var(--vp-danger);
+}
+.vp-theme-swatch--info {
+	background: var(--vp-info);
+}
+.vp-theme-swatch--warning {
+	background: var(--vp-warning);
+}
+.vp-theme-swatch--violet {
+	background: var(--vp-violet);
+}
+.vp-theme-card-foot {
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: var(--vp-accent);
+}
+.vp-appearance-section {
+	margin-top: 28px;
+}

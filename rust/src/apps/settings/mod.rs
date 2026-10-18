@@ -1,3 +1,4 @@
+pub mod appearance;
 pub mod handlers;
 pub mod models;
 pub mod routes;

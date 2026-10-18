@@ -17,6 +17,7 @@ import SpriteEditor, {
 	NEW_TEMPLATE,
 } from "../../components/appearance/SpriteEditor";
 import { PageContent } from "../../components/layout/PageLayout";
+import ThemePicker from "./ThemePicker";
 import "./appearance.css";
 
 const errMsg = (e, fallback) => e?.response?.data?.error || fallback;
@@ -161,7 +162,7 @@ export default function Appearance() {
 					<div>
 						<h1 className="vp-page-title">Appearance</h1>
 						<p className="vp-page-subtitle">
-							Choose the vault mascot, or design your own pixel sprite.
+							Pick the vault theme and mascot, or design your own pixel sprite.
 						</p>
 					</div>
 					<PvButton
@@ -172,6 +173,9 @@ export default function Appearance() {
 					</PvButton>
 				</div>
 
+				<ThemePicker />
+
+				<h2 className="vp-h2 vp-appearance-section">Mascot</h2>
 				{isLoading ? (
 					<p className="vp-text vp-muted">Loading sprites…</p>
 				) : (

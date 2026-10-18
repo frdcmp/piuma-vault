@@ -11,6 +11,13 @@
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <title>Piuma Vault</title>
+    <!-- Paint the last-used theme before CSS loads (ThemeSync then applies the saved one). -->
+    <script>
+      try {
+        var t = localStorage.getItem("pv-theme");
+        if (t) document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

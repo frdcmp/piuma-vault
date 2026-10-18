@@ -1,6 +1,7 @@
 export * from "./agentChatQuery";
 export * from "./agentsQuery";
 export * from "./apiKeysQuery";
+export * from "./appearanceQuery";
 export * from "./authQuery";
 // Re-export named for convenience
 export {

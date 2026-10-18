@@ -61,6 +61,9 @@ pub const VOICE_GEMINI_PRICE_AUDIO_OUTPUT: &str = "voice_gemini_price_audio_outp
 pub const SCREEN_LOCK_ENABLED: &str = "screen_lock_enabled"; // "true" / "false"
 pub const SCREEN_LOCK_TIMEOUT_SECONDS: &str = "screen_lock_timeout_seconds"; // e.g. "300"
 pub const SCREEN_LOCK_PIN_HASH: &str = "screen_lock_pin_hash"; // argon2 PHC string (secret)
+// Appearance — the active UI theme id, one of the themes in the frontend's
+// src/theme/tokens.json (global, single-tenant). Unset = the default theme.
+pub const UI_THEME: &str = "ui_theme";
 
 /// Resolved S3 connection config (all required fields present).
 #[derive(Debug, Clone)]
