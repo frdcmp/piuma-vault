@@ -380,9 +380,10 @@ a.vp-card:hover {
 	resize: none;
 	overflow: hidden;
 }
-/* autoSize + maxHeight: grow up to the cap, then scroll. */
+/* autoSize + maxHeight: grow up to the cap, then scroll (PvTextarea's fit()
+   switches overflow-y to auto once the content is past the cap). */
 .vp-textarea--capped {
-	overflow-y: auto;
+	overflow-y: hidden;
 }
 /* Borderless, backgroundless — the surrounding composer draws the box. */
 .vp-textarea--bare {

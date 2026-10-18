@@ -199,6 +199,7 @@
 .chatx-conv-titlewrap {
 	flex: 1;
 	min-width: 0;
+	overflow: hidden;
 	display: flex;
 	flex-direction: row;
 	align-items: baseline;
@@ -213,9 +214,13 @@
 	font-weight: 900;
 	font-size: 11.5pt;
 }
-/* Created / last-edited timestamps, inline after the title on one row. */
+/* Created / last-edited timestamps, inline after the title on one row. Short
+   of room it ellipsises, and gives way well before the title does. */
 .chatx-conv-meta {
-	flex: none;
+	flex: 0 1000 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	color: var(--vp-muted);
 	font-size: 8.5pt;
 	white-space: nowrap;
@@ -432,5 +437,26 @@
 	}
 	.chatx-conv-head .chatx-hamburger {
 		display: inline-flex;
+	}
+	/* Narrow header: title over timestamps, each ellipsised to the room left by
+	   the status square and the model picker. */
+	.chatx-conv-head {
+		gap: 8px;
+		padding: 0 10px;
+	}
+	.chatx-conv-titlewrap {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 1px;
+	}
+	.chatx-conv-title,
+	.chatx-conv-meta {
+		flex: none;
+	}
+	.chatx-conv-title {
+		font-size: 10.5pt;
+	}
+	.chatx-model-name {
+		max-width: 120px;
 	}
 }

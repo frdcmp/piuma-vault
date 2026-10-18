@@ -76,12 +76,18 @@ export default function PvTextarea({
 }
 
 // Fit the height to the content. scrollHeight excludes the border under
-// box-sizing: border-box; add it back so the last line isn't clipped (and, when
-// capped, no scrollbar shows before max-height is reached).
+// box-sizing: border-box; add it back so the last line isn't clipped.
+// Capped, scrolling turns on only once the content is past max-height: left to
+// overflow:auto, a fractional line height (10.5pt × 1.45) overflows a single
+// line by a sub-pixel and Chromium draws a scrollbar beside it.
 function fit(el) {
 	el.style.height = "auto";
 	const cs = getComputedStyle(el);
 	const border =
 		parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth) || 0;
 	el.style.height = `${el.scrollHeight + border}px`;
+	if (el.classList.contains("vp-textarea--capped")) {
+		el.style.overflowY =
+			el.scrollHeight > el.clientHeight + 1 ? "auto" : "hidden";
+	}
 }
