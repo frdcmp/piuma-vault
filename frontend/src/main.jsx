@@ -1,7 +1,5 @@
-import "@ant-design/v5-patch-for-react-19";
 import "./utils/dayjsConfig";
 import { createRoot } from "react-dom/client";
-import "antd/dist/reset.css";
 import "./theme";
 import App from "./App.jsx";
 import { installGlobalErrorReporting } from "./api/telemetry";
