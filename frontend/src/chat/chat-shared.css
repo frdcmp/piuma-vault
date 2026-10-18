@@ -895,15 +895,15 @@ button.chat-context-tag-main {
 /* Slash-command menu — keyboard + mouse navigable. Pixel-styled to match the
    vault design language (sharp corners, 2px border, hard offset shadow). */
 .slash-menu {
-	background: var(--vp-panel, #1b1e25);
-	border: 2px solid var(--vp-border, #3a4150);
-	border-radius: var(--vp-radius, 0);
-	box-shadow: var(--vp-shadow-lg, 4px 4px 0 0 #000);
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	border-radius: var(--vp-radius);
+	box-shadow: var(--vp-shadow-lg);
 	image-rendering: pixelated;
 	margin-bottom: 8px;
 	max-height: 220px;
 	overflow-y: auto;
-	font-family: var(--vp-font, monospace);
+	font-family: var(--vp-font);
 }
 .slash-item {
 	display: flex;
@@ -914,7 +914,7 @@ button.chat-context-tag-main {
 	background: none;
 	border: 0;
 	border-left: 3px solid transparent;
-	color: var(--vp-text, #d6dbe5);
+	color: var(--vp-text);
 	padding: 7px 12px;
 	cursor: pointer;
 	font-family: inherit;
@@ -922,18 +922,18 @@ button.chat-context-tag-main {
 	transition: background 0.08s steps(2, end);
 }
 .slash-item + .slash-item {
-	border-top: 1px solid var(--vp-border-soft, #2a2f39);
+	border-top: 1px solid var(--vp-border-soft);
 }
 .slash-item:hover,
 .slash-item.is-active {
-	background: var(--vp-hover, rgba(92, 208, 169, 0.12));
-	border-left-color: var(--vp-accent-2, #5cd0a9);
+	background: var(--vp-hover);
+	border-left-color: var(--vp-success);
 }
 .slash-item:active {
-	background: var(--vp-active, rgba(92, 208, 169, 0.2));
+	background: var(--vp-active);
 }
 .slash-item-name {
-	color: var(--vp-accent-2, #5cd0a9);
+	color: var(--vp-success);
 	font-weight: 700;
 	letter-spacing: 0.5px;
 	text-transform: uppercase;
@@ -942,14 +942,14 @@ button.chat-context-tag-main {
 /* Agent-specific commands use a distinct hue so they read apart from the
    global/client commands (which stay accent-2 green). */
 .slash-item--agent .slash-item-name {
-	color: var(--vp-accent-4, #6ab0ff);
+	color: var(--vp-info);
 }
 .slash-item--agent:hover,
 .slash-item--agent.is-active {
-	border-left-color: var(--vp-accent-4, #6ab0ff);
+	border-left-color: var(--vp-info);
 }
 .slash-item-desc {
-	color: var(--vp-muted, #8a93a3);
+	color: var(--vp-muted);
 	font-size: 12px;
 }
 
@@ -962,9 +962,9 @@ button.chat-context-tag-main {
 	background: none;
 	border: 0;
 	border-left: 3px solid transparent;
-	color: var(--vp-text, #d6dbe5);
+	color: var(--vp-text);
 	padding: 8px 10px;
-	border-radius: var(--vp-radius, 0);
+	border-radius: var(--vp-radius);
 	cursor: pointer;
 	font-family: inherit;
 	font-size: 13px;
@@ -977,14 +977,14 @@ button.chat-context-tag-main {
 }
 .picker-item:hover,
 .picker-item.is-active {
-	background: var(--vp-hover, rgba(92, 208, 169, 0.12));
-	border-left-color: var(--vp-accent-2, #5cd0a9);
+	background: var(--vp-hover);
+	border-left-color: var(--vp-success);
 }
 .picker-item:active {
-	background: var(--vp-active, rgba(92, 208, 169, 0.2));
+	background: var(--vp-active);
 }
 .picker-item-meta {
-	color: var(--vp-muted, #8a93a3);
+	color: var(--vp-muted);
 	font-size: 12px;
 }
 /* Marks the model actually in use (the conversation's override, or the default
@@ -992,7 +992,7 @@ button.chat-context-tag-main {
 .picker-item-mark {
 	display: inline-block;
 	width: 14px;
-	color: var(--vp-accent-2, #5cd0a9);
+	color: var(--vp-success);
 	font-size: 10px;
 }
 .picker-item.is-current {
@@ -1005,13 +1005,13 @@ button.chat-context-tag-main {
 	display: flex;
 	align-items: center;
 	border-left: 3px solid transparent;
-	border-radius: var(--vp-radius, 0);
+	border-radius: var(--vp-radius);
 	transition: background 0.08s steps(2, end);
 }
 .picker-row:hover,
 .picker-row.is-active {
-	background: var(--vp-hover, rgba(92, 208, 169, 0.12));
-	border-left-color: var(--vp-accent-2, #5cd0a9);
+	background: var(--vp-hover);
+	border-left-color: var(--vp-success);
 }
 .picker-row .picker-item {
 	flex: 1 1 auto;
@@ -1030,13 +1030,13 @@ button.chat-context-tag-main {
 	background: none;
 	border: none;
 	padding: 4px 8px;
-	color: var(--vp-muted, #8a93a3);
+	color: var(--vp-muted);
 	cursor: pointer;
 	font-size: 13px;
 	transition: color 0.1s ease;
 }
 .picker-del:hover {
-	color: var(--vp-accent-3, #ff6b6b);
+	color: var(--vp-danger);
 }
 
 /* Sessions picker search box. */
@@ -1045,20 +1045,20 @@ button.chat-context-tag-main {
 	box-sizing: border-box;
 	margin: 10px 0 0;
 	padding: 8px 10px;
-	background: var(--vp-bg-soft, #14171d);
-	border: 2px solid var(--vp-border, #3a4150);
-	border-radius: var(--vp-radius, 0);
-	color: var(--vp-text, #d6dbe5);
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	border-radius: var(--vp-radius);
+	color: var(--vp-text);
 	font-family: inherit;
 	font-size: 13px;
 	outline: none;
 	transition: border-color 0.1s;
 }
 .picker-search:focus {
-	border-color: var(--vp-accent-2, #5cd0a9);
+	border-color: var(--vp-success);
 }
 .picker-search::placeholder {
-	color: var(--vp-faint, #5b6373);
+	color: var(--vp-faint);
 }
 
 /* Picker overlay (sessions/models): header + search stay pinned, list scrolls.
@@ -1070,11 +1070,11 @@ button.chat-context-tag-main {
 	max-height: 300px;
 	margin-bottom: 8px;
 	padding: 0 10px 10px;
-	background: var(--vp-panel, #1b1e25);
-	border: 2px solid var(--vp-border, #3a4150);
-	border-radius: var(--vp-radius, 0);
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	border-radius: var(--vp-radius);
 	image-rendering: pixelated;
-	font-family: var(--vp-font, monospace);
+	font-family: var(--vp-font);
 }
 /* Title bar spans the full panel width — break out of the body's side padding. */
 .picker-head {
@@ -1083,8 +1083,8 @@ button.chat-context-tag-main {
 	gap: 8px;
 	margin: 0 -10px;
 	padding: 6px 10px 6px 12px;
-	background: var(--vp-bg-soft, #15171c);
-	border-bottom: 2px solid var(--vp-border, #3a4150);
+	background: var(--vp-bg-soft);
+	border-bottom: 2px solid var(--vp-border);
 }
 .picker-dots {
 	display: inline-flex;
@@ -1095,16 +1095,16 @@ button.chat-context-tag-main {
 	width: 8px;
 	height: 8px;
 	display: block;
-	background: var(--vp-border, #3a4150);
+	background: var(--vp-border);
 }
 .picker-dots span:nth-child(1) {
-	background: var(--vp-accent-3, #ff6b6b);
+	background: var(--vp-danger);
 }
 .picker-dots span:nth-child(2) {
-	background: var(--vp-accent, #f7c948);
+	background: var(--vp-accent);
 }
 .picker-dots span:nth-child(3) {
-	background: var(--vp-accent-2, #5cd0a9);
+	background: var(--vp-success);
 }
 .picker-title {
 	flex: 1;
@@ -1112,7 +1112,7 @@ button.chat-context-tag-main {
 	font-weight: 700;
 	letter-spacing: 1px;
 	text-transform: uppercase;
-	color: var(--vp-accent, #f7c948);
+	color: var(--vp-accent);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -1121,14 +1121,14 @@ button.chat-context-tag-main {
 	flex: none;
 	background: none;
 	border: none;
-	color: var(--vp-muted, #8a93a3);
+	color: var(--vp-muted);
 	cursor: pointer;
 	font-size: 16px;
 	line-height: 1;
 	transition: color 0.1s;
 }
 .picker-close:hover {
-	color: var(--vp-accent-3, #ff6b6b);
+	color: var(--vp-danger);
 }
 .picker-list {
 	flex: 1 1 auto;
@@ -1138,7 +1138,7 @@ button.chat-context-tag-main {
 }
 .picker-empty {
 	padding: 10px;
-	color: var(--vp-faint, #5b6373);
+	color: var(--vp-faint);
 	font-size: 12px;
 }
 
@@ -1150,8 +1150,8 @@ button.chat-context-tag-main {
 	gap: 8px;
 	margin: 8px 0;
 	padding: 6px 10px;
-	border-left: 2px solid var(--vp-accent-4, #6ab0ff);
-	background: var(--vp-bg-soft, #15171c);
+	border-left: 2px solid var(--vp-info);
+	background: var(--vp-bg-soft);
 }
 .chat-inject-label {
 	flex: none;
@@ -1159,10 +1159,10 @@ button.chat-context-tag-main {
 	font-weight: 800;
 	letter-spacing: 0.5px;
 	text-transform: uppercase;
-	color: var(--vp-accent-4, #6ab0ff);
+	color: var(--vp-info);
 }
 .chat-inject-text {
-	color: var(--vp-text, #d6dbe5);
+	color: var(--vp-text);
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 }
@@ -1196,7 +1196,7 @@ button.chat-context-tag-main {
 	cursor: pointer;
 }
 .chat-nav-action:hover {
-	background: var(--vp-hover, #1c1f27);
+	background: var(--vp-hover);
 }
 .chat-nav-action-icon {
 	color: var(--accent, #7aa2f7);
@@ -1243,7 +1243,7 @@ button.chat-context-tag-main {
 .slash-menu,
 .picker-overlay {
 	box-shadow:
-		var(--vp-shadow-lg, 4px 4px 0 0 #000),
+		var(--vp-shadow-lg),
 		0 10px 30px rgba(0, 0, 0, 0.5);
 }
 

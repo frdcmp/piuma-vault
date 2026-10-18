@@ -239,7 +239,7 @@ const ServerForm = ({ server, onClose }) => {
 				<>
 					<p
 						className="vp-text"
-						style={{ fontSize: 12, color: "var(--vp-accent-3)", margin: 0 }}
+						style={{ fontSize: 12, color: "var(--vp-danger)", margin: 0 }}
 					>
 						Runs a process inside the mcp-worker container — admin only, trust
 						the package.
@@ -511,8 +511,8 @@ const McpServers = () => {
 					style={{
 						fontSize: 12,
 						fontWeight: 700,
-						color: "var(--vp-accent-3)",
-						border: "2px dashed var(--vp-accent-3)",
+						color: "var(--vp-danger)",
+						border: "2px dashed var(--vp-danger)",
 						padding: "8px 12px",
 						marginBottom: 16,
 					}}
@@ -523,7 +523,7 @@ const McpServers = () => {
 
 			{isLoading && <p className="vp-muted vp-text">Loading…</p>}
 			{error && (
-				<p className="vp-text" style={{ color: "var(--vp-accent-3)" }}>
+				<p className="vp-text" style={{ color: "var(--vp-danger)" }}>
 					Failed to load MCP servers.
 				</p>
 			)}

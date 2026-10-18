@@ -100,7 +100,7 @@
 }
 
 .vp-auth-glyph.is-open {
-	fill: var(--vp-accent-2);
+	fill: var(--vp-success);
 }
 
 .vp-auth-glyph-hole {
@@ -140,7 +140,7 @@
 }
 
 .vp-auth-led.is-setup {
-	background: var(--vp-accent-2);
+	background: var(--vp-success);
 }
 
 @keyframes vp-auth-blink {
@@ -176,7 +176,7 @@
 /* ---- Alerts ---------------------------------------------------------------- */
 
 .vp-auth-alert {
-	border: 2px solid var(--vp-accent-3);
+	border: 2px solid var(--vp-danger);
 	background: rgba(255, 107, 107, 0.1);
 	color: var(--vp-text);
 	padding: 12px;
@@ -195,7 +195,7 @@
 	margin-bottom: 6px;
 	text-transform: uppercase;
 	letter-spacing: 0.5px;
-	color: var(--vp-accent-3);
+	color: var(--vp-danger);
 }
 
 .vp-auth-alert--warning .vp-auth-alert-title {
@@ -255,7 +255,7 @@
 }
 
 .vp-auth-checklist li.is-ok {
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 }
 
 .vp-auth-checklist-mark {

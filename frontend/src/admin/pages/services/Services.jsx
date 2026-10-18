@@ -626,7 +626,7 @@ const Services = () => {
 
 			{isLoading && <p className="vp-muted vp-text">Loading…</p>}
 			{error && (
-				<p className="vp-text" style={{ color: "var(--vp-accent-3)" }}>
+				<p className="vp-text" style={{ color: "var(--vp-danger)" }}>
 					Failed to load service settings.
 				</p>
 			)}
@@ -1153,7 +1153,7 @@ const Services = () => {
 													maxWidth: "100%",
 													maxHeight: 320,
 													borderRadius: 8,
-													border: "1px solid var(--vp-border, #333)",
+													border: "1px solid var(--vp-border)",
 												}}
 											/>
 										</div>

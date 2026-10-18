@@ -236,7 +236,7 @@
 .vp-online-dot {
 	width: 8px;
 	height: 8px;
-	background: var(--vp-accent-2);
+	background: var(--vp-success);
 	display: inline-block;
 }
 

@@ -30,13 +30,13 @@
 	padding: 0.5rem 0.65rem;
 	font-family: inherit;
 	font-size: 0.95rem;
-	border: 2px solid var(--vp-border, #2a2a2a);
+	border: 2px solid var(--vp-border);
 	border-radius: 6px;
-	background: var(--vp-input-bg, #11131a);
+	background: var(--vp-input-bg);
 	color: inherit;
 }
 
 .vp-dump-confirm-input:focus {
 	outline: none;
-	border-color: var(--vp-accent, #6c8cff);
+	border-color: var(--vp-accent);
 }

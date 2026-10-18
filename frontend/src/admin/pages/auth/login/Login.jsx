@@ -259,7 +259,7 @@ const Login = () => {
 										{resendSuccess && (
 											<div
 												style={{
-													color: "var(--vp-accent-2)",
+													color: "var(--vp-success)",
 													marginBottom: 12,
 												}}
 											>

@@ -92,7 +92,7 @@ const Profile = () => {
 
 				{error && (
 					<div className="vp-profile-center">
-						<p className="vp-text" style={{ color: "var(--vp-accent-3)" }}>
+						<p className="vp-text" style={{ color: "var(--vp-danger)" }}>
 							Failed to load profile data. Please try again.
 						</p>
 					</div>

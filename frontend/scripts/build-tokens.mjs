@@ -23,7 +23,7 @@ const mobileIdx = args.indexOf("--mobile");
 const mobileDir = mobileIdx === -1 ? null : resolve(args[mobileIdx + 1] ?? "");
 
 const spec = JSON.parse(readFileSync(join(THEME_DIR, "tokens.json"), "utf8"));
-const { primitives, themes, defaultTheme, legacyAliases } = spec;
+const { primitives, themes, defaultTheme } = spec;
 const staticTokens = spec.static;
 
 if (!themes[defaultTheme])
@@ -68,10 +68,6 @@ const cssVars = (obj) =>
 		.join("\n");
 
 function renderCss() {
-	const aliases = Object.entries(legacyAliases)
-		.filter(([k]) => !k.startsWith("$"))
-		.map(([from, to]) => `\t--vp-${from}: var(--vp-${to});`)
-		.join("\n");
 	const blocks = Object.entries(resolved).map(([id, theme]) => {
 		const selector =
 			id === defaultTheme
@@ -83,7 +79,6 @@ function renderCss() {
 		`/* ${HEADER} */`,
 		`:root {\n${cssVars(staticTokens)}\n}`,
 		...blocks,
-		`/* Legacy names, removed once nothing references them. */\n:root {\n${aliases}\n}`,
 	].join("\n\n");
 }
 

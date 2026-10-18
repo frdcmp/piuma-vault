@@ -200,7 +200,7 @@
 }
 
 .vp-docs-body a {
-	color: var(--vp-accent-4);
+	color: var(--vp-info);
 }
 
 .vp-docs-body pre {
@@ -223,10 +223,10 @@
 	width: 8px;
 	height: 8px;
 	border-radius: 50%;
-	background: var(--vp-accent-3);
+	background: var(--vp-danger);
 	box-shadow:
 		14px 0 0 var(--vp-accent),
-		28px 0 0 var(--vp-accent-2);
+		28px 0 0 var(--vp-success);
 	opacity: 0.8;
 	pointer-events: none;
 }
@@ -249,7 +249,7 @@
 
 .vp-docs-body :not(pre) > code {
 	background: var(--vp-bg);
-	color: var(--vp-accent-3);
+	color: var(--vp-danger);
 	padding: 0.15em 0.4em;
 	border: 1px solid var(--vp-border-soft);
 	font-size: 0.9em;
@@ -322,8 +322,8 @@
 
 .vp-docs-mermaid--error {
 	background: var(--vp-bg);
-	border-left-color: var(--vp-accent-3);
-	color: var(--vp-accent-3);
+	border-left-color: var(--vp-danger);
+	color: var(--vp-danger);
 }
 
 .vp-docs-mermaid--error pre {

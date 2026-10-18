@@ -23,10 +23,10 @@ import "./NotificationBell.css";
 
 // Notification level → dot color (mirrors the vault-pixel accents).
 const LEVEL_COLOR = {
-	info: "var(--vp-accent-4)",
-	success: "var(--vp-accent-2)",
+	info: "var(--vp-info)",
+	success: "var(--vp-success)",
 	warning: "var(--vp-accent)",
-	error: "var(--vp-accent-3)",
+	error: "var(--vp-danger)",
 };
 
 function NotificationItem({ n, onSelect, onDismiss }) {

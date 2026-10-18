@@ -44,13 +44,13 @@
 	display: block;
 }
 .piuma-pop-dots span:nth-child(1) {
-	background: var(--vp-accent-3);
+	background: var(--vp-danger);
 }
 .piuma-pop-dots span:nth-child(2) {
 	background: var(--vp-accent);
 }
 .piuma-pop-dots span:nth-child(3) {
-	background: var(--vp-accent-2);
+	background: var(--vp-success);
 }
 .piuma-pop-title {
 	flex: 1;
@@ -82,7 +82,7 @@
 	padding: 3px 4px;
 }
 .piuma-pop-barbtn:hover:not(:disabled) {
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 }
 .piuma-pop-barbtn:disabled {
 	opacity: 0.4;

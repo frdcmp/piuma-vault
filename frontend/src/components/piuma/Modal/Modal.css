@@ -51,13 +51,13 @@
 	display: block;
 }
 .piuma-modal-dots span:nth-child(1) {
-	background: var(--vp-accent-3);
+	background: var(--vp-danger);
 }
 .piuma-modal-dots span:nth-child(2) {
 	background: var(--vp-accent);
 }
 .piuma-modal-dots span:nth-child(3) {
-	background: var(--vp-accent-2);
+	background: var(--vp-success);
 }
 .piuma-modal-title {
 	flex: 1;
@@ -76,7 +76,7 @@
 	padding: 3px 4px;
 }
 .piuma-modal-close:hover {
-	color: var(--vp-accent-3);
+	color: var(--vp-danger);
 }
 
 .piuma-modal-body {

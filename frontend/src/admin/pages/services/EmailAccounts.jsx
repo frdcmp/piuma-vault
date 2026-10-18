@@ -520,7 +520,7 @@ const EmailAccounts = () => {
 
 			{isLoading && <p className="vp-muted vp-text">Loading…</p>}
 			{error && (
-				<p className="vp-text" style={{ color: "var(--vp-accent-3)" }}>
+				<p className="vp-text" style={{ color: "var(--vp-danger)" }}>
 					Failed to load email accounts.
 				</p>
 			)}

@@ -9,6 +9,11 @@ export function applyTheme(id) {
 	document.documentElement.dataset.theme = id;
 }
 
+// The active theme's tokens outside React (e.g. mermaid's one-off initialise).
+export function currentTokens() {
+	return themes[document.documentElement.dataset.theme ?? defaultTheme].tokens;
+}
+
 const useThemeStore = create((set) => ({
 	theme: defaultTheme,
 	setTheme: (id) => {

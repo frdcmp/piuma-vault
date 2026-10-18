@@ -20,7 +20,7 @@
 	font-weight: 700;
 	line-height: 1;
 	color: var(--vp-bg);
-	background: var(--vp-accent-3);
+	background: var(--vp-danger);
 	border: 1px solid var(--vp-bg);
 }
 
@@ -152,7 +152,7 @@
 .nb-item-dismiss:hover,
 .nb-item-dismiss:focus-visible {
 	opacity: 1;
-	color: var(--vp-accent-3);
+	color: var(--vp-danger);
 }
 
 .nb-more {
@@ -187,7 +187,7 @@
 	font-family: var(--vp-font);
 }
 .nb-detail-body a {
-	color: var(--vp-accent-4);
+	color: var(--vp-info);
 }
 
 /* Dismiss-in-flight text greying (placed last so specificity stays ascending). */

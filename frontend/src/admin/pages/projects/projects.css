@@ -78,16 +78,16 @@
 
 /* Accent variants tint the icon + value glow */
 .vp-stat[data-accent="green"] .vp-stat-icon {
-	color: var(--vp-accent-2);
-	border-color: var(--vp-accent-2);
+	color: var(--vp-success);
+	border-color: var(--vp-success);
 }
 .vp-stat[data-accent="red"] .vp-stat-icon {
-	color: var(--vp-accent-3);
-	border-color: var(--vp-accent-3);
+	color: var(--vp-danger);
+	border-color: var(--vp-danger);
 }
 .vp-stat[data-accent="blue"] .vp-stat-icon {
-	color: var(--vp-accent-4);
-	border-color: var(--vp-accent-4);
+	color: var(--vp-info);
+	border-color: var(--vp-info);
 }
 .vp-stat[data-accent="accent"] .vp-stat-icon {
 	color: var(--vp-accent);
@@ -117,13 +117,13 @@
 	align-items: center;
 }
 .vp-cell-green {
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 }
 .vp-cell-accent {
 	color: var(--vp-accent);
 }
 .vp-cell-blue {
-	color: var(--vp-accent-4);
+	color: var(--vp-info);
 }
 
 .vp-linguist-avatar {

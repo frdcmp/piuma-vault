@@ -72,11 +72,11 @@
 	margin-top: 16px;
 	padding: 14px;
 	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-accent-4);
+	border: 2px solid var(--vp-info);
 	box-shadow: var(--vp-shadow);
 }
 .vp-about-alert-icon {
-	color: var(--vp-accent-4);
+	color: var(--vp-info);
 	font-size: 16px;
 	line-height: 1.4;
 }
@@ -101,7 +101,7 @@
 	padding: 14px 16px;
 	background: var(--vp-bg);
 	border: 2px solid var(--vp-border-soft);
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 	font-family: var(--vp-font);
 	font-size: 12.5px;
 	line-height: 1.7;

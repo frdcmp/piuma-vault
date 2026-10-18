@@ -375,7 +375,7 @@
 	font-weight: 900;
 	letter-spacing: 1.4px;
 	text-transform: uppercase;
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 	padding: 8px 0 6px;
 	border-bottom: 2px dashed var(--vp-border);
 	margin-bottom: 8px;
@@ -429,7 +429,7 @@
 	white-space: nowrap;
 	background: transparent;
 	border: 0;
-	color: var(--vp-accent-4);
+	color: var(--vp-info);
 	font: inherit;
 	font-size: 9pt;
 	text-align: left;
@@ -448,7 +448,7 @@
 }
 
 .fshare-off {
-	color: var(--vp-accent-3);
+	color: var(--vp-danger);
 }
 
 .fshare-row-actions {
@@ -479,12 +479,12 @@
 }
 
 .fshare-badge--view {
-	color: var(--vp-accent-2);
-	border-color: var(--vp-accent-2);
+	color: var(--vp-success);
+	border-color: var(--vp-success);
 }
 
 .fshare-badge--pwd {
-	border-color: var(--vp-accent-4);
+	border-color: var(--vp-info);
 }
 
 /* ── Compact storage tree header ───────────────────────────────── */

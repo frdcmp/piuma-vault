@@ -731,7 +731,7 @@ const Memory = () => {
 						title="Always-in-context"
 						subtitle={`scratchpad ${l1?.memory_pct ?? 0}% · profile ${l1?.user_context_pct ?? 0}%`}
 						count={l1 ? `${l1CombinedPct}%` : "—"}
-						accent="var(--vp-accent-4)"
+						accent="var(--vp-info)"
 						active={tab === "l1"}
 						onClick={() => setTab("l1")}
 					/>
@@ -751,7 +751,7 @@ const Memory = () => {
 						title="Confirmed facts"
 						subtitle={`${bySource.user_stated || 0} user · ${bySource.agent_observed || 0} observed`}
 						count={byStatus.confirmed ?? 0}
-						accent="var(--vp-accent-2)"
+						accent="var(--vp-success)"
 						active={tab === "entries" && status === "confirmed"}
 						onClick={() => focusLayer({ status: "confirmed" })}
 					/>

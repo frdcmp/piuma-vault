@@ -71,11 +71,11 @@
 	animation: recorder-label-blink 2.4s steps(2) infinite;
 }
 .recorder-hole-label--recording {
-	color: var(--vp-accent-3);
+	color: var(--vp-danger);
 	animation: recorder-label-blink 1s steps(2) infinite;
 }
 .recorder-hole-label--connecting {
-	color: var(--vp-accent-4);
+	color: var(--vp-info);
 	animation: recorder-label-blink 0.7s steps(2) infinite;
 }
 .recorder-hole-label--finishing {
@@ -151,7 +151,7 @@
 	justify-content: flex-end;
 	gap: 3px;
 	overflow: hidden;
-	font-family: var(--vp-font, monospace);
+	font-family: var(--vp-font);
 	font-size: 12.5px;
 	line-height: 1.5;
 	/* Past lines: plain grey mono. The latest line gets accent color below. */
@@ -177,7 +177,7 @@
 
 /* The just-recorded (newest) line is highlighted; everything above is grey. */
 .recorder-term-line.is-latest {
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 }
 
 .recorder-term-speaker {
@@ -193,7 +193,7 @@
 }
 
 .recorder-term-cursor {
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 	animation: recorder-term-blink 0.9s steps(2) infinite;
 }
 
@@ -228,7 +228,7 @@
 	letter-spacing: 2px;
 	text-transform: uppercase;
 	text-decoration: none;
-	color: var(--vp-accent-4);
+	color: var(--vp-info);
 	border: 2px solid var(--vp-border);
 	background: rgba(11, 12, 16, 0.72);
 	box-shadow: var(--vp-shadow);
@@ -259,7 +259,7 @@
 	width: 12px;
 	height: 12px;
 	image-rendering: pixelated;
-	background: var(--vp-accent-2);
+	background: var(--vp-success);
 	animation: recorder-loader-hop 0.72s steps(3, end) infinite;
 }
 .recorder-loader span:nth-child(1) {
@@ -271,7 +271,7 @@
 }
 .recorder-loader span:nth-child(3) {
 	animation-delay: 0.2s;
-	background: var(--vp-accent-4);
+	background: var(--vp-info);
 }
 .recorder-loader span:nth-child(4) {
 	animation-delay: 0.3s;
@@ -279,7 +279,7 @@
 }
 .recorder-loader span:nth-child(5) {
 	animation-delay: 0.4s;
-	background: var(--vp-accent-2);
+	background: var(--vp-success);
 }
 @keyframes recorder-loader-hop {
 	0% {
@@ -297,7 +297,7 @@
 }
 .recorder-loader-label {
 	margin: 0;
-	font-family: var(--vp-font, monospace);
+	font-family: var(--vp-font);
 	font-size: 12.5px;
 	letter-spacing: 1px;
 	color: var(--vp-muted);
@@ -427,11 +427,11 @@
 
 .recorder-usage-fill {
 	height: 100%;
-	background: var(--vp-accent-2);
+	background: var(--vp-success);
 	transition: width 0.4s steps(8);
 }
 .recorder-usage-fill.is-over {
-	background: var(--vp-accent-3);
+	background: var(--vp-danger);
 }
 
 /* ---- Recordings list -------------------------------------------------------- */
@@ -508,7 +508,7 @@
 .recorder-item-error {
 	margin: 8px 0 0;
 	font-size: 12px;
-	color: var(--vp-accent-3);
+	color: var(--vp-danger);
 }
 
 .recorder-item-actions {
@@ -544,7 +544,7 @@
 
 .recorder-seg-time {
 	flex-shrink: 0;
-	font-family: var(--vp-font, monospace);
+	font-family: var(--vp-font);
 	font-size: 11px;
 	color: var(--vp-muted);
 	min-width: 42px;
@@ -554,7 +554,7 @@
 	flex-shrink: 0;
 	font-size: 11px;
 	font-weight: 700;
-	color: var(--vp-accent-4, var(--vp-accent));
+	color: var(--vp-info);
 	text-transform: uppercase;
 }
 

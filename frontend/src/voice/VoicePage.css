@@ -30,7 +30,7 @@
 }
 
 .voice-eq {
-	--eq-color: var(--vp-faint, #5b6373);
+	--eq-color: var(--vp-faint);
 	display: flex;
 	gap: 4px;
 	align-items: flex-end;
@@ -109,7 +109,7 @@
 .voice-status-dot {
 	width: 8px;
 	height: 8px;
-	background: var(--vp-faint, #5b6373);
+	background: var(--vp-faint);
 }
 
 .voice-status.is-listening .voice-status-dot {
@@ -152,7 +152,7 @@
 
 .voice-line--user::before {
 	content: "› ";
-	color: var(--vp-faint, #5b6373);
+	color: var(--vp-faint);
 }
 
 .voice-line--piuma {
@@ -232,7 +232,7 @@
 .voice-hint {
 	margin: 0;
 	font-size: 11px;
-	color: var(--vp-faint, #5b6373);
+	color: var(--vp-faint);
 	letter-spacing: 0.5px;
 }
 

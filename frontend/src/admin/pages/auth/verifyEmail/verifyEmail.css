@@ -42,11 +42,11 @@
 }
 
 .vp-auth-status-icon--success {
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 }
 
 .vp-auth-status-icon--error {
-	color: var(--vp-accent-3);
+	color: var(--vp-danger);
 }
 
 .vp-auth-status-icon--info {

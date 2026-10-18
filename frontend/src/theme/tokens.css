@@ -35,11 +35,3 @@
 	--vp-scrollbar-thumb-hover: #525966;
 	--vp-scrollbar-thumb-active: #6a7380;
 }
-
-/* Legacy names, removed once nothing references them. */
-:root {
-	--vp-accent-2: var(--vp-success);
-	--vp-accent-3: var(--vp-danger);
-	--vp-accent-4: var(--vp-info);
-	--vp-mono: var(--vp-font);
-}

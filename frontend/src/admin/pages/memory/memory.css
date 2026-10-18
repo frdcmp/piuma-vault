@@ -109,24 +109,24 @@
 	white-space: nowrap;
 }
 .mem-tag--green {
-	border-color: var(--vp-accent-2);
-	color: var(--vp-accent-2);
+	border-color: var(--vp-success);
+	color: var(--vp-success);
 }
 .mem-tag--gold {
 	border-color: var(--vp-accent);
 	color: var(--vp-accent);
 }
 .mem-tag--blue {
-	border-color: var(--vp-accent-4);
-	color: var(--vp-accent-4);
+	border-color: var(--vp-info);
+	color: var(--vp-info);
 }
 .mem-tag--purple {
 	border-color: #b07cff;
 	color: #b07cff;
 }
 .mem-tag--red {
-	border-color: var(--vp-accent-3);
-	color: var(--vp-accent-3);
+	border-color: var(--vp-danger);
+	color: var(--vp-danger);
 }
 
 /* ---- Pixel capacity bar (replaces antd Progress) -------------------------- */
@@ -140,14 +140,14 @@
 }
 .mem-bar-fill {
 	height: 100%;
-	background: var(--vp-accent-2);
+	background: var(--vp-success);
 	transition: width 0.2s ease;
 }
 .mem-bar-fill--warn {
 	background: var(--vp-accent);
 }
 .mem-bar-fill--hot {
-	background: var(--vp-accent-3);
+	background: var(--vp-danger);
 }
 
 /* ---- L1 gauges ------------------------------------------------------------ */
@@ -213,7 +213,7 @@
 .mem-retrieved-sim {
 	font-variant-numeric: tabular-nums;
 	font-weight: 700;
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 	min-width: 42px;
 }
 
@@ -230,7 +230,7 @@
 	font-weight: 700;
 	letter-spacing: 0.5px;
 	text-transform: uppercase;
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 }
 .mem-stats {
 	display: flex;
@@ -253,8 +253,8 @@
 	top: 0;
 	bottom: 0;
 	left: 0;
-	background: color-mix(in srgb, var(--vp-accent-2) 26%, transparent);
-	border-right: 2px solid var(--vp-accent-2);
+	background: color-mix(in srgb, var(--vp-success) 26%, transparent);
+	border-right: 2px solid var(--vp-success);
 }
 /* Threshold tick line. */
 .mem-track-tick {
@@ -262,7 +262,7 @@
 	top: -4px;
 	bottom: -4px;
 	width: 2px;
-	background: var(--vp-accent-2);
+	background: var(--vp-success);
 	transform: translateX(-1px);
 }
 /* The ◆ pin marking where the nearest neighbour sits, with a value label. */
@@ -276,7 +276,7 @@
 	transform: translate(-50%, -50%) rotate(45deg);
 }
 .mem-track-pin--in {
-	background: var(--vp-accent-2);
+	background: var(--vp-success);
 }
 .mem-track-pin-label {
 	position: absolute;
@@ -297,7 +297,7 @@
 	color: var(--vp-muted);
 }
 .mem-track-axis-corr {
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 	font-weight: 700;
 }
 .mem-track-caption {

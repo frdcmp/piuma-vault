@@ -324,5 +324,5 @@
 	gap: 8px;
 }
 .vp-sprite-error {
-	color: var(--vp-accent-3);
+	color: var(--vp-danger);
 }

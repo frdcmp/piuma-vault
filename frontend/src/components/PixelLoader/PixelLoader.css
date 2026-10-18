@@ -12,9 +12,9 @@
 	overflow: hidden;
 	opacity: 1;
 	transition: opacity 0.35s ease;
-	--accent: var(--vp-accent, #f7c948);
-	--text: var(--vp-text, #d6dbe5);
-	background-color: var(--vp-bg, #14171c);
+	--accent: var(--vp-accent);
+	--text: var(--vp-text);
+	background-color: var(--vp-bg);
 	background-image: radial-gradient(
 		60% 50% at 50% 40%,
 		rgba(247, 201, 72, 0.06),
@@ -44,7 +44,7 @@
 	line-height: 1.6;
 	letter-spacing: 2px;
 	text-transform: uppercase;
-	color: var(--vp-accent, #f7c948);
+	color: var(--vp-accent);
 	text-shadow: 2px 2px 0 #000;
 }
 

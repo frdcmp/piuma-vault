@@ -968,9 +968,9 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 							onChange={(e) => setAgentKind(e.target.value)}
 							title="Agent for new chats"
 							style={{
-								background: "var(--vp-bg-soft, #15171c)",
-								color: "var(--vp-text, #d6dbe5)",
-								border: "1px solid var(--vp-border-soft, #2a2f39)",
+								background: "var(--vp-bg-soft)",
+								color: "var(--vp-text)",
+								border: "1px solid var(--vp-border-soft)",
 								padding: "1px 4px",
 								fontSize: 11.5,
 							}}

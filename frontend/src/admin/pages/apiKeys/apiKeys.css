@@ -31,10 +31,10 @@
 	color: var(--vp-accent);
 }
 .vp-keys-stat-value--green {
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 }
 .vp-keys-stat-value--red {
-	color: var(--vp-accent-3);
+	color: var(--vp-danger);
 }
 
 /* ---- Table cells ----------------------------------------------------------- */
@@ -83,7 +83,7 @@
 .vp-keys-rawkey-code {
 	font-family: var(--vp-font);
 	font-size: 14px;
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 }
 .vp-keys-rawkey-copy {
 	position: absolute;

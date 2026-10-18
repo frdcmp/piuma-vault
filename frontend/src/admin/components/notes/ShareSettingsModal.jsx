@@ -50,7 +50,7 @@ export default function ShareSettingsModal({ open, onClose }) {
 				style={{
 					margin: "0 0 14px 0",
 					fontSize: 12,
-					color: "var(--vp-muted, var(--muted))",
+					color: "var(--vp-muted)",
 				}}
 			>
 				Pre-fills the share form every time you open it. Stored in this browser

@@ -18,7 +18,7 @@
 	letter-spacing: 0.5px;
 	text-transform: uppercase;
 	color: var(--vp-muted);
-	background: var(--vp-surface, transparent);
+	background: var(--vp-surface);
 	border: 2px solid var(--vp-border);
 	padding: 8px 14px;
 	cursor: pointer;
@@ -26,11 +26,11 @@
 
 .vp-svc-tab:hover {
 	color: var(--vp-fg);
-	border-color: var(--vp-accent-2);
+	border-color: var(--vp-success);
 }
 
 .vp-svc-tab.is-active {
-	color: var(--vp-bg, #0e0e0e);
+	color: var(--vp-bg);
 	background: var(--vp-accent);
 	border-color: var(--vp-accent);
 }
@@ -42,7 +42,7 @@
 	flex-shrink: 0;
 }
 .vp-svc-tab-dot.is-on {
-	background: var(--vp-accent-2);
+	background: var(--vp-success);
 }
 .vp-svc-tab-dot.is-off {
 	background: var(--vp-border);
@@ -75,10 +75,10 @@
 	white-space: nowrap;
 }
 .vp-svc-result.is-ok {
-	color: var(--vp-accent-2);
+	color: var(--vp-success);
 }
 .vp-svc-result.is-err {
-	color: var(--vp-accent-3);
+	color: var(--vp-danger);
 }
 
 /* Email accounts — one bordered card per mailbox. */
@@ -118,10 +118,10 @@
 	flex-shrink: 0;
 }
 .vp-mcp-dot.is-ok {
-	background: var(--vp-accent-2);
+	background: var(--vp-success);
 }
 .vp-mcp-dot.is-err {
-	background: var(--vp-accent-3);
+	background: var(--vp-danger);
 }
 .vp-mcp-dot.is-none {
 	background: var(--vp-border);
