@@ -111,14 +111,14 @@ function renderMobileJs() {
 	const themeEntries = Object.entries(resolved)
 		.map(([id, t]) => {
 			const body = Object.entries(t.tokens)
-				.map(([k, v]) => `      ${camel(k)}: '${v}',`)
+				.map(([k, v]) => `\t\t\t${camel(k)}: ${JSON.stringify(v)},`)
 				.join("\n");
-			return `  ${id.includes("-") ? `'${id}'` : id}: {\n    label: '${t.label}',\n    scheme: '${t.scheme}',\n    colors: {\n${body}\n    },\n  },`;
+			return `\t${JSON.stringify(id)}: {\n\t\tlabel: ${JSON.stringify(t.label)},\n\t\tscheme: ${JSON.stringify(t.scheme)},\n\t\tcolors: {\n${body}\n\t\t},\n\t},`;
 		})
 		.join("\n");
 	return `// ${HEADER}
 
-export const defaultTheme = '${defaultTheme}';
+export const defaultTheme = ${JSON.stringify(defaultTheme)};
 
 export const themes = {
 ${themeEntries}

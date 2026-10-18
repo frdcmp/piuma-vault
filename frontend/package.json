@@ -10,6 +10,7 @@
     "build": "bun run prepare:pdfjs && bun run theme:build && vite build",
     "theme:build": "bun scripts/build-tokens.mjs",
     "theme:lint": "bun scripts/lint-theme.mjs",
+    "theme:mobile": "bun scripts/build-tokens.mjs --mobile ../mobile",
     "lint": "bun run theme:lint && biome check .",
     "format": "biome format --write .",
     "preview": "vite preview"
