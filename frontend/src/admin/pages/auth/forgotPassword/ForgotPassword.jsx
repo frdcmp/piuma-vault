@@ -1,7 +1,6 @@
-import { Alert, Form, Input } from "antd";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { PvButton } from "@/ui";
+import { PvAlert, PvButton, PvField, PvInput } from "@/ui";
 import { useResetPassword } from "../../../../queries";
 import "./forgotPassword.css";
 
@@ -11,11 +10,24 @@ const ForgotPassword = () => {
 	const resetPasswordMutation = useResetPassword();
 	const [success, setSuccess] = useState(false);
 	const [formError, setFormError] = useState(null);
+	const [password, setPassword] = useState("");
+	const [confirm, setConfirm] = useState("");
+	const [fieldErrors, setFieldErrors] = useState({});
 
-	const onFinish = (values) => {
+	const onSubmit = (e) => {
+		e.preventDefault();
+		const errors = {};
+		if (!password) errors.password = "Please input your new password";
+		else if (password.length < 6)
+			errors.password = "Password must be at least 6 characters";
+		if (!confirm) errors.confirm = "Please confirm your password";
+		else if (confirm !== password) errors.confirm = "Passwords do not match";
+		setFieldErrors(errors);
+		if (Object.keys(errors).length) return;
+
 		setFormError(null);
 		resetPasswordMutation.mutate(
-			{ token: resetToken, new_password: values.password },
+			{ token: resetToken, new_password: password },
 			{
 				onSuccess: () => setSuccess(true),
 				onError: (error) => {
@@ -67,13 +79,9 @@ const ForgotPassword = () => {
 					</header>
 					<div className="vp-panel-body vp-auth-center">
 						<h2 className="vp-h2 vp-auth-title">Password Reset</h2>
-						<Alert
-							message="Success"
-							description="Your password has been reset. You can now login."
-							type="success"
-							showIcon
-							style={{ marginBottom: 20, textAlign: "left" }}
-						/>
+						<PvAlert type="success" title="Success" className="vp-auth-alert">
+							Your password has been reset. You can now login.
+						</PvAlert>
 						<div className="vp-auth-actions">
 							<PvButton variant="primary" to="/settings/login">
 								Go to Login
@@ -103,52 +111,41 @@ const ForgotPassword = () => {
 					</p>
 
 					{formError && (
-						<Alert
-							message="Reset Failed"
-							description={formError}
+						<PvAlert
 							type="error"
-							showIcon
-							style={{ marginBottom: 20 }}
-						/>
+							title="Reset Failed"
+							className="vp-auth-alert"
+						>
+							{formError}
+						</PvAlert>
 					)}
 
-					<Form
-						name="reset-password"
-						onFinish={onFinish}
-						layout="vertical"
-						size="large"
-						className="vp-auth-form"
-					>
-						<Form.Item
-							name="password"
-							rules={[
-								{ required: true, message: "Please input your new password" },
-								{ min: 6, message: "Password must be at least 6 characters" },
-							]}
-						>
-							<Input.Password placeholder="New Password" />
-						</Form.Item>
+					<form onSubmit={onSubmit} noValidate>
+						<PvField error={fieldErrors.password}>
+							<PvInput
+								type="password"
+								reveal
+								autoComplete="new-password"
+								placeholder="New Password"
+								value={password}
+								invalid={!!fieldErrors.password}
+								onChange={(e) => setPassword(e.target.value)}
+							/>
+						</PvField>
 
-						<Form.Item
-							name="confirm"
-							dependencies={["password"]}
-							hasFeedback
-							rules={[
-								{ required: true, message: "Please confirm your password" },
-								({ getFieldValue }) => ({
-									validator(_, value) {
-										if (!value || getFieldValue("password") === value) {
-											return Promise.resolve();
-										}
-										return Promise.reject(new Error("Passwords do not match"));
-									},
-								}),
-							]}
-						>
-							<Input.Password placeholder="Confirm New Password" />
-						</Form.Item>
+						<PvField error={fieldErrors.confirm}>
+							<PvInput
+								type="password"
+								reveal
+								autoComplete="new-password"
+								placeholder="Confirm New Password"
+								value={confirm}
+								invalid={!!fieldErrors.confirm}
+								onChange={(e) => setConfirm(e.target.value)}
+							/>
+						</PvField>
 
-						<Form.Item>
+						<div className="vp-auth-submit">
 							<PvButton
 								type="submit"
 								variant="primary"
@@ -159,14 +156,14 @@ const ForgotPassword = () => {
 									? "Resetting..."
 									: "Reset Password"}
 							</PvButton>
-						</Form.Item>
+						</div>
 
 						<p className="vp-text vp-muted vp-auth-center">
 							<Link className="vp-link" to="/settings/login">
 								Back to Login
 							</Link>
 						</p>
-					</Form>
+					</form>
 				</div>
 			</section>
 		</div>

@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { PvButton, PvPanel } from "@/ui";
 import {
 	useDeleteRecording,
@@ -89,7 +89,7 @@ export default function RecorderSessionsPage() {
 						>
 							← Recorder
 						</PvButton>
-						<h1 className="vp-page-title" style={{ marginTop: 10 }}>
+						<h1 className="vp-page-title recorder-page-title">
 							Recorded Sessions
 						</h1>
 						<p className="vp-page-subtitle">
@@ -114,13 +114,12 @@ export default function RecorderSessionsPage() {
 								<li key={r.id} className="recorder-item">
 									<div className="recorder-item-main">
 										<div className="recorder-item-title">
-											<button
-												type="button"
+											<Link
+												to={`/recorder/sessions/${r.id}`}
 												className="recorder-item-link"
-												onClick={() => navigate(`/recorder/sessions/${r.id}`)}
 											>
 												{r.title || "Untitled recording"}
-											</button>
+											</Link>
 											<span className={`vp-tag ${STATUS_TAG[r.status] || ""}`}>
 												{r.status}
 											</span>

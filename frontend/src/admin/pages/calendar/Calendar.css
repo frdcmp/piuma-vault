@@ -22,29 +22,12 @@
 	flex: 0 0 auto;
 }
 
-/* Tags filter popover — portaled to <body> (outside .cal-page); styles its own
-   head buttons since Calendar doesn't load Tasks.css. */
+/* Tags filter popover — portaled to <body> (outside .cal-page). */
 .cal-filter-head {
 	display: flex;
 	justify-content: space-between;
 	gap: 8px;
 	margin-bottom: 8px;
-}
-
-.cal-filter-popover .tasks-manage-btn {
-	background: var(--vp-bg-soft);
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 4px;
-	color: var(--vp-muted);
-	font: inherit;
-	font-size: 0.74rem;
-	padding: 3px 8px;
-	cursor: pointer;
-}
-
-.cal-filter-popover .tasks-manage-btn:hover {
-	border-color: var(--vp-accent);
-	color: var(--vp-accent);
 }
 
 .cal-title {
@@ -294,10 +277,8 @@
 	min-height: 0;
 }
 
-.cal-field--notes textarea {
+.cal-field--notes .vp-textarea {
 	flex: 1;
-	min-height: 96px;
-	resize: vertical;
 }
 
 /* Event modal form — rendered through a portal (outside .cal-page). */
@@ -309,50 +290,18 @@
 	min-height: 100%;
 }
 
-.cal-field {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-	font-size: 0.8rem;
-	color: var(--vp-muted);
+.cal-form .vp-field {
+	margin-bottom: 0;
 }
 
-.cal-field--inline {
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
-}
-
-.cal-field input,
-.cal-field textarea {
-	background: var(--vp-bg);
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 4px;
-	color: var(--vp-text);
-	padding: 6px 8px;
-	font: inherit;
-	/* Render native controls (date/time popup + spinners) in dark mode. */
-	color-scheme: dark;
-}
-
-/* The native calendar/clock indicator icon — tint it to the accent so it's
-   visible on the dark field instead of rendering near-black. */
-.cal-field input[type="datetime-local"]::-webkit-calendar-picker-indicator,
-.cal-field input[type="date"]::-webkit-calendar-picker-indicator {
-	filter: invert(85%) sepia(40%) saturate(600%) hue-rotate(350deg);
-	cursor: pointer;
-}
-
-.cal-field input[type="color"] {
-	padding: 2px;
-	height: 32px;
+/* Native colour swatch (no kit equivalent) — sized like a short field. */
+.cal-color {
 	width: 56px;
-}
-
-.cal-field input:focus,
-.cal-field textarea:focus {
-	outline: none;
-	border-color: var(--vp-accent);
+	height: 32px;
+	padding: 2px;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	cursor: pointer;
 }
 
 .cal-error {

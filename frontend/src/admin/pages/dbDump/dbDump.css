@@ -25,18 +25,5 @@
 }
 
 .vp-dump-confirm-input {
-	width: 100%;
 	margin-top: 0.5rem;
-	padding: 0.5rem 0.65rem;
-	font-family: inherit;
-	font-size: 0.95rem;
-	border: 2px solid var(--vp-border);
-	border-radius: 6px;
-	background: var(--vp-bg);
-	color: inherit;
-}
-
-.vp-dump-confirm-input:focus {
-	outline: none;
-	border-color: var(--vp-accent);
 }

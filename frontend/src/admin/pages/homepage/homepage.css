@@ -65,6 +65,12 @@
 .vp-home-features .vp-tag {
 	align-self: flex-start;
 }
+.vp-home-feature-tag {
+	margin-bottom: 10px;
+}
+.vp-home-feature-desc {
+	margin-top: 10px;
+}
 @media (max-width: 920px) {
 	.vp-home-features {
 		grid-template-columns: repeat(2, 1fr);

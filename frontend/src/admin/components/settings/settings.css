@@ -1,0 +1,36 @@
+/* Shared styling for the Security / Screen-lock settings panels (ss-*). */
+.ss-actions {
+	gap: 8px;
+}
+
+.ss-otp-setup {
+	gap: 24px;
+}
+.ss-otp-qr {
+	background: var(--vp-highlight);
+	padding: 12px;
+}
+.ss-otp-form {
+	flex: 1;
+	min-width: 260px;
+}
+.ss-otp-secret {
+	word-break: break-all;
+}
+
+.ss-backup-codes {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	padding: 16px;
+	font-family: var(--vp-font);
+}
+
+.ss-devices {
+	gap: 10px;
+}
+.ss-device {
+	align-items: flex-start;
+}

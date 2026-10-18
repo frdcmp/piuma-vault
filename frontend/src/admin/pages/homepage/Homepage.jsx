@@ -116,13 +116,10 @@ const Homepage = () => {
 					<div className="vp-card" key={feature.title}>
 						<div className="vp-home-feature-icon">{feature.icon}</div>
 						<h3 className="vp-card-title">{feature.title}</h3>
-						<span
-							className="vp-tag vp-tag--accent"
-							style={{ marginBottom: 10 }}
-						>
+						<span className="vp-tag vp-tag--accent vp-home-feature-tag">
 							{feature.tag}
 						</span>
-						<p className="vp-card-desc" style={{ marginTop: 10 }}>
+						<p className="vp-card-desc vp-home-feature-desc">
 							{feature.description}
 						</p>
 					</div>

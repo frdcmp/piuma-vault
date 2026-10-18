@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { PvIconButton } from "@/ui";
 import { FallbackSprite } from "../sprites";
 import { DOC_GROUPS } from "./docsManifest";
 import "../admin/components/layout/layout.css";
@@ -37,15 +38,12 @@ export default function DocsLayout() {
 		<div className="vp-docs vault-pixel">
 			{/* Mobile-only top bar with the drawer toggle. */}
 			<header className="vp-docs-topbar">
-				<button
-					type="button"
-					className="vp-icon-btn"
-					onClick={() => setNavOpen((v) => !v)}
-					aria-label="Toggle navigation"
+				<PvIconButton
+					icon="☰"
+					label="Toggle navigation"
 					aria-expanded={navOpen}
-				>
-					☰
-				</button>
+					onClick={() => setNavOpen((v) => !v)}
+				/>
 				<Link to="/" className="vp-docs-topbar-brand">
 					<span className="vp-docs-topbar-logo" role="img" aria-label="Piuma">
 						<FallbackSprite pixelSize={2} />

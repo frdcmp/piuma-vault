@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { LockGlyph, PvButton, PvCheckbox } from "@/ui";
+import {
+	LockGlyph,
+	PvAlert,
+	PvButton,
+	PvCheckbox,
+	PvField,
+	PvInput,
+} from "@/ui";
 import PixelLoader from "../../../../components/PixelLoader";
 import {
 	useAuthStatus,
@@ -31,7 +38,6 @@ const Login = () => {
 
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
-	const [showPassword, setShowPassword] = useState(false);
 
 	// First run: the vault holds no account yet, so there is nothing to log into
 	// — point at the one-shot setup page instead of showing a form that can only
@@ -242,27 +248,26 @@ const Login = () => {
 								</p>
 
 								{formError && (
-									<div className="vp-auth-alert">
-										<div className="vp-auth-alert-title">⚠ Login failed</div>
+									<PvAlert
+										type="error"
+										title="Login failed"
+										className="vp-auth-alert"
+									>
 										{formError}
-									</div>
+									</PvAlert>
 								)}
 
 								{unverifiedEmail && (
-									<div className="vp-auth-alert vp-auth-alert--warning">
-										<div className="vp-auth-alert-title">
-											⚠ Email not verified
-										</div>
-										<div style={{ marginBottom: 12 }}>
+									<PvAlert
+										type="warning"
+										title="Email not verified"
+										className="vp-auth-alert"
+									>
+										<div className="vp-auth-alert-line">
 											Please verify your email address before logging in.
 										</div>
 										{resendSuccess && (
-											<div
-												style={{
-													color: "var(--vp-success)",
-													marginBottom: 12,
-												}}
-											>
+											<div className="vp-auth-alert-line vp-auth-alert-ok">
 												Verification email sent! Check your inbox.
 											</div>
 										)}
@@ -277,18 +282,14 @@ const Login = () => {
 												? `Resend in ${cooldown}s`
 												: "Resend verification email"}
 										</PvButton>
-									</div>
+									</PvAlert>
 								)}
 
 								{!otpSession && (
 									<form onSubmit={onSubmit}>
-										<div className="vp-field">
-											<label className="vp-label" htmlFor="login-email">
-												Email
-											</label>
-											<input
+										<PvField label="Email">
+											<PvInput
 												id="login-email"
-												className="vp-input"
 												type="email"
 												autoComplete="username"
 												placeholder="you@example.com"
@@ -296,35 +297,20 @@ const Login = () => {
 												onChange={(e) => setEmail(e.target.value)}
 												required
 											/>
-										</div>
+										</PvField>
 
-										<div className="vp-field">
-											<label className="vp-label" htmlFor="login-password">
-												Password
-											</label>
-											<div className="vp-auth-input-wrap">
-												<input
-													id="login-password"
-													className="vp-input vp-auth-input--reveal"
-													type={showPassword ? "text" : "password"}
-													autoComplete="current-password"
-													placeholder="••••••••"
-													value={password}
-													onChange={(e) => setPassword(e.target.value)}
-													required
-												/>
-												<button
-													type="button"
-													className="vp-auth-reveal"
-													onClick={() => setShowPassword((v) => !v)}
-													aria-label={
-														showPassword ? "Hide password" : "Show password"
-													}
-												>
-													{showPassword ? "hide" : "show"}
-												</button>
-											</div>
-										</div>
+										<PvField label="Password">
+											<PvInput
+												id="login-password"
+												type="password"
+												reveal
+												autoComplete="current-password"
+												placeholder="••••••••"
+												value={password}
+												onChange={(e) => setPassword(e.target.value)}
+												required
+											/>
+										</PvField>
 
 										<div className="vp-auth-forgot">
 											<Link to="/settings/forgot-password" className="vp-link">
@@ -349,24 +335,20 @@ const Login = () => {
 											Enter the 6-digit code from your authenticator app, or a
 											backup code if you've lost the device.
 										</p>
-										<div className="vp-field">
-											<label className="vp-label" htmlFor="login-otp">
-												Code
-											</label>
-											<input
+										<PvField label="Code">
+											<PvInput
 												id="login-otp"
-												className="vp-input vp-auth-otp-input"
+												className="vp-auth-otp-input"
 												type="text"
 												inputMode="numeric"
 												autoComplete="one-time-code"
 												placeholder="123456"
 												value={otpCode}
 												onChange={(e) => setOtpCode(e.target.value)}
-												// biome-ignore lint/a11y/noAutofocus: OTP field should focus on step 2
 												autoFocus
 												required
 											/>
-										</div>
+										</PvField>
 
 										<PvCheckbox
 											className="vp-auth-checkbox"

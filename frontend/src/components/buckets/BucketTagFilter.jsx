@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PvInput } from "@/ui";
 import { useTagRegistry } from "../../queries";
 import { tagColor } from "../../utils/tagColor";
 import "./BucketTags.css";
@@ -97,9 +98,9 @@ export default function BucketTagFilter({
 
 	return (
 		<div className="btf">
-			<input
-				className="tag-search"
-				type="text"
+			<PvInput
+				size="sm"
+				className="btf-search"
 				value={q}
 				onChange={(e) => setQ(e.target.value)}
 				placeholder="Filter tags…"

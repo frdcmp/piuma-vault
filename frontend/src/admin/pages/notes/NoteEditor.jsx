@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { PvIconButton, PvInput, PvTag, PvUpload } from "@/ui";
 import { useUploadAttachment } from "../../../queries";
 import {
 	useCreateNote,
@@ -14,6 +15,7 @@ import { attachmentMarkdown } from "../../../utils/attachments";
 import NoteHistoryPopover from "../../components/notes/NoteHistoryPopover";
 import SharePopover from "../../components/notes/SharePopover";
 import MilkdownEditorComp from "./MilkdownEditorComp";
+import { SaveDot } from "./NoteControls";
 
 function useDebounce(fn, delay) {
 	const timerRef = useRef(null);
@@ -63,7 +65,10 @@ export default function NoteEditor() {
 	const uploadAttachment = useUploadAttachment();
 	// Imperative handle into the Milkdown editor for inserting attachment markdown.
 	const editorApiRef = useRef(null);
-	const fileInputRef = useRef(null);
+	// Fields that should grab focus as soon as they appear.
+	const searchInputRef = useRef(null);
+	const titleInputRef = useRef(null);
+	const tagInputRef = useRef(null);
 	const openTab = useNotesWorkspaceStore((s) => s.openTab);
 	const pinTab = useNotesWorkspaceStore((s) => s.pinTab);
 	const publishControls = useNoteControlsStore((s) => s.publish);
@@ -105,6 +110,16 @@ export default function NoteEditor() {
 	const [newTagValue, setNewTagValue] = useState("");
 
 	const [isEditingTitle, setIsEditingTitle] = useState(false);
+
+	useEffect(() => {
+		if (searchOpen) searchInputRef.current?.focus();
+	}, [searchOpen]);
+	useEffect(() => {
+		if (isEditingTitle) titleInputRef.current?.focus();
+	}, [isEditingTitle]);
+	useEffect(() => {
+		if (tagPopoverOpen) tagInputRef.current?.focus();
+	}, [tagPopoverOpen]);
 
 	const searchCount = useNoteControlsStore((s) => s.searchCount);
 	const searchIndex = useNoteControlsStore((s) => s.searchIndex);
@@ -353,9 +368,7 @@ export default function NoteEditor() {
 	);
 
 	const handleAttachFile = useCallback(
-		async (e) => {
-			const file = e.target.files?.[0];
-			e.target.value = "";
+		async ([file]) => {
 			if (!file) return;
 			try {
 				const currentId = note?.id || noteId;
@@ -374,55 +387,6 @@ export default function NoteEditor() {
 		[uploadAttachment, note, noteId],
 	);
 
-	const saveIcon = () => {
-		const bgColor = "var(--vp-bg-soft)";
-		const borderColor = "var(--vp-border)";
-
-		let innerIcon = null;
-		let iconColor = "var(--vp-text)";
-
-		switch (saveStatus) {
-			case SAVE_STATUS.SAVING:
-				innerIcon = "⏳";
-				iconColor = "var(--vp-accent)";
-				break;
-			case SAVE_STATUS.ERROR:
-				innerIcon = "×";
-				iconColor = "var(--vp-danger)";
-				break;
-			case SAVE_STATUS.SAVED:
-			case SAVE_STATUS.IDLE:
-			default:
-				innerIcon = "✓";
-				iconColor = "var(--vp-success)";
-				break;
-		}
-
-		return (
-			<button
-				className="pixel-btn icon-only"
-				style={{
-					width: 32,
-					height: 32,
-					padding: 0,
-					backgroundColor: bgColor,
-					borderColor: borderColor,
-					cursor: "default",
-					transition: "background-color 0.2s ease, border-color 0.2s ease",
-					display: "flex",
-					alignItems: "center",
-					justifyContent: "center",
-					color: iconColor,
-					fontSize: 16,
-					fontWeight: "bold",
-				}}
-				title={`Save status: ${saveStatus}`}
-			>
-				{innerIcon}
-			</button>
-		);
-	};
-
 	if (isLoading && !isNew) {
 		return <div className="notes-pixel-empty">Loading...</div>;
 	}
@@ -431,62 +395,23 @@ export default function NoteEditor() {
 	}
 
 	return (
-		<div
-			style={{
-				display: "flex",
-				flexDirection: "column",
-				flex: 1,
-				minHeight: 0,
-			}}
-		>
+		<div className="note-editor">
 			{isMobile && (
-				<div className="editor-header" style={{ padding: "8px", gap: "8px" }}>
-					<div
-						style={{
-							display: "flex",
-							alignItems: "center",
-							gap: 8,
-							flex: 1,
-							minWidth: 0,
-						}}
-					>
-						{isMobile && (
-							<button
-								className="pixel-btn icon-only"
-								onClick={() => navigate("/notes")}
-							>
-								◀
-							</button>
-						)}
+				<div className="editor-header note-mobile-header">
+					<div className="note-mobile-main">
+						<PvIconButton
+							icon="◀"
+							label="Back to notes"
+							onClick={() => navigate("/notes")}
+						/>
 
 						{searchOpen ? (
-							<div
-								style={{
-									flex: 1,
-									display: "flex",
-									alignItems: "center",
-									gap: 4,
-									maxWidth: "none",
-								}}
-							>
-								<div
-									style={{
-										position: "relative",
-										flex: 1,
-										display: "flex",
-										alignItems: "center",
-									}}
-								>
-									<input
-										className="pixel-input"
-										autoFocus
-										style={{
-											flex: 1,
-											color: "var(--vp-info)",
-											height: 32,
-											boxSizing: "border-box",
-											paddingRight: searchQuery ? "60px" : "28px",
-										}}
+							<div className="note-mobile-search">
+								<div className="note-mobile-search-field">
+									<PvInput
+										ref={searchInputRef}
+										size="sm"
+										className={`note-mobile-search-input${searchQuery ? " has-count" : ""}`}
 										value={searchQuery}
 										onChange={(e) => setSearchQuery(e.target.value)}
 										onKeyDown={(e) => {
@@ -504,136 +429,60 @@ export default function NoteEditor() {
 										placeholder="Search in page..."
 									/>
 									{searchQuery && (
-										<div
-											style={{
-												position: "absolute",
-												right: 24,
-												fontSize: 10,
-												color: "var(--vp-muted)",
-												pointerEvents: "none",
-											}}
-										>
+										<span className="note-mobile-search-count">
 											{searchCount > 0
 												? `${searchIndex + 1}/${searchCount}`
 												: "0/0"}
-										</div>
+										</span>
 									)}
-									<div
-										style={{
-											position: "absolute",
-											right: 8,
-											fontSize: 14,
-											color: "var(--vp-muted)",
-											cursor: "pointer",
-											display: "flex",
-											alignItems: "center",
-											justifyContent: "center",
-											height: "100%",
-										}}
+									<PvIconButton
+										size="sm"
+										variant="ghost"
+										className="note-mobile-search-clear"
+										icon="×"
+										label={searchQuery ? "Clear search" : "Close search"}
 										onClick={() => {
 											if (searchQuery) setSearchQuery("");
 											else closeSearch();
 										}}
-										title={searchQuery ? "Clear search" : "Close search"}
-									>
-										×
-									</div>
+									/>
 								</div>
 								{searchQuery && (
 									<>
-										<div
-											style={{
-												display: "flex",
-												flexDirection: "column",
-												height: 32,
-												width: 20,
-												border: "2px solid var(--vp-border)",
-												background: "var(--vp-bg-soft)",
-												boxSizing: "border-box",
-											}}
-										>
-											<button
-												className="search-nav-btn"
-												style={{
-													flex: 1,
-													border: "none",
-													background: "transparent",
-													color: "var(--vp-text)",
-													fontSize: 8,
-													padding: 0,
-													cursor: "pointer",
-													display: "flex",
-													alignItems: "center",
-													justifyContent: "center",
-													borderBottom: "1px solid var(--vp-border)",
-												}}
-												onClick={() =>
-													setSearchAction({ dir: "prev", ts: Date.now() })
-												}
-												title="Previous (Shift+Enter)"
-											>
-												▲
-											</button>
-											<button
-												className="search-nav-btn"
-												style={{
-													flex: 1,
-													border: "none",
-													background: "transparent",
-													color: "var(--vp-text)",
-													fontSize: 8,
-													padding: 0,
-													cursor: "pointer",
-													display: "flex",
-													alignItems: "center",
-													justifyContent: "center",
-												}}
-												onClick={() =>
-													setSearchAction({ dir: "next", ts: Date.now() })
-												}
-												title="Next (Enter)"
-											>
-												▼
-											</button>
-										</div>
+										<PvIconButton
+											size="sm"
+											icon="▲"
+											label="Previous (Shift+Enter)"
+											onClick={() =>
+												setSearchAction({ dir: "prev", ts: Date.now() })
+											}
+										/>
+										<PvIconButton
+											size="sm"
+											icon="▼"
+											label="Next (Enter)"
+											onClick={() =>
+												setSearchAction({ dir: "next", ts: Date.now() })
+											}
+										/>
 									</>
 								)}
 							</div>
 						) : isEditingTitle ? (
-							<input
-								className="pixel-input"
-								autoFocus
-								style={{
-									flex: 1,
-									fontWeight: "bold",
-									color: "var(--vp-accent)",
-									maxWidth: isMobile ? "none" : "300px",
-									height: 32,
-									boxSizing: "border-box",
-								}}
+							<PvInput
+								ref={titleInputRef}
+								size="sm"
+								className="note-mobile-title-input"
 								value={title}
 								onChange={handleTitleChange}
 								onBlur={() => setIsEditingTitle(false)}
 								onKeyDown={(e) => e.key === "Enter" && setIsEditingTitle(false)}
 								placeholder="Untitled"
 							/>
-						) : isMobile ? (
-							<div
-								style={{
-									flex: 1,
-									fontWeight: "bold",
-									color: "var(--vp-accent)",
-									cursor: "text",
-									whiteSpace: "nowrap",
-									overflow: "hidden",
-									textOverflow: "ellipsis",
-									padding: "0 8px",
-									border: "2px solid transparent",
-									height: 32,
-									boxSizing: "border-box",
-									display: "flex",
-									alignItems: "center",
-								}}
+						) : (
+							<button
+								type="button"
+								className="note-mobile-title"
 								onClick={() => {
 									openSearch();
 								}}
@@ -645,29 +494,24 @@ export default function NoteEditor() {
 								title="Click to search in page, Double-click to rename"
 							>
 								{title || "Untitled"}
-							</div>
-						) : null}
-					</div>
-					{isMobile && (
-						<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-							{saveIcon()}
-							{noteId && <NoteHistoryPopover noteId={noteId} />}
-							{noteId && <SharePopover noteId={noteId} isMobile={isMobile} />}
-							<button
-								type="button"
-								className="pixel-btn icon-only editor-close-btn"
-								onClick={() => navigate("/notes")}
-								title="Close note"
-								aria-label="Close note"
-							>
-								×
 							</button>
-						</div>
-					)}
+						)}
+					</div>
+					<div className="note-mobile-actions">
+						<SaveDot status={saveStatus} />
+						{noteId && <NoteHistoryPopover noteId={noteId} />}
+						{noteId && <SharePopover noteId={noteId} isMobile={isMobile} />}
+						<PvIconButton
+							variant="danger"
+							icon="×"
+							label="Close note"
+							onClick={() => navigate("/notes")}
+						/>
+					</div>
 				</div>
 			)}
 
-			<div style={{ flex: 1, overflow: "auto", position: "relative" }}>
+			<div className="note-editor-body">
 				{initializedNoteIdRef.current ? (
 					<MilkdownEditorComp
 						key={`${initializedNoteIdRef.current}-${externalVersion}`}
@@ -687,38 +531,32 @@ export default function NoteEditor() {
 			</div>
 
 			<div className="editor-footer">
-				<input
-					ref={fileInputRef}
-					type="file"
-					style={{ display: "none" }}
-					onChange={handleAttachFile}
-				/>
-				<button
-					type="button"
-					className="pixel-btn icon-only"
-					onClick={() => fileInputRef.current?.click()}
+				<PvUpload
+					onFiles={handleAttachFile}
 					disabled={uploadAttachment.isPending}
-					title="Attach a file"
 				>
-					{uploadAttachment.isPending ? "⏳" : "📎"}
-				</button>
+					<PvIconButton
+						size="sm"
+						icon={uploadAttachment.isPending ? "⏳" : "📎"}
+						label="Attach a file"
+						disabled={uploadAttachment.isPending}
+					/>
+				</PvUpload>
 				{tags.map((t) => (
-					<span key={t} className="pixel-tag">
-						{t}{" "}
-						<span
-							style={{ cursor: "pointer", color: "var(--vp-danger)" }}
-							onClick={() => handleRemoveTag(t)}
-						>
-							×
-						</span>
-					</span>
+					<PvTag
+						key={t}
+						onRemove={() => handleRemoveTag(t)}
+						removeLabel={`Remove tag ${t}`}
+					>
+						{t}
+					</PvTag>
 				))}
 
 				{tagPopoverOpen ? (
-					<input
-						className="pixel-input"
-						style={{ width: "120px" }}
-						autoFocus
+					<PvInput
+						ref={tagInputRef}
+						size="sm"
+						className="note-tag-input"
 						value={newTagValue}
 						onChange={(e) => setNewTagValue(e.target.value)}
 						onKeyDown={handleAddTagConfirm}
@@ -726,23 +564,13 @@ export default function NoteEditor() {
 						placeholder="Add tag..."
 					/>
 				) : (
-					<button
-						type="button"
+					<PvIconButton
+						size="sm"
+						variant="ghost"
+						icon="+"
+						label="Add tag"
 						onClick={() => setTagPopoverOpen(true)}
-						title="Add tag"
-						aria-label="Add tag"
-						style={{
-							background: "none",
-							border: "none",
-							color: "var(--vp-muted)",
-							cursor: "pointer",
-							fontSize: 16,
-							lineHeight: 1,
-							padding: "0 4px",
-						}}
-					>
-						+
-					</button>
+					/>
 				)}
 			</div>
 		</div>

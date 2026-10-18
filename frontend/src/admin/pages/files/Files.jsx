@@ -12,19 +12,21 @@ import {
 	ReloadOutlined,
 	ShareAltOutlined,
 } from "@ant-design/icons";
-import {
-	Checkbox,
-	Empty,
-	Input,
-	List,
-	Modal,
-	message,
-	Select,
-	Spin,
-	Upload,
-} from "antd";
 import { useMemo, useState } from "react";
-import { PvButton } from "@/ui";
+import {
+	PvButton,
+	PvCheckbox,
+	PvEmpty,
+	PvField,
+	PvInput,
+	PvModal,
+	PvPanel,
+	PvSelect,
+	PvSpin,
+	PvUpload,
+	pvConfirm,
+	pvMessage,
+} from "@/ui";
 import {
 	useStorageBulkDelete,
 	useStorageDeleteFolder,
@@ -38,8 +40,6 @@ import {
 import { formatDate } from "../../../utils/dateTime";
 import { PageContent } from "../../components/layout/PageLayout";
 import "./files.css";
-
-const { Dragger } = Upload;
 
 const formatBytes = (n) => {
 	if (!n) return "0 B";
@@ -55,6 +55,13 @@ const folderLeaf = (path) => {
 };
 
 const fileLeaf = (key) => key.split("/").pop() || key;
+
+const EXPIRY_OPTIONS = [
+	{ value: 300, label: "5 minutes" },
+	{ value: 3600, label: "1 hour" },
+	{ value: 86400, label: "1 day" },
+	{ value: 604800, label: "7 days" },
+];
 
 const StatCard = ({ label, value, icon }) => (
 	<div className="vp-files-stat">
@@ -94,15 +101,15 @@ const Files = () => {
 
 	const copyCdnUrl = async (key) => {
 		if (!cdnBase) {
-			message.warning("No CDN URL configured (set BUNNY_CDN_URL).");
+			pvMessage.warning("No CDN URL configured (set BUNNY_CDN_URL).");
 			return;
 		}
 		const url = `${cdnBase}/${key}`;
 		try {
 			await navigator.clipboard.writeText(url);
-			message.success("CDN URL copied");
+			pvMessage.success("CDN URL copied");
 		} catch {
-			message.error("Could not copy to clipboard");
+			pvMessage.error("Could not copy to clipboard");
 		}
 	};
 
@@ -125,7 +132,7 @@ const Files = () => {
 			});
 			setShareUrl(res.url);
 		} catch (e) {
-			message.error(`Failed to generate link: ${e.message}`);
+			pvMessage.error(`Failed to generate link: ${e.message}`);
 		}
 	};
 
@@ -133,9 +140,9 @@ const Files = () => {
 		if (!shareUrl) return;
 		try {
 			await navigator.clipboard.writeText(shareUrl);
-			message.success("Share link copied");
+			pvMessage.success("Share link copied");
 		} catch {
-			message.error("Could not copy to clipboard");
+			pvMessage.error("Could not copy to clipboard");
 		}
 	};
 
@@ -178,75 +185,70 @@ const Files = () => {
 	const handleUpload = async (file) => {
 		try {
 			await upload.mutateAsync({ file, path: prefix });
-			message.success(`${file.name} uploaded`);
+			pvMessage.success(`${file.name} uploaded`);
 		} catch (e) {
-			message.error(
+			pvMessage.error(
 				`Upload failed: ${e?.response?.data?.message || e.message}`,
 			);
 		}
-		// Returning false prevents antd's default XHR upload.
-		return false;
 	};
 
-	const handleDeleteFile = (key) => {
-		Modal.confirm({
+	const handleDeleteFile = async (key) => {
+		const ok = await pvConfirm({
 			title: "Delete file?",
 			content: key,
-			okType: "danger",
 			okText: "Delete",
-			onOk: async () => {
-				try {
-					await deleteObject.mutateAsync(key);
-					setSelected((prev) => {
-						const next = new Set(prev);
-						next.delete(key);
-						return next;
-					});
-					message.success("Deleted");
-				} catch (e) {
-					message.error(`Delete failed: ${e.message}`);
-				}
-			},
+			danger: true,
 		});
+		if (!ok) return;
+		try {
+			await deleteObject.mutateAsync(key);
+			setSelected((prev) => {
+				const next = new Set(prev);
+				next.delete(key);
+				return next;
+			});
+			pvMessage.success("Deleted");
+		} catch (e) {
+			pvMessage.error(`Delete failed: ${e.message}`);
+		}
 	};
 
-	const handleDeleteFolder = (folderKey) => {
-		Modal.confirm({
+	const handleDeleteFolder = async (folderKey) => {
+		const ok = await pvConfirm({
 			title: "Delete folder and all contents?",
 			content: folderKey,
-			okType: "danger",
 			okText: "Delete",
-			onOk: async () => {
-				try {
-					await deleteFolder.mutateAsync(folderKey);
-					message.success("Folder deleted");
-				} catch (e) {
-					message.error(`Delete failed: ${e.message}`);
-				}
-			},
+			danger: true,
 		});
+		if (!ok) return;
+		try {
+			await deleteFolder.mutateAsync(folderKey);
+			pvMessage.success("Folder deleted");
+		} catch (e) {
+			pvMessage.error(`Delete failed: ${e.message}`);
+		}
 	};
 
-	const handleBulkDelete = () => {
+	const handleBulkDelete = async () => {
 		const keys = Array.from(selected);
 		if (keys.length === 0) return;
-		Modal.confirm({
+		const ok = await pvConfirm({
 			title: `Delete ${keys.length} file${keys.length === 1 ? "" : "s"}?`,
-			okType: "danger",
 			okText: "Delete",
-			onOk: async () => {
-				try {
-					const res = await bulkDelete.mutateAsync(keys);
-					message.success(`Deleted ${res.deleted?.length ?? 0}`);
-					if (res.failed?.length) {
-						message.warning(`${res.failed.length} failed`);
-					}
-					clearSelection();
-				} catch (e) {
-					message.error(`Bulk delete failed: ${e.message}`);
-				}
-			},
+			danger: true,
 		});
+		if (!ok) return;
+		try {
+			const res = await bulkDelete.mutateAsync(keys);
+			pvMessage.success(`Deleted ${res.deleted?.length ?? 0}`);
+			if (res.failed?.length) {
+				pvMessage.warning(`${res.failed.length} failed`);
+			}
+			clearSelection();
+		} catch (e) {
+			pvMessage.error(`Bulk delete failed: ${e.message}`);
+		}
 	};
 
 	const handleDownloadSelected = async () => {
@@ -258,7 +260,7 @@ const Files = () => {
 				filename: prefix ? folderLeaf(prefix) : "bundle",
 			});
 		} catch (e) {
-			message.error(`Zip failed: ${e.message}`);
+			pvMessage.error(`Zip failed: ${e.message}`);
 		}
 	};
 
@@ -269,7 +271,7 @@ const Files = () => {
 				filename: prefix ? folderLeaf(prefix) : "root",
 			});
 		} catch (e) {
-			message.error(`Zip failed: ${e.message}`);
+			pvMessage.error(`Zip failed: ${e.message}`);
 		}
 	};
 
@@ -297,8 +299,6 @@ const Files = () => {
 
 	const allFilesSelected =
 		files.length > 0 && files.every((f) => selected.has(f.key));
-	const someFilesSelected =
-		!allFilesSelected && files.some((f) => selected.has(f.key));
 
 	const expiryLabel =
 		shareExpiry === 300
@@ -352,313 +352,246 @@ const Files = () => {
 					</div>
 
 					{/* Upload */}
-					<section className="vp-panel">
-						<header className="vp-panel-bar">
-							<span className="vp-dots">
-								<span />
-								<span />
-								<span />
-							</span>
-							<h3 className="vp-panel-title">
+					<PvPanel
+						title={
+							<>
 								<CloudUploadOutlined /> Upload to {prefix || "/"}
-							</h3>
-						</header>
-						<div className="vp-panel-body vp-files-upload">
-							<Dragger
-								name="file"
-								multiple
-								beforeUpload={handleUpload}
-								showUploadList={false}
-								disabled={upload.isPending}
-							>
-								<p className="ant-upload-drag-icon">
-									<InboxOutlined />
-								</p>
-								<p className="ant-upload-text">
-									Click or drag files here to upload
-								</p>
-								<p className="ant-upload-hint">
-									Multiple files supported. Files land in the current folder.
-								</p>
-							</Dragger>
-						</div>
-					</section>
+							</>
+						}
+						bodyClassName="vp-files-upload"
+					>
+						<PvUpload
+							drag
+							multiple
+							onFiles={(picked) => picked.forEach(handleUpload)}
+							disabled={upload.isPending}
+						>
+							<InboxOutlined className="vp-files-upload-icon" />
+							<span className="vp-files-upload-text">
+								Click or drag files here to upload
+							</span>
+							<span className="vp-files-upload-hint">
+								Multiple files supported. Files land in the current folder.
+							</span>
+						</PvUpload>
+					</PvPanel>
 
 					{/* Browser */}
-					<section className="vp-panel">
-						<header className="vp-panel-bar">
-							<span className="vp-dots">
-								<span />
-								<span />
-								<span />
-							</span>
-							<h3 className="vp-panel-title">Browse</h3>
-						</header>
-						<div className="vp-panel-body">
-							{/* Breadcrumb */}
-							<div className="vp-files-crumbs">
-								<button
-									type="button"
-									className="vp-files-crumb"
-									onClick={() => goUp("")}
-								>
-									<HomeOutlined /> root
-								</button>
-								{crumbs.map((c) => (
-									<span key={c.path} className="vp-files-crumb-wrap">
-										<span className="vp-files-crumb-sep">/</span>
-										<button
-											type="button"
-											className="vp-files-crumb"
-											onClick={() => goUp(c.path)}
-										>
-											{c.name}
-										</button>
-									</span>
-								))}
-							</div>
-
-							{/* Bulk actions toolbar */}
-							{selected.size > 0 && (
-								<div className="vp-files-bulkbar">
-									<span className="vp-text">{selected.size} selected</span>
-									<div className="vp-row vp-row--wrap">
-										<PvButton
-											size="sm"
-											icon={<FileZipOutlined />}
-											onClick={handleDownloadSelected}
-											disabled={zip.isPending}
-										>
-											Download .zip
-										</PvButton>
-										<PvButton
-											size="sm"
-											variant="danger"
-											icon={<DeleteOutlined />}
-											onClick={handleBulkDelete}
-											disabled={bulkDelete.isPending}
-										>
-											Delete
-										</PvButton>
-										<PvButton size="sm" onClick={clearSelection}>
-											Clear
-										</PvButton>
-									</div>
-								</div>
-							)}
-
-							{list.isLoading ? (
-								<div className="vp-files-center">
-									<Spin size="large" />
-								</div>
-							) : isEmpty ? (
-								<Empty
-									description={`No items in ${prefix || "/"}`}
-									image={Empty.PRESENTED_IMAGE_SIMPLE}
-								>
-									<p className="vp-muted vp-text">
-										Upload a file or drill into a folder via the breadcrumb
-										above.
-									</p>
-								</Empty>
-							) : (
-								<>
-									{/* Select-all for files in the current view */}
-									{files.length > 0 && (
-										<div className="vp-files-selectall">
-											<Checkbox
-												checked={allFilesSelected}
-												indeterminate={someFilesSelected}
-												onChange={(e) => toggleAllFiles(e.target.checked)}
-											>
-												Select all files ({files.length})
-											</Checkbox>
-										</div>
-									)}
-
-									<List
-										className="vp-files-list"
-										dataSource={[
-											...folders.map((f) => ({ kind: "folder", key: f })),
-											...files.map((f) => ({ kind: "file", ...f })),
-										]}
-										renderItem={(item) => {
-											if (item.kind === "folder") {
-												return (
-													<List.Item
-														key={`f-${item.key}`}
-														actions={[
-															<PvButton
-																key="zip"
-																size="sm"
-																variant="ghost"
-																icon={<FileZipOutlined />}
-																onClick={async (e) => {
-																	e.stopPropagation();
-																	try {
-																		await zip.mutateAsync({
-																			prefix: item.key,
-																			filename: folderLeaf(item.key),
-																		});
-																	} catch (err) {
-																		message.error(`Zip failed: ${err.message}`);
-																	}
-																}}
-																disabled={zip.isPending}
-															>
-																.zip
-															</PvButton>,
-															<PvButton
-																key="del"
-																size="sm"
-																variant="danger"
-																icon={<DeleteOutlined />}
-																onClick={(e) => {
-																	e.stopPropagation();
-																	handleDeleteFolder(item.key);
-																}}
-																disabled={deleteFolder.isPending}
-															>
-																Delete
-															</PvButton>,
-														]}
-														onClick={() => goToFolder(item.key)}
-														className="vp-files-item vp-files-item--folder"
-													>
-														<List.Item.Meta
-															avatar={
-																<FolderOutlined className="vp-files-avatar vp-files-avatar--folder" />
-															}
-															title={
-																<span className="vp-files-name">
-																	{folderLeaf(item.key)}
-																</span>
-															}
-															description={
-																<span className="vp-files-meta">
-																	{item.key}
-																</span>
-															}
-														/>
-													</List.Item>
-												);
-											}
-											const name = fileLeaf(item.key);
-											return (
-												<List.Item
-													key={`o-${item.key}`}
-													className="vp-files-item"
-													actions={[
-														<PvButton
-															key="dl"
-															size="sm"
-															variant="ghost"
-															icon={<DownloadOutlined />}
-															onClick={() => download.mutate(item.key)}
-															disabled={download.isPending}
-														>
-															Download
-														</PvButton>,
-														<PvButton
-															key="url"
-															size="sm"
-															variant="ghost"
-															icon={<LinkOutlined />}
-															onClick={() => copyCdnUrl(item.key)}
-															disabled={!cdnBase}
-														>
-															Copy URL
-														</PvButton>,
-														<PvButton
-															key="share"
-															size="sm"
-															variant="ghost"
-															icon={<ShareAltOutlined />}
-															onClick={() => openShare(item.key)}
-														>
-															Share
-														</PvButton>,
-														<PvButton
-															key="del"
-															size="sm"
-															variant="danger"
-															icon={<DeleteOutlined />}
-															onClick={() => handleDeleteFile(item.key)}
-															disabled={deleteObject.isPending}
-														>
-															Delete
-														</PvButton>,
-													]}
-												>
-													<List.Item.Meta
-														avatar={
-															<Checkbox
-																checked={selected.has(item.key)}
-																onChange={() => toggleOne(item.key)}
-															/>
-														}
-														title={
-															<span className="vp-row vp-files-title">
-																<FileOutlined className="vp-files-avatar" />
-																<span className="vp-files-name">{name}</span>
-																<span className="vp-tag vp-tag--blue">
-																	{formatBytes(item.size)}
-																</span>
-															</span>
-														}
-														description={
-															<span className="vp-files-meta-stack">
-																<span className="vp-files-meta">
-																	{item.key}
-																</span>
-																{item.last_modified && (
-																	<span className="vp-files-meta">
-																		{formatDate(item.last_modified)}
-																	</span>
-																)}
-															</span>
-														}
-													/>
-												</List.Item>
-											);
-										}}
-									/>
-								</>
-							)}
+					<PvPanel title="Browse">
+						{/* Breadcrumb */}
+						<div className="vp-files-crumbs">
+							<button
+								type="button"
+								className="vp-files-crumb"
+								onClick={() => goUp("")}
+							>
+								<HomeOutlined /> root
+							</button>
+							{crumbs.map((c) => (
+								<span key={c.path} className="vp-files-crumb-wrap">
+									<span className="vp-files-crumb-sep">/</span>
+									<button
+										type="button"
+										className="vp-files-crumb"
+										onClick={() => goUp(c.path)}
+									>
+										{c.name}
+									</button>
+								</span>
+							))}
 						</div>
-					</section>
+
+						{/* Bulk actions toolbar */}
+						{selected.size > 0 && (
+							<div className="vp-files-bulkbar">
+								<span className="vp-text">{selected.size} selected</span>
+								<div className="vp-row vp-row--wrap">
+									<PvButton
+										size="sm"
+										icon={<FileZipOutlined />}
+										onClick={handleDownloadSelected}
+										disabled={zip.isPending}
+									>
+										Download .zip
+									</PvButton>
+									<PvButton
+										size="sm"
+										variant="danger"
+										icon={<DeleteOutlined />}
+										onClick={handleBulkDelete}
+										disabled={bulkDelete.isPending}
+									>
+										Delete
+									</PvButton>
+									<PvButton size="sm" onClick={clearSelection}>
+										Clear
+									</PvButton>
+								</div>
+							</div>
+						)}
+
+						{list.isLoading ? (
+							<PvSpin block />
+						) : isEmpty ? (
+							<PvEmpty description={`No items in ${prefix || "/"}`}>
+								<p className="vp-muted vp-text">
+									Upload a file or drill into a folder via the breadcrumb above.
+								</p>
+							</PvEmpty>
+						) : (
+							<>
+								{/* Select-all for files in the current view */}
+								{files.length > 0 && (
+									<div className="vp-files-selectall">
+										<PvCheckbox
+											checked={allFilesSelected}
+											onChange={toggleAllFiles}
+											label={`Select all files (${files.length})`}
+										/>
+									</div>
+								)}
+
+								<ul className="vp-files-list">
+									{folders.map((folderKey) => (
+										<li
+											key={`f-${folderKey}`}
+											className="vp-files-item vp-files-item--folder"
+										>
+											<button
+												type="button"
+												className="vp-files-item-main"
+												onClick={() => goToFolder(folderKey)}
+											>
+												<FolderOutlined className="vp-files-avatar vp-files-avatar--folder" />
+												<span className="vp-files-item-text">
+													<span className="vp-files-name">
+														{folderLeaf(folderKey)}
+													</span>
+													<span className="vp-files-meta">{folderKey}</span>
+												</span>
+											</button>
+											<div className="vp-files-item-actions">
+												<PvButton
+													size="sm"
+													variant="ghost"
+													icon={<FileZipOutlined />}
+													onClick={async () => {
+														try {
+															await zip.mutateAsync({
+																prefix: folderKey,
+																filename: folderLeaf(folderKey),
+															});
+														} catch (err) {
+															pvMessage.error(`Zip failed: ${err.message}`);
+														}
+													}}
+													disabled={zip.isPending}
+												>
+													.zip
+												</PvButton>
+												<PvButton
+													size="sm"
+													variant="danger"
+													icon={<DeleteOutlined />}
+													onClick={() => handleDeleteFolder(folderKey)}
+													disabled={deleteFolder.isPending}
+												>
+													Delete
+												</PvButton>
+											</div>
+										</li>
+									))}
+									{files.map((item) => (
+										<li key={`o-${item.key}`} className="vp-files-item">
+											<div className="vp-files-item-main">
+												<PvCheckbox
+													checked={selected.has(item.key)}
+													onChange={() => toggleOne(item.key)}
+													aria-label={`Select ${fileLeaf(item.key)}`}
+												/>
+												<span className="vp-files-item-text">
+													<span className="vp-row vp-files-title">
+														<FileOutlined className="vp-files-avatar" />
+														<span className="vp-files-name">
+															{fileLeaf(item.key)}
+														</span>
+														<span className="vp-tag vp-tag--blue">
+															{formatBytes(item.size)}
+														</span>
+													</span>
+													<span className="vp-files-meta">{item.key}</span>
+													{item.last_modified && (
+														<span className="vp-files-meta">
+															{formatDate(item.last_modified)}
+														</span>
+													)}
+												</span>
+											</div>
+											<div className="vp-files-item-actions">
+												<PvButton
+													size="sm"
+													variant="ghost"
+													icon={<DownloadOutlined />}
+													onClick={() => download.mutate(item.key)}
+													disabled={download.isPending}
+												>
+													Download
+												</PvButton>
+												<PvButton
+													size="sm"
+													variant="ghost"
+													icon={<LinkOutlined />}
+													onClick={() => copyCdnUrl(item.key)}
+													disabled={!cdnBase}
+												>
+													Copy URL
+												</PvButton>
+												<PvButton
+													size="sm"
+													variant="ghost"
+													icon={<ShareAltOutlined />}
+													onClick={() => openShare(item.key)}
+												>
+													Share
+												</PvButton>
+												<PvButton
+													size="sm"
+													variant="danger"
+													icon={<DeleteOutlined />}
+													onClick={() => handleDeleteFile(item.key)}
+													disabled={deleteObject.isPending}
+												>
+													Delete
+												</PvButton>
+											</div>
+										</li>
+									))}
+								</ul>
+							</>
+						)}
+					</PvPanel>
 				</div>
 
 				{/* Share modal — generates a Bunny URL-Token-Auth signed CDN link */}
-				<Modal
+				<PvModal
 					title="Share file"
 					open={!!shareKey}
 					onCancel={closeShare}
-					footer={[
-						<PvButton key="close" onClick={closeShare}>
-							Close
-						</PvButton>,
-					]}
+					width={520}
+					footer={<PvButton onClick={closeShare}>Close</PvButton>}
 				>
 					<div className="vp-stack">
 						<div>
 							<span className="vp-label">File</span>
 							<div className="vp-text vp-files-sharekey">{shareKey}</div>
 						</div>
-						<div className="vp-field">
-							<span className="vp-label">Expires in</span>
-							<Select
+						<PvField label="Expires in">
+							<PvSelect
 								value={shareExpiry}
 								onChange={setShareExpiry}
-								style={{ width: "100%" }}
-								options={[
-									{ value: 300, label: "5 minutes" },
-									{ value: 3600, label: "1 hour" },
-									{ value: 86400, label: "1 day" },
-									{ value: 604800, label: "7 days" },
-								]}
+								options={EXPIRY_OPTIONS}
 							/>
-						</div>
+						</PvField>
 						<PvButton
 							variant="primary"
 							block
@@ -672,7 +605,7 @@ const Files = () => {
 							<div className="vp-field">
 								<span className="vp-label">Signed URL</span>
 								<div className="vp-row vp-files-shareurl">
-									<Input value={shareUrl} readOnly />
+									<PvInput value={shareUrl} readOnly aria-label="Signed URL" />
 									<PvButton
 										variant="primary"
 										icon={<LinkOutlined />}
@@ -687,7 +620,7 @@ const Files = () => {
 							</div>
 						) : null}
 					</div>
-				</Modal>
+				</PvModal>
 			</div>
 		</PageContent>
 	);

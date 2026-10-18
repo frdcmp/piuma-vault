@@ -4,6 +4,7 @@ import {
 	SettingOutlined,
 } from "@ant-design/icons";
 import { Link, useNavigate } from "react-router-dom";
+import { PvIconButton } from "@/ui";
 import NavMenu from "../../../components/NavMenu/NavMenu";
 import NotificationBell from "../../../components/NotificationBell";
 import UserMenu from "../../../components/UserMenu";
@@ -23,17 +24,14 @@ const HeaderComponent = ({ onSidebarToggle, showSidebarToggle = false }) => {
 			<div className="vp-header-inner">
 				<div className="vp-header-left">
 					{showSidebarToggle && isPhone && (
-						<button
-							type="button"
-							className="vp-icon-btn"
+						<PvIconButton
+							icon={<MenuOutlined />}
+							label="Toggle menu"
 							onClick={onSidebarToggle}
-							aria-label="Toggle menu"
-						>
-							<MenuOutlined />
-						</button>
+						/>
 					)}
 					{isPhone ? (
-						<Link to="/notes" style={{ display: "flex", alignItems: "center" }}>
+						<Link to="/notes" className="vp-header-home">
 							<span className="vp-header-logo" role="img" aria-label="Piuma">
 								<Sprite rows={sprite} pixelSize={2} />
 							</span>
@@ -48,23 +46,12 @@ const HeaderComponent = ({ onSidebarToggle, showSidebarToggle = false }) => {
 				<div className="vp-header-right">
 					{!isPhone && (
 						<>
-							<button
-								type="button"
-								className="vp-icon-btn"
-								title="Settings"
+							<PvIconButton
+								icon={<SettingOutlined />}
+								label="Settings"
 								onClick={() => navigate("/settings")}
-								aria-label="Settings"
-							>
-								<SettingOutlined />
-							</button>
-							<button
-								type="button"
-								className="vp-icon-btn"
-								title="Help"
-								aria-label="Help"
-							>
-								<QuestionCircleOutlined />
-							</button>
+							/>
+							<PvIconButton icon={<QuestionCircleOutlined />} label="Help" />
 						</>
 					)}
 					<NotificationBell />

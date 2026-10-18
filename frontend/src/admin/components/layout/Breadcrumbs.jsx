@@ -103,8 +103,7 @@ const AppBreadcrumbs = () => {
 					key={
 						typeof item.label === "string" ? `${item.label}-${i}` : `crumb-${i}`
 					}
-					className="vp-row"
-					style={{ gap: 8 }}
+					className="vp-row vp-crumb-item"
 				>
 					{i > 0 && <span className="vp-crumb-sep">/</span>}
 					{item.to ? (

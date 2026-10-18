@@ -89,6 +89,16 @@
 	width: 8px;
 	height: 8px;
 	margin-top: 5px;
+	background: var(--vp-info);
+}
+.nb-item-dot--success {
+	background: var(--vp-success);
+}
+.nb-item-dot--warning {
+	background: var(--vp-accent);
+}
+.nb-item-dot--error {
+	background: var(--vp-danger);
 }
 
 .nb-item-body {
@@ -135,16 +145,11 @@
 	margin-top: 2px;
 }
 
+/* Row dismiss (a ghost PvIconButton): faded in on row hover. */
 .nb-item-dismiss {
-	flex: 0 0 auto;
+	align-self: center;
+	margin-right: 6px;
 	opacity: 0;
-	color: var(--vp-muted);
-	font-size: 12px;
-	padding: 0 10px;
-	border: none;
-	background: transparent;
-	cursor: pointer;
-	transition: opacity 0.12s ease;
 }
 .nb-item:hover .nb-item-dismiss {
 	opacity: 0.6;
@@ -152,7 +157,6 @@
 .nb-item-dismiss:hover,
 .nb-item-dismiss:focus-visible {
 	opacity: 1;
-	color: var(--vp-danger);
 }
 
 .nb-more {

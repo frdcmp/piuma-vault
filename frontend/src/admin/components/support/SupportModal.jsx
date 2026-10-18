@@ -1,5 +1,6 @@
 import { GithubOutlined } from "@ant-design/icons";
 import { PvModal } from "@/ui";
+import "./SupportModal.css";
 
 const supportOptions = [
 	{
@@ -14,32 +15,24 @@ const supportOptions = [
 const SupportModal = ({ open, onCancel }) => {
 	return (
 		<PvModal open={open} title="Support" onCancel={onCancel} cancelText="Close">
-			<p className="vp-text vp-muted" style={{ marginTop: 0 }}>
+			<p className="vp-text vp-muted sm-intro">
 				Need help? Choose your preferred support channel below:
 			</p>
 
-			<div className="vp-stack" style={{ gap: 12 }}>
+			<div className="vp-stack sm-options">
 				{supportOptions.map((option) => {
 					const Tag = option.href ? "a" : "div";
 					return (
 						<Tag
 							key={option.title}
-							className={`vp-card vp-row${option.href ? " vp-card--link" : ""}`}
+							className={`vp-card vp-row sm-option${option.href ? " vp-card--link" : ""}`}
 							href={option.href || undefined}
-							style={{ gap: 14, alignItems: "flex-start" }}
 						>
-							<span
-								className="vp-accent"
-								style={{ fontSize: 22, lineHeight: 1, marginTop: 2 }}
-							>
-								{option.icon}
-							</span>
-							<div style={{ flex: 1 }}>
+							<span className="vp-accent sm-option-icon">{option.icon}</span>
+							<div className="sm-option-body">
 								<p className="vp-card-title">{option.title}</p>
 								<p className="vp-card-desc">{option.description}</p>
-								<p className="vp-accent" style={{ margin: "8px 0 0" }}>
-									{option.contact}
-								</p>
+								<p className="vp-accent sm-option-contact">{option.contact}</p>
 							</div>
 						</Tag>
 					);

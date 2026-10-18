@@ -68,7 +68,7 @@
 }
 
 /* ☰ that brings the drawer back, shown only while the tree has no column. */
-.notes-tree-toggle.note-ctl-btn {
+.notes-tree-toggle {
 	flex: none;
 	margin: 0 0 6px 8px;
 }
@@ -167,34 +167,15 @@
 	justify-content: center;
 	width: 28px;
 	height: 30px;
+	color: var(--vp-success);
 	font-size: 14px;
 	font-weight: bold;
 }
-.note-ctl-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 30px;
-	height: 30px;
-	padding: 0;
-	border: 2px solid var(--vp-border);
-	background: var(--vp-bg-soft);
-	color: var(--vp-text);
-	font-family: inherit;
-	font-size: 13px;
-	line-height: 1;
-	cursor: pointer;
+.note-ctl-save.is-saving {
+	color: var(--vp-accent);
 }
-.note-ctl-btn:hover {
-	border-color: var(--vp-success);
-	color: var(--vp-success);
-}
-.note-ctl-btn.danger {
+.note-ctl-save.is-error {
 	color: var(--vp-danger);
-	border-color: var(--vp-danger);
-}
-.note-ctl-btn.danger:hover {
-	background: color-mix(in srgb, var(--vp-danger) 18%, transparent);
 }
 .note-controls.compact {
 	position: relative;
@@ -253,7 +234,7 @@
 	z-index: 30;
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 6px;
 	padding: 8px;
 	border: 2px solid var(--vp-border);
 	background: var(--vp-panel);
@@ -266,10 +247,8 @@
 	align-items: center;
 	width: 220px;
 }
-.note-search-pop-input.pixel-input {
-	width: 100%;
-	height: 32px;
-	box-sizing: border-box;
+/* Room on the right for the match counter. */
+.note-search-pop .note-search-pop-input {
 	color: var(--vp-info);
 	padding-right: 48px;
 }
@@ -279,41 +258,6 @@
 	font-size: 10px;
 	color: var(--vp-muted);
 	pointer-events: none;
-}
-.note-search-pop-nav {
-	display: flex;
-	flex-direction: column;
-	height: 32px;
-	width: 22px;
-	flex: none;
-	border: 2px solid var(--vp-border);
-	background: var(--vp-bg-soft);
-	box-sizing: border-box;
-}
-.note-search-pop-nav .search-nav-btn {
-	flex: 1;
-	border: 0;
-	background: transparent;
-	color: var(--vp-text);
-	font-size: 9px;
-	padding: 0;
-	cursor: pointer;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-.note-search-pop-nav .search-nav-btn:first-child {
-	border-bottom: 1px solid var(--vp-border);
-}
-.note-search-pop-nav .search-nav-btn:disabled {
-	opacity: 0.4;
-	cursor: not-allowed;
-}
-.note-search-pop .note-ctl-btn {
-	width: 32px;
-	height: 32px;
-	flex: none;
-	font-size: 15px;
 }
 .note-tab {
 	display: inline-flex;
@@ -423,19 +367,17 @@
 	letter-spacing: 0.5px;
 }
 
-.notes-search-clear {
-	position: absolute;
-	right: 4px;
-	top: 4px;
-	width: 24px;
-	height: 24px;
+.notes-sidebar-actions {
 	display: flex;
 	align-items: center;
-	justify-content: center;
-	border: none;
-	background: transparent;
-	color: var(--vp-muted);
-	box-shadow: none;
+	gap: 6px;
+}
+
+/* Keeps the search field's width steady while the clear button is hidden. */
+.notes-search-clear-slot {
+	flex: none;
+	width: 24px;
+	height: 24px;
 }
 
 .notes-sidebar-tree {
@@ -659,13 +601,19 @@
 .ftree-delete {
 	margin-left: 6px;
 	padding: 0 4px;
+	border: 0;
+	background: none;
 	color: var(--vp-muted);
+	font-family: inherit;
+	line-height: inherit;
 	opacity: 0;
 	flex-shrink: 0;
 	font-size: 14px;
+	cursor: pointer;
 }
 
-.ftree-row:hover .ftree-delete {
+.ftree-row:hover .ftree-delete,
+.ftree-delete:focus-visible {
 	opacity: 1;
 }
 
@@ -779,205 +727,6 @@
 	-webkit-box-orient: vertical;
 }
 
-/* UI Elements */
-.pixel-btn {
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-border);
-	box-shadow: 2px 2px 0 0 var(--vp-shadow-color);
-	color: var(--vp-text);
-	padding: 4px 10px;
-	font-family: inherit;
-	cursor: pointer;
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	font-size: 10pt;
-}
-
-.pixel-btn:hover {
-	border-color: var(--vp-accent);
-	color: var(--vp-accent);
-}
-
-.pixel-btn.primary {
-	color: var(--vp-success);
-	border-color: var(--vp-success);
-}
-
-.pixel-btn.danger {
-	color: var(--vp-danger);
-	border-color: var(--vp-danger);
-}
-
-.pixel-btn.icon-only {
-	padding: 4px;
-}
-
-/* The share trigger renders as a generic .pixel-btn; pin it to the same
-   30×30 box (and drop its drop-shadow) as the other control buttons so the
-   top-bar controls row aligns vertically. */
-.note-controls .pixel-btn.icon-only {
-	width: 30px;
-	height: 30px;
-	padding: 0;
-	box-shadow: none;
-	justify-content: center;
-}
-
-.pixel-input {
-	background: var(--vp-bg);
-	border: 2px solid var(--vp-border);
-	color: var(--vp-text);
-	padding: 4px 8px;
-	font-family: inherit;
-	font-size: 10pt;
-	outline: none;
-	width: 100%;
-}
-
-.pixel-input:focus {
-	border-color: var(--vp-accent);
-}
-
-.pixel-tag {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	padding: 2px 8px;
-	background: var(--vp-bg-soft);
-	border: 1px solid var(--vp-border);
-	color: var(--vp-text);
-	font-size: 9pt;
-}
-
-/* Pixel-style toggle switch */
-.pixel-switch {
-	display: inline-block;
-	position: relative;
-	width: 32px;
-	height: 16px;
-	background: var(--vp-bg);
-	border: 2px solid var(--vp-border);
-	cursor: pointer;
-	flex-shrink: 0;
-	padding: 0;
-	box-shadow: 2px 2px 0 0 var(--vp-shadow-color);
-	transition: border-color 90ms steps(2, end);
-}
-
-.pixel-switch::after {
-	content: "";
-	position: absolute;
-	top: 1px;
-	left: 1px;
-	width: 10px;
-	height: 10px;
-	background: var(--vp-border);
-	transition:
-		transform 90ms steps(3, end),
-		background 90ms steps(2, end);
-}
-
-.pixel-switch.on {
-	border-color: var(--vp-success);
-}
-
-.pixel-switch.on::after {
-	transform: translateX(16px);
-	background: var(--vp-success);
-}
-
-.pixel-switch:focus-visible {
-	outline: 2px solid var(--vp-accent);
-	outline-offset: 1px;
-}
-
-.pixel-switch-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-}
-
-/* Context Menu */
-.pixel-context-menu {
-	position: fixed;
-	background: var(--vp-panel);
-	border: 2px solid var(--vp-border);
-	box-shadow: 4px 4px 0 0 var(--vp-shadow-color);
-	z-index: 1000;
-	min-width: 150px;
-	display: flex;
-	flex-direction: column;
-}
-
-/* "+ New" dropdown: anchored under the button rather than at mouse coords. */
-.notes-new-anchor {
-	position: relative;
-	display: inline-flex;
-}
-.notes-new-menu {
-	position: absolute;
-	top: calc(100% + 4px);
-	right: 0;
-}
-
-.pixel-context-item {
-	padding: 8px 12px;
-	cursor: pointer;
-	color: var(--vp-text);
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-
-.pixel-context-item:hover {
-	background: var(--vp-bg-soft);
-	color: var(--vp-accent);
-}
-
-.pixel-context-item.danger {
-	color: var(--vp-danger);
-}
-
-.pixel-context-item.danger:hover {
-	background: var(--vp-bg-soft);
-}
-
-/* Modal */
-.pixel-modal-overlay {
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	background: color-mix(in srgb, var(--vp-shadow-color) 50%, transparent);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	z-index: 1000;
-}
-
-.pixel-modal {
-	background: var(--vp-panel);
-	border: 2px solid var(--vp-border);
-	box-shadow: 4px 4px 0 0 var(--vp-shadow-color);
-	padding: 20px;
-	min-width: 300px;
-}
-
-.pixel-modal h3 {
-	margin: 0 0 16px;
-	color: var(--vp-accent);
-}
-
-.pixel-modal-actions {
-	margin-top: 16px;
-	display: flex;
-	justify-content: flex-end;
-	gap: 8px;
-}
-
 /* Editor Header */
 .editor-header {
 	display: flex;
@@ -986,23 +735,6 @@
 	padding: 8px 16px;
 	border-bottom: 2px dashed var(--vp-border);
 	background: var(--vp-panel);
-}
-
-.editor-close-btn {
-	width: 32px;
-	height: 32px;
-	padding: 0;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 18px;
-	line-height: 1;
-	color: var(--vp-danger);
-	border-color: var(--vp-danger);
-}
-
-.editor-close-btn:hover {
-	background: color-mix(in srgb, var(--vp-danger) 18%, transparent);
 }
 
 .editor-footer {
@@ -1014,32 +746,97 @@
 	background: var(--vp-panel);
 }
 
-/* Footer controls share the metadata tag height so the bar stays slim: the
-   attach button used to be a full .pixel-btn and stood taller than the tags. */
-.editor-footer .pixel-tag,
-.editor-footer .pixel-btn.icon-only {
-	height: 22px;
+.editor-footer .note-tag-input {
+	width: 120px;
+}
+
+/* ── Mobile editor header (desktop uses the shared top bar) ── */
+.note-editor {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+.note-editor-body {
+	position: relative;
+	flex: 1;
+	overflow: auto;
+}
+.editor-header.note-mobile-header {
+	gap: 8px;
+	padding: 8px;
+}
+.note-mobile-main {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 1;
+	min-width: 0;
+}
+.note-mobile-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.note-mobile-search {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: 1;
+	min-width: 0;
+}
+.note-mobile-search-field {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex: 1;
+	min-width: 0;
+}
+.note-mobile-search-field .note-mobile-search-input {
+	flex: 1;
+	color: var(--vp-info);
+	padding-right: 30px;
+}
+.note-mobile-search-field .note-mobile-search-input.has-count {
+	padding-right: 62px;
+}
+.note-mobile-search-count {
+	position: absolute;
+	right: 30px;
+	font-size: 10px;
+	color: var(--vp-muted);
+	pointer-events: none;
+}
+.note-mobile-search-clear {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	right: 3px;
+	margin: auto 0;
+}
+.note-mobile-main .note-mobile-title-input {
+	flex: 1;
+	font-weight: bold;
+	color: var(--vp-accent);
+}
+.note-mobile-title {
+	display: flex;
+	align-items: center;
+	flex: 1;
+	min-width: 0;
+	height: 32px;
 	box-sizing: border-box;
-}
-
-.editor-footer .pixel-tag {
 	padding: 0 8px;
-}
-
-.editor-footer .pixel-btn.icon-only {
-	width: 22px;
-	padding: 0;
-	justify-content: center;
-	box-shadow: none;
-	font-size: 12px;
-	line-height: 1;
-}
-
-/* The inline "add tag" field shouldn't push the bar taller than the chips. */
-.editor-footer .pixel-input {
-	height: 22px;
-	box-sizing: border-box;
-	padding: 0 8px;
+	border: 2px solid transparent;
+	background: none;
+	color: var(--vp-accent);
+	font: inherit;
+	font-weight: bold;
+	text-align: left;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	cursor: text;
 }
 
 .note-search-headline b {
@@ -1056,68 +853,6 @@
 	border-radius: 3px;
 	padding: 0 2px;
 	font-weight: bold;
-}
-
-.search-nav-btn:hover {
-	color: var(--vp-accent) !important;
-	background: var(--vp-border) !important;
-}
-
-.notes-sidebar-close {
-	width: 40px;
-	height: 40px;
-	padding: 0;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 18pt;
-	line-height: 1;
-	color: var(--vp-danger);
-	border-color: var(--vp-danger);
-}
-
-.notes-sidebar-close:hover {
-	background: color-mix(in srgb, var(--vp-danger) 18%, transparent);
-}
-
-/* Bare icon — no button box, just the glyph. Same treatment as the refresh
-   icon; collapses the tree column until the top bar's ☰ brings it back. */
-.notes-sidebar-collapse {
-	padding: 4px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	background: none;
-	border: none;
-	box-shadow: none;
-	color: var(--vp-muted);
-	cursor: pointer;
-	font-size: 12pt;
-	line-height: 1;
-}
-.notes-sidebar-collapse:hover {
-	color: var(--vp-success);
-}
-
-/* Bare icon — no button box, just the glyph. */
-.notes-sidebar-refresh {
-	padding: 4px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	background: none;
-	border: none;
-	box-shadow: none;
-	color: var(--vp-muted);
-	cursor: pointer;
-	font-size: 12pt;
-	line-height: 1;
-}
-.notes-sidebar-refresh:hover:not(:disabled) {
-	color: var(--vp-success);
-}
-.notes-sidebar-refresh:disabled {
-	cursor: default;
 }
 
 .notes-refresh-icon {

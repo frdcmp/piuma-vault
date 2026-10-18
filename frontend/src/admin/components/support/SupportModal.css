@@ -1,0 +1,21 @@
+.sm-intro {
+	margin-top: 0;
+}
+.sm-options {
+	gap: 12px;
+}
+.sm-option {
+	gap: 14px;
+	align-items: flex-start;
+}
+.sm-option-icon {
+	font-size: 22px;
+	line-height: 1;
+	margin-top: 2px;
+}
+.sm-option-body {
+	flex: 1;
+}
+.sm-option-contact {
+	margin: 8px 0 0;
+}

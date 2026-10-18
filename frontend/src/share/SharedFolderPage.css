@@ -2,6 +2,11 @@
 	height: 100vh;
 }
 
+/* One breadcrumb segment: separator + crumb button on a row. */
+.sfshare-crumb {
+	display: inline-flex;
+}
+
 /* Gate / error screens */
 .sfshare-screen {
 	display: flex;

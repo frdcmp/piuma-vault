@@ -1,6 +1,5 @@
-import { Button, Switch } from "antd";
 import { useEffect, useState } from "react";
-import { pvMessage } from "@/ui";
+import { PvButton, PvSwitch, pvMessage } from "@/ui";
 import {
 	useNotificationPreferences,
 	useSendTestNotification,
@@ -83,10 +82,11 @@ export default function NotificationSettings() {
 	};
 
 	return (
-		<div className="vp-stack" style={{ gap: 12 }}>
+		<div className="vp-stack vp-profile-toggles">
 			<div className="vp-row vp-spread">
 				<span className="vp-text">Browser Notifications</span>
-				<Switch
+				<PvSwitch
+					aria-label="Browser notifications"
 					checked={browserOn}
 					disabled={!supported || busy}
 					loading={busy}
@@ -94,21 +94,25 @@ export default function NotificationSettings() {
 				/>
 			</div>
 			{!supported ? (
-				<p className="vp-text" style={{ opacity: 0.6, fontSize: "0.8rem" }}>
+				<p className="vp-text vp-profile-note">
 					This browser doesn't support Web Push.
 				</p>
 			) : null}
 
 			<div className="vp-row vp-spread">
 				<span className="vp-text">Mobile Push (app)</span>
-				<Switch checked={mobileOn} onChange={handleMobileToggle} />
+				<PvSwitch
+					aria-label="Mobile push"
+					checked={mobileOn}
+					onChange={handleMobileToggle}
+				/>
 			</div>
 
 			<div className="vp-row vp-spread">
 				<span className="vp-text">Send a test notification</span>
-				<Button size="small" loading={sendTest.isPending} onClick={handleTest}>
+				<PvButton size="sm" loading={sendTest.isPending} onClick={handleTest}>
 					Send test
-				</Button>
+				</PvButton>
 			</div>
 		</div>
 	);

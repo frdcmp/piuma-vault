@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PvButton, PvIconButton } from "@/ui";
 import { useRecordingChat } from "../../queries";
 import ChatConversation from "../page/ChatConversation";
 import "../chat-shared.css";
@@ -139,13 +140,13 @@ export default function FloatingChat({ recordingId }) {
 				<span className="fchat-grip" aria-hidden="true">
 					⠿
 				</span>
-				<button
-					type="button"
-					className="fchat-pill-btn"
+				<PvButton
+					variant="primary"
+					size="sm"
 					onClick={() => setOpenPersist(true)}
 				>
 					◈ ASK PIUMA ABOUT THIS RECORDING
-				</button>
+				</PvButton>
 			</div>
 		);
 	}
@@ -161,15 +162,13 @@ export default function FloatingChat({ recordingId }) {
 					⠿
 				</span>
 				<span className="fchat-bar-title">◈ piuma · about this recording</span>
-				<button
-					type="button"
-					className="fchat-bar-btn"
-					onClick={() => setOpenPersist(false)}
+				<PvIconButton
+					size="sm"
+					icon="–"
+					label="Minimize chat"
 					title="Minimize"
-					aria-label="Minimize chat"
-				>
-					–
-				</button>
+					onClick={() => setOpenPersist(false)}
+				/>
 			</div>
 			<div className="fchat-body">
 				{conv?.id ? (

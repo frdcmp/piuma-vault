@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { PvIconButton } from "@/ui";
 import useChatDockStore, {
 	CHAT_MAX,
 	CHAT_MIN,
@@ -57,15 +58,13 @@ export default function ChatDock({ onOpenNote }) {
 
 	if (!open) {
 		return (
-			<button
-				type="button"
+			<PvIconButton
 				className="chat-dock-fab"
-				onClick={openChat}
+				icon="🐾"
+				label="Open chat"
 				title="Chat with Piuma"
-				aria-label="Open chat"
-			>
-				🐾
-			</button>
+				onClick={openChat}
+			/>
 		);
 	}
 

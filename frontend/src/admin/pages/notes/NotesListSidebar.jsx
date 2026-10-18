@@ -1,7 +1,14 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import FtreeScene from "@/admin/components/notes/FtreeScene";
-import { PvModal } from "@/ui";
+import {
+	PvButton,
+	PvField,
+	PvIconButton,
+	PvInput,
+	PvMenu,
+	PvModal,
+} from "@/ui";
 import {
 	notesKeys,
 	useBrowseFolder,
@@ -85,16 +92,18 @@ const TreeFile = ({
 		<span className="ftree-bullet">{selected ? "▶" : "▸"}</span>
 		<span className="ftree-title">{file.title || "Untitled"}</span>
 		<span className="ftree-date">{formatDateCompact(file.updated_at)}</span>
-		<span
+		<button
+			type="button"
 			className="ftree-delete"
 			onClick={(e) => {
 				e.stopPropagation();
 				onRequestDelete(file.id);
 			}}
 			title="Delete note"
+			aria-label="Delete note"
 		>
 			×
-		</span>
+		</button>
 	</div>
 );
 
@@ -331,15 +340,18 @@ const SearchResultItem = ({
 					{highlightText(note.title || "Untitled", searchQuery)}
 				</span>
 				<span className="ftree-date">{formatDateCompact(note.updated_at)}</span>
-				<span
+				<button
+					type="button"
 					className="ftree-delete"
 					onClick={(e) => {
 						e.stopPropagation();
 						onRequestDelete(note.id);
 					}}
+					title="Delete note"
+					aria-label="Delete note"
 				>
 					×
-				</span>
+				</button>
 			</div>
 
 			{note.folder && note.folder !== "/" && (
@@ -392,9 +404,9 @@ export default function NotesListSidebar({
 	const [renameTarget, setRenameTarget] = useState(null);
 	// New-folder dialog target: { parent, value }
 	const [createFolderTarget, setCreateFolderTarget] = useState(null);
-	// "+ New" dropdown (choose note vs folder, like the explorer's context menu).
-	const [newMenuOpen, setNewMenuOpen] = useState(false);
-	const newMenuRef = useRef(null);
+	// "+ New" dropdown (choose note vs folder, like the explorer's context menu):
+	// the menu's anchor point under the button, null while closed.
+	const [newMenuAt, setNewMenuAt] = useState(null);
 
 	// Drag-and-drop move state. `dragItem` is the note/folder being dragged,
 	// `dragOverPath` is the folder row currently hovered as a drop target.
@@ -530,26 +542,12 @@ export default function NotesListSidebar({
 		searchTimerRef.current = setTimeout(() => setDebouncedSearch(val), 600);
 	}, []);
 
-	useEffect(() => {
-		const handleClick = () => setContextTarget(null);
-		window.addEventListener("click", handleClick);
-		return () => {
-			window.removeEventListener("click", handleClick);
+	useEffect(
+		() => () => {
 			if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-		};
-	}, []);
-
-	// Dismiss the "+ New" dropdown when clicking outside it.
-	useEffect(() => {
-		if (!newMenuOpen) return;
-		const onDown = (e) => {
-			if (newMenuRef.current && !newMenuRef.current.contains(e.target)) {
-				setNewMenuOpen(false);
-			}
-		};
-		document.addEventListener("mousedown", onDown);
-		return () => document.removeEventListener("mousedown", onDown);
-	}, [newMenuOpen]);
+		},
+		[],
+	);
 
 	const handleDelete = useCallback(
 		(noteId) => {
@@ -735,110 +733,94 @@ export default function NotesListSidebar({
 			<div className="notes-sidebar-header">
 				<div className="notes-sidebar-header-row">
 					<h3 className="notes-sidebar-title">Notes</h3>
-					<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+					<div className="notes-sidebar-actions">
 						{onCollapse ? (
-							<button
-								type="button"
-								className="notes-sidebar-collapse"
+							<PvIconButton
+								variant="ghost"
+								icon="«"
+								label="Collapse notes list"
 								onClick={onCollapse}
-								title="Collapse notes list"
-								aria-label="Collapse notes list"
-							>
-								<span aria-hidden="true">«</span>
-							</button>
+							/>
 						) : null}
-						<button
-							type="button"
-							className="notes-sidebar-refresh"
+						<PvIconButton
+							variant="ghost"
+							icon={
+								<span
+									className={`notes-refresh-icon${refreshing ? " spin" : ""}`}
+								>
+									⟳
+								</span>
+							}
+							label="Refresh notes"
 							onClick={handleRefresh}
 							disabled={refreshing}
-							title="Refresh notes"
-							aria-label="Refresh notes"
+						/>
+						<PvButton
+							size="sm"
+							variant="primary"
+							onClick={(e) => {
+								const r = e.currentTarget.getBoundingClientRect();
+								setNewMenuAt({ x: r.left, y: r.bottom + 4 });
+							}}
+							aria-haspopup="menu"
+							aria-expanded={newMenuAt != null}
 						>
-							<span
-								className={`notes-refresh-icon${refreshing ? " spin" : ""}`}
-								aria-hidden="true"
-							>
-								⟳
-							</span>
-						</button>
-						<span className="notes-new-anchor" ref={newMenuRef}>
-							<button
-								type="button"
-								className="pixel-btn primary"
-								onClick={() => setNewMenuOpen((o) => !o)}
-								aria-haspopup="menu"
-								aria-expanded={newMenuOpen}
-							>
-								+ New
-							</button>
-							{newMenuOpen && (
-								<div className="pixel-context-menu notes-new-menu" role="menu">
-									<div
-										className="pixel-context-item"
-										onClick={() => {
-											handleCreateNote(newNoteFolder);
-											setNewMenuOpen(false);
-										}}
-									>
-										New Note
-									</div>
-									<div
-										className="pixel-context-item"
-										onClick={() => {
-											setCreateFolderTarget({
-												parent: newNoteFolder,
-												value: "",
-											});
-											setNewMenuOpen(false);
-										}}
-									>
-										New Folder
-									</div>
-								</div>
-							)}
-						</span>
+							+ New
+						</PvButton>
 						{onClose ? (
-							<button
-								type="button"
-								className="pixel-btn notes-sidebar-close"
+							<PvIconButton
+								variant="danger"
+								size="lg"
+								icon="×"
+								label="Close notes list"
 								onClick={onClose}
-								title="Close"
-								aria-label="Close notes list"
-							>
-								×
-							</button>
+							/>
 						) : null}
 					</div>
 				</div>
-				<div style={{ position: "relative" }}>
-					<input
-						className="pixel-input"
-						placeholder="Search notes..."
-						value={search}
-						onChange={handleSearchChange}
-						style={{
-							width: "100%",
-							boxSizing: "border-box",
-							paddingRight: search ? 32 : undefined,
-						}}
-					/>
-					{search && (
-						<button
-							className="pixel-btn icon-only notes-search-clear"
-							onClick={() => {
-								setSearch("");
-								setDebouncedSearch("");
-								if (searchTimerRef.current)
-									clearTimeout(searchTimerRef.current);
-							}}
-							title="Clear search"
-						>
-							×
-						</button>
-					)}
-				</div>
+				<PvInput
+					size="sm"
+					placeholder="Search notes..."
+					value={search}
+					onChange={handleSearchChange}
+					suffix={
+						search ? (
+							<PvIconButton
+								size="sm"
+								variant="ghost"
+								icon="×"
+								label="Clear search"
+								onClick={() => {
+									setSearch("");
+									setDebouncedSearch("");
+									if (searchTimerRef.current)
+										clearTimeout(searchTimerRef.current);
+								}}
+							/>
+						) : (
+							<span className="notes-search-clear-slot" />
+						)
+					}
+				/>
 			</div>
+
+			<PvMenu
+				open={newMenuAt != null}
+				x={newMenuAt?.x}
+				y={newMenuAt?.y}
+				onClose={() => setNewMenuAt(null)}
+				items={[
+					{
+						label: "New Note",
+						onClick: () => handleCreateNote(newNoteFolder),
+					},
+					{
+						label: "New Folder",
+						onClick: () =>
+							setCreateFolderTarget({ parent: newNoteFolder, value: "" }),
+					},
+				]}
+			/>
 
 			{/* Body */}
 			<div
@@ -1008,71 +990,45 @@ export default function NotesListSidebar({
 
 			{!isRootLoading && !debouncedSearch && <FtreeScene />}
 
-			{contextTarget && (
-				<div
-					className="pixel-context-menu"
-					style={{ top: contextTarget.y, left: contextTarget.x }}
-					onClick={(e) => e.stopPropagation()}
-				>
-					{contextTarget.type === "file" ? (
-						<>
-							<div
-								className="pixel-context-item"
-								onClick={() => {
-									handleSelectNote(contextTarget.id);
-									setContextTarget(null);
-								}}
-							>
-								Open
-							</div>
-							<div
-								className="pixel-context-item"
-								onClick={() => {
-									requestRename(contextTarget);
-									setContextTarget(null);
-								}}
-							>
-								Rename
-							</div>
-							<div
-								className="pixel-context-item danger"
-								onClick={() => {
-									setPendingDeleteId(contextTarget.id);
-									setContextTarget(null);
-								}}
-							>
-								Delete
-							</div>
-						</>
-					) : (
-						<>
-							<div
-								className="pixel-context-item"
-								onClick={() => {
-									handleCreateNote(contextTarget.path);
-									setContextTarget(null);
-								}}
-							>
-								New Note
-							</div>
-							<div className="pixel-context-item" onClick={handleCreateFolder}>
-								New Folder
-							</div>
-							{contextTarget.path !== "/" ? (
-								<div
-									className="pixel-context-item"
-									onClick={() => {
-										requestRename(contextTarget);
-										setContextTarget(null);
-									}}
-								>
-									Rename
-								</div>
-							) : null}
-						</>
-					)}
-				</div>
-			)}
+			<PvMenu
+				open={contextTarget != null}
+				x={contextTarget?.x}
+				y={contextTarget?.y}
+				onClose={() => setContextTarget(null)}
+				items={
+					contextTarget?.type === "file"
+						? [
+								{
+									label: "Open",
+									onClick: () => handleSelectNote(contextTarget.id),
+								},
+								{
+									label: "Rename",
+									onClick: () => requestRename(contextTarget),
+								},
+								{
+									label: "Delete",
+									danger: true,
+									onClick: () => setPendingDeleteId(contextTarget.id),
+								},
+							]
+						: [
+								{
+									label: "New Note",
+									onClick: () => handleCreateNote(contextTarget?.path),
+								},
+								{ label: "New Folder", onClick: handleCreateFolder },
+								...(contextTarget?.path !== "/"
+									? [
+											{
+												label: "Rename",
+												onClick: () => requestRename(contextTarget),
+											},
+										]
+									: []),
+							]
+				}
+			/>
 
 			<PvModal
 				open={pendingDeleteId != null}
@@ -1097,25 +1053,22 @@ export default function NotesListSidebar({
 				onConfirm={confirmRename}
 				onCancel={() => setRenameTarget(null)}
 			>
-				<label
-					htmlFor="note-rename-input"
-					style={{ display: "block", marginBottom: 6, fontSize: 12 }}
-				>
-					{renameTarget?.type === "folder"
-						? "New folder name (renames every note inside it)"
-						: "New note title"}
-				</label>
-				<input
-					id="note-rename-input"
-					className="pixel-input"
-					style={{ width: "100%", boxSizing: "border-box" }}
-					value={renameTarget?.value ?? ""}
-					onChange={(e) =>
-						setRenameTarget((prev) =>
-							prev ? { ...prev, value: e.target.value } : prev,
-						)
+				<PvField
+					label={
+						renameTarget?.type === "folder"
+							? "New folder name (renames every note inside it)"
+							: "New note title"
 					}
-				/>
+				>
+					<PvInput
+						value={renameTarget?.value ?? ""}
+						onChange={(e) =>
+							setRenameTarget((prev) =>
+								prev ? { ...prev, value: e.target.value } : prev,
+							)
+						}
+					/>
+				</PvField>
 			</PvModal>
 
 			<PvModal
@@ -1126,23 +1079,18 @@ export default function NotesListSidebar({
 				onConfirm={confirmCreateFolder}
 				onCancel={() => setCreateFolderTarget(null)}
 			>
-				<label
-					htmlFor="note-create-folder-input"
-					style={{ display: "block", marginBottom: 6, fontSize: 12 }}
+				<PvField
+					label={`New folder name (created in ${createFolderTarget?.parent ?? "/"})`}
 				>
-					{`New folder name (created in ${createFolderTarget?.parent ?? "/"})`}
-				</label>
-				<input
-					id="note-create-folder-input"
-					className="pixel-input"
-					style={{ width: "100%", boxSizing: "border-box" }}
-					value={createFolderTarget?.value ?? ""}
-					onChange={(e) =>
-						setCreateFolderTarget((prev) =>
-							prev ? { ...prev, value: e.target.value } : prev,
-						)
-					}
-				/>
+					<PvInput
+						value={createFolderTarget?.value ?? ""}
+						onChange={(e) =>
+							setCreateFolderTarget((prev) =>
+								prev ? { ...prev, value: e.target.value } : prev,
+							)
+						}
+					/>
+				</PvField>
 			</PvModal>
 		</div>
 	);

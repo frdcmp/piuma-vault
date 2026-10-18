@@ -1,7 +1,15 @@
 import dayjs from "dayjs";
 import { useState } from "react";
 import { useTheme } from "@/theme";
-import { PvButton, PvDateTimePicker, PvModal } from "@/ui";
+import {
+	PvButton,
+	PvCheckbox,
+	PvDateTimePicker,
+	PvField,
+	PvInput,
+	PvModal,
+	PvTextarea,
+} from "@/ui";
 import { TagPicker } from "../../../components/buckets";
 import {
 	useCreateEvent,
@@ -81,28 +89,19 @@ export default function EventModal({ event, initialDate, onClose }) {
 			onCancel={onClose}
 		>
 			<div className="cal-form">
-				<label className="cal-field">
-					<span>Title</span>
-					<input
+				<PvField label="Title">
+					<PvInput
 						value={title}
 						onChange={(e) => setTitle(e.target.value)}
 						placeholder="Event title"
-						// biome-ignore lint/a11y/noAutofocus: modal entry field
 						autoFocus
 					/>
-				</label>
+				</PvField>
 
-				<label className="cal-field cal-field--inline">
-					<input
-						type="checkbox"
-						checked={allDay}
-						onChange={(e) => setAllDay(e.target.checked)}
-					/>
-					<span>All day</span>
-				</label>
+				<PvCheckbox checked={allDay} onChange={setAllDay} label="All day" />
 
-				<div className="cal-field">
-					<span>Starts</span>
+				<div className="vp-field">
+					<span className="vp-label">Starts</span>
 					<PvDateTimePicker
 						value={startsAt}
 						onChange={setStartsAt}
@@ -112,8 +111,8 @@ export default function EventModal({ event, initialDate, onClose }) {
 					/>
 				</div>
 
-				<div className="cal-field">
-					<span>Ends</span>
+				<div className="vp-field">
+					<span className="vp-label">Ends</span>
 					<PvDateTimePicker
 						value={endsAt}
 						onChange={setEndsAt}
@@ -122,41 +121,39 @@ export default function EventModal({ event, initialDate, onClose }) {
 					/>
 				</div>
 
-				<label className="cal-field">
-					<span>Location</span>
-					<input
+				<PvField label="Location">
+					<PvInput
 						value={location}
 						onChange={(e) => setLocation(e.target.value)}
 						placeholder="Optional"
 					/>
-				</label>
+				</PvField>
 
-				<label className="cal-field">
-					<span>Color</span>
+				<PvField label="Color">
 					<input
 						type="color"
+						className="cal-color"
 						value={color}
 						onChange={(e) => setColor(e.target.value)}
 					/>
-				</label>
+				</PvField>
 
-				<div className="cal-field">
-					<span>Tags</span>
+				<div className="vp-field">
+					<span className="vp-label">Tags</span>
 					<TagPicker value={tags} onChange={setTags} />
 				</div>
 
-				<label className="cal-field cal-field--notes">
-					<span>Notes</span>
-					<textarea
+				<PvField label="Notes" className="cal-field--notes">
+					<PvTextarea
 						rows={3}
 						value={description}
 						onChange={(e) => setDescription(e.target.value)}
 						placeholder="Optional"
 					/>
-				</label>
+				</PvField>
 
-				<div className="cal-field">
-					<span>Alerts</span>
+				<div className="vp-field">
+					<span className="vp-label">Alerts</span>
 					<AlertsField value={alerts} onChange={setAlerts} />
 				</div>
 

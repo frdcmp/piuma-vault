@@ -31,13 +31,6 @@
 	box-sizing: border-box;
 }
 
-.vp-shell-overlay {
-	position: fixed;
-	inset: 0;
-	background: color-mix(in srgb, var(--vp-shadow-color) 60%, transparent);
-	z-index: 10;
-}
-
 /* ---- Sidebar --------------------------------------------------------------- */
 .vp-sidebar {
 	position: fixed;
@@ -88,36 +81,6 @@
 	text-transform: uppercase;
 	color: var(--vp-accent);
 	text-shadow: 2px 2px 0 var(--vp-shadow-color);
-}
-
-.vp-icon-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 32px;
-	height: 32px;
-	padding: 0;
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-border);
-	box-shadow: var(--vp-shadow);
-	color: var(--vp-muted);
-	font-size: 15px;
-	cursor: pointer;
-	transition:
-		transform 0.1s steps(2, end),
-		box-shadow 0.1s steps(2, end),
-		border-color 0.1s,
-		color 0.1s;
-}
-.vp-icon-btn:hover {
-	border-color: var(--vp-accent);
-	color: var(--vp-accent);
-	transform: translate(-1px, -1px);
-	box-shadow: var(--vp-shadow-lg);
-}
-.vp-icon-btn:active {
-	transform: translate(2px, 2px);
-	box-shadow: none;
 }
 
 .vp-sidebar-nav {
@@ -278,6 +241,10 @@
 .vp-header-right {
 	flex: 0 0 auto;
 }
+.vp-header-home {
+	display: flex;
+	align-items: center;
+}
 .vp-header-logo {
 	display: inline-flex;
 	align-items: center;
@@ -307,6 +274,9 @@
 }
 .vp-crumbs > *:last-child {
 	flex: 0 1 auto;
+}
+.vp-crumb-item {
+	gap: 8px;
 }
 .vp-crumb {
 	color: var(--vp-muted);
@@ -339,26 +309,4 @@
 	.vp-crumbs > *:not(:first-child):not(:last-child) {
 		display: none;
 	}
-}
-
-/* ---- User avatar (header) -------------------------------------------------- */
-.vp-avatar {
-	width: 34px;
-	height: 34px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-accent);
-	box-shadow: var(--vp-shadow);
-	color: var(--vp-accent);
-	font-family: var(--vp-font);
-	font-size: 12px;
-	font-weight: 800;
-	text-transform: uppercase;
-	cursor: pointer;
-}
-.vp-avatar:hover {
-	background: var(--vp-accent);
-	color: var(--vp-bg);
 }

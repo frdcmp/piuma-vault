@@ -99,11 +99,11 @@ export default function RecordingDetailPage() {
 						>
 							← Sessions
 						</PvButton>
-						<h1 className="vp-page-title" style={{ marginTop: 10 }}>
+						<h1 className="vp-page-title recorder-page-title">
 							{rec?.title || (isLoading ? "Loading…" : "Untitled recording")}
 						</h1>
 						{rec && (
-							<div className="recorder-item-meta" style={{ marginTop: 8 }}>
+							<div className="recorder-item-meta recorder-detail-meta">
 								<span className={`vp-tag ${STATUS_TAG[rec.status] || ""}`}>
 									{rec.status}
 								</span>
@@ -134,7 +134,7 @@ export default function RecordingDetailPage() {
 
 				{rec?.status === "failed" && rec.error && (
 					<PvPanel title="error">
-						<p className="recorder-item-error" style={{ margin: 0 }}>
+						<p className="recorder-item-error recorder-detail-error">
 							{rec.error}
 						</p>
 					</PvPanel>

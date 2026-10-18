@@ -5,6 +5,14 @@
    used by Notes, Storage, Tasks and Calendar. The dark background
    means the 6px resizer's transparent track shows the dark layout color instead
    of the ambient (white) page. */
+/* Mobile WebView embed (WorkspaceLayout): bare full-viewport flex column. */
+.workspace-embedded {
+	display: flex;
+	flex-direction: column;
+	height: 100dvh;
+	min-height: 100vh;
+}
+
 .workspace-shell {
 	display: flex;
 	flex-direction: column;
@@ -84,29 +92,13 @@
 }
 
 /* Floating toggle shown when the dock is closed. */
-.chat-dock-fab {
+/* Floating "open chat" button (a PvIconButton): only position + size here. */
+button.chat-dock-fab {
 	position: fixed;
 	right: 18px;
 	bottom: 18px;
 	z-index: 900;
 	width: 46px;
 	height: 46px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
 	font-size: 22px;
-	line-height: 1;
-	cursor: pointer;
-	background: var(--vp-panel);
-	color: var(--vp-accent);
-	border: 1px solid var(--vp-border);
-	box-shadow: 2px 2px 0 0
-		color-mix(in srgb, var(--vp-shadow-color) 40%, transparent);
-	image-rendering: pixelated;
-}
-
-.chat-dock-fab:hover,
-.chat-dock-fab:focus-visible {
-	border-color: var(--vp-accent);
-	outline: none;
 }

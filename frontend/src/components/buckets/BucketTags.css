@@ -3,26 +3,8 @@
    under .btf so it renders self-contained on any page (Tasks loads Tasks.css,
    Calendar does not). */
 
-.btf .tag-search {
-	width: 100%;
-	box-sizing: border-box;
+.btf .btf-search {
 	margin-bottom: 8px;
-	padding: 6px 8px;
-	background: var(--vp-bg);
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 4px;
-	color: var(--vp-text);
-	font: inherit;
-	font-size: 0.78rem;
-}
-
-.btf .tag-search::placeholder {
-	color: var(--vp-muted);
-}
-
-.btf .tag-search:focus {
-	outline: none;
-	border-color: var(--vp-accent);
 }
 
 .btf .tag-nav {
@@ -154,29 +136,19 @@
 	color: var(--vp-muted);
 }
 
-.mbm-add,
-.mbm-search {
+.mbm-add {
 	display: flex;
 	gap: 6px;
 	margin-bottom: 8px;
 }
 
-.mbm-add input,
-.mbm-search {
+.mbm-add .vp-input {
 	flex: 1;
+	min-width: 0;
 }
 
-.mbm-add input,
-.mbm-search,
-.mbm-name,
-.mbm-select {
-	padding: 6px 8px;
-	background: var(--vp-bg);
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 4px;
-	color: var(--vp-text);
-	font: inherit;
-	font-size: 0.8rem;
+.mbm-search {
+	margin-bottom: 8px;
 }
 
 .mbm-list {
@@ -218,31 +190,8 @@
 	flex: none;
 }
 
-.mbm-select {
-	max-width: 130px;
-}
-
-.mbm-btn {
-	padding: 6px 10px;
-	background: var(--vp-bg-soft);
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 4px;
-	color: var(--vp-text);
-	font: inherit;
-	font-size: 0.8rem;
-	cursor: pointer;
-}
-
-.mbm-del {
-	background: none;
-	border: none;
-	color: var(--vp-muted);
-	cursor: pointer;
-	font-size: 0.85rem;
-	padding: 2px 4px;
-}
-
-.mbm-del:hover {
+/* Ghost row action that only turns red on hover. */
+.mbm-row .mbm-del:hover {
 	color: var(--vp-danger);
 }
 
@@ -293,43 +242,6 @@
 	flex-wrap: wrap;
 	gap: 4px;
 	margin-bottom: 6px;
-}
-
-.tagpicker-chip {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	padding: 2px 6px;
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 999px;
-	font-size: 0.74rem;
-}
-
-.tagpicker-chip button {
-	background: none;
-	border: none;
-	color: inherit;
-	cursor: pointer;
-	font-size: 0.85rem;
-	line-height: 1;
-	padding: 0;
-}
-
-.tagpicker-input {
-	width: 100%;
-	box-sizing: border-box;
-	padding: 6px 8px;
-	background: var(--vp-bg);
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 4px;
-	color: var(--vp-text);
-	font: inherit;
-	font-size: 0.8rem;
-}
-
-.tagpicker-input:focus {
-	outline: none;
-	border-color: var(--vp-accent);
 }
 
 /* Tag picker autocomplete dropdown — colour-coded registry suggestions. */

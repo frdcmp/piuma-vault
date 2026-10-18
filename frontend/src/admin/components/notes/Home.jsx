@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { PvModal } from "@/ui";
+import { PvIconButton, PvModal } from "@/ui";
 import { useLogout } from "../../../queries";
 import { useSprite } from "../../../sprites";
 import useChatDockStore from "../../../store/chatDockStore";
@@ -78,15 +78,13 @@ export default function Home({ onBack }) {
 			<Starfield />
 
 			{onBack ? (
-				<button
-					type="button"
+				<PvIconButton
+					size="lg"
 					className="piuma-home-back"
+					icon="☰"
+					label="Back to notes list"
 					onClick={onBack}
-					aria-label="Back to notes list"
-					title="Back to notes list"
-				>
-					☰
-				</button>
+				/>
 			) : null}
 			<SpriteStage pixelSize={8} />
 			<div className="piuma-home-text">

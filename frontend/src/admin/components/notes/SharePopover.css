@@ -1,0 +1,89 @@
+/* Note share popover (SharePopover) + its defaults dialog (ShareSettingsModal). */
+
+.share-pop {
+	position: relative;
+}
+
+/* Rendered in-tree (not portalled) so the compact top-bar menu and the
+   outside-click check both still see it as part of the trigger's subtree. */
+.share-pop-panel {
+	position: absolute;
+	top: 100%;
+	right: 0;
+	z-index: 100;
+	width: 320px;
+	margin-top: 8px;
+	padding: 20px;
+	background: var(--vp-panel);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow-lg);
+}
+
+.share-pop-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 12px;
+}
+
+.share-pop-title {
+	margin: 0;
+	color: var(--vp-accent);
+}
+
+/* A switch and the field it reveals. */
+.share-pop-group {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 12px;
+}
+
+.share-pop-shares {
+	margin-top: 16px;
+}
+
+.share-pop-shares-title {
+	font-size: 12px;
+	color: var(--vp-muted);
+}
+
+.share-pop-list {
+	max-height: 160px;
+	margin-top: 6px;
+	overflow-y: auto;
+}
+
+.share-pop-row {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 0;
+	border-bottom: 1px dashed var(--vp-border);
+}
+
+.share-pop-slug {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-size: 11px;
+}
+
+.share-pop-lock {
+	font-size: 12px;
+}
+
+.share-pop-expiry {
+	width: 40px;
+	font-size: 10px;
+	color: var(--vp-muted);
+	text-align: right;
+}
+
+.share-settings-intro {
+	margin: 0 0 14px;
+	font-size: 12px;
+	color: var(--vp-muted);
+}

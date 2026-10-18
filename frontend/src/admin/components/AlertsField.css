@@ -40,46 +40,12 @@
 	align-items: center;
 }
 
-.alerts-custom input,
-.alerts-custom select {
-	font: inherit;
-	padding: 3px 6px;
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 4px;
-	background: var(--vp-bg);
-	color: var(--vp-text);
-	/* Render the native <select> popup + number spinners in dark mode instead of
-	   the browser's default white. */
-	color-scheme: dark;
+.alerts-custom .alerts-custom-n {
+	width: 72px;
 }
 
-.alerts-custom input {
-	width: 64px;
-}
-
-.alerts-custom select {
-	cursor: pointer;
-}
-
-.alerts-custom input:focus,
-.alerts-custom select:focus {
-	outline: none;
-	border-color: var(--vp-accent);
-}
-
-.alerts-add {
-	font: inherit;
-	font-size: 0.8rem;
-	padding: 3px 10px;
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 4px;
-	background: transparent;
-	color: inherit;
-	cursor: pointer;
-}
-
-.alerts-add:hover {
-	border-color: var(--vp-accent);
+.alerts-custom .alerts-custom-unit {
+	width: auto;
 }
 
 .alerts-list {
@@ -89,32 +55,6 @@
 	display: flex;
 	flex-wrap: wrap;
 	gap: 6px;
-}
-
-.alerts-tag {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	font-size: 0.78rem;
-	padding: 2px 4px 2px 8px;
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 4px;
-}
-
-.alerts-tag button {
-	font: inherit;
-	line-height: 1;
-	border: none;
-	background: transparent;
-	color: inherit;
-	cursor: pointer;
-	padding: 0 4px;
-	opacity: 0.7;
-}
-
-.alerts-tag button:hover {
-	opacity: 1;
-	color: var(--vp-danger);
 }
 
 .alerts-empty {

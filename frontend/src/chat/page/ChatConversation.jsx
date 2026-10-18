@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ACCEPT_ATTR, SUPPORTED_LABEL } from "@/processing";
-import { pvMessage } from "@/ui";
+import { PvButton, PvIconButton, PvUpload, pvMessage } from "@/ui";
 import {
 	clearConversation,
 	createConversation,
@@ -120,7 +120,6 @@ export default function ChatConversation({
 
 	const abortRef = useRef(null);
 	const inputRef = useRef(null);
-	const fileRef = useRef(null);
 
 	const focusInput = useCallback(() => {
 		requestAnimationFrame(() => inputRef.current?.focus());
@@ -685,15 +684,13 @@ export default function ChatConversation({
 		<section className="chatx-conv">
 			<header className="chatx-conv-head">
 				{onToggleSidebar ? (
-					<button
-						type="button"
+					<PvIconButton
 						className="chatx-hamburger"
-						onClick={onToggleSidebar}
-						aria-label="Toggle conversations"
+						icon="☰"
+						label="Toggle conversations"
 						title="Conversations"
-					>
-						☰
-					</button>
+						onClick={onToggleSidebar}
+					/>
 				) : null}
 				<div className="chatx-conv-titlewrap">
 					<span className="chatx-conv-title">
@@ -715,17 +712,18 @@ export default function ChatConversation({
 					<span className="chatx-status-dot" />
 				</div>
 				<div className="chatx-model">
-					<button
-						type="button"
+					<PvButton
+						size="sm"
 						className="chatx-model-btn"
 						onClick={() => setModelMenuOpen((o) => !o)}
 						title="Model for this chat"
+						aria-expanded={modelMenuOpen}
 					>
 						<span className="chatx-model-name">
 							{activeModel?.display_name || "default model"}
 						</span>
 						<DownOutlined className="chatx-model-caret" />
-					</button>
+					</PvButton>
 					{modelMenuOpen ? (
 						<>
 							<button
@@ -832,35 +830,27 @@ export default function ChatConversation({
 							onDrop={onDrop}
 							onDragOver={(e) => e.preventDefault()}
 						>
-							<button
-								type="button"
-								className="chat-slash-btn chat-attach-btn"
-								onClick={() => fileRef.current?.click()}
-								title={`Attach a file (${SUPPORTED_LABEL}${visionEnabled ? "" : " — images need a vision model"})`}
-								aria-label="Attach a file"
-							>
-								＋
-							</button>
-							<input
-								ref={fileRef}
-								type="file"
+							<PvUpload
 								accept={ACCEPT_ATTR}
 								multiple
-								hidden
-								onChange={(e) => {
-									for (const f of e.target.files || []) addFile(f);
-									e.target.value = "";
+								onFiles={(files) => {
+									for (const f of files) addFile(f);
 								}}
-							/>
-							<button
-								type="button"
-								className="chat-slash-btn"
-								onClick={toggleSlashMenu}
-								title="Commands"
-								aria-label="Open command menu"
 							>
-								/
-							</button>
+								<PvIconButton
+									variant="ghost"
+									icon="＋"
+									label="Attach a file"
+									title={`Attach a file (${SUPPORTED_LABEL}${visionEnabled ? "" : " — images need a vision model"})`}
+								/>
+							</PvUpload>
+							<PvIconButton
+								variant="ghost"
+								icon="/"
+								label="Open command menu"
+								title="Commands"
+								onClick={toggleSlashMenu}
+							/>
 							<textarea
 								ref={inputRef}
 								className="chat-input"

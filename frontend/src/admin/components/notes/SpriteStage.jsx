@@ -219,7 +219,6 @@ export default function SpriteStage({ pixelSize = 8 }) {
 			onAnimationEnd={(ev) => {
 				if (ev.animationName === "piuma-jump") setJumping(false);
 			}}
-			style={{ display: "inline-block", lineHeight: 0 }}
 		>
 			<Sprite
 				rows={[...body, ...(legFrame >= 0 ? walkLegs[legFrame] : idleLegs)]}

@@ -5,135 +5,6 @@
 	font-family: var(--vp-font);
 }
 
-/* Tabs */
-.ag-tabs {
-	display: flex;
-	gap: 4px;
-	border-bottom: 1px solid var(--vp-border-soft);
-	margin-bottom: 16px;
-}
-.ag-tab {
-	background: none;
-	border: none;
-	color: var(--vp-muted);
-	padding: 8px 14px;
-	cursor: pointer;
-	font-size: 14px;
-	border-bottom: 2px solid transparent;
-	font-family: inherit;
-}
-.ag-tab:hover {
-	color: var(--vp-text);
-}
-.ag-tab--active {
-	color: var(--vp-text);
-	border-bottom-color: var(--vp-success);
-}
-
-/* Buttons */
-.ag-btn {
-	background: var(--vp-panel-alt);
-	color: var(--vp-text);
-	border: 1px solid var(--vp-border);
-	padding: 6px 12px;
-	cursor: pointer;
-	font-size: 13px;
-	font-family: inherit;
-}
-.ag-btn:hover {
-	border-color: var(--vp-success);
-}
-.ag-btn:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
-}
-.ag-btn--primary {
-	background: var(--vp-success);
-	color: var(--vp-on-accent);
-	border-color: var(--vp-success);
-	font-weight: 600;
-}
-.ag-btn--danger {
-	color: var(--vp-danger);
-}
-.ag-btn--danger:hover {
-	border-color: var(--vp-danger);
-}
-.ag-btn--sm {
-	padding: 3px 8px;
-	font-size: 12px;
-}
-.ag-btn--icon {
-	background: none;
-	border: none;
-	color: var(--vp-muted);
-	cursor: pointer;
-	padding: 2px 6px;
-	font-size: 14px;
-}
-.ag-btn--icon:hover {
-	color: var(--vp-text);
-}
-
-/* Inputs */
-.ag-input,
-.ag-textarea,
-.ag-select {
-	width: 100%;
-	box-sizing: border-box;
-	background: var(--vp-bg-soft);
-	color: var(--vp-text);
-	border: 1px solid var(--vp-border-soft);
-	padding: 7px 9px;
-	font-size: 13px;
-	font-family: inherit;
-}
-.ag-input:focus,
-.ag-textarea:focus,
-.ag-select:focus {
-	outline: none;
-	border-color: var(--vp-success);
-}
-.ag-textarea {
-	resize: vertical;
-	line-height: 1.5;
-}
-
-/* Native <select>: drop the OS chrome (which renders light on every platform),
-   draw our own chevron, and force the popup + any native widgets to dark. */
-.ag-select {
-	appearance: none;
-	-webkit-appearance: none;
-	-moz-appearance: none;
-	color-scheme: dark;
-	cursor: pointer;
-	padding-right: 28px;
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%238a93a3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-	background-repeat: no-repeat;
-	background-position: right 9px center;
-}
-.ag-select option {
-	background: var(--vp-panel);
-	color: var(--vp-text);
-}
-
-/* WebKit paints autofilled fields pale blue and ignores background — repaint
-   them with an inset shadow so password-manager fills stay on-theme. */
-.ag-input:-webkit-autofill,
-.ag-input:-webkit-autofill:hover,
-.ag-input:-webkit-autofill:focus,
-.ag-input:-webkit-autofill:active {
-	/* biome-ignore lint/complexity/noImportantStyles: override UA autofill styling */
-	-webkit-box-shadow: 0 0 0 30px var(--vp-bg-soft) inset !important;
-	/* biome-ignore lint/complexity/noImportantStyles: override UA autofill styling */
-	-webkit-text-fill-color: var(--vp-text) !important;
-	caret-color: var(--vp-text);
-	transition: background-color 5000s ease-in-out 0s;
-}
-.ag-field {
-	margin-bottom: 10px;
-}
-
 /* Wire-id combobox — suggestions from the provider's live model catalog */
 .ag-combo {
 	position: relative;
@@ -179,42 +50,9 @@
 	font-size: 12px;
 	color: var(--vp-muted);
 }
-.ag-combo-loading {
-	display: flex;
-	align-items: center;
-	gap: 8px;
+.ag-combo-error {
+	color: var(--vp-danger);
 }
-.ag-spinner {
-	display: inline-block;
-	width: 12px;
-	height: 12px;
-	border: 2px solid var(--vp-border);
-	border-top-color: var(--vp-accent);
-	border-radius: 50%;
-	animation: ag-spin 0.7s linear infinite;
-	flex: none;
-}
-@keyframes ag-spin {
-	to {
-		transform: rotate(360deg);
-	}
-}
-.ag-label {
-	display: block;
-	font-size: 12px;
-	color: var(--vp-muted);
-	margin-bottom: 4px;
-}
-
-.ag-hint {
-	display: block;
-	margin-top: 4px;
-	font-size: 11px;
-	line-height: 1.5;
-	color: var(--vp-muted);
-	opacity: 0.85;
-}
-
 /* Cards */
 .ag-card {
 	background: var(--vp-panel);
@@ -232,16 +70,20 @@
 .ag-card-body {
 	padding: 12px;
 }
+.ag-card--form,
+.ag-providers {
+	margin-top: 12px;
+}
+.ag-del.pv-icon-btn,
+.ag-del.pv-icon-btn:hover {
+	color: var(--vp-danger);
+}
 
 .ag-tag {
 	font-size: 11px;
 	padding: 1px 6px;
 	border: 1px solid var(--vp-border);
 	color: var(--vp-muted);
-}
-.ag-tag--purple {
-	color: var(--vp-violet);
-	border-color: var(--vp-violet);
 }
 .ag-tag--red {
 	color: var(--vp-danger);
@@ -372,7 +214,7 @@
 	min-width: 0;
 }
 .ag-model-add-fields .ag-combo,
-.ag-model-add-fields .ag-input {
+.ag-model-add-name {
 	flex: 1 1 0;
 	min-width: 0;
 }
@@ -406,4 +248,51 @@
 .ag-col {
 	flex: 1;
 	min-width: 340px;
+}
+
+.ag-status {
+	margin-bottom: 8px;
+}
+.ag-default-row {
+	margin-bottom: 16px;
+}
+.vp-select.ag-default-select {
+	width: 200px;
+}
+
+/* Persona emoji + display name share a row */
+.ag-field-emoji {
+	width: 90px;
+}
+.ag-field-grow {
+	flex: 1;
+}
+
+/* Slash-command rows: name | description | prompt | remove */
+.ag-cmd-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin-bottom: 6px;
+}
+.ag-cmd-name {
+	max-width: 120px;
+}
+.ag-cmd-desc {
+	max-width: 160px;
+}
+.ag-cmd-prompt {
+	flex: 1;
+}
+.vp-textarea.ag-cmd-prompt,
+.vp-textarea.ag-textarea-compact {
+	min-height: 0;
+}
+.ag-cmd-add {
+	align-self: flex-start;
+}
+
+/* Token-price modal */
+.ag-modal-note {
+	margin-top: 0;
 }

@@ -7,6 +7,7 @@ import {
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { PvButton, PvIconButton, PvInput } from "@/ui";
 import { fetchConversations } from "../../api/agentChatApi";
 import { timeAgo } from "../../utils/dateTime";
 import SpriteRunner from "../components/SpriteRunner";
@@ -67,44 +68,42 @@ export default function ChatSessionList({
 					<span className="chatx-brand-dot" />
 					chat
 				</Link>
-				<Link
+				<PvIconButton
 					to="/notes"
-					className="chatx-home"
-					title="Back to vault"
-					aria-label="Back to vault"
-				>
-					<HomeOutlined />
-				</Link>
-				<button
-					type="button"
-					className="chatx-new"
+					icon={<HomeOutlined />}
+					label="Back to vault"
+				/>
+				<PvButton
+					variant="primary"
+					size="sm"
+					icon={<PlusOutlined />}
 					onClick={onNew}
 					title="New conversation"
 				>
-					<PlusOutlined /> New
-				</button>
+					New
+				</PvButton>
 			</div>
 
-			<div className="chatx-search">
-				<SearchOutlined className="chatx-search-icon" />
-				<input
-					className="chatx-search-input"
-					type="text"
-					value={raw}
-					onChange={(e) => setRaw(e.target.value)}
-					placeholder="Search conversations…"
-				/>
-				{raw ? (
-					<button
-						type="button"
-						className="chatx-search-clear"
-						onClick={() => setRaw("")}
-						aria-label="Clear search"
-					>
-						×
-					</button>
-				) : null}
-			</div>
+			<PvInput
+				size="sm"
+				className="chatx-search"
+				value={raw}
+				onChange={(e) => setRaw(e.target.value)}
+				placeholder="Search conversations…"
+				aria-label="Search conversations"
+				prefix={<SearchOutlined />}
+				suffix={
+					raw ? (
+						<PvIconButton
+							variant="ghost"
+							size="sm"
+							icon="×"
+							label="Clear search"
+							onClick={() => setRaw("")}
+						/>
+					) : null
+				}
+			/>
 
 			<div className="chatx-session-list" onScroll={onListScroll}>
 				{isLoading ? (
@@ -137,15 +136,14 @@ export default function ChatSessionList({
 										</span>
 									) : null}
 								</button>
-								<button
-									type="button"
+								<PvIconButton
+									variant="ghost"
+									size="sm"
 									className="chatx-session-del"
+									icon={<DeleteOutlined />}
+									label="Delete conversation"
 									onClick={() => onDelete(c.id)}
-									aria-label="Delete conversation"
-									title="Delete conversation"
-								>
-									<DeleteOutlined />
-								</button>
+								/>
 							</div>
 						))}
 						{isFetchingNextPage ? (

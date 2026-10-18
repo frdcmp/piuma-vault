@@ -323,23 +323,24 @@ export default function CalendarPage() {
 				onClose={() => setFilterOpen(false)}
 			>
 				<div className="cal-filter-head">
-					<button
-						type="button"
-						className="tasks-manage-btn"
+					<PvButton
+						variant="ghost"
+						size="sm"
+						icon="⚙"
 						onClick={() => {
 							setFilterOpen(false);
 							setManageOpen(true);
 						}}
 					>
-						⚙ manage
-					</button>
-					<button
-						type="button"
-						className="tasks-manage-btn"
+						manage
+					</PvButton>
+					<PvButton
+						variant="ghost"
+						size="sm"
 						onClick={() => setFilterOpen(false)}
 					>
 						close ✕
-					</button>
+					</PvButton>
 				</div>
 				<BucketTagFilter
 					scope="calendar"

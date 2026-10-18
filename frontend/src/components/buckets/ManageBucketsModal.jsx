@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTheme } from "@/theme";
-import { PvModal } from "@/ui";
+import { PvButton, PvIconButton, PvInput, PvModal } from "@/ui";
 import {
 	useBuckets,
 	useCreateBucket,
@@ -84,15 +84,16 @@ export default function ManageBucketsModal({ onClose }) {
 				<section className="mbm-section">
 					<h4 className="mbm-title">Buckets</h4>
 					<div className="mbm-add">
-						<input
+						<PvInput
+							size="sm"
 							value={newBucket}
 							onChange={(e) => setNewBucket(e.target.value)}
 							onKeyDown={onCommitKey(addBucket)}
 							placeholder="New bucket name…"
 						/>
-						<button type="button" className="mbm-btn" onClick={addBucket}>
+						<PvButton size="sm" onClick={addBucket}>
 							+ add
-						</button>
+						</PvButton>
 					</div>
 					<ul className="mbm-list">
 						{buckets.map((b) => (
@@ -106,25 +107,29 @@ export default function ManageBucketsModal({ onClose }) {
 									}
 									aria-label={`${b.name} colour`}
 								/>
-								<input
+								<PvInput
+									size="sm"
 									className="mbm-name"
 									defaultValue={b.name}
 									onBlur={(e) => renameBucket(b, e.target.value)}
 									onKeyDown={onCommitKey(() => {})}
+									aria-label={`${b.name} name`}
 								/>
-								<button
-									type="button"
+								<PvIconButton
+									size="sm"
+									variant="ghost"
 									className="mbm-del"
+									icon={
+										deleteBucket.isPending &&
+										deleteBucket.variables === b.id ? (
+											<span className="mbm-spin" aria-hidden="true" />
+										) : (
+											"✕"
+										)
+									}
+									label={`Delete ${b.name} (its tasks fall back to no bucket)`}
 									onClick={() => setPendingDelete(b)}
-									aria-label={`Delete ${b.name}`}
-									title="Delete bucket (its tasks fall back to no bucket)"
-								>
-									{deleteBucket.isPending && deleteBucket.variables === b.id ? (
-										<span className="mbm-spin" aria-hidden="true" />
-									) : (
-										"✕"
-									)}
-								</button>
+								/>
 							</li>
 						))}
 						{buckets.length === 0 ? (
@@ -135,11 +140,13 @@ export default function ManageBucketsModal({ onClose }) {
 
 				<section className="mbm-section">
 					<h4 className="mbm-title">Tags</h4>
-					<input
+					<PvInput
+						size="sm"
 						className="mbm-search"
 						value={tagFilter}
 						onChange={(e) => setTagFilter(e.target.value)}
 						placeholder="Filter tags…"
+						aria-label="Filter tags"
 					/>
 					<ul className="mbm-list mbm-tags">
 						{shownTags.map((t) => (
@@ -149,21 +156,22 @@ export default function ManageBucketsModal({ onClose }) {
 									style={{ background: t.color || tagColor(t.name) }}
 									aria-hidden="true"
 								/>
-								<input
+								<PvInput
+									size="sm"
 									className="mbm-name"
 									defaultValue={t.name}
 									onBlur={(e) => renameTag(t, e.target.value)}
 									onKeyDown={onCommitKey(() => {})}
+									aria-label={`#${t.name} name`}
 								/>
-								<button
-									type="button"
+								<PvIconButton
+									size="sm"
+									variant="ghost"
 									className="mbm-del"
+									icon="✕"
+									label={`Remove #${t.name} from the registry`}
 									onClick={() => deleteTag.mutate(t.id)}
-									aria-label={`Delete #${t.name}`}
-									title="Remove tag from the registry"
-								>
-									✕
-								</button>
+								/>
 							</li>
 						))}
 						{shownTags.length === 0 ? (

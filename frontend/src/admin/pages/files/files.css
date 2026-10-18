@@ -1,6 +1,5 @@
 /* files — vault pixel skin for the file storage browser.
-   Tokens come from vault-pixel.css. Behavior-heavy antd pieces (Upload,
-   List, Modal, Select, Input, Checkbox, Spin, Empty) are kept and restyled. */
+   Tokens come from vault-pixel.css; controls are the @/ui kit. */
 
 /* ---- Stats ----------------------------------------------------------------- */
 .vp-files-stats {
@@ -48,26 +47,16 @@
 	color: var(--vp-accent);
 }
 
-/* ---- Upload dragger -------------------------------------------------------- */
-.vp-files-upload .ant-upload-wrapper,
-.vp-files-upload .ant-upload.ant-upload-drag {
-	background: var(--vp-bg-soft);
-	border: 2px dashed var(--vp-border);
-	border-radius: 0;
-}
-.vp-files-upload .ant-upload.ant-upload-drag:hover {
-	border-color: var(--vp-accent);
-}
-.vp-files-upload .ant-upload-drag-icon,
-.vp-files-upload .ant-upload-text,
-.vp-files-upload .ant-upload-hint {
-	color: var(--vp-text);
-	font-family: var(--vp-font);
-}
-.vp-files-upload .ant-upload-drag-icon .anticon {
+/* ---- Upload drop zone (PvUpload drag) ------------------------------------- */
+.vp-files-upload-icon {
+	font-size: 32px;
 	color: var(--vp-accent);
 }
-.vp-files-upload .ant-upload-hint {
+.vp-files-upload-text {
+	color: var(--vp-text);
+	font-size: 13px;
+}
+.vp-files-upload-hint {
 	color: var(--vp-muted);
 }
 
@@ -116,37 +105,58 @@
 	border: 2px solid var(--vp-border);
 }
 
-/* ---- Loading / empty ------------------------------------------------------- */
-.vp-files-center {
-	text-align: center;
-	padding: 40px;
-}
-.vp-files-list .ant-empty-description {
-	color: var(--vp-muted);
-}
-
 /* ---- Select-all ------------------------------------------------------------ */
 .vp-files-selectall {
 	padding: 4px 0 8px;
 	margin-bottom: 4px;
 	border-bottom: 1px solid var(--vp-border-soft);
 }
-.vp-files-selectall .ant-checkbox-wrapper {
-	color: var(--vp-text);
-	font-family: var(--vp-font);
-	font-size: 12px;
-}
 
 /* ---- List items ------------------------------------------------------------ */
-.vp-files-list .ant-list-item {
+.vp-files-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+.vp-files-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 12px;
 	border-bottom: 1px solid var(--vp-border-soft);
 	padding: 12px 8px;
 }
-.vp-files-item--folder {
-	cursor: pointer;
-}
 .vp-files-item--folder:hover {
 	background: var(--vp-panel-alt);
+}
+.vp-files-item-main {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	flex: 1;
+	min-width: 0;
+}
+/* Folder rows: the main area is a native button that opens the folder. */
+button.vp-files-item-main {
+	padding: 0;
+	background: none;
+	border: 0;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+.vp-files-item-text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+.vp-files-item-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
 }
 .vp-files-avatar {
 	font-size: 22px;
@@ -163,30 +173,10 @@
 	letter-spacing: 0.5px;
 	color: var(--vp-text);
 }
-.vp-files-meta-stack {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-}
 .vp-files-meta {
 	font-size: 12px;
 	color: var(--vp-muted);
 	word-break: break-all;
-}
-.vp-files-list .ant-list-item-meta-title,
-.vp-files-list .ant-list-item-meta-description {
-	color: var(--vp-text);
-}
-.vp-files-list .ant-list-item-action {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-}
-.vp-files-list .ant-list-item-action > li {
-	padding: 0;
-}
-.vp-files-list .ant-list-item-action-split {
-	display: none;
 }
 
 /* ---- Share modal ----------------------------------------------------------- */
@@ -197,7 +187,7 @@
 .vp-files-shareurl {
 	gap: 8px;
 }
-.vp-files-shareurl .ant-input {
+.vp-files-shareurl .vp-input {
 	flex: 1;
 }
 .vp-files-shareexpiry {

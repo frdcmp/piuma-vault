@@ -19,45 +19,6 @@
 	font-size: 12px;
 }
 
-/* ---- Alerts (success / error) ---------------------------------------------- */
-.vp-test-alert {
-	display: flex;
-	align-items: flex-start;
-	gap: 10px;
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-border);
-	box-shadow: var(--vp-shadow);
-	padding: 12px 14px;
-}
-.vp-test-alert--success {
-	border-color: var(--vp-success);
-}
-.vp-test-alert--error {
-	border-color: var(--vp-danger);
-}
-.vp-test-alert-icon {
-	font-size: 18px;
-	margin-top: 2px;
-}
-.vp-test-alert--success .vp-test-alert-icon {
-	color: var(--vp-success);
-}
-.vp-test-alert--error .vp-test-alert-icon {
-	color: var(--vp-danger);
-}
-.vp-test-alert-title {
-	display: block;
-	font-size: 13px;
-	letter-spacing: 0.5px;
-	color: var(--vp-text);
-}
-.vp-test-alert-desc {
-	margin: 4px 0 0;
-	font-size: 12px;
-	color: var(--vp-muted);
-	line-height: 1.6;
-}
-
 /* ---- Descriptions list ----------------------------------------------------- */
 .vp-test-descriptions {
 	margin: 0;

@@ -1,5 +1,14 @@
 import { useState } from "react";
-import { PvButton, PvCheckbox, PvModal, PvPanel, pvMessage } from "@/ui";
+import {
+	PvButton,
+	PvCheckbox,
+	PvField,
+	PvInput,
+	PvModal,
+	PvPanel,
+	PvSelect,
+	pvMessage,
+} from "@/ui";
 import {
 	useCreateEmailAccount,
 	useDeleteEmailAccount,
@@ -10,10 +19,10 @@ import {
 	useUpdateEmailAccount,
 } from "../../../queries";
 
-const SECURITY_OPTS = [
-	{ id: "starttls", label: "STARTTLS (587)" },
-	{ id: "ssl", label: "SSL/TLS (465 / 993)" },
-	{ id: "none", label: "None (plaintext)" },
+const SECURITY_OPTIONS = [
+	{ value: "starttls", label: "STARTTLS (587)" },
+	{ value: "ssl", label: "SSL/TLS (465 / 993)" },
+	{ value: "none", label: "None (plaintext)" },
 ];
 
 const blankForm = () => ({
@@ -88,6 +97,7 @@ const AccountCard = ({ account, onCancelDraft, onDeleteRequest }) => {
 	const testImap = useTestEmailImap();
 
 	const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+	const setVal = (key) => (value) => setForm((f) => ({ ...f, [key]: value }));
 	const setBool = (key) => (checked) =>
 		setForm((f) => ({ ...f, [key]: checked }));
 
@@ -182,43 +192,103 @@ const AccountCard = ({ account, onCancelDraft, onDeleteRequest }) => {
 
 	const busy = create.isPending || update.isPending;
 
+	// SMTP / IMAP block — same shape for both protocols.
+	const serverFields = (proto, hostPh) => (
+		<>
+			<div className="vp-row vp-svc-fields">
+				<PvField
+					className="vp-svc-col vp-svc-col--host"
+					label={`${proto.toUpperCase()} Host`}
+				>
+					<PvInput
+						spellCheck={false}
+						placeholder={hostPh}
+						value={form[`${proto}_host`]}
+						onChange={set(`${proto}_host`)}
+					/>
+				</PvField>
+				<PvField className="vp-svc-col vp-svc-col--port" label="Port">
+					<PvInput
+						type="number"
+						value={form[`${proto}_port`]}
+						onChange={set(`${proto}_port`)}
+					/>
+				</PvField>
+				<PvField className="vp-svc-col vp-svc-col--sec" label="Security">
+					<PvSelect
+						value={form[`${proto}_security`]}
+						onChange={setVal(`${proto}_security`)}
+						options={SECURITY_OPTIONS}
+					/>
+				</PvField>
+			</div>
+			<div className="vp-row vp-svc-fields">
+				<PvField className="vp-svc-col vp-svc-col--half" label="Username">
+					<PvInput
+						spellCheck={false}
+						autoComplete="off"
+						placeholder="defaults to the email address"
+						value={form[`${proto}_username`]}
+						onChange={set(`${proto}_username`)}
+					/>
+				</PvField>
+				<PvField
+					className="vp-svc-col vp-svc-col--half"
+					label={
+						<>
+							Password / App password{" "}
+							{!isNew && <Chip on={account[`${proto}_password_set`]} />}
+						</>
+					}
+				>
+					<PvInput
+						type="password"
+						reveal
+						autoComplete="new-password"
+						placeholder={
+							!isNew && account[`${proto}_password_set`]
+								? "•••• configured — leave blank to keep"
+								: "app password"
+						}
+						value={form[`${proto}_password`]}
+						onChange={set(`${proto}_password`)}
+					/>
+				</PvField>
+			</div>
+		</>
+	);
+
 	return (
 		<div className="vp-email-card">
-			<div className="vp-row" style={{ gap: 12, flexWrap: "wrap" }}>
-				<div
-					className="vp-field"
-					style={{ flex: "1 1 200px", marginBottom: 0 }}
-				>
-					<span className="vp-label">Label</span>
-					<input
-						className="vp-input"
-						type="text"
+			<div className="vp-row vp-svc-fields">
+				<PvField className="vp-svc-col" label="Label">
+					<PvInput
 						placeholder="Personal Gmail"
 						value={form.label}
 						onChange={set("label")}
 					/>
-				</div>
-				<div
-					className="vp-field"
-					style={{ flex: "1 1 240px", marginBottom: 0 }}
+				</PvField>
+				<PvField
+					className="vp-svc-col vp-svc-col--wide"
+					label={
+						<>
+							Email address{" "}
+							{!isNew && account.is_default && (
+								<span className="vp-tag vp-tag--green vp-svc-chip">
+									system sender
+								</span>
+							)}
+						</>
+					}
 				>
-					<span className="vp-label">
-						Email address{" "}
-						{!isNew && account.is_default && (
-							<span className="vp-tag vp-tag--green vp-svc-chip">
-								system sender
-							</span>
-						)}
-					</span>
-					<input
-						className="vp-input"
+					<PvInput
 						type="email"
 						spellCheck={false}
 						placeholder="you@example.com"
 						value={form.email_address}
 						onChange={set("email_address")}
 					/>
-				</div>
+				</PvField>
 			</div>
 
 			{/* Sending (SMTP) */}
@@ -229,89 +299,7 @@ const AccountCard = ({ account, onCancelDraft, onDeleteRequest }) => {
 			/>
 			{form.send_enabled && (
 				<div className="vp-email-section">
-					<div className="vp-row" style={{ gap: 12, flexWrap: "wrap" }}>
-						<div
-							className="vp-field"
-							style={{ flex: "2 1 220px", marginBottom: 0 }}
-						>
-							<span className="vp-label">SMTP Host</span>
-							<input
-								className="vp-input"
-								type="text"
-								spellCheck={false}
-								placeholder="smtp.gmail.com"
-								value={form.smtp_host}
-								onChange={set("smtp_host")}
-							/>
-						</div>
-						<div
-							className="vp-field"
-							style={{ flex: "0 1 100px", marginBottom: 0 }}
-						>
-							<span className="vp-label">Port</span>
-							<input
-								className="vp-input"
-								type="number"
-								value={form.smtp_port}
-								onChange={set("smtp_port")}
-							/>
-						</div>
-						<div
-							className="vp-field"
-							style={{ flex: "1 1 160px", marginBottom: 0 }}
-						>
-							<span className="vp-label">Security</span>
-							<select
-								className="vp-input"
-								value={form.smtp_security}
-								onChange={set("smtp_security")}
-							>
-								{SECURITY_OPTS.map((o) => (
-									<option key={o.id} value={o.id}>
-										{o.label}
-									</option>
-								))}
-							</select>
-						</div>
-					</div>
-					<div className="vp-row" style={{ gap: 12, flexWrap: "wrap" }}>
-						<div
-							className="vp-field"
-							style={{ flex: "1 1 220px", marginBottom: 0 }}
-						>
-							<span className="vp-label">Username</span>
-							<input
-								className="vp-input"
-								type="text"
-								spellCheck={false}
-								autoComplete="off"
-								placeholder="defaults to the email address"
-								value={form.smtp_username}
-								onChange={set("smtp_username")}
-							/>
-						</div>
-						<div
-							className="vp-field"
-							style={{ flex: "1 1 220px", marginBottom: 0 }}
-						>
-							<span className="vp-label">
-								Password / App password{" "}
-								{!isNew && <Chip on={account.smtp_password_set} />}
-							</span>
-							<input
-								className="vp-input"
-								type="password"
-								autoComplete="new-password"
-								placeholder={
-									!isNew && account.smtp_password_set
-										? "•••• configured — leave blank to keep"
-										: "app password"
-								}
-								value={form.smtp_password}
-								onChange={set("smtp_password")}
-							/>
-						</div>
-					</div>
+					{serverFields("smtp", "smtp.gmail.com")}
 					<div className="vp-svc-test">
 						<PvButton
 							size="sm"
@@ -335,89 +323,7 @@ const AccountCard = ({ account, onCancelDraft, onDeleteRequest }) => {
 			/>
 			{form.read_enabled && (
 				<div className="vp-email-section">
-					<div className="vp-row" style={{ gap: 12, flexWrap: "wrap" }}>
-						<div
-							className="vp-field"
-							style={{ flex: "2 1 220px", marginBottom: 0 }}
-						>
-							<span className="vp-label">IMAP Host</span>
-							<input
-								className="vp-input"
-								type="text"
-								spellCheck={false}
-								placeholder="imap.gmail.com"
-								value={form.imap_host}
-								onChange={set("imap_host")}
-							/>
-						</div>
-						<div
-							className="vp-field"
-							style={{ flex: "0 1 100px", marginBottom: 0 }}
-						>
-							<span className="vp-label">Port</span>
-							<input
-								className="vp-input"
-								type="number"
-								value={form.imap_port}
-								onChange={set("imap_port")}
-							/>
-						</div>
-						<div
-							className="vp-field"
-							style={{ flex: "1 1 160px", marginBottom: 0 }}
-						>
-							<span className="vp-label">Security</span>
-							<select
-								className="vp-input"
-								value={form.imap_security}
-								onChange={set("imap_security")}
-							>
-								{SECURITY_OPTS.map((o) => (
-									<option key={o.id} value={o.id}>
-										{o.label}
-									</option>
-								))}
-							</select>
-						</div>
-					</div>
-					<div className="vp-row" style={{ gap: 12, flexWrap: "wrap" }}>
-						<div
-							className="vp-field"
-							style={{ flex: "1 1 220px", marginBottom: 0 }}
-						>
-							<span className="vp-label">Username</span>
-							<input
-								className="vp-input"
-								type="text"
-								spellCheck={false}
-								autoComplete="off"
-								placeholder="defaults to the email address"
-								value={form.imap_username}
-								onChange={set("imap_username")}
-							/>
-						</div>
-						<div
-							className="vp-field"
-							style={{ flex: "1 1 220px", marginBottom: 0 }}
-						>
-							<span className="vp-label">
-								Password / App password{" "}
-								{!isNew && <Chip on={account.imap_password_set} />}
-							</span>
-							<input
-								className="vp-input"
-								type="password"
-								autoComplete="new-password"
-								placeholder={
-									!isNew && account.imap_password_set
-										? "•••• configured — leave blank to keep"
-										: "app password"
-								}
-								value={form.imap_password}
-								onChange={set("imap_password")}
-							/>
-						</div>
-					</div>
+					{serverFields("imap", "imap.gmail.com")}
 					<div className="vp-svc-test">
 						<PvButton
 							size="sm"
@@ -443,7 +349,7 @@ const AccountCard = ({ account, onCancelDraft, onDeleteRequest }) => {
 				/>
 			)}
 
-			<div className="vp-row" style={{ gap: 8, marginTop: 12 }}>
+			<div className="vp-row vp-email-actions">
 				<PvButton variant="primary" onClick={handleSave} disabled={busy}>
 					{busy ? "Saving…" : isNew ? "Add account" : "Save"}
 				</PvButton>
@@ -496,16 +402,13 @@ const EmailAccounts = () => {
 
 	return (
 		<PvPanel title="email · accounts">
-			<p className="vp-card-desc" style={{ marginBottom: 16 }}>
+			<p className="vp-card-desc vp-svc-desc">
 				Add one or more mailboxes. Each can independently send (SMTP) and/or
 				read (IMAP). One sending account is the <strong>system sender</strong>{" "}
 				used for verification &amp; password-reset email. Credentials are
 				encrypted at rest.
 			</p>
-			<p
-				className="vp-muted vp-text"
-				style={{ fontSize: 12, marginBottom: 16 }}
-			>
+			<p className="vp-muted vp-text vp-svc-note">
 				Gmail / Yahoo / Fastmail need an <strong>app password</strong> (enable
 				2-step verification first). Outlook/Microsoft 365 now requires OAuth2
 				(not yet supported). Proton needs Proton Bridge. Custom-domain mailboxes
@@ -514,9 +417,7 @@ const EmailAccounts = () => {
 
 			{isLoading && <p className="vp-muted vp-text">Loading…</p>}
 			{error && (
-				<p className="vp-text" style={{ color: "var(--vp-danger)" }}>
-					Failed to load email accounts.
-				</p>
+				<p className="vp-text vp-svc-error">Failed to load email accounts.</p>
 			)}
 
 			<div className="vp-stack">
@@ -537,7 +438,7 @@ const EmailAccounts = () => {
 			</div>
 
 			{!draft && (
-				<div className="vp-row" style={{ marginTop: 16 }}>
+				<div className="vp-row vp-svc-add">
 					<PvButton onClick={() => setDraft(true)}>＋ Add account</PvButton>
 				</div>
 			)}

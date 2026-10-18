@@ -771,43 +771,27 @@ export default function MilkdownEditorComp({
 		const wrapperRect = wrapperRef.current.getBoundingClientRect();
 
 		return (
-			<div
+			<button
+				type="button"
 				key={isCopied ? "copied" : "hovered"}
-				className="pv-cell-copy-btn"
+				className={`pv-cell-copy-btn${isCopied ? " is-copied" : ""}`}
 				style={{
-					position: "absolute",
-					top: rect.top - wrapperRect.top + 2,
-					left: rect.right - wrapperRect.left - 24,
-					zIndex: 10,
-					height: 20,
-					width: 20,
-					padding: 0,
-					fontSize: 12,
-					background: "transparent",
-					border: "none",
-					color: isCopied ? "var(--vp-success)" : "var(--vp-muted)",
-					cursor: isCopied ? "default" : "pointer",
-					display: "flex",
-					alignItems: "center",
-					justifyContent: "center",
+					"--copy-top": `${rect.top - wrapperRect.top + 2}px`,
+					"--copy-left": `${rect.right - wrapperRect.left - 24}px`,
 				}}
+				// Keep the editor's focus/selection — the old <div> never took focus.
+				onMouseDown={(e) => e.preventDefault()}
 				onClick={isCopied ? undefined : handleCopy}
 				title={isCopied ? "Copied!" : "Copy cell content"}
+				aria-label={isCopied ? "Copied!" : "Copy cell content"}
 			>
 				{isCopied ? "✓" : "📋"}
-			</div>
+			</button>
 		);
 	};
 
 	return (
-		<div
-			ref={wrapperRef}
-			className="pv-milkdown-wrapper"
-			style={{
-				paddingBottom: 0,
-				position: "relative",
-			}}
-		>
+		<div ref={wrapperRef} className="pv-milkdown-wrapper">
 			{copiedCell && renderCopyBtn(copiedCell, true)}
 			{hoveredCell &&
 				hoveredCell !== copiedCell &&

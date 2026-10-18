@@ -38,17 +38,14 @@
 	color: var(--vp-muted);
 	font-size: 16px;
 }
-.vp-search-input {
+/* PvInput, drawn bare inside the palette head. */
+.vp-search-head .vp-search-input {
 	flex: 1;
+	padding: 0;
 	background: transparent;
 	border: none;
-	outline: none;
-	color: var(--vp-text);
-	font-family: var(--vp-font);
+	box-shadow: none;
 	font-size: 15px;
-}
-.vp-search-input::placeholder {
-	color: var(--vp-faint);
 }
 .vp-search-esc {
 	border: 2px solid var(--vp-border);

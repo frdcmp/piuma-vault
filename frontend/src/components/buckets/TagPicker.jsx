@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { PvInput, PvTag } from "@/ui";
 import { useTagRegistry } from "../../queries";
 import { tagColor } from "../../utils/tagColor";
 import "./BucketTags.css";
@@ -48,25 +49,19 @@ export default function TagPicker({ value = [], onChange }) {
 			{value.length ? (
 				<div className="tagpicker-chips">
 					{value.map((name) => (
-						<span
-							className="tagpicker-chip"
+						<PvTag
 							key={name}
-							style={{ borderColor: colorOf(name), color: colorOf(name) }}
+							color={colorOf(name)}
+							onRemove={() => remove(name)}
+							removeLabel={`Remove #${name}`}
 						>
 							#{name}
-							<button
-								type="button"
-								onClick={() => remove(name)}
-								aria-label={`Remove #${name}`}
-							>
-								×
-							</button>
-						</span>
+						</PvTag>
 					))}
 				</div>
 			) : null}
-			<input
-				className="tagpicker-input"
+			<PvInput
+				size="sm"
 				value={input}
 				onChange={(e) => {
 					setInput(e.target.value);

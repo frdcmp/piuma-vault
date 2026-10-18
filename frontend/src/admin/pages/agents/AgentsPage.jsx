@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
-import { PvCheckbox, PvModal } from "@/ui";
+import {
+	PvButton,
+	PvCheckbox,
+	PvField,
+	PvIconButton,
+	PvInput,
+	PvModal,
+	PvSelect,
+	PvSpin,
+	PvTabs,
+	PvTextarea,
+} from "@/ui";
 import { fetchModelMeta } from "../../../api/agentChatApi";
 import {
 	useAgentList,
@@ -210,22 +221,21 @@ function ModelsList({ providerId, providerKind }) {
 						>
 							${m.price_input ?? 0}/${m.price_output ?? 0}
 						</button>
-						<button
-							type="button"
-							className="ag-btn--icon ag-btn--danger"
-							title="Delete model"
+						<PvIconButton
+							variant="ghost"
+							size="sm"
+							className="ag-del"
+							label="Delete model"
+							icon="✕"
 							onClick={() => setPendingDelete(m)}
-						>
-							✕
-						</button>
+						/>
 					</div>
 				</div>
 			))}
 			<div className="ag-model-add">
 				<div className="ag-model-add-fields">
 					<div className="ag-combo">
-						<input
-							className="ag-input"
+						<PvInput
 							placeholder="wire id (deepseek-chat)"
 							value={modelId}
 							onChange={(e) => setModelId(e.target.value)}
@@ -235,12 +245,11 @@ function ModelsList({ providerId, providerKind }) {
 						{picker && (
 							<div className="ag-combo-menu">
 								{catalogPending ? (
-									<div className="ag-combo-note ag-combo-loading">
-										<span className="ag-spinner" aria-hidden="true" />
-										Loading models…
+									<div className="ag-combo-note">
+										<PvSpin label="Loading models…" />
 									</div>
 								) : catalogError ? (
-									<div className="ag-combo-note ag-error" style={{ margin: 0 }}>
+									<div className="ag-combo-note ag-combo-error">
 										{errMsg(catalogErr, "Couldn't list models")}
 									</div>
 								) : suggestions.length ? (
@@ -271,8 +280,8 @@ function ModelsList({ providerId, providerKind }) {
 							</div>
 						)}
 					</div>
-					<input
-						className="ag-input"
+					<PvInput
+						className="ag-model-add-name"
 						placeholder="display name"
 						value={displayName}
 						onChange={(e) => setDisplayName(e.target.value)}
@@ -285,13 +294,9 @@ function ModelsList({ providerId, providerKind }) {
 						label="thinking"
 					/>
 					<PvCheckbox checked={vision} onChange={setVision} label="vision" />
-					<button
-						type="button"
-						className="ag-btn ag-btn--sm ag-btn--primary"
-						onClick={add}
-					>
+					<PvButton variant="primary" size="sm" onClick={add}>
 						+ Add model
-					</button>
+					</PvButton>
 				</div>
 			</div>
 			{error && <div className="ag-error">{error}</div>}
@@ -316,42 +321,36 @@ function ModelsList({ providerId, providerKind }) {
 				onConfirm={savePricing}
 				onCancel={() => setPricing(null)}
 			>
-				<p className="ag-muted" style={{ marginTop: 0 }}>
+				<p className="ag-muted ag-modal-note">
 					USD per 1M tokens. Used to estimate spend on the Token Usage page.
 				</p>
-				<label className="ag-row" style={{ gap: 8, marginBottom: 8 }}>
-					<span style={{ minWidth: 110 }}>Input</span>
-					<input
-						className="ag-input"
+				<PvField label="Input">
+					<PvInput
 						type="number"
 						min="0"
 						step="0.01"
 						value={priceIn}
 						onChange={(e) => setPriceIn(e.target.value)}
 					/>
-				</label>
-				<label className="ag-row" style={{ gap: 8, marginBottom: 8 }}>
-					<span style={{ minWidth: 110 }}>Output</span>
-					<input
-						className="ag-input"
+				</PvField>
+				<PvField label="Output">
+					<PvInput
 						type="number"
 						min="0"
 						step="0.01"
 						value={priceOut}
 						onChange={(e) => setPriceOut(e.target.value)}
 					/>
-				</label>
-				<label className="ag-row" style={{ gap: 8 }}>
-					<span style={{ minWidth: 110 }}>Cached (read)</span>
-					<input
-						className="ag-input"
+				</PvField>
+				<PvField label="Cached (read)">
+					<PvInput
 						type="number"
 						min="0"
 						step="0.01"
 						value={priceCached}
 						onChange={(e) => setPriceCached(e.target.value)}
 					/>
-				</label>
+				</PvField>
 			</PvModal>
 		</div>
 	);
@@ -413,83 +412,70 @@ function ProvidersTab() {
 
 	return (
 		<div>
-			<button
-				type="button"
-				className="ag-btn ag-btn--primary"
-				onClick={() => setShowForm((s) => !s)}
-			>
+			<PvButton variant="primary" onClick={() => setShowForm((s) => !s)}>
 				{showForm ? "Cancel" : "+ Add provider"}
-			</button>
+			</PvButton>
 
 			{showForm && (
-				<div className="ag-card" style={{ marginTop: 12 }}>
+				<div className="ag-card ag-card--form">
 					<div className="ag-card-body">
-						<div className="ag-field">
-							<span className="ag-label">Kind</span>
-							<select
-								className="ag-select"
+						<PvField label="Kind">
+							<PvSelect
 								value={kind}
-								onChange={(e) => onKindChange(e.target.value)}
-							>
-								{PROVIDER_KINDS.map((k) => (
-									<option key={k} value={k}>
-										{KIND_LABEL[k] || k}
-									</option>
-								))}
-							</select>
-						</div>
-						<div className="ag-field">
-							<span className="ag-label">Display name</span>
-							<input
-								className="ag-input"
+								onChange={onKindChange}
+								options={PROVIDER_KINDS.map((k) => ({
+									value: k,
+									label: KIND_LABEL[k] || k,
+								}))}
+							/>
+						</PvField>
+						<PvField label="Display name">
+							<PvInput
 								value={displayName}
 								onChange={(e) => setDisplayName(e.target.value)}
 								placeholder={isLocal ? KIND_LABEL[kind] : "DeepSeek"}
 							/>
-						</div>
-						<div className="ag-field">
-							<span className="ag-label">
-								API key{isLocal ? " (not needed)" : ""}
-							</span>
-							<input
-								className="ag-input"
+						</PvField>
+						<PvField label={`API key${isLocal ? " (not needed)" : ""}`}>
+							<PvInput
 								type="password"
+								reveal
 								value={apiKey}
 								onChange={(e) => setApiKey(e.target.value)}
 								placeholder={isLocal ? "— leave blank —" : "sk-…"}
 								disabled={isLocal}
 							/>
-						</div>
-						<div className="ag-field">
-							<span className="ag-label">
-								Base URL{isLocal ? "" : " (optional)"}
-							</span>
-							<input
-								className="ag-input"
+						</PvField>
+						<PvField
+							label={`Base URL${isLocal ? "" : " (optional)"}`}
+							hint={
+								isLocal ? (
+									<>
+										Use <code>localhost</code> if the model server runs on the
+										same machine as the backend — it's auto-mapped to the host
+										from inside the container. Otherwise use the host's ZeroTier
+										IP. Keep the <code>/v1</code> path.
+									</>
+								) : undefined
+							}
+						>
+							<PvInput
 								value={baseUrl}
 								onChange={(e) => setBaseUrl(e.target.value)}
 								placeholder={
 									isLocal ? DEFAULT_BASE_URL[kind] : "https://api.deepseek.com"
 								}
 							/>
-							{isLocal && (
-								<span className="ag-hint">
-									Use <code>localhost</code> if the model server runs on the
-									same machine as the backend — it's auto-mapped to the host
-									from inside the container. Otherwise use the host's ZeroTier
-									IP. Keep the <code>/v1</code> path.
-								</span>
-							)}
-						</div>
+						</PvField>
 						{error && <div className="ag-error">{error}</div>}
-						<button
-							type="button"
-							className="ag-btn ag-btn--primary"
+						<PvButton
+							variant="primary"
 							onClick={create}
 							disabled={createProvider.isPending}
+							loading={createProvider.isPending}
 						>
 							Save provider
-						</button>
+						</PvButton>
 					</div>
 				</div>
 			)}
@@ -500,7 +486,7 @@ function ProvidersTab() {
 				</div>
 			)}
 
-			<div style={{ marginTop: 12 }}>
+			<div className="ag-providers">
 				{providers.map((p) => (
 					<div key={p.id} className="ag-card">
 						<div className="ag-card-head">
@@ -513,14 +499,14 @@ function ProvidersTab() {
 									<span className="ag-tag ag-tag--red">no key</span>
 								)}
 							</div>
-							<button
-								type="button"
-								className="ag-btn--icon ag-btn--danger"
-								title="Delete provider"
+							<PvIconButton
+								variant="ghost"
+								size="sm"
+								className="ag-del"
+								label="Delete provider"
+								icon="✕"
 								onClick={() => setPendingDelete(p)}
-							>
-								✕
-							</button>
+							/>
 						</div>
 						<div className="ag-card-body">
 							<ModelsList providerId={p.id} providerKind={p.kind} />
@@ -620,66 +606,52 @@ function ConfigTab({ agent }) {
 
 	return (
 		<div>
-			{status && (
-				<div className="ag-muted" style={{ marginBottom: 8 }}>
-					{status}
-				</div>
-			)}
+			{status && <div className="ag-muted ag-status">{status}</div>}
 			<div className="ag-cols">
 				<div className="ag-col ag-card">
 					<div className="ag-card-head">
 						<strong>Agent profile</strong>
 					</div>
 					<div className="ag-card-body">
-						<div className="ag-field">
-							<span className="ag-label">Display name</span>
-							<input
-								className="ag-input"
+						<PvField label="Display name">
+							<PvInput
 								value={pf.display_name}
 								onChange={(e) => setPf({ ...pf, display_name: e.target.value })}
 							/>
-						</div>
-						<div className="ag-field">
-							<span className="ag-label">Instructions (always loaded)</span>
-							<textarea
-								className="ag-textarea"
+						</PvField>
+						<PvField label="Instructions (always loaded)">
+							<PvTextarea
 								rows={8}
 								value={pf.instructions}
 								onChange={(e) => setPf({ ...pf, instructions: e.target.value })}
 							/>
-						</div>
-						<div className="ag-field">
-							<span className="ag-label">User context</span>
-							<textarea
-								className="ag-textarea"
+						</PvField>
+						<PvField label="User context">
+							<PvTextarea
 								rows={4}
 								value={pf.user_context}
 								onChange={(e) => setPf({ ...pf, user_context: e.target.value })}
 							/>
-						</div>
-						<div className="ag-field">
-							<span className="ag-label">Memory</span>
-							<textarea
-								className="ag-textarea"
+						</PvField>
+						<PvField label="Memory">
+							<PvTextarea
 								rows={4}
 								value={pf.memory}
 								onChange={(e) => setPf({ ...pf, memory: e.target.value })}
 							/>
-						</div>
-						<div className="ag-field">
-							<span className="ag-label">
+						</PvField>
+						<div className="vp-field">
+							<span className="vp-label">
 								Slash commands (chat macros for this agent)
 							</span>
 							{commands.map((cmd, i) => (
 								<div
 									// biome-ignore lint/suspicious/noArrayIndexKey: rows are positional and have no stable id
 									key={`cmd-${i}`}
-									className="ag-row"
-									style={{ alignItems: "flex-start", marginBottom: 6 }}
+									className="ag-cmd-row"
 								>
-									<input
-										className="ag-input"
-										style={{ maxWidth: 120 }}
+									<PvInput
+										className="ag-cmd-name"
 										placeholder="name"
 										value={cmd.name || ""}
 										onChange={(e) => {
@@ -688,9 +660,8 @@ function ConfigTab({ agent }) {
 											setCommands(next);
 										}}
 									/>
-									<input
-										className="ag-input"
-										style={{ maxWidth: 160 }}
+									<PvInput
+										className="ag-cmd-desc"
 										placeholder="description"
 										value={cmd.description || ""}
 										onChange={(e) => {
@@ -699,9 +670,8 @@ function ConfigTab({ agent }) {
 											setCommands(next);
 										}}
 									/>
-									<textarea
-										className="ag-textarea"
-										style={{ flex: 1 }}
+									<PvTextarea
+										className="ag-cmd-prompt"
 										rows={1}
 										placeholder="prompt sent when invoked"
 										value={cmd.prompt || ""}
@@ -711,21 +681,21 @@ function ConfigTab({ agent }) {
 											setCommands(next);
 										}}
 									/>
-									<button
-										type="button"
-										className="ag-btn--icon ag-btn--danger"
-										title="Remove command"
+									<PvIconButton
+										variant="ghost"
+										size="sm"
+										className="ag-del"
+										label="Remove command"
+										icon="✕"
 										onClick={() =>
 											setCommands(commands.filter((_, j) => j !== i))
 										}
-									>
-										✕
-									</button>
+									/>
 								</div>
 							))}
-							<button
-								type="button"
-								className="ag-btn ag-btn--sm"
+							<PvButton
+								size="sm"
+								className="ag-cmd-add"
 								onClick={() =>
 									setCommands([
 										...commands,
@@ -734,15 +704,11 @@ function ConfigTab({ agent }) {
 								}
 							>
 								+ Add command
-							</button>
+							</PvButton>
 						</div>
-						<button
-							type="button"
-							className="ag-btn ag-btn--primary"
-							onClick={saveProfile}
-						>
+						<PvButton variant="primary" onClick={saveProfile}>
 							Save profile
-						</button>
+						</PvButton>
 					</div>
 				</div>
 
@@ -753,58 +719,43 @@ function ConfigTab({ agent }) {
 						</div>
 						<div className="ag-card-body">
 							<div className="ag-row">
-								<div className="ag-field" style={{ width: 90 }}>
-									<span className="ag-label">Emoji</span>
-									<input
-										className="ag-input"
+								<PvField label="Emoji" className="ag-field-emoji">
+									<PvInput
 										value={pe.emoji}
 										onChange={(e) => setPe({ ...pe, emoji: e.target.value })}
 									/>
-								</div>
-								<div className="ag-field" style={{ flex: 1 }}>
-									<span className="ag-label">Display name</span>
-									<input
-										className="ag-input"
+								</PvField>
+								<PvField label="Display name" className="ag-field-grow">
+									<PvInput
 										value={pe.display_name}
 										onChange={(e) =>
 											setPe({ ...pe, display_name: e.target.value })
 										}
 									/>
-								</div>
+								</PvField>
 							</div>
-							<div className="ag-field">
-								<span className="ag-label">
-									System prompt (voice / who-I-am)
-								</span>
-								<textarea
-									className="ag-textarea"
+							<PvField label="System prompt (voice / who-I-am)">
+								<PvTextarea
 									rows={10}
 									value={pe.system_prompt}
 									onChange={(e) =>
 										setPe({ ...pe, system_prompt: e.target.value })
 									}
 								/>
-							</div>
-							<div className="ag-field">
-								<span className="ag-label">
-									Allowed tools (comma-separated; empty = inherit all)
-								</span>
-								<textarea
-									className="ag-textarea"
+							</PvField>
+							<PvField label="Allowed tools (comma-separated; empty = inherit all)">
+								<PvTextarea
+									className="ag-textarea-compact"
 									rows={2}
 									value={pe.allowed_tools}
 									onChange={(e) =>
 										setPe({ ...pe, allowed_tools: e.target.value })
 									}
 								/>
-							</div>
-							<button
-								type="button"
-								className="ag-btn ag-btn--primary"
-								onClick={savePersona}
-							>
+							</PvField>
+							<PvButton variant="primary" onClick={savePersona}>
 								Save persona
-							</button>
+							</PvButton>
 						</div>
 					</div>
 				)}
@@ -834,39 +785,36 @@ export default function AgentsPage() {
 				</div>
 			</div>
 			{agents.length > 0 && (
-				<div className="ag-row" style={{ marginBottom: 16 }}>
+				<div className="ag-row ag-default-row">
 					<span className="ag-muted">Default agent for new chats:</span>
-					<select
-						className="ag-select"
-						style={{ width: 200 }}
-						value={def?.agent || ""}
-						onChange={(e) => setDefault.mutate(e.target.value)}
-					>
-						{agents.map((a) => (
-							<option key={a.kind} value={a.kind}>
-								{a.display_name}
-							</option>
-						))}
-					</select>
+					<PvSelect
+						className="ag-default-select"
+						aria-label="Default agent for new chats"
+						value={def?.agent}
+						onChange={(v) => setDefault.mutate(v)}
+						options={agents.map((a) => ({
+							value: a.kind,
+							label: a.display_name,
+						}))}
+					/>
 				</div>
 			)}
-			<div className="ag-tabs">
-				{[
-					["providers", "Providers & models"],
-					["config", "Agent config"],
-				].map(([key, label]) => (
-					<button
-						type="button"
-						key={key}
-						className={`ag-tab ${tab === key ? "ag-tab--active" : ""}`}
-						onClick={() => setTab(key)}
-					>
-						{label}
-					</button>
-				))}
-			</div>
-			{tab === "providers" && <ProvidersTab />}
-			{tab === "config" && <ConfigTab agent={agent} />}
+			<PvTabs
+				activeKey={tab}
+				onChange={setTab}
+				items={[
+					{
+						key: "providers",
+						label: "Providers & models",
+						children: <ProvidersTab />,
+					},
+					{
+						key: "config",
+						label: "Agent config",
+						children: <ConfigTab agent={agent} />,
+					},
+				]}
+			/>
 		</div>
 	);
 }

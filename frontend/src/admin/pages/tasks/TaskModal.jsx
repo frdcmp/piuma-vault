@@ -1,6 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { PvButton, PvDateTimePicker, PvModal } from "@/ui";
+import {
+	PvButton,
+	PvDateTimePicker,
+	PvField,
+	PvInput,
+	PvModal,
+	PvSelect,
+	PvTextarea,
+} from "@/ui";
 import { BucketSelect, TagPicker } from "../../../components/buckets";
 import {
 	useBuckets,
@@ -13,6 +21,10 @@ import { remarkPlugins } from "../../../utils/markdown";
 import AlertsField from "../../components/AlertsField";
 
 const PRIORITY_LABELS = ["none", "low", "medium", "high"];
+const PRIORITY_OPTIONS = PRIORITY_LABELS.map((label, value) => ({
+	value,
+	label,
+}));
 
 /**
  * Task modal. Opening an existing task shows a read-only detail VIEW where each
@@ -51,16 +63,6 @@ export default function TaskModal({
 	// last-persisted title/notes (to revert an empty title and skip no-op saves).
 	const [editing, setEditing] = useState(null);
 	const saved = useRef({ title: task?.title ?? "", notes: task?.notes ?? "" });
-
-	// Grow the notes textarea to fit its content instead of clipping/scrolling.
-	const notesRef = useRef(null);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: `notes`/`editing` are the resize triggers, not read inside
-	useEffect(() => {
-		const el = notesRef.current;
-		if (!el) return;
-		el.style.height = "auto";
-		el.style.height = `${el.scrollHeight}px`;
-	}, [notes, editing]);
 
 	const busy = createTask.isPending || updateTask.isPending;
 
@@ -161,18 +163,16 @@ export default function TaskModal({
 	// ── Create form ──────────────────────────────────────────────────────────
 	const createForm = (
 		<div className="tasks-form">
-			<label className="tasks-field">
-				<span>Title</span>
-				<input
+			<PvField label="Title">
+				<PvInput
 					value={title}
 					onChange={(e) => setTitle(e.target.value)}
 					placeholder="What needs doing?"
-					// biome-ignore lint/a11y/noAutofocus: modal entry field
 					autoFocus
 				/>
-			</label>
-			<div className="tasks-field">
-				<span>Due</span>
+			</PvField>
+			<div className="vp-field">
+				<span className="vp-label">Due</span>
 				<PvDateTimePicker
 					value={dueAt}
 					onChange={(v) => {
@@ -183,39 +183,36 @@ export default function TaskModal({
 					placeholder="No due date"
 				/>
 			</div>
-			<label className="tasks-field">
-				<span>Priority</span>
-				<select value={priority} onChange={(e) => setPriority(e.target.value)}>
-					<option value={0}>none</option>
-					<option value={1}>low</option>
-					<option value={2}>medium</option>
-					<option value={3}>high</option>
-				</select>
-			</label>
-			<div className="tasks-field">
-				<span>Bucket</span>
+			<PvField label="Priority">
+				<PvSelect
+					options={PRIORITY_OPTIONS}
+					value={priority}
+					onChange={setPriority}
+				/>
+			</PvField>
+			<div className="vp-field">
+				<span className="vp-label">Bucket</span>
 				<BucketSelect
 					value={bucketId}
 					onChange={setBucketId}
 					buckets={buckets}
 				/>
 			</div>
-			<div className="tasks-field">
-				<span>Tags</span>
+			<div className="vp-field">
+				<span className="vp-label">Tags</span>
 				<TagPicker value={tags} onChange={setTags} />
 			</div>
-			<label className="tasks-field">
-				<span>Notes</span>
-				<textarea
-					ref={notesRef}
+			<PvField label="Notes">
+				<PvTextarea
+					autoSize
 					className="tasks-textarea-auto"
 					rows={3}
 					value={notes}
 					onChange={(e) => setNotes(e.target.value)}
 				/>
-			</label>
-			<div className="tasks-field">
-				<span>Alerts</span>
+			</PvField>
+			<div className="vp-field">
+				<span className="vp-label">Alerts</span>
 				{dueAt ? (
 					<AlertsField value={alerts} onChange={setAlerts} />
 				) : (
@@ -229,26 +226,24 @@ export default function TaskModal({
 	// ── View (inline edit) ─────────────────────────────────────────────────────
 	const view = (
 		<div className="tasks-form task-view">
-			<button
-				type="button"
-				className={`task-done-toggle${done ? " is-done" : ""}`}
+			<PvButton
+				variant={done ? "primary" : "default"}
+				size="sm"
+				className="task-done-toggle"
+				icon={done ? "☑" : "☐"}
 				aria-pressed={done}
 				onClick={toggleDone}
 			>
-				<span className="task-done-box" aria-hidden="true">
-					{done ? "☑" : "☐"}
-				</span>
 				{done ? "Completed" : "Mark complete"}
-			</button>
+			</PvButton>
 
 			{editing === "title" ? (
-				<input
+				<PvInput
 					className="task-view-title-input"
 					value={title}
 					onChange={(e) => setTitle(e.target.value)}
 					onBlur={commitTitle}
 					onKeyDown={titleKey}
-					// biome-ignore lint/a11y/noAutofocus: entering inline edit
 					autoFocus
 				/>
 			) : (
@@ -299,11 +294,11 @@ export default function TaskModal({
 				<div className="task-view-row">
 					<span className="task-view-label">Priority</span>
 					{editing === "priority" ? (
-						<select
+						<PvSelect
 							className="task-view-select"
+							options={PRIORITY_OPTIONS}
 							value={priority}
-							onChange={(e) => {
-								const v = Number(e.target.value);
+							onChange={(v) => {
 								setPriority(v);
 								patch({ priority: v });
 								setEditing(null);
@@ -315,14 +310,8 @@ export default function TaskModal({
 								}
 							}}
 							onBlur={() => setEditing(null)}
-							// biome-ignore lint/a11y/noAutofocus: entering inline edit
 							autoFocus
-						>
-							<option value={0}>none</option>
-							<option value={1}>low</option>
-							<option value={2}>medium</option>
-							<option value={3}>high</option>
-						</select>
+						/>
 					) : (
 						<button
 							type="button"
@@ -445,15 +434,14 @@ export default function TaskModal({
 			<div className="task-view-notes">
 				<span className="task-view-label">Notes</span>
 				{editing === "notes" ? (
-					<textarea
-						ref={notesRef}
+					<PvTextarea
+						autoSize
 						className="tasks-textarea-auto"
 						rows={3}
 						value={notes}
 						onChange={(e) => setNotes(e.target.value)}
 						onBlur={commitNotes}
 						onKeyDown={notesKey}
-						// biome-ignore lint/a11y/noAutofocus: entering inline edit
 						autoFocus
 					/>
 				) : (

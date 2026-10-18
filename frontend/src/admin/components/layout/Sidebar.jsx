@@ -23,6 +23,7 @@ import {
 } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { PvIconButton } from "@/ui";
 import { Sprite, useSprite } from "../../../sprites";
 import SearchModal from "../search/SearchModal";
 import SupportModal from "../support/SupportModal";
@@ -152,15 +153,11 @@ const Sidebar = ({ inDrawer = false, onNavigate }) => {
 						</span>
 						<span className="vp-sidebar-wordmark">vault</span>
 					</div>
-					<button
-						type="button"
-						className="vp-icon-btn"
+					<PvIconButton
+						icon={<SearchOutlined />}
+						label="Search (Ctrl+K)"
 						onClick={() => setSearchOpen(true)}
-						title="Search (Ctrl+K)"
-						aria-label="Search"
-					>
-						<SearchOutlined />
-					</button>
+					/>
 				</div>
 
 				<SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />

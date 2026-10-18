@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { PvMenu, pvMessage, pvToast } from "@/ui";
+import { PvButton, PvInput, PvMenu, PvUpload, pvMessage, pvToast } from "@/ui";
 import {
 	getShareMeta,
 	listShareFolder,
@@ -55,8 +55,6 @@ export default function SharedFolderPage() {
 	const [dragOver, setDragOver] = useState(false);
 	const [menu, setMenu] = useState(null); // { x, y, item }
 	const [busy, setBusy] = useState(null);
-	const fileInputRef = useRef(null);
-
 	const canEdit = meta?.can_edit;
 
 	// Load share metadata once.
@@ -252,21 +250,18 @@ export default function SharedFolderPage() {
 			<div className="notes-pixel-layout sfshare-screen">
 				<div className="sfshare-card">
 					<h2>🔒 Password required</h2>
-					<input
-						className="pixel-input"
+					<PvInput
 						type="password"
+						reveal
 						value={pwdInput}
 						onChange={(e) => setPwdInput(e.target.value)}
 						onKeyDown={(e) => e.key === "Enter" && submitPwd()}
 						placeholder="enter password"
+						aria-label="Password"
 					/>
-					<button
-						type="button"
-						className="pixel-btn primary"
-						onClick={submitPwd}
-					>
+					<PvButton variant="primary" onClick={submitPwd}>
 						Unlock
-					</button>
+					</PvButton>
 				</div>
 			</div>
 		);
@@ -286,7 +281,7 @@ export default function SharedFolderPage() {
 							🌐 {meta.root_name}
 						</button>
 						{crumbs.map((c, i) => (
-							<span key={c.path} style={{ display: "inline-flex" }}>
+							<span key={c.path} className="sfshare-crumb">
 								<span className="storage-crumb-sep">/</span>
 								<button
 									type="button"
@@ -304,39 +299,19 @@ export default function SharedFolderPage() {
 						</span>
 						{canEdit && (
 							<>
-								<button
-									type="button"
-									className="pixel-btn"
-									onClick={createFolder}
-								>
+								<PvButton size="sm" onClick={createFolder}>
 									+ Folder
-								</button>
-								<button
-									type="button"
-									className="pixel-btn primary"
-									onClick={() => fileInputRef.current?.click()}
-								>
-									⬆ Upload
-								</button>
-								<input
-									ref={fileInputRef}
-									type="file"
-									multiple
-									style={{ display: "none" }}
-									onChange={(e) => {
-										uploadFiles(e.target.files);
-										e.target.value = "";
-									}}
-								/>
+								</PvButton>
+								<PvUpload multiple onFiles={uploadFiles}>
+									<PvButton variant="primary" size="sm">
+										⬆ Upload
+									</PvButton>
+								</PvUpload>
 							</>
 						)}
-						<button
-							type="button"
-							className="pixel-btn"
-							onClick={() => downloadFolderZip(path)}
-						>
+						<PvButton size="sm" onClick={() => downloadFolderZip(path)}>
 							⬇ Download all
-						</button>
+						</PvButton>
 					</div>
 				</div>
 

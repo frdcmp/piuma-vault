@@ -7,11 +7,20 @@ import {
 	UserOutlined,
 	WarningOutlined,
 } from "@ant-design/icons";
-import { Avatar, Segmented, Table, Tooltip } from "antd";
 import { useNavigate } from "react-router-dom";
-import { PvButton, PvPanel } from "@/ui";
+import {
+	PvAvatar,
+	PvButton,
+	PvIconButton,
+	PvPanel,
+	PvSegmented,
+	PvTable,
+	PvTooltip,
+} from "@/ui";
 import { PageContent } from "../../components/layout/PageLayout";
 import "./projects.css";
+
+const MAX_LINGUIST_AVATARS = 3;
 
 /** Mini stat card — pixel vault style */
 const StatCard = ({ label, value, subValue, icon, accent }) => (
@@ -196,7 +205,7 @@ const Projects = () => {
 			key: "name",
 			width: 220,
 			render: (text, record) => (
-				<div className="vp-stack" style={{ gap: 2 }}>
+				<div className="vp-stack vp-cell-stack">
 					<span className="vp-cell-strong">{text}</span>
 					<span className="vp-cell-sub">{record.language}</span>
 				</div>
@@ -230,7 +239,7 @@ const Projects = () => {
 			width: 100,
 			align: "center",
 			render: (total) => (
-				<div className="vp-stack vp-cell-center" style={{ gap: 2 }}>
+				<div className="vp-stack vp-cell-stack vp-cell-center">
 					<span className="vp-cell-strong">{total}</span>
 					<span className="vp-cell-sub">total</span>
 				</div>
@@ -243,7 +252,7 @@ const Projects = () => {
 			width: 110,
 			align: "center",
 			render: (transcribed, record) => (
-				<div className="vp-stack vp-cell-center" style={{ gap: 2 }}>
+				<div className="vp-stack vp-cell-stack vp-cell-center">
 					<span className="vp-cell-strong vp-cell-green">{transcribed}</span>
 					<span className="vp-cell-sub">
 						{Math.round((transcribed / record.totalFiles) * 100)}%
@@ -258,7 +267,7 @@ const Projects = () => {
 			width: 110,
 			align: "center",
 			render: (annotated, record) => (
-				<div className="vp-stack vp-cell-center" style={{ gap: 2 }}>
+				<div className="vp-stack vp-cell-stack vp-cell-center">
 					<span className="vp-cell-strong vp-cell-accent">{annotated}</span>
 					<span className="vp-cell-sub">
 						{Math.round((annotated / record.totalFiles) * 100)}%
@@ -273,7 +282,7 @@ const Projects = () => {
 			width: 110,
 			align: "center",
 			render: (qcPassed, record) => (
-				<div className="vp-stack vp-cell-center" style={{ gap: 2 }}>
+				<div className="vp-stack vp-cell-stack vp-cell-center">
 					<span className="vp-cell-strong vp-cell-blue">{qcPassed}</span>
 					<span className="vp-cell-sub">
 						{Math.round((qcPassed / record.totalFiles) * 100)}%
@@ -287,16 +296,16 @@ const Projects = () => {
 			key: "specializations",
 			width: 200,
 			render: (specs) => (
-				<div className="vp-row vp-row--wrap" style={{ gap: 4 }}>
+				<div className="vp-row vp-row--wrap vp-cell-tags">
 					{specs.slice(0, 2).map((spec) => (
 						<span key={spec} className="vp-tag vp-tag--accent">
 							{spec}
 						</span>
 					))}
 					{specs.length > 2 && (
-						<Tooltip title={specs.slice(2).join(", ")}>
+						<PvTooltip title={specs.slice(2).join(", ")}>
 							<span className="vp-tag">+{specs.length - 2}</span>
-						</Tooltip>
+						</PvTooltip>
 					)}
 				</div>
 			),
@@ -308,19 +317,26 @@ const Projects = () => {
 			width: 110,
 			align: "center",
 			render: (linguists, record) => (
-				<Avatar.Group max={{ count: 3 }}>
-					{[...Array(linguists)].map((_, i) => (
-						<Tooltip
+				<div className="vp-linguists">
+					{[...Array(Math.min(linguists, MAX_LINGUIST_AVATARS))].map((_, i) => (
+						<PvTooltip
 							// biome-ignore lint/suspicious/noArrayIndexKey: placeholder linguist avatars have no stable id
 							key={`${record.key}-linguist-${i}`}
 							title={`Linguist ${i + 1}`}
 						>
-							<Avatar className="vp-linguist-avatar">
-								{String.fromCharCode(65 + i)}
-							</Avatar>
-						</Tooltip>
+							<PvAvatar tone="accent">{String.fromCharCode(65 + i)}</PvAvatar>
+						</PvTooltip>
 					))}
-				</Avatar.Group>
+					{linguists > MAX_LINGUIST_AVATARS && (
+						<PvTooltip
+							title={[...Array(linguists - MAX_LINGUIST_AVATARS)]
+								.map((_, i) => `Linguist ${i + MAX_LINGUIST_AVATARS + 1}`)
+								.join(", ")}
+						>
+							<PvAvatar>+{linguists - MAX_LINGUIST_AVATARS}</PvAvatar>
+						</PvTooltip>
+					)}
+				</div>
 			),
 		},
 		{
@@ -329,11 +345,11 @@ const Projects = () => {
 			width: 100,
 			align: "center",
 			render: () => (
-				<PvButton
+				<PvIconButton
 					size="sm"
 					variant="accent"
 					icon={<EditOutlined />}
-					aria-label="Edit project"
+					label="Edit project"
 				/>
 			),
 		},
@@ -356,14 +372,17 @@ const Projects = () => {
 							{projectsData.length} | Active:{" "}
 							{projectsData.filter((p) => p.status === "active").length}
 						</span>
-						<Segmented
+						<PvSegmented
 							value="all"
 							options={[
 								{ label: "All Projects", value: "all" },
 								{
-									label: "My Projects",
+									label: (
+										<>
+											<UserOutlined /> My Projects
+										</>
+									),
 									value: "mine",
-									icon: <UserOutlined />,
 								},
 							]}
 						/>
@@ -397,17 +416,12 @@ const Projects = () => {
 					}
 					noPad
 				>
-					<Table
-						className="vp-table"
-						dataSource={projectsData}
+					<PvTable
+						data={projectsData}
 						columns={columns}
-						pagination={{
-							pageSize: 10,
-							showSizeChanger: true,
-							showTotal: (total) => `Total ${total} projects`,
-							style: { marginRight: 20 },
-						}}
-						scroll={{ x: 1200 }}
+						rowKey="key"
+						pagination={{ pageSize: 10, hideOnSinglePage: true }}
+						minWidth={1200}
 					/>
 				</PvPanel>
 			</div>

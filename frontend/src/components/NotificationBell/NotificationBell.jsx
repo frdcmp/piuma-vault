@@ -8,7 +8,7 @@ import {
 import { useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useNavigate } from "react-router-dom";
-import { PvButton, PvModal, PvPopover } from "@/ui";
+import { PvButton, PvIconButton, PvModal, PvPopover } from "@/ui";
 import {
 	useDismissNotification,
 	useMarkAllNotificationsRead,
@@ -20,13 +20,9 @@ import { formatDateTime, timeAgo } from "../../utils/dateTime";
 import { remarkPlugins } from "../../utils/markdown";
 import "./NotificationBell.css";
 
-// Notification level → dot color (mirrors the vault-pixel accents).
-const LEVEL_COLOR = {
-	info: "var(--vp-info)",
-	success: "var(--vp-success)",
-	warning: "var(--vp-accent)",
-	error: "var(--vp-danger)",
-};
+// Notification levels with their own dot colour (`.nb-item-dot--<level>` in the
+// CSS, mirroring the vault-pixel accents); anything else falls back to info.
+const LEVELS = new Set(["info", "success", "warning", "error"]);
 
 function NotificationItem({ n, onSelect, onDismiss }) {
 	const unread = !n.read_at;
@@ -51,8 +47,7 @@ function NotificationItem({ n, onSelect, onDismiss }) {
 				disabled={dismissing}
 			>
 				<span
-					className="nb-item-dot"
-					style={{ background: LEVEL_COLOR[n.level] || LEVEL_COLOR.info }}
+					className={`nb-item-dot nb-item-dot--${LEVELS.has(n.level) ? n.level : "info"}`}
 					aria-hidden="true"
 				/>
 				<span className="nb-item-body">
@@ -64,16 +59,15 @@ function NotificationItem({ n, onSelect, onDismiss }) {
 					<span className="nb-item-time">{timeAgo(n.created_at)}</span>
 				</span>
 			</button>
-			<button
-				type="button"
+			<PvIconButton
+				variant="ghost"
+				size="sm"
 				className="nb-item-dismiss"
-				title="Dismiss"
-				aria-label="Dismiss"
+				icon={dismissing ? <LoadingOutlined /> : <CloseOutlined />}
+				label="Dismiss"
 				onClick={handleDismiss}
 				disabled={dismissing}
-			>
-				{dismissing ? <LoadingOutlined /> : <CloseOutlined />}
-			</button>
+			/>
 		</div>
 	);
 }
@@ -111,14 +105,14 @@ function NotificationList({
 
 			{hasNextPage && (
 				<div className="nb-more">
-					<button
-						type="button"
-						className="vp-btn"
+					<PvButton
+						size="sm"
+						loading={isFetchingNextPage}
 						disabled={isFetchingNextPage}
 						onClick={() => fetchNextPage()}
 					>
-						{isFetchingNextPage ? "loading…" : "load more"}
-					</button>
+						load more
+					</PvButton>
 				</div>
 			)}
 		</>
@@ -164,19 +158,20 @@ export default function NotificationBell() {
 
 	return (
 		<>
-			<button
+			<PvIconButton
 				ref={bellRef}
-				type="button"
-				className="vp-icon-btn nb-bell"
-				title="Notifications"
-				aria-label="Notifications"
+				className="nb-bell"
+				label="Notifications"
 				onClick={() => handleOpenChange(!open)}
-			>
-				<BellOutlined />
-				{count > 0 && (
-					<span className="nb-badge">{count > 99 ? "99+" : count}</span>
-				)}
-			</button>
+				icon={
+					<>
+						<BellOutlined />
+						{count > 0 && (
+							<span className="nb-badge">{count > 99 ? "99+" : count}</span>
+						)}
+					</>
+				}
+			/>
 			<PvPopover
 				open={open}
 				anchorRef={bellRef}

@@ -1,5 +1,14 @@
 import { useState } from "react";
-import { PvMenu, PvModal, pvMessage } from "@/ui";
+import {
+	PvButton,
+	PvField,
+	PvIconButton,
+	PvInput,
+	PvMenu,
+	PvModal,
+	PvSelect,
+	pvMessage,
+} from "@/ui";
 import {
 	useStorageDeleteFolder,
 	useStorageDeleteObject,
@@ -12,6 +21,14 @@ import {
 	useStorageWorkspace,
 } from "../../../store/storageWorkspaceStore";
 import FolderShareModal from "./FolderShareModal";
+
+// Lifetimes offered for a signed file-share link (seconds).
+const SHARE_EXPIRY_OPTIONS = [
+	{ value: 300, label: "5 minutes" },
+	{ value: 3600, label: "1 hour" },
+	{ value: 86400, label: "1 day" },
+	{ value: 604800, label: "7 days" },
+];
 
 // Folder prefixes from the backend look like "docs/2026/"; show just the leaf.
 const folderLeaf = (path) => {
@@ -357,15 +374,8 @@ export default function StorageTree({
 			{!embedded && (
 				<div className="notes-sidebar-header storage-tree-header">
 					<div className="notes-sidebar-header-row">
-						<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-							<button
-								type="button"
-								className="pixel-btn notes-sidebar-back"
-								onClick={onBack}
-								title="Go back"
-							>
-								◀
-							</button>
+						<div className="storage-tree-head">
+							<PvIconButton icon="◀" label="Go back" onClick={onBack} />
 							<div>
 								<h3 className="notes-sidebar-title">Storage</h3>
 								<div className="storage-sidebar-sub">
@@ -382,11 +392,10 @@ export default function StorageTree({
 					<div className="ftree-banner">
 						<button
 							type="button"
-							className="storage-crumb ftree-banner-text"
+							className={`storage-crumb ftree-banner-text${
+								currentPrefix === "" ? " is-current" : ""
+							}`}
 							onClick={() => onNavigate("")}
-							style={{
-								color: currentPrefix === "" ? "var(--vp-accent)" : undefined,
-							}}
 						>
 							~/storage ▒▒
 						</button>
@@ -433,9 +442,7 @@ export default function StorageTree({
 				}}
 				onCancel={() => setConfirm(null)}
 			>
-				<div style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-					{confirm?.body}
-				</div>
+				<div className="storage-confirm-body">{confirm?.body}</div>
 			</PvModal>
 
 			{/* Share modal (signed link with expiry) */}
@@ -448,42 +455,28 @@ export default function StorageTree({
 					setShareUrl("");
 				}}
 			>
-				<div style={{ marginBottom: 10, wordBreak: "break-all" }}>
+				<div className="storage-share-key">
 					<b>{shareKey}</b>
 				</div>
-				<label
-					htmlFor="tree-share-expiry"
-					style={{ display: "block", marginBottom: 6, fontSize: 12 }}
-				>
-					Expires in
-				</label>
-				<select
-					id="tree-share-expiry"
-					className="pixel-input"
-					style={{ width: "100%", boxSizing: "border-box" }}
-					value={shareExpiry}
-					onChange={(e) => setShareExpiry(Number(e.target.value))}
-				>
-					<option value={300}>5 minutes</option>
-					<option value={3600}>1 hour</option>
-					<option value={86400}>1 day</option>
-					<option value={604800}>7 days</option>
-				</select>
-				<button
-					type="button"
-					className="pixel-btn primary"
-					style={{ marginTop: 12 }}
+				<PvField label="Expires in">
+					<PvSelect
+						options={SHARE_EXPIRY_OPTIONS}
+						value={shareExpiry}
+						onChange={setShareExpiry}
+					/>
+				</PvField>
+				<PvButton
+					variant="primary"
+					icon="⤴"
 					onClick={generateShareLink}
 					disabled={signed.isPending}
 				>
-					⤴ Generate share link
-				</button>
+					Generate share link
+				</PvButton>
 				{shareUrl && (
 					<div className="storage-share-url">
-						<input className="pixel-input" value={shareUrl} readOnly />
-						<button type="button" className="pixel-btn" onClick={copyShareLink}>
-							Copy
-						</button>
+						<PvInput value={shareUrl} readOnly />
+						<PvButton onClick={copyShareLink}>Copy</PvButton>
 					</div>
 				)}
 			</PvModal>

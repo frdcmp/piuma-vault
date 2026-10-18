@@ -1,4 +1,5 @@
 import { HEAVY_TOKENS } from "@/processing";
+import { PvIconButton } from "@/ui";
 
 const fmtTokens = (n) =>
 	n >= 1000 ? `~${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k tok` : `~${n} tok`;
@@ -54,14 +55,13 @@ export default function PendingAttachments({ items, onRemove }) {
 						{working ? (
 							<span className="chat-image-tag-spin" aria-hidden="true" />
 						) : (
-							<button
-								type="button"
-								className="chat-image-tag-remove"
+							<PvIconButton
+								variant="ghost"
+								size="sm"
+								icon="×"
+								label={`Remove ${it.name}`}
 								onClick={() => onRemove(it.id)}
-								aria-label={`Remove ${it.name}`}
-							>
-								×
-							</button>
+							/>
 						)}
 					</div>
 				);

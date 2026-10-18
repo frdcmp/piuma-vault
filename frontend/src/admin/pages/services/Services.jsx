@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { PvButton, PvModal, PvPanel, pvMessage } from "@/ui";
+import {
+	PvButton,
+	PvField,
+	PvInput,
+	PvModal,
+	PvPanel,
+	PvSelect,
+	PvTabs,
+	pvMessage,
+} from "@/ui";
 import {
 	useEmailAccounts,
 	useImagegenModels,
@@ -239,6 +248,34 @@ const BUNNY_DEFAULTS = {
 	s3_region: "sg",
 };
 
+const providerOptions = (list) =>
+	list.map((p) => ({ value: p.id, label: p.label }));
+
+const secretPlaceholder = (isSet) =>
+	isSet ? "•••• configured — leave blank to keep" : "not set";
+
+// "set" / "unset" chip next to a secret field's label.
+const SetChip = ({ isSet }) =>
+	isSet ? (
+		<span className="vp-tag vp-tag--green vp-svc-chip">set</span>
+	) : (
+		<span className="vp-tag vp-tag--red vp-svc-chip">unset</span>
+	);
+
+const Optional = () => <span className="vp-muted vp-svc-chip">optional</span>;
+
+// Write-only secret: never prefilled, blank = keep the saved value.
+const SecretInput = ({ isSet, value, onChange }) => (
+	<PvInput
+		type="password"
+		reveal
+		autoComplete="new-password"
+		placeholder={secretPlaceholder(isSet)}
+		value={value}
+		onChange={onChange}
+	/>
+);
+
 const Services = () => {
 	const { data, isLoading, error } = useServices();
 	const { data: emailAccounts } = useEmailAccounts();
@@ -270,8 +307,7 @@ const Services = () => {
 	// Pick the storage adapter preset (AWS ⇄ Bunny). Switching to Bunny imports
 	// its S3 conventions into blank fields (Bunny uses the zone name as both
 	// bucket and access key, so mirror them).
-	const selectVendor = (e) => {
-		const next = e.target.value;
+	const selectVendor = (next) => {
 		setVendor(next);
 		if (next === "bunny") {
 			setForm((f) => ({
@@ -316,6 +352,7 @@ const Services = () => {
 	}, [data]);
 
 	const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+	const setVal = (key) => (value) => setForm((f) => ({ ...f, [key]: value }));
 
 	// Bunny uses the storage zone name as both the bucket and the access key, so
 	// in Bunny mode a single field drives both.
@@ -531,9 +568,9 @@ const Services = () => {
 	};
 
 	// Switch provider and drop any models fetched for the previous one.
-	const selectImgProvider = (e) => {
+	const selectImgProvider = (value) => {
 		setImgModels([]);
-		set("imagegen_provider")(e);
+		setVal("imagegen_provider")(value);
 	};
 
 	// Fetch the provider's image-capable models (uses the typed or saved key).
@@ -565,9 +602,9 @@ const Services = () => {
 	};
 
 	// Switch provider and drop any models fetched for the previous one.
-	const selectVoiceProvider = (e) => {
+	const selectVoiceProvider = (value) => {
 		setVoiceModels([]);
-		set("voice_provider")(e);
+		setVal("voice_provider")(value);
 	};
 
 	// Fetch the provider's realtime-capable models (uses the typed or saved key).
@@ -584,9 +621,6 @@ const Services = () => {
 			pvMessage.error(err?.response?.data?.error || "Failed to fetch models");
 		}
 	};
-
-	const secretPlaceholder = (isSet) =>
-		isSet ? "•••• configured — leave blank to keep" : "not set";
 
 	const TestRow = ({ pending, onTest, onClear, result }) => (
 		<div className="vp-svc-test">
@@ -612,6 +646,570 @@ const Services = () => {
 		</div>
 	);
 
+	// Which services have credentials saved — drives the tab status dots.
+	const configured = data
+		? {
+				embeddings: !!data.azure_embedding_api_key_set,
+				search: WEBSEARCH_PROVIDERS.some((p) => data[`${p.key}_set`]),
+				transcription: TRANSCRIPTION_PROVIDERS.some(
+					(p) => data[`${p.key}_set`],
+				),
+				storage: !!data.s3_secret_access_key_set,
+				images: IMAGEGEN_PROVIDERS.some((p) => data[`${p.key}_set`]),
+				voice: VOICE_PROVIDERS.some((p) => data[`${p.key}_set`]),
+				github: !!data.github_token_set,
+				email: !!emailAccounts?.some((a) => a.send_enabled || a.read_enabled),
+				mcp: !!mcpServers?.some((s) => s.enabled),
+			}
+		: {};
+
+	const activePanel = data && (
+		<>
+			{/* Embeddings (Azure OpenAI) */}
+			{activeTab === "embeddings" && (
+				<PvPanel title="embeddings · azure openai">
+					<p className="vp-card-desc vp-svc-desc">
+						Used to generate note embeddings and embed search queries
+						(text-embedding-3-large, 1536 dims).
+					</p>
+					<PvField label="Embedding URL">
+						<PvInput
+							spellCheck={false}
+							placeholder="https://<resource>.openai.azure.com/openai/deployments/<deployment>/embeddings?api-version=2023-05-15"
+							value={form.azure_embedding_url}
+							onChange={set("azure_embedding_url")}
+						/>
+					</PvField>
+					<PvField
+						className="vp-svc-field--last"
+						label={
+							<>
+								API Key <SetChip isSet={data.azure_embedding_api_key_set} />
+							</>
+						}
+					>
+						<SecretInput
+							isSet={data.azure_embedding_api_key_set}
+							value={form.azure_embedding_api_key}
+							onChange={set("azure_embedding_api_key")}
+						/>
+					</PvField>
+					<TestRow
+						pending={testEmb.isPending}
+						onTest={() => runTest(testEmb, setEmbResult, embTestPayload())}
+						onClear={() =>
+							requestClear(EMB_KEYS, setEmbResult, "Azure embedding")
+						}
+						result={embResult}
+					/>
+				</PvPanel>
+			)}
+
+			{/* Web search (agent web_search tool) — pick a provider + key. */}
+			{activeTab === "search" && (
+				<PvPanel title="search · web">
+					<p className="vp-card-desc vp-svc-desc">
+						Powers the agent's <code>web_search</code> tool. Pick a provider and
+						set its API key. Swap providers anytime without touching the agent.
+					</p>
+					<PvField label="Provider">
+						<PvSelect
+							value={wsProvider}
+							onChange={setVal("websearch_provider")}
+							options={providerOptions(WEBSEARCH_PROVIDERS)}
+						/>
+					</PvField>
+					<PvField
+						className="vp-svc-field--last"
+						label={
+							<>
+								{wsMeta.label} API Key <SetChip isSet={wsKeySet} />
+							</>
+						}
+						hint={wsMeta.hint}
+					>
+						<SecretInput
+							isSet={wsKeySet}
+							value={form[wsMeta.key]}
+							onChange={set(wsMeta.key)}
+						/>
+					</PvField>
+					<TestRow
+						pending={testWs.isPending}
+						onTest={() => runTest(testWs, setWsResult, wsTestPayload())}
+						onClear={() =>
+							requestClear([wsMeta.key], setWsResult, `${wsMeta.label} search`)
+						}
+						result={wsResult}
+					/>
+				</PvPanel>
+			)}
+
+			{/* Transcription (recorder streaming ASR) — pick a provider + key. */}
+			{activeTab === "transcription" && (
+				<PvPanel title="transcription · streaming asr">
+					<p className="vp-card-desc vp-svc-desc">
+						Powers the <code>Recorder</code> — streams audio to a speech-to-text
+						provider in real time. Pick a provider and set its API key. Swap
+						providers anytime without touching the recorder.
+					</p>
+					<PvField label="Provider">
+						<PvSelect
+							value={trProvider}
+							onChange={setVal("transcription_provider")}
+							options={providerOptions(TRANSCRIPTION_PROVIDERS)}
+						/>
+					</PvField>
+					<PvField
+						className="vp-svc-field--last"
+						label={
+							<>
+								{trMeta.label} API Key <SetChip isSet={trKeySet} />
+							</>
+						}
+						hint={trMeta.hint}
+					>
+						<SecretInput
+							isSet={trKeySet}
+							value={form[trMeta.key]}
+							onChange={set(trMeta.key)}
+						/>
+					</PvField>
+					<TestRow
+						pending={testTr.isPending}
+						onTest={() => runTest(testTr, setTrResult, trTestPayload())}
+						onClear={() =>
+							requestClear(
+								[trMeta.key],
+								setTrResult,
+								`${trMeta.label} transcription`,
+							)
+						}
+						result={trResult}
+					/>
+				</PvPanel>
+			)}
+
+			{/* Object storage (S3) — pick the adapter preset, then fill it. */}
+			{activeTab === "storage" && (
+				<PvPanel title="storage · s3">
+					<PvField label="Adapter">
+						<PvSelect
+							value={vendor}
+							onChange={selectVendor}
+							options={Object.entries(VENDORS).map(([id, preset]) => ({
+								value: id,
+								label: preset.label,
+							}))}
+						/>
+					</PvField>
+					<p className="vp-card-desc vp-svc-desc">{v.desc}</p>
+					<PvField label={v.endpoint.label}>
+						<PvInput
+							spellCheck={false}
+							placeholder={v.endpoint.ph}
+							value={form.s3_endpoint}
+							onChange={set("s3_endpoint")}
+						/>
+					</PvField>
+					<PvField label={v.region.label}>
+						<PvInput
+							spellCheck={false}
+							placeholder={v.region.ph}
+							value={form.s3_region}
+							onChange={set("s3_region")}
+						/>
+					</PvField>
+					{vendor === "bunny" ? (
+						<PvField label={v.bucket.label}>
+							<PvInput
+								spellCheck={false}
+								placeholder={v.bucket.ph}
+								value={form.s3_bucket}
+								onChange={setZone}
+							/>
+						</PvField>
+					) : (
+						<>
+							<PvField label={v.bucket.label}>
+								<PvInput
+									spellCheck={false}
+									placeholder={v.bucket.ph}
+									value={form.s3_bucket}
+									onChange={set("s3_bucket")}
+								/>
+							</PvField>
+							<PvField label={v.accessKey.label}>
+								<PvInput
+									spellCheck={false}
+									placeholder={v.accessKey.ph}
+									value={form.s3_access_key_id}
+									onChange={set("s3_access_key_id")}
+								/>
+							</PvField>
+						</>
+					)}
+					<PvField
+						label={
+							<>
+								{v.secret.label}{" "}
+								<SetChip isSet={data.s3_secret_access_key_set} />
+							</>
+						}
+					>
+						<SecretInput
+							isSet={data.s3_secret_access_key_set}
+							value={form.s3_secret_access_key}
+							onChange={set("s3_secret_access_key")}
+						/>
+					</PvField>
+
+					{/* CDN — optional accelerator on top of the bucket above. */}
+					<PvField
+						label={
+							<>
+								{v.cdnUrl.label} <Optional />
+							</>
+						}
+					>
+						<PvInput
+							spellCheck={false}
+							placeholder={v.cdnUrl.ph}
+							value={form.s3_cdn_url}
+							onChange={set("s3_cdn_url")}
+						/>
+					</PvField>
+					<PvField
+						label={
+							<>
+								{v.cdnToken.label} <Optional />
+								{data.s3_cdn_token_key_set && (
+									<span className="vp-tag vp-tag--green vp-svc-chip">set</span>
+								)}
+							</>
+						}
+					>
+						<SecretInput
+							isSet={data.s3_cdn_token_key_set}
+							value={form.s3_cdn_token_key}
+							onChange={set("s3_cdn_token_key")}
+						/>
+					</PvField>
+					<TestRow
+						pending={testS3.isPending}
+						onTest={() => runTest(testS3, setS3Result, s3TestPayload())}
+						onClear={() => requestClear(S3_KEYS, setS3Result, "storage")}
+						result={s3Result}
+					/>
+				</PvPanel>
+			)}
+
+			{/* Image generation (agent generate_image tool) — pick a
+				provider + key (+ optional model/base). */}
+			{activeTab === "images" && (
+				<PvPanel title="images · generation">
+					<p className="vp-card-desc vp-svc-desc">
+						Powers the agent's <code>generate_image</code> tool. Pick a provider
+						and set its API key. Generated images are stored in your S3 bucket
+						and returned as a CDN URL. Swap providers anytime without touching
+						the agent.
+					</p>
+					<PvField label="Provider">
+						<PvSelect
+							value={imgProvider}
+							onChange={selectImgProvider}
+							options={providerOptions(IMAGEGEN_PROVIDERS)}
+						/>
+					</PvField>
+					<PvField
+						label={
+							<>
+								{imgMeta.label} API Key <SetChip isSet={imgKeySet} />
+							</>
+						}
+						hint={imgMeta.hint}
+					>
+						<SecretInput
+							isSet={imgKeySet}
+							value={form[imgMeta.key]}
+							onChange={set(imgMeta.key)}
+						/>
+					</PvField>
+					{imgMeta.model && (
+						<>
+							<PvField
+								className="vp-svc-field--tight"
+								label={
+									<>
+										Model <Optional />
+									</>
+								}
+							>
+								<PvInput
+									spellCheck={false}
+									placeholder={imgMeta.modelPh}
+									value={form[imgMeta.model]}
+									onChange={set(imgMeta.model)}
+									list="imagegen-model-suggestions"
+								/>
+							</PvField>
+							{imgModels.length > 0 && (
+								<datalist id="imagegen-model-suggestions">
+									{imgModels.map((m) => (
+										<option key={m} value={m} />
+									))}
+								</datalist>
+							)}
+							<div className="vp-svc-test vp-svc-fetch">
+								<PvButton
+									size="sm"
+									onClick={loadImgModels}
+									disabled={fetchImgModels.isPending}
+								>
+									{fetchImgModels.isPending ? "Fetching…" : "Fetch models"}
+								</PvButton>
+								{imgModels.length > 0 && (
+									<PvSelect
+										aria-label="Pick a fetched image model"
+										placeholder={`${imgModels.length} models — pick one…`}
+										options={imgModels}
+										onChange={(m) => {
+											if (m) setForm((f) => ({ ...f, [imgMeta.model]: m }));
+										}}
+									/>
+								)}
+							</div>
+						</>
+					)}
+					{imgMeta.base && (
+						<PvField
+							className="vp-svc-field--last"
+							label={
+								<>
+									API Base <Optional />
+								</>
+							}
+						>
+							<PvInput
+								spellCheck={false}
+								placeholder="https://api.openai.com (override for a proxy)"
+								value={form[imgMeta.base]}
+								onChange={set(imgMeta.base)}
+							/>
+						</PvField>
+					)}
+					<TestRow
+						pending={testImg.isPending}
+						onTest={() => runTest(testImg, setImgResult, imgTestPayload())}
+						onClear={() =>
+							requestClear(
+								[imgMeta.key],
+								setImgResult,
+								`${imgMeta.label} image generation`,
+							)
+						}
+						result={imgResult}
+					/>
+					{imgResult?.image && (
+						<div className="vp-svc-preview">
+							<img src={imgResult.image} alt="Generated preview" />
+						</div>
+					)}
+				</PvPanel>
+			)}
+
+			{/* Voice agent (speech-to-speech) — pick a provider + key
+				(+ optional model/voice). */}
+			{activeTab === "voice" && (
+				<PvPanel title="voice · speech-to-speech">
+					<p className="vp-card-desc vp-svc-desc">
+						Powers the voice agent — a realtime speech-to-speech model you talk
+						to, which acts in the vault through the agent's tools. Pick a
+						provider and set its API key. Swap providers anytime without
+						touching the agent.
+					</p>
+					<PvField label="Provider">
+						<PvSelect
+							value={voiceProvider}
+							onChange={selectVoiceProvider}
+							options={providerOptions(VOICE_PROVIDERS)}
+						/>
+					</PvField>
+					<PvField
+						label={
+							<>
+								{voiceMeta.label} API Key <SetChip isSet={voiceKeySet} />
+							</>
+						}
+						hint={voiceMeta.hint}
+					>
+						<SecretInput
+							isSet={voiceKeySet}
+							value={form[voiceMeta.key]}
+							onChange={set(voiceMeta.key)}
+						/>
+					</PvField>
+					<PvField
+						className="vp-svc-field--tight"
+						label={
+							<>
+								Model <Optional />
+							</>
+						}
+					>
+						<PvInput
+							spellCheck={false}
+							placeholder={voiceMeta.modelPh}
+							value={form[voiceMeta.model]}
+							onChange={set(voiceMeta.model)}
+						/>
+					</PvField>
+					<div className="vp-svc-test vp-svc-fetch">
+						<PvButton
+							size="sm"
+							onClick={loadVoiceModels}
+							disabled={fetchVoiceModels.isPending}
+						>
+							{fetchVoiceModels.isPending ? "Fetching…" : "Fetch models"}
+						</PvButton>
+						{voiceModels.length > 0 && (
+							<PvSelect
+								aria-label="Pick a fetched voice model"
+								placeholder={`${voiceModels.length} models — pick one…`}
+								options={voiceModels}
+								onChange={(m) => {
+									if (m) setForm((f) => ({ ...f, [voiceMeta.model]: m }));
+								}}
+							/>
+						)}
+					</div>
+					<PvField
+						className="vp-svc-field--last"
+						label={
+							<>
+								Voice <Optional />
+							</>
+						}
+					>
+						<PvInput
+							spellCheck={false}
+							placeholder={voiceMeta.voicePh}
+							value={form[voiceMeta.voice]}
+							onChange={set(voiceMeta.voice)}
+							list="voice-name-suggestions"
+						/>
+					</PvField>
+					<datalist id="voice-name-suggestions">
+						{GEMINI_VOICES.map(([name, style]) => (
+							<option key={name} value={name}>
+								{style}
+							</option>
+						))}
+					</datalist>
+					{voiceMeta.prices && (
+						<div className="vp-field vp-svc-pricing">
+							<span className="vp-label">
+								Pricing{" "}
+								<span className="vp-muted vp-svc-chip">$ / 1M tokens</span>
+							</span>
+							<div className="vp-svc-prices">
+								{voiceMeta.prices.map((pr) => (
+									<PvField
+										key={pr.key}
+										label={pr.label}
+										className="vp-svc-price"
+									>
+										<PvInput
+											type="number"
+											min="0"
+											step="any"
+											inputMode="decimal"
+											placeholder={pr.ph}
+											value={form[pr.key]}
+											onChange={set(pr.key)}
+										/>
+									</PvField>
+								))}
+							</div>
+							<span className="vp-field-hint">
+								Costs voice conversations on the Token Usage page. Audio and
+								text bill separately; thinking counts as text out. Until all
+								four are set, voice usage shows as unpriced.
+							</span>
+						</div>
+					)}
+					<TestRow
+						pending={testVoice.isPending}
+						onTest={() =>
+							runTest(testVoice, setVoiceResult, voiceTestPayload())
+						}
+						onClear={() =>
+							requestClear(
+								[voiceMeta.key],
+								setVoiceResult,
+								`${voiceMeta.label} voice`,
+							)
+						}
+						result={voiceResult}
+					/>
+				</PvPanel>
+			)}
+
+			{/* GitHub — PAT powering the agent's github_* tools. */}
+			{activeTab === "github" && (
+				<PvPanel title="integrations · github">
+					<p className="vp-card-desc vp-svc-desc">
+						Powers the agent's <code>github_*</code> tools (read repos, files,
+						commits, issues, PRs; create files/issues/branches/PRs). Use a
+						fine-grained personal access token scoped to just the repos the
+						agent should touch.
+					</p>
+					<PvField
+						label={
+							<>
+								API Base <Optional />
+							</>
+						}
+					>
+						<PvInput
+							spellCheck={false}
+							placeholder="https://api.github.com (set for GitHub Enterprise)"
+							value={form.github_api_base}
+							onChange={set("github_api_base")}
+						/>
+					</PvField>
+					<PvField
+						className="vp-svc-field--last"
+						label={
+							<>
+								Personal Access Token <SetChip isSet={data.github_token_set} />
+							</>
+						}
+						hint="github.com → Settings → Developer settings → Personal access tokens"
+					>
+						<SecretInput
+							isSet={data.github_token_set}
+							value={form.github_token}
+							onChange={set("github_token")}
+						/>
+					</PvField>
+					<TestRow
+						pending={testGh.isPending}
+						onTest={() => runTest(testGh, setGhResult, ghTestPayload())}
+						onClear={() => requestClear(GH_KEYS, setGhResult, "GitHub")}
+						result={ghResult}
+					/>
+				</PvPanel>
+			)}
+
+			{/* Email accounts — self-contained multi-account CRUD. */}
+			{activeTab === "email" && <EmailAccounts />}
+
+			{/* MCP servers — self-contained multi-server CRUD. */}
+			{activeTab === "mcp" && <McpServers />}
+		</>
+	);
+
 	return (
 		<PageContent>
 			<div className="vp-page-head">
@@ -626,807 +1224,44 @@ const Services = () => {
 
 			{isLoading && <p className="vp-muted vp-text">Loading…</p>}
 			{error && (
-				<p className="vp-text" style={{ color: "var(--vp-danger)" }}>
-					Failed to load service settings.
-				</p>
+				<p className="vp-text vp-svc-error">Failed to load service settings.</p>
 			)}
 
-			{data &&
-				(() => {
-					// Which services have credentials saved — drives the tab status dots.
-					const wsAnySet = WEBSEARCH_PROVIDERS.some(
-						(p) => data[`${p.key}_set`],
-					);
-					const trAnySet = TRANSCRIPTION_PROVIDERS.some(
-						(p) => data[`${p.key}_set`],
-					);
-					const imgAnySet = IMAGEGEN_PROVIDERS.some(
-						(p) => data[`${p.key}_set`],
-					);
-					const voiceAnySet = VOICE_PROVIDERS.some((p) => data[`${p.key}_set`]);
-					const configured = {
-						embeddings: !!data.azure_embedding_api_key_set,
-						search: wsAnySet,
-						transcription: trAnySet,
-						storage: !!data.s3_secret_access_key_set,
-						images: imgAnySet,
-						voice: voiceAnySet,
-						github: !!data.github_token_set,
-						email: !!emailAccounts?.some(
-							(a) => a.send_enabled || a.read_enabled,
-						),
-						mcp: !!mcpServers?.some((s) => s.enabled),
-					};
-					return (
-						<div className="vp-stack">
-							<div className="vp-svc-tabs" role="tablist">
-								{TABS.map((t) => (
-									<button
-										key={t.id}
-										type="button"
-										role="tab"
-										aria-selected={activeTab === t.id}
-										className={`vp-svc-tab ${activeTab === t.id ? "is-active" : ""}`}
-										onClick={() => setActiveTab(t.id)}
-									>
-										<span
-											className={`vp-svc-tab-dot ${configured[t.id] ? "is-on" : "is-off"}`}
-											title={configured[t.id] ? "Configured" : "Not configured"}
-										/>
-										{t.label}
-									</button>
-								))}
-							</div>
-
-							{/* Embeddings (Azure OpenAI) */}
-							{activeTab === "embeddings" && (
-								<PvPanel title="embeddings · azure openai">
-									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
-										Used to generate note embeddings and embed search queries
-										(text-embedding-3-large, 1536 dims).
-									</p>
-									<div className="vp-field">
-										<span className="vp-label">Embedding URL</span>
-										<input
-											className="vp-input"
-											type="text"
-											spellCheck={false}
-											placeholder="https://<resource>.openai.azure.com/openai/deployments/<deployment>/embeddings?api-version=2023-05-15"
-											value={form.azure_embedding_url}
-											onChange={set("azure_embedding_url")}
-										/>
-									</div>
-									<div className="vp-field" style={{ marginBottom: 0 }}>
-										<span className="vp-label">
-											API Key{" "}
-											{data.azure_embedding_api_key_set ? (
-												<span className="vp-tag vp-tag--green vp-svc-chip">
-													set
-												</span>
-											) : (
-												<span className="vp-tag vp-tag--red vp-svc-chip">
-													unset
-												</span>
-											)}
-										</span>
-										<input
-											className="vp-input"
-											type="password"
-											autoComplete="new-password"
-											placeholder={secretPlaceholder(
-												data.azure_embedding_api_key_set,
-											)}
-											value={form.azure_embedding_api_key}
-											onChange={set("azure_embedding_api_key")}
-										/>
-									</div>
-									<TestRow
-										pending={testEmb.isPending}
-										onTest={() =>
-											runTest(testEmb, setEmbResult, embTestPayload())
-										}
-										onClear={() =>
-											requestClear(EMB_KEYS, setEmbResult, "Azure embedding")
-										}
-										result={embResult}
+			{data && (
+				<div className="vp-stack">
+					<PvTabs
+						activeKey={activeTab}
+						onChange={setActiveTab}
+						items={TABS.map((t) => ({
+							key: t.id,
+							label: (
+								<span className="vp-svc-tab">
+									<span
+										className={`vp-svc-tab-dot ${configured[t.id] ? "is-on" : "is-off"}`}
+										title={configured[t.id] ? "Configured" : "Not configured"}
 									/>
-								</PvPanel>
-							)}
+									{t.label}
+								</span>
+							),
+							children: t.id === activeTab ? activePanel : null,
+						}))}
+					/>
 
-							{/* Web search (agent web_search tool) — pick a provider + key. */}
-							{activeTab === "search" && (
-								<PvPanel title="search · web">
-									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
-										Powers the agent's <code>web_search</code> tool. Pick a
-										provider and set its API key. Swap providers anytime without
-										touching the agent.
-									</p>
-									<div className="vp-field">
-										<span className="vp-label">Provider</span>
-										<select
-											className="vp-input"
-											value={wsProvider}
-											onChange={set("websearch_provider")}
-										>
-											{WEBSEARCH_PROVIDERS.map((p) => (
-												<option key={p.id} value={p.id}>
-													{p.label}
-												</option>
-											))}
-										</select>
-									</div>
-									<div className="vp-field" style={{ marginBottom: 0 }}>
-										<span className="vp-label">
-											{wsMeta.label} API Key{" "}
-											{wsKeySet ? (
-												<span className="vp-tag vp-tag--green vp-svc-chip">
-													set
-												</span>
-											) : (
-												<span className="vp-tag vp-tag--red vp-svc-chip">
-													unset
-												</span>
-											)}
-										</span>
-										<input
-											className="vp-input"
-											type="password"
-											autoComplete="new-password"
-											placeholder={secretPlaceholder(wsKeySet)}
-											value={form[wsMeta.key]}
-											onChange={set(wsMeta.key)}
-										/>
-										<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
-											{wsMeta.hint}
-										</span>
-									</div>
-									<TestRow
-										pending={testWs.isPending}
-										onTest={() => runTest(testWs, setWsResult, wsTestPayload())}
-										onClear={() =>
-											requestClear(
-												[wsMeta.key],
-												setWsResult,
-												`${wsMeta.label} search`,
-											)
-										}
-										result={wsResult}
-									/>
-								</PvPanel>
-							)}
-
-							{/* Transcription (recorder streaming ASR) — pick a provider + key. */}
-							{activeTab === "transcription" && (
-								<PvPanel title="transcription · streaming asr">
-									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
-										Powers the <code>Recorder</code> — streams audio to a
-										speech-to-text provider in real time. Pick a provider and
-										set its API key. Swap providers anytime without touching the
-										recorder.
-									</p>
-									<div className="vp-field">
-										<span className="vp-label">Provider</span>
-										<select
-											className="vp-input"
-											value={trProvider}
-											onChange={set("transcription_provider")}
-										>
-											{TRANSCRIPTION_PROVIDERS.map((p) => (
-												<option key={p.id} value={p.id}>
-													{p.label}
-												</option>
-											))}
-										</select>
-									</div>
-									<div className="vp-field" style={{ marginBottom: 0 }}>
-										<span className="vp-label">
-											{trMeta.label} API Key{" "}
-											{trKeySet ? (
-												<span className="vp-tag vp-tag--green vp-svc-chip">
-													set
-												</span>
-											) : (
-												<span className="vp-tag vp-tag--red vp-svc-chip">
-													unset
-												</span>
-											)}
-										</span>
-										<input
-											className="vp-input"
-											type="password"
-											autoComplete="new-password"
-											placeholder={secretPlaceholder(trKeySet)}
-											value={form[trMeta.key]}
-											onChange={set(trMeta.key)}
-										/>
-										<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
-											{trMeta.hint}
-										</span>
-									</div>
-									<TestRow
-										pending={testTr.isPending}
-										onTest={() => runTest(testTr, setTrResult, trTestPayload())}
-										onClear={() =>
-											requestClear(
-												[trMeta.key],
-												setTrResult,
-												`${trMeta.label} transcription`,
-											)
-										}
-										result={trResult}
-									/>
-								</PvPanel>
-							)}
-
-							{/* Object storage (S3) — pick the adapter preset, then fill it. */}
-							{activeTab === "storage" && (
-								<PvPanel title="storage · s3">
-									<div className="vp-field">
-										<span className="vp-label">Adapter</span>
-										<select
-											className="vp-input"
-											value={vendor}
-											onChange={selectVendor}
-										>
-											{Object.entries(VENDORS).map(([id, preset]) => (
-												<option key={id} value={id}>
-													{preset.label}
-												</option>
-											))}
-										</select>
-									</div>
-									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
-										{v.desc}
-									</p>
-									<div className="vp-field">
-										<span className="vp-label">{v.endpoint.label}</span>
-										<input
-											className="vp-input"
-											type="text"
-											spellCheck={false}
-											placeholder={v.endpoint.ph}
-											value={form.s3_endpoint}
-											onChange={set("s3_endpoint")}
-										/>
-									</div>
-									<div className="vp-field">
-										<span className="vp-label">{v.region.label}</span>
-										<input
-											className="vp-input"
-											type="text"
-											spellCheck={false}
-											placeholder={v.region.ph}
-											value={form.s3_region}
-											onChange={set("s3_region")}
-										/>
-									</div>
-									{vendor === "bunny" ? (
-										<div className="vp-field">
-											<span className="vp-label">{v.bucket.label}</span>
-											<input
-												className="vp-input"
-												type="text"
-												spellCheck={false}
-												placeholder={v.bucket.ph}
-												value={form.s3_bucket}
-												onChange={setZone}
-											/>
-										</div>
-									) : (
-										<>
-											<div className="vp-field">
-												<span className="vp-label">{v.bucket.label}</span>
-												<input
-													className="vp-input"
-													type="text"
-													spellCheck={false}
-													placeholder={v.bucket.ph}
-													value={form.s3_bucket}
-													onChange={set("s3_bucket")}
-												/>
-											</div>
-											<div className="vp-field">
-												<span className="vp-label">{v.accessKey.label}</span>
-												<input
-													className="vp-input"
-													type="text"
-													spellCheck={false}
-													placeholder={v.accessKey.ph}
-													value={form.s3_access_key_id}
-													onChange={set("s3_access_key_id")}
-												/>
-											</div>
-										</>
-									)}
-									<div className="vp-field">
-										<span className="vp-label">
-											{v.secret.label}{" "}
-											{data.s3_secret_access_key_set ? (
-												<span className="vp-tag vp-tag--green vp-svc-chip">
-													set
-												</span>
-											) : (
-												<span className="vp-tag vp-tag--red vp-svc-chip">
-													unset
-												</span>
-											)}
-										</span>
-										<input
-											className="vp-input"
-											type="password"
-											autoComplete="new-password"
-											placeholder={secretPlaceholder(
-												data.s3_secret_access_key_set,
-											)}
-											value={form.s3_secret_access_key}
-											onChange={set("s3_secret_access_key")}
-										/>
-									</div>
-
-									{/* CDN — optional accelerator on top of the bucket above. */}
-									<div className="vp-field">
-										<span className="vp-label">
-											{v.cdnUrl.label}{" "}
-											<span className="vp-muted vp-svc-chip">optional</span>
-										</span>
-										<input
-											className="vp-input"
-											type="text"
-											spellCheck={false}
-											placeholder={v.cdnUrl.ph}
-											value={form.s3_cdn_url}
-											onChange={set("s3_cdn_url")}
-										/>
-									</div>
-									<div className="vp-field">
-										<span className="vp-label">
-											{v.cdnToken.label}{" "}
-											<span className="vp-muted vp-svc-chip">optional</span>
-											{data.s3_cdn_token_key_set && (
-												<span className="vp-tag vp-tag--green vp-svc-chip">
-													set
-												</span>
-											)}
-										</span>
-										<input
-											className="vp-input"
-											type="password"
-											autoComplete="new-password"
-											placeholder={secretPlaceholder(data.s3_cdn_token_key_set)}
-											value={form.s3_cdn_token_key}
-											onChange={set("s3_cdn_token_key")}
-										/>
-									</div>
-									<TestRow
-										pending={testS3.isPending}
-										onTest={() => runTest(testS3, setS3Result, s3TestPayload())}
-										onClear={() =>
-											requestClear(S3_KEYS, setS3Result, "storage")
-										}
-										result={s3Result}
-									/>
-								</PvPanel>
-							)}
-
-							{/* Image generation (agent generate_image tool) — pick a
-								provider + key (+ optional model/base). */}
-							{activeTab === "images" && (
-								<PvPanel title="images · generation">
-									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
-										Powers the agent's <code>generate_image</code> tool. Pick a
-										provider and set its API key. Generated images are stored in
-										your S3 bucket and returned as a CDN URL. Swap providers
-										anytime without touching the agent.
-									</p>
-									<div className="vp-field">
-										<span className="vp-label">Provider</span>
-										<select
-											className="vp-input"
-											value={imgProvider}
-											onChange={selectImgProvider}
-										>
-											{IMAGEGEN_PROVIDERS.map((p) => (
-												<option key={p.id} value={p.id}>
-													{p.label}
-												</option>
-											))}
-										</select>
-									</div>
-									<div className="vp-field">
-										<span className="vp-label">
-											{imgMeta.label} API Key{" "}
-											{imgKeySet ? (
-												<span className="vp-tag vp-tag--green vp-svc-chip">
-													set
-												</span>
-											) : (
-												<span className="vp-tag vp-tag--red vp-svc-chip">
-													unset
-												</span>
-											)}
-										</span>
-										<input
-											className="vp-input"
-											type="password"
-											autoComplete="new-password"
-											placeholder={secretPlaceholder(imgKeySet)}
-											value={form[imgMeta.key]}
-											onChange={set(imgMeta.key)}
-										/>
-										<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
-											{imgMeta.hint}
-										</span>
-									</div>
-									{imgMeta.model && (
-										<div className="vp-field">
-											<span className="vp-label">
-												Model{" "}
-												<span className="vp-muted vp-svc-chip">optional</span>
-											</span>
-											<input
-												className="vp-input"
-												type="text"
-												spellCheck={false}
-												placeholder={imgMeta.modelPh}
-												value={form[imgMeta.model]}
-												onChange={set(imgMeta.model)}
-												list="imagegen-model-suggestions"
-											/>
-											{imgModels.length > 0 && (
-												<datalist id="imagegen-model-suggestions">
-													{imgModels.map((m) => (
-														<option key={m} value={m} />
-													))}
-												</datalist>
-											)}
-											<div className="vp-svc-test">
-												<PvButton
-													size="sm"
-													onClick={loadImgModels}
-													disabled={fetchImgModels.isPending}
-												>
-													{fetchImgModels.isPending
-														? "Fetching…"
-														: "Fetch models"}
-												</PvButton>
-												{imgModels.length > 0 && (
-													<select
-														className="vp-input"
-														value=""
-														onChange={(e) => {
-															if (e.target.value)
-																setForm((f) => ({
-																	...f,
-																	[imgMeta.model]: e.target.value,
-																}));
-														}}
-													>
-														<option value="">
-															{imgModels.length} models — pick one…
-														</option>
-														{imgModels.map((m) => (
-															<option key={m} value={m}>
-																{m}
-															</option>
-														))}
-													</select>
-												)}
-											</div>
-										</div>
-									)}
-									{imgMeta.base && (
-										<div className="vp-field" style={{ marginBottom: 0 }}>
-											<span className="vp-label">
-												API Base{" "}
-												<span className="vp-muted vp-svc-chip">optional</span>
-											</span>
-											<input
-												className="vp-input"
-												type="text"
-												spellCheck={false}
-												placeholder="https://api.openai.com (override for a proxy)"
-												value={form[imgMeta.base]}
-												onChange={set(imgMeta.base)}
-											/>
-										</div>
-									)}
-									<TestRow
-										pending={testImg.isPending}
-										onTest={() =>
-											runTest(testImg, setImgResult, imgTestPayload())
-										}
-										onClear={() =>
-											requestClear(
-												[imgMeta.key],
-												setImgResult,
-												`${imgMeta.label} image generation`,
-											)
-										}
-										result={imgResult}
-									/>
-									{imgResult?.image && (
-										<div style={{ marginTop: 12 }}>
-											<img
-												src={imgResult.image}
-												alt="Generated preview"
-												style={{
-													maxWidth: "100%",
-													maxHeight: 320,
-													borderRadius: 8,
-													border: "1px solid var(--vp-border)",
-												}}
-											/>
-										</div>
-									)}
-								</PvPanel>
-							)}
-
-							{/* Voice agent (speech-to-speech) — pick a provider + key
-								(+ optional model/voice). */}
-							{activeTab === "voice" && (
-								<PvPanel title="voice · speech-to-speech">
-									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
-										Powers the voice agent — a realtime speech-to-speech model
-										you talk to, which acts in the vault through the agent's
-										tools. Pick a provider and set its API key. Swap providers
-										anytime without touching the agent.
-									</p>
-									<div className="vp-field">
-										<span className="vp-label">Provider</span>
-										<select
-											className="vp-input"
-											value={voiceProvider}
-											onChange={selectVoiceProvider}
-										>
-											{VOICE_PROVIDERS.map((p) => (
-												<option key={p.id} value={p.id}>
-													{p.label}
-												</option>
-											))}
-										</select>
-									</div>
-									<div className="vp-field">
-										<span className="vp-label">
-											{voiceMeta.label} API Key{" "}
-											{voiceKeySet ? (
-												<span className="vp-tag vp-tag--green vp-svc-chip">
-													set
-												</span>
-											) : (
-												<span className="vp-tag vp-tag--red vp-svc-chip">
-													unset
-												</span>
-											)}
-										</span>
-										<input
-											className="vp-input"
-											type="password"
-											autoComplete="new-password"
-											placeholder={secretPlaceholder(voiceKeySet)}
-											value={form[voiceMeta.key]}
-											onChange={set(voiceMeta.key)}
-										/>
-										<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
-											{voiceMeta.hint}
-										</span>
-									</div>
-									<div className="vp-field">
-										<span className="vp-label">
-											Model{" "}
-											<span className="vp-muted vp-svc-chip">optional</span>
-										</span>
-										<input
-											className="vp-input"
-											type="text"
-											spellCheck={false}
-											placeholder={voiceMeta.modelPh}
-											value={form[voiceMeta.model]}
-											onChange={set(voiceMeta.model)}
-										/>
-										<div className="vp-svc-test">
-											<PvButton
-												size="sm"
-												onClick={loadVoiceModels}
-												disabled={fetchVoiceModels.isPending}
-											>
-												{fetchVoiceModels.isPending
-													? "Fetching…"
-													: "Fetch models"}
-											</PvButton>
-											{voiceModels.length > 0 && (
-												<select
-													className="vp-input"
-													value=""
-													onChange={(e) => {
-														if (e.target.value)
-															setForm((f) => ({
-																...f,
-																[voiceMeta.model]: e.target.value,
-															}));
-													}}
-												>
-													<option value="">
-														{voiceModels.length} models — pick one…
-													</option>
-													{voiceModels.map((m) => (
-														<option key={m} value={m}>
-															{m}
-														</option>
-													))}
-												</select>
-											)}
-										</div>
-									</div>
-									<div className="vp-field" style={{ marginBottom: 0 }}>
-										<span className="vp-label">
-											Voice{" "}
-											<span className="vp-muted vp-svc-chip">optional</span>
-										</span>
-										<input
-											className="vp-input"
-											type="text"
-											spellCheck={false}
-											placeholder={voiceMeta.voicePh}
-											value={form[voiceMeta.voice]}
-											onChange={set(voiceMeta.voice)}
-											list="voice-name-suggestions"
-										/>
-										<datalist id="voice-name-suggestions">
-											{GEMINI_VOICES.map(([name, style]) => (
-												<option key={name} value={name}>
-													{style}
-												</option>
-											))}
-										</datalist>
-									</div>
-									{voiceMeta.prices && (
-										<div
-											className="vp-field"
-											style={{ marginTop: 16, marginBottom: 0 }}
-										>
-											<span className="vp-label">
-												Pricing{" "}
-												<span className="vp-muted vp-svc-chip">
-													$ / 1M tokens
-												</span>
-											</span>
-											<div
-												style={{
-													display: "grid",
-													gridTemplateColumns:
-														"repeat(auto-fit, minmax(110px, 1fr))",
-													gap: 8,
-												}}
-											>
-												{voiceMeta.prices.map((pr) => (
-													<label
-														key={pr.key}
-														style={{ display: "grid", gap: 4 }}
-													>
-														<span className="vp-muted" style={{ fontSize: 12 }}>
-															{pr.label}
-														</span>
-														<input
-															className="vp-input"
-															type="number"
-															min="0"
-															step="any"
-															inputMode="decimal"
-															placeholder={pr.ph}
-															value={form[pr.key]}
-															onChange={set(pr.key)}
-														/>
-													</label>
-												))}
-											</div>
-											<span
-												className="vp-muted vp-text"
-												style={{ fontSize: 12 }}
-											>
-												Costs voice conversations on the Token Usage page. Audio
-												and text bill separately; thinking counts as text out.
-												Until all four are set, voice usage shows as unpriced.
-											</span>
-										</div>
-									)}
-									<TestRow
-										pending={testVoice.isPending}
-										onTest={() =>
-											runTest(testVoice, setVoiceResult, voiceTestPayload())
-										}
-										onClear={() =>
-											requestClear(
-												[voiceMeta.key],
-												setVoiceResult,
-												`${voiceMeta.label} voice`,
-											)
-										}
-										result={voiceResult}
-									/>
-								</PvPanel>
-							)}
-
-							{/* GitHub — PAT powering the agent's github_* tools. */}
-							{activeTab === "github" && (
-								<PvPanel title="integrations · github">
-									<p className="vp-card-desc" style={{ marginBottom: 16 }}>
-										Powers the agent's <code>github_*</code> tools (read repos,
-										files, commits, issues, PRs; create
-										files/issues/branches/PRs). Use a fine-grained personal
-										access token scoped to just the repos the agent should
-										touch.
-									</p>
-									<div className="vp-field">
-										<span className="vp-label">
-											API Base{" "}
-											<span className="vp-muted vp-svc-chip">optional</span>
-										</span>
-										<input
-											className="vp-input"
-											type="text"
-											spellCheck={false}
-											placeholder="https://api.github.com (set for GitHub Enterprise)"
-											value={form.github_api_base}
-											onChange={set("github_api_base")}
-										/>
-									</div>
-									<div className="vp-field" style={{ marginBottom: 0 }}>
-										<span className="vp-label">
-											Personal Access Token{" "}
-											{data.github_token_set ? (
-												<span className="vp-tag vp-tag--green vp-svc-chip">
-													set
-												</span>
-											) : (
-												<span className="vp-tag vp-tag--red vp-svc-chip">
-													unset
-												</span>
-											)}
-										</span>
-										<input
-											className="vp-input"
-											type="password"
-											autoComplete="new-password"
-											placeholder={secretPlaceholder(data.github_token_set)}
-											value={form.github_token}
-											onChange={set("github_token")}
-										/>
-										<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
-											github.com → Settings → Developer settings → Personal
-											access tokens
-										</span>
-									</div>
-									<TestRow
-										pending={testGh.isPending}
-										onTest={() => runTest(testGh, setGhResult, ghTestPayload())}
-										onClear={() => requestClear(GH_KEYS, setGhResult, "GitHub")}
-										result={ghResult}
-									/>
-								</PvPanel>
-							)}
-
-							{/* Email accounts — self-contained multi-account CRUD. */}
-							{activeTab === "email" && <EmailAccounts />}
-
-							{/* MCP servers — self-contained multi-server CRUD. */}
-							{activeTab === "mcp" && <McpServers />}
-
-							{/* The shared "Save changes" persists the single-form tabs; the
-								Email and MCP tabs save per row, so it's hidden there. */}
-							{activeTab !== "email" && activeTab !== "mcp" && (
-								<div className="vp-row" style={{ justifyContent: "flex-end" }}>
-									<PvButton
-										variant="primary"
-										onClick={handleSave}
-										disabled={update.isPending}
-									>
-										{update.isPending ? "Saving…" : "Save changes"}
-									</PvButton>
-								</div>
-							)}
+					{/* The shared "Save changes" persists the single-form tabs; the
+						Email and MCP tabs save per row, so it's hidden there. */}
+					{activeTab !== "email" && activeTab !== "mcp" && (
+						<div className="vp-row vp-svc-actions">
+							<PvButton
+								variant="primary"
+								onClick={handleSave}
+								disabled={update.isPending}
+							>
+								{update.isPending ? "Saving…" : "Save changes"}
+							</PvButton>
 						</div>
-					);
-				})()}
+					)}
+				</div>
+			)}
 
 			<PvModal
 				open={!!confirmClear}

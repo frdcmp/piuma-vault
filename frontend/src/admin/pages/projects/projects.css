@@ -126,99 +126,18 @@
 	color: var(--vp-info);
 }
 
-.vp-linguist-avatar {
-	background-color: var(--vp-bg-soft) !important;
-	color: var(--vp-accent) !important;
-	border: 2px solid var(--vp-border) !important;
-	border-radius: 0 !important;
-	font-family: var(--vp-font);
-	font-weight: 700;
-	cursor: pointer;
+.vp-cell-stack {
+	gap: 2px;
+}
+.vp-cell-tags {
+	gap: 4px;
 }
 
-/* ---- Restyle the antd Table to the pixel language -------------------------- */
-.vp-table .ant-table {
-	background: transparent;
-	font-family: var(--vp-font);
-	color: var(--vp-text);
+/* Linguist avatars: overlapping row, like a stacked avatar group. */
+.vp-linguists {
+	display: inline-flex;
+	align-items: center;
 }
-.vp-table .ant-table-thead > tr > th {
-	background: var(--vp-bg-soft);
-	color: var(--vp-muted);
-	border-bottom: 2px solid var(--vp-border);
-	font-size: 11px;
-	font-weight: 700;
-	letter-spacing: 0.5px;
-	text-transform: uppercase;
-}
-.vp-table .ant-table-thead > tr > th::before {
-	display: none !important;
-}
-.vp-table .ant-table-tbody > tr > td {
-	background: var(--vp-panel);
-	border-bottom: 1px solid var(--vp-border-soft);
-	color: var(--vp-text);
-	font-size: 13px;
-}
-.vp-table .ant-table-tbody > tr:hover > td {
-	background: var(--vp-panel-alt) !important;
-}
-.vp-table .ant-table-cell-fix-right,
-.vp-table .ant-table-cell-fix-left {
-	background: var(--vp-panel) !important;
-}
-
-/* Pagination */
-.vp-table .ant-pagination {
-	color: var(--vp-text);
-	padding: 12px 16px;
-}
-.vp-table .ant-pagination-item,
-.vp-table .ant-pagination-prev .ant-pagination-item-link,
-.vp-table .ant-pagination-next .ant-pagination-item-link,
-.vp-table .ant-select-selector {
-	background: var(--vp-bg-soft) !important;
-	border: 2px solid var(--vp-border) !important;
-	border-radius: 0 !important;
-	color: var(--vp-text) !important;
-}
-.vp-table .ant-pagination-item a {
-	color: var(--vp-text);
-}
-.vp-table .ant-pagination-item-active {
-	border-color: var(--vp-accent) !important;
-}
-.vp-table .ant-pagination-item-active a {
-	color: var(--vp-accent);
-}
-.vp-table .ant-pagination-total-text {
-	color: var(--vp-muted);
-}
-
-/* Segmented control in the header */
-.vp-projects .ant-segmented {
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-border);
-	border-radius: 0;
-	color: var(--vp-muted);
-	font-family: var(--vp-font);
-	padding: 2px;
-}
-.vp-projects .ant-segmented .ant-segmented-item {
-	border-radius: 0;
-	color: var(--vp-muted);
-	font-size: 12px;
-	font-weight: 700;
-	letter-spacing: 0.5px;
-}
-.vp-projects .ant-segmented .ant-segmented-item-selected {
-	background: var(--vp-panel);
-	border: 1px solid var(--vp-accent);
-	border-radius: 0;
-	color: var(--vp-accent);
-	box-shadow: none;
-}
-.vp-projects .ant-segmented .ant-segmented-thumb {
-	border-radius: 0;
-	background: var(--vp-panel);
+.vp-linguists > * + * {
+	margin-left: -8px;
 }

@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import { PvInput } from "@/ui";
 import "./SearchModal.css";
 
 // Real navigation targets — mirrors the sidebar plus the other admin routes
@@ -200,7 +201,7 @@ const SearchModal = ({ open, onClose }) => {
 			>
 				<div className="vp-search-head">
 					<SearchOutlined className="vp-search-icon" />
-					<input
+					<PvInput
 						ref={inputRef}
 						className="vp-search-input"
 						placeholder="Search pages…"

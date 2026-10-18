@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PvModal, pvMessage } from "@/ui";
+import { PvButton, PvField, PvInput, PvModal, PvSelect, pvMessage } from "@/ui";
 import {
 	useCreateFolderShare,
 	useDeleteFolderShare,
@@ -15,6 +15,15 @@ const EXPIRY_OPTIONS = [
 	{ label: "7 days", hours: 24 * 7 },
 	{ label: "30 days", hours: 24 * 30 },
 ];
+
+const ACCESS_OPTIONS = [
+	{ value: "view", label: "View only (browse + download)" },
+	{ value: "edit", label: "Edit (upload, delete, create folders)" },
+];
+const EXPIRY_SELECT = EXPIRY_OPTIONS.map((o, i) => ({
+	value: i,
+	label: o.label,
+}));
 
 const fullUrl = (relUrl) => {
 	if (!relUrl) return "";
@@ -82,67 +91,51 @@ export default function FolderShareModal({ open, prefix, onClose }) {
 		>
 			{/* Create form */}
 			<div className="fshare-form">
-				<div className="vp-field">
-					<label className="vp-label" htmlFor="fshare-access">
-						Access
-					</label>
-					<select
-						id="fshare-access"
-						className="vp-select"
+				<PvField label="Access">
+					<PvSelect
+						options={ACCESS_OPTIONS}
 						value={accessLevel}
-						onChange={(e) => setAccessLevel(e.target.value)}
-					>
-						<option value="view">View only (browse + download)</option>
-						<option value="edit">Edit (upload, delete, create folders)</option>
-					</select>
-				</div>
+						onChange={setAccessLevel}
+					/>
+				</PvField>
 
-				<div className="vp-field">
-					<label className="vp-label" htmlFor="fshare-pwd">
-						Password{" "}
-						<span className="fshare-hint">
-							{accessLevel === "edit"
-								? "(recommended for edit links)"
-								: "(optional)"}
-						</span>
-					</label>
-					<input
-						id="fshare-pwd"
-						className="vp-input"
-						type="text"
+				<PvField
+					label={
+						<>
+							Password{" "}
+							<span className="fshare-hint">
+								{accessLevel === "edit"
+									? "(recommended for edit links)"
+									: "(optional)"}
+							</span>
+						</>
+					}
+				>
+					<PvInput
 						autoComplete="off"
 						placeholder="leave empty for no password"
 						value={password}
 						onChange={(e) => setPassword(e.target.value)}
 					/>
-				</div>
+				</PvField>
 
-				<div className="vp-field">
-					<label className="vp-label" htmlFor="fshare-expiry">
-						Expires
-					</label>
-					<select
-						id="fshare-expiry"
-						className="vp-select"
+				<PvField label="Expires">
+					<PvSelect
+						options={EXPIRY_SELECT}
 						value={expiryIdx}
-						onChange={(e) => setExpiryIdx(Number(e.target.value))}
-					>
-						{EXPIRY_OPTIONS.map((o, i) => (
-							<option key={o.label} value={i}>
-								{o.label}
-							</option>
-						))}
-					</select>
-				</div>
+						onChange={setExpiryIdx}
+					/>
+				</PvField>
 
-				<button
-					type="button"
-					className="vp-btn vp-btn--primary"
+				<PvButton
+					variant="primary"
+					icon="🔗"
 					onClick={handleCreate}
 					disabled={createShare.isPending}
+					loading={createShare.isPending}
 				>
-					🔗 Create share link
-				</button>
+					Create share link
+				</PvButton>
 			</div>
 
 			{/* Existing shares */}
@@ -187,27 +180,15 @@ export default function FolderShareModal({ open, prefix, onClose }) {
 								{!s.is_active && <span className="fshare-off">disabled</span>}
 							</div>
 							<div className="fshare-row-actions">
-								<button
-									type="button"
-									className="vp-btn vp-btn--sm"
-									onClick={() => copyUrl(s.url)}
-								>
+								<PvButton size="sm" onClick={() => copyUrl(s.url)}>
 									Copy
-								</button>
-								<button
-									type="button"
-									className="vp-btn vp-btn--sm"
-									onClick={() => toggleActive(s)}
-								>
+								</PvButton>
+								<PvButton size="sm" onClick={() => toggleActive(s)}>
 									{s.is_active ? "Disable" : "Enable"}
-								</button>
-								<button
-									type="button"
-									className="vp-btn vp-btn--sm vp-btn--danger"
-									onClick={() => revoke(s)}
-								>
+								</PvButton>
+								<PvButton size="sm" variant="danger" onClick={() => revoke(s)}>
 									Revoke
-								</button>
+								</PvButton>
 							</div>
 						</div>
 					))}

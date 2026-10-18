@@ -1,38 +1,10 @@
 /* Services page — small extras on top of the shared vault-pixel classes. */
 
-/* Tab bar — one tab per service; the active panel renders below. */
-.vp-svc-tabs {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	margin-bottom: 4px;
-}
-
+/* Tab label: status dot + service name (inside a PvTabs tab). */
 .vp-svc-tab {
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
-	font: inherit;
-	font-size: 13px;
-	font-weight: 700;
-	letter-spacing: 0.5px;
-	text-transform: uppercase;
-	color: var(--vp-muted);
-	background: transparent;
-	border: 2px solid var(--vp-border);
-	padding: 8px 14px;
-	cursor: pointer;
-}
-
-.vp-svc-tab:hover {
-	color: var(--vp-text);
-	border-color: var(--vp-success);
-}
-
-.vp-svc-tab.is-active {
-	color: var(--vp-bg);
-	background: var(--vp-accent);
-	border-color: var(--vp-accent);
 }
 
 .vp-svc-tab-dot {
@@ -46,9 +18,6 @@
 }
 .vp-svc-tab-dot.is-off {
 	background: var(--vp-border);
-}
-.vp-svc-tab.is-active .vp-svc-tab-dot.is-off {
-	background: color-mix(in srgb, var(--vp-shadow-color) 35%, transparent);
 }
 
 .vp-svc-chip {
@@ -66,6 +35,11 @@
 	border-top: 2px dashed var(--vp-border);
 }
 
+/* "Fetch models" row under a model field. */
+.vp-svc-fetch {
+	margin-bottom: 14px;
+}
+
 .vp-svc-result {
 	font-size: 12px;
 	font-weight: 700;
@@ -79,6 +53,100 @@
 }
 .vp-svc-result.is-err {
 	color: var(--vp-danger);
+}
+
+.vp-card-desc.vp-svc-desc {
+	margin-bottom: 16px;
+}
+.vp-svc-error {
+	color: var(--vp-danger);
+}
+.vp-field.vp-svc-field--last {
+	margin-bottom: 0;
+}
+.vp-field.vp-svc-field--tight {
+	margin-bottom: 6px;
+}
+
+/* Voice pricing: four number fields in an auto-fit grid. */
+.vp-field.vp-svc-pricing {
+	margin-top: 16px;
+	margin-bottom: 0;
+}
+.vp-svc-prices {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+	gap: 8px;
+}
+.vp-field.vp-svc-price {
+	gap: 4px;
+	margin-bottom: 0;
+}
+
+.vp-svc-preview {
+	margin-top: 12px;
+}
+.vp-svc-preview img {
+	max-width: 100%;
+	max-height: 320px;
+	border-radius: 8px;
+	border: 1px solid var(--vp-border);
+}
+
+.vp-svc-actions {
+	justify-content: flex-end;
+}
+
+/* Multi-field rows in the email / MCP cards: columns wrap, each with its own basis. */
+.vp-row.vp-svc-fields {
+	gap: 12px;
+	flex-wrap: wrap;
+}
+.vp-row.vp-svc-opts {
+	gap: 16px;
+	flex-wrap: wrap;
+}
+.vp-field.vp-svc-col {
+	flex: 1 1 200px;
+	margin-bottom: 0;
+}
+.vp-field.vp-svc-col--wide {
+	flex: 1 1 240px;
+}
+.vp-field.vp-svc-col--host {
+	flex: 2 1 220px;
+}
+.vp-field.vp-svc-col--port {
+	flex: 0 1 100px;
+}
+.vp-field.vp-svc-col--sec {
+	flex: 1 1 160px;
+}
+.vp-field.vp-svc-col--half {
+	flex: 1 1 220px;
+}
+.vp-field.vp-svc-col--timeout {
+	flex: 0 1 140px;
+}
+.vp-svc-add {
+	margin-top: 16px;
+}
+.vp-svc-note {
+	font-size: 12px;
+	margin-bottom: 16px;
+}
+.vp-svc-warn {
+	margin: 0;
+	font-size: 12px;
+	color: var(--vp-danger);
+}
+.vp-svc-banner {
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--vp-danger);
+	border: 2px dashed var(--vp-danger);
+	padding: 8px 12px;
+	margin-bottom: 16px;
 }
 
 /* Email accounts — one bordered card per mailbox. */
@@ -98,6 +166,11 @@
 	padding: 12px;
 	border-left: 2px dashed var(--vp-border);
 	margin-left: 4px;
+}
+
+.vp-row.vp-email-actions {
+	gap: 8px;
+	margin-top: 12px;
 }
 
 /* MCP servers — one bordered card per server (row or add/edit form). */
@@ -156,4 +229,19 @@
 	background: var(--vp-bg-soft);
 	border: 1px solid var(--vp-border);
 	padding: 2px 6px;
+}
+
+.vp-row.vp-mcp-env-row {
+	gap: 8px;
+	margin-bottom: 8px;
+}
+.vp-mcp-env-key {
+	flex: 1 1 140px;
+}
+.vp-mcp-env-val {
+	flex: 2 1 200px;
+}
+.vp-row.vp-mcp-actions {
+	gap: 8px;
+	margin-top: 4px;
 }

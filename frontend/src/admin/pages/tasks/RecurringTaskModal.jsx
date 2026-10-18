@@ -1,6 +1,14 @@
 import dayjs from "dayjs";
 import { useState } from "react";
-import { PvButton, PvDateTimePicker, PvModal } from "@/ui";
+import {
+	PvButton,
+	PvCheckbox,
+	PvDateTimePicker,
+	PvField,
+	PvInput,
+	PvModal,
+	PvSelect,
+} from "@/ui";
 import { BucketSelect } from "../../../components/buckets";
 import {
 	useBuckets,
@@ -21,6 +29,11 @@ const DOW_LABEL = {
 	SA: "S",
 	SU: "S",
 };
+const FREQ_OPTIONS = [
+	{ value: "DAILY", label: "daily" },
+	{ value: "WEEKLY", label: "weekly" },
+	{ value: "MONTHLY", label: "monthly" },
+];
 const BYDAY_FROM_INDEX = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
 // Build an rrule string from the simple builder state.
@@ -112,45 +125,38 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 			className="task-modal"
 		>
 			<div className="tasks-form">
-				<label className="tasks-field">
-					<span>Title</span>
-					<input
+				<PvField label="Title">
+					<PvInput
 						value={title}
 						onChange={(e) => setTitle(e.target.value)}
 						placeholder="Leg day"
-						// biome-ignore lint/a11y/noAutofocus: modal entry field
 						autoFocus
 					/>
-				</label>
+				</PvField>
 
-				<label className="tasks-field">
-					<span>Repeats</span>
-					<select value={freq} onChange={(e) => setFreq(e.target.value)}>
-						<option value="DAILY">daily</option>
-						<option value="WEEKLY">weekly</option>
-						<option value="MONTHLY">monthly</option>
-					</select>
-				</label>
+				<PvField label="Repeats">
+					<PvSelect options={FREQ_OPTIONS} value={freq} onChange={setFreq} />
+				</PvField>
 
-				<label className="tasks-field">
-					<span>Every</span>
-					<input
+				<PvField label="Every">
+					<PvInput
 						type="number"
 						min={1}
 						value={interval}
 						onChange={(e) => setInterval(e.target.value)}
 					/>
-				</label>
+				</PvField>
 
 				{freq === "WEEKLY" ? (
-					<div className="tasks-field">
-						<span>On</span>
+					<div className="vp-field">
+						<span className="vp-label">On</span>
 						<div className="dow-picker">
 							{DOW.map((d) => (
 								<button
 									type="button"
 									key={d}
 									className={`dow-btn${byday.includes(d) ? " is-on" : ""}`}
+									aria-pressed={byday.includes(d)}
 									onClick={() => toggleDay(d)}
 								>
 									{DOW_LABEL[d]}
@@ -160,8 +166,8 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 					</div>
 				) : null}
 
-				<div className="tasks-field">
-					<span>Starts</span>
+				<div className="vp-field">
+					<span className="vp-label">Starts</span>
 					<PvDateTimePicker
 						value={dtstart}
 						onChange={setDtstart}
@@ -171,8 +177,8 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 					/>
 				</div>
 
-				<div className="tasks-field">
-					<span>Until (optional)</span>
+				<div className="vp-field">
+					<span className="vp-label">Until (optional)</span>
 					<PvDateTimePicker
 						value={until}
 						onChange={setUntil}
@@ -181,8 +187,8 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 					/>
 				</div>
 
-				<div className="tasks-field">
-					<span>Bucket</span>
+				<div className="vp-field">
+					<span className="vp-label">Bucket</span>
 					<BucketSelect
 						value={bucketId}
 						onChange={setBucketId}
@@ -190,26 +196,18 @@ export default function RecurringTaskModal({ recurring, onClose }) {
 					/>
 				</div>
 
-				<label className="tasks-field">
-					<span>Tags</span>
-					<input
+				<PvField label="Tags">
+					<PvInput
 						value={tags}
 						onChange={(e) => setTags(e.target.value)}
 						placeholder="fitness"
 					/>
-				</label>
+				</PvField>
 
-				<label className="tasks-field tasks-field--inline">
-					<input
-						type="checkbox"
-						checked={active}
-						onChange={(e) => setActive(e.target.checked)}
-					/>
-					<span>Active</span>
-				</label>
+				<PvCheckbox checked={active} onChange={setActive} label="Active" />
 
-				<div className="tasks-field">
-					<span>Alerts</span>
+				<div className="vp-field">
+					<span className="vp-label">Alerts</span>
 					<AlertsField value={alerts} onChange={setAlerts} />
 				</div>
 

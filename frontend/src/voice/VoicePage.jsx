@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PvButton } from "@/ui";
 import Starfield from "../admin/components/notes/Starfield";
 import { legFrameAt, Sprite, useSprite } from "../sprites";
 import voiceEngine from "./voiceEngine";
@@ -155,29 +156,21 @@ export default function VoicePage() {
 			<div className="voice-controls">
 				{active ? (
 					<>
-						<button
-							type="button"
-							className="voice-btn"
-							onClick={() => voiceEngine.setMuted(!muted)}
-						>
+						<PvButton onClick={() => voiceEngine.setMuted(!muted)}>
 							{muted ? "UNMUTE" : "MUTE"}
-						</button>
-						<button
-							type="button"
-							className="voice-btn voice-btn--end"
-							onClick={() => voiceEngine.stop()}
-						>
+						</PvButton>
+						<PvButton variant="danger" onClick={() => voiceEngine.stop()}>
 							END
-						</button>
+						</PvButton>
 					</>
 				) : (
-					<button
-						type="button"
-						className="voice-btn voice-btn--start"
+					<PvButton
+						variant="primary"
+						className="voice-start"
 						onClick={() => voiceEngine.start()}
 					>
 						TALK TO {name.toUpperCase()}
-					</button>
+					</PvButton>
 				)}
 			</div>
 			<p className="voice-hint">Ctrl + Space — start or end from anywhere</p>

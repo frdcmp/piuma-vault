@@ -1,5 +1,16 @@
 import { useState } from "react";
-import { PvButton, PvCheckbox, PvModal, PvPanel, pvMessage } from "@/ui";
+import {
+	PvButton,
+	PvCheckbox,
+	PvField,
+	PvIconButton,
+	PvInput,
+	PvModal,
+	PvPanel,
+	PvSelect,
+	PvTextarea,
+	pvMessage,
+} from "@/ui";
 import {
 	useCreateMcpServer,
 	useDeleteMcpServer,
@@ -65,6 +76,7 @@ const ServerForm = ({ server, onClose }) => {
 	const update = useUpdateMcpServer();
 
 	const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+	const setVal = (key) => (value) => setForm((f) => ({ ...f, [key]: value }));
 	const setBool = (key) => (checked) =>
 		setForm((f) => ({ ...f, [key]: checked }));
 
@@ -152,69 +164,64 @@ const ServerForm = ({ server, onClose }) => {
 
 	return (
 		<div className="vp-mcp-card">
-			<div className="vp-row" style={{ gap: 12, flexWrap: "wrap" }}>
-				<div
-					className="vp-field"
-					style={{ flex: "1 1 200px", marginBottom: 0 }}
+			<div className="vp-row vp-svc-fields">
+				<PvField
+					className="vp-svc-col"
+					label="Name"
+					hint={
+						<>
+							Slug: a-z 0-9 - _ · max 32 chars · no "__" — becomes the tool
+							prefix <code>mcp__{form.name.trim() || "{name}"}__…</code>
+						</>
+					}
 				>
-					<span className="vp-label">Name</span>
-					<input
-						className="vp-input"
-						type="text"
+					<PvInput
 						spellCheck={false}
 						placeholder="github"
 						value={form.name}
 						onChange={set("name")}
 					/>
-					<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
-						Slug: a-z 0-9 - _ · max 32 chars · no "__" — becomes the tool prefix{" "}
-						<code>mcp__{form.name.trim() || "{name}"}__…</code>
-					</span>
-				</div>
-				<div
-					className="vp-field"
-					style={{ flex: "1 1 200px", marginBottom: 0 }}
-				>
-					<span className="vp-label">Transport</span>
-					<select
-						className="vp-input"
+				</PvField>
+				<PvField className="vp-svc-col" label="Transport">
+					<PvSelect
 						value={form.transport}
-						onChange={set("transport")}
-					>
-						{TRANSPORTS.map((t) => (
-							<option key={t.id} value={t.id}>
-								{t.label}
-							</option>
-						))}
-					</select>
-				</div>
+						onChange={setVal("transport")}
+						options={TRANSPORTS.map((t) => ({ value: t.id, label: t.label }))}
+					/>
+				</PvField>
 			</div>
 
 			{form.transport === "http" ? (
 				<>
-					<div className="vp-field" style={{ marginBottom: 0 }}>
-						<span className="vp-label">URL</span>
-						<input
-							className="vp-input"
-							type="text"
+					<PvField className="vp-svc-field--last" label="URL">
+						<PvInput
 							spellCheck={false}
 							placeholder="https://mcp.example.com/mcp"
 							value={form.url}
 							onChange={set("url")}
 						/>
-					</div>
-					<div className="vp-field" style={{ marginBottom: 0 }}>
-						<span className="vp-label">
-							Auth Token{" "}
-							{!isNew && server.auth_token_set ? (
-								<span className="vp-tag vp-tag--green vp-svc-chip">set</span>
-							) : (
-								<span className="vp-muted vp-svc-chip">optional</span>
-							)}
-						</span>
-						<input
-							className="vp-input"
+					</PvField>
+					<PvField
+						className="vp-svc-field--last"
+						label={
+							<>
+								Auth Token{" "}
+								{!isNew && server.auth_token_set ? (
+									<span className="vp-tag vp-tag--green vp-svc-chip">set</span>
+								) : (
+									<span className="vp-muted vp-svc-chip">optional</span>
+								)}
+							</>
+						}
+						hint={
+							!isNew && server.auth_token_set
+								? "Leave blank to keep the stored token."
+								: undefined
+						}
+					>
+						<PvInput
 							type="password"
+							reveal
 							autoComplete="new-password"
 							placeholder={
 								!isNew && server.auth_token_set ? "unchanged" : "not set"
@@ -222,87 +229,73 @@ const ServerForm = ({ server, onClose }) => {
 							value={form.auth_token}
 							onChange={set("auth_token")}
 						/>
-						{!isNew && server.auth_token_set && (
-							<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
-								Leave blank to keep the stored token.
-							</span>
-						)}
-					</div>
+					</PvField>
 				</>
 			) : (
 				<>
-					<p
-						className="vp-text"
-						style={{ fontSize: 12, color: "var(--vp-danger)", margin: 0 }}
-					>
+					<p className="vp-text vp-svc-warn">
 						Runs a process inside the mcp-worker container — admin only, trust
 						the package.
 					</p>
-					<div className="vp-row" style={{ gap: 12, flexWrap: "wrap" }}>
-						<div
-							className="vp-field"
-							style={{ flex: "1 1 200px", marginBottom: 0 }}
-						>
-							<span className="vp-label">Command</span>
-							<input
-								className="vp-input"
-								type="text"
+					<div className="vp-row vp-svc-fields">
+						<PvField className="vp-svc-col" label="Command">
+							<PvInput
 								spellCheck={false}
 								placeholder="bunx"
 								value={form.command}
 								onChange={set("command")}
 							/>
-						</div>
-						<div
-							className="vp-field"
-							style={{ flex: "1 1 240px", marginBottom: 0 }}
+						</PvField>
+						<PvField
+							className="vp-svc-col vp-svc-col--wide"
+							label="Args (one per line)"
 						>
-							<span className="vp-label">Args (one per line)</span>
-							<textarea
-								className="vp-input"
+							<PvTextarea
 								rows={3}
 								spellCheck={false}
 								placeholder={"-y\n@modelcontextprotocol/server-fetch"}
 								value={form.args}
 								onChange={set("args")}
 							/>
-						</div>
+						</PvField>
 					</div>
-					<div className="vp-field" style={{ marginBottom: 0 }}>
+					<div className="vp-field vp-svc-field--last">
 						<span className="vp-label">Environment variables</span>
 						{form.envRows.map((r, i) => (
 							<div
 								// biome-ignore lint/suspicious/noArrayIndexKey: rows are positional
 								key={i}
-								className="vp-row"
-								style={{ gap: 8, marginBottom: 8 }}
+								className="vp-row vp-mcp-env-row"
 							>
-								<input
-									className="vp-input"
-									type="text"
+								<PvInput
+									className="vp-mcp-env-key"
 									spellCheck={false}
 									autoComplete="off"
+									aria-label="Variable name"
 									placeholder="API_KEY"
-									style={{ flex: "1 1 140px" }}
 									value={r.key}
 									onChange={setEnvRow(i, "key")}
 								/>
-								<input
-									className="vp-input"
+								<PvInput
+									className="vp-mcp-env-val"
 									type="password"
+									reveal
 									autoComplete="new-password"
+									aria-label="Variable value"
 									placeholder={
 										!isNew && !envDirty && r.value === ""
 											? "unchanged"
 											: "value"
 									}
-									style={{ flex: "2 1 200px" }}
 									value={r.value}
 									onChange={setEnvRow(i, "value")}
 								/>
-								<PvButton size="sm" onClick={() => removeEnvRow(i)}>
-									✕
-								</PvButton>
+								<PvIconButton
+									size="sm"
+									icon="✕"
+									label="Remove variable"
+									onClick={() => removeEnvRow(i)}
+								/>
 							</div>
 						))}
 						<div className="vp-row">
@@ -311,7 +304,7 @@ const ServerForm = ({ server, onClose }) => {
 							</PvButton>
 						</div>
 						{!isNew && (
-							<span className="vp-muted vp-text" style={{ fontSize: 12 }}>
+							<span className="vp-field-hint">
 								Values are write-only. Editing any row re-sends the whole set —
 								re-enter every value when changing env.
 							</span>
@@ -320,20 +313,18 @@ const ServerForm = ({ server, onClose }) => {
 				</>
 			)}
 
-			<div className="vp-row" style={{ gap: 16, flexWrap: "wrap" }}>
-				<div
-					className="vp-field"
-					style={{ flex: "0 1 140px", marginBottom: 0 }}
+			<div className="vp-row vp-svc-opts">
+				<PvField
+					className="vp-svc-col vp-svc-col--timeout"
+					label="Timeout (secs)"
 				>
-					<span className="vp-label">Timeout (secs)</span>
-					<input
-						className="vp-input"
+					<PvInput
 						type="number"
 						min={1}
 						value={form.timeout_secs}
 						onChange={set("timeout_secs")}
 					/>
-				</div>
+				</PvField>
 				<PvCheckbox
 					checked={form.enabled}
 					onChange={setBool("enabled")}
@@ -346,7 +337,7 @@ const ServerForm = ({ server, onClose }) => {
 				/>
 			</div>
 
-			<div className="vp-row" style={{ gap: 8, marginTop: 4 }}>
+			<div className="vp-row vp-mcp-actions">
 				<PvButton variant="primary" onClick={handleSave} disabled={busy}>
 					{busy ? "Saving…" : isNew ? "Add server" : "Save"}
 				</PvButton>
@@ -391,7 +382,7 @@ const ServerRow = ({ server, onEdit, onDeleteRequest }) => {
 
 	return (
 		<div className="vp-mcp-card">
-			<div className="vp-row" style={{ gap: 10, flexWrap: "wrap" }}>
+			<div className="vp-row vp-row--wrap">
 				<span
 					className={`vp-mcp-dot is-${kind}`}
 					title={server.last_status || "never checked"}
@@ -409,7 +400,7 @@ const ServerRow = ({ server, onEdit, onDeleteRequest }) => {
 				</span>
 			</div>
 
-			<div className="vp-row" style={{ gap: 16, flexWrap: "wrap" }}>
+			<div className="vp-row vp-svc-opts">
 				<PvCheckbox
 					checked={server.enabled}
 					onChange={toggle("enabled")}
@@ -490,7 +481,7 @@ const McpServers = () => {
 
 	return (
 		<PvPanel title="integrations · mcp">
-			<p className="vp-card-desc" style={{ marginBottom: 16 }}>
+			<p className="vp-card-desc vp-svc-desc">
 				Connect Model Context Protocol servers. Each server's tools appear to
 				the chat agent as{" "}
 				<code>
@@ -500,26 +491,14 @@ const McpServers = () => {
 			</p>
 
 			{workerDown && (
-				<p
-					className="vp-text"
-					style={{
-						fontSize: 12,
-						fontWeight: 700,
-						color: "var(--vp-danger)",
-						border: "2px dashed var(--vp-danger)",
-						padding: "8px 12px",
-						marginBottom: 16,
-					}}
-				>
+				<p className="vp-text vp-svc-banner">
 					MCP worker not running — servers can be configured but not tested.
 				</p>
 			)}
 
 			{isLoading && <p className="vp-muted vp-text">Loading…</p>}
 			{error && (
-				<p className="vp-text" style={{ color: "var(--vp-danger)" }}>
-					Failed to load MCP servers.
-				</p>
+				<p className="vp-text vp-svc-error">Failed to load MCP servers.</p>
 			)}
 
 			<div className="vp-stack">
@@ -545,7 +524,7 @@ const McpServers = () => {
 			</div>
 
 			{editing !== "new" && (
-				<div className="vp-row" style={{ marginTop: 16 }}>
+				<div className="vp-row vp-svc-add">
 					<PvButton onClick={() => setEditing("new")}>＋ Add server</PvButton>
 				</div>
 			)}

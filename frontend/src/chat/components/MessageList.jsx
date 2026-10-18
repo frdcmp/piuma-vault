@@ -1,4 +1,5 @@
 import { EditOutlined } from "@ant-design/icons";
+import { PvButton, PvIconButton, PvTextarea } from "@/ui";
 import { partsToText } from "../engine/messageModel";
 import AssistantBubble from "./AssistantBubble";
 import { BranchSwitcher, MessageActions } from "./MessageActions";
@@ -65,12 +66,10 @@ export default function MessageList({
 									<div key={m.id} className="chatx-msg chatx-msg--user">
 										{editingId === m.id ? (
 											<div className="chatx-edit">
-												<textarea
-													className="chatx-edit-input"
+												<PvTextarea
 													value={editText}
 													onChange={(e) => setEditText(e.target.value)}
 													rows={3}
-													// biome-ignore lint/a11y/noAutofocus: focus the editor on open
 													autoFocus
 													onKeyDown={(e) => {
 														if (e.key === "Enter" && !e.shiftKey) {
@@ -83,24 +82,23 @@ export default function MessageList({
 													}}
 												/>
 												<div className="chatx-edit-actions">
-													<button
-														type="button"
-														className="chatx-edit-btn"
+													<PvButton
+														size="sm"
 														onClick={() => {
 															setEditingId(null);
 															setEditText("");
 														}}
 													>
 														Cancel
-													</button>
-													<button
-														type="button"
-														className="chatx-edit-btn chatx-edit-send"
+													</PvButton>
+													<PvButton
+														variant="primary"
+														size="sm"
 														onClick={() => onEditAndFork(m.id, editText)}
 														disabled={!editText.trim()}
 													>
 														Send ↑
-													</button>
+													</PvButton>
 												</div>
 											</div>
 										) : (
@@ -114,18 +112,15 @@ export default function MessageList({
 												<div className="chatx-msg-actions chatx-msg-actions--user">
 													{switcher}
 													{!isStreaming ? (
-														<button
-															type="button"
-															className="chatx-msg-action"
-															title="Edit message"
-															aria-label="Edit message"
+														<PvIconButton
+															size="sm"
+															icon={<EditOutlined />}
+															label="Edit message"
 															onClick={() => {
 																setEditingId(m.id);
 																setEditText(m.content || "");
 															}}
-														>
-															<EditOutlined />
-														</button>
+														/>
 													) : null}
 												</div>
 											</>
@@ -157,15 +152,13 @@ export default function MessageList({
 				</div>
 			</div>
 			{showJump ? (
-				<button
-					type="button"
+				<PvIconButton
 					className="chat-jump"
-					onClick={onJump}
+					icon="↓"
+					label="Jump to latest message"
 					title="Jump to latest"
-					aria-label="Jump to latest message"
-				>
-					↓
-				</button>
+					onClick={onJump}
+				/>
 			) : null}
 		</div>
 	);

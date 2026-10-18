@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PvButton, PvInput, PvSelect, PvTag } from "@/ui";
 import "./AlertsField.css";
 
 // Preset reminder offsets (minutes before the anchor). 0 = fire exactly at start.
@@ -86,41 +87,38 @@ export default function AlertsField({ value = [], onChange }) {
 			</div>
 
 			<div className="alerts-custom">
-				<input
+				<PvInput
 					type="number"
+					size="sm"
 					min={0}
+					className="alerts-custom-n"
 					value={customN}
 					onChange={(e) => setCustomN(e.target.value)}
 					aria-label="Custom reminder amount"
 				/>
-				<select
+				<PvSelect
+					size="sm"
+					className="alerts-custom-unit"
+					options={UNITS}
 					value={customUnit}
-					onChange={(e) => setCustomUnit(e.target.value)}
+					onChange={setCustomUnit}
 					aria-label="Custom reminder unit"
-				>
-					{UNITS.map((u) => (
-						<option key={u.value} value={u.value}>
-							{u.label}
-						</option>
-					))}
-				</select>
-				<button type="button" className="alerts-add" onClick={addCustom}>
+				/>
+				<PvButton size="sm" onClick={addCustom}>
 					+ Add
-				</button>
+				</PvButton>
 			</div>
 
 			{sorted.length ? (
 				<ul className="alerts-list">
 					{sorted.map((a) => (
-						<li key={a.offset_minutes} className="alerts-tag">
-							<span>🔔 {formatOffset(a.offset_minutes)}</span>
-							<button
-								type="button"
-								onClick={() => removeOffset(a.offset_minutes)}
-								aria-label={`Remove ${formatOffset(a.offset_minutes)} reminder`}
+						<li key={a.offset_minutes}>
+							<PvTag
+								onRemove={() => removeOffset(a.offset_minutes)}
+								removeLabel={`Remove ${formatOffset(a.offset_minutes)} reminder`}
 							>
-								×
-							</button>
+								🔔 {formatOffset(a.offset_minutes)}
+							</PvTag>
 						</li>
 					))}
 				</ul>

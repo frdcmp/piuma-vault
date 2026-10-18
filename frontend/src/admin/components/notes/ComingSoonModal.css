@@ -54,25 +54,4 @@
 
 .coming-soon-ok {
 	margin-top: 4px;
-	padding: 8px 22px;
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-success);
-	color: var(--vp-success);
-	font-family: inherit;
-	font-size: 12px;
-	font-weight: 700;
-	letter-spacing: 1px;
-	cursor: pointer;
-	box-shadow: 2px 2px 0 var(--vp-shadow-color);
-	transition:
-		transform 0.15s,
-		box-shadow 0.15s;
-}
-.coming-soon-ok:hover {
-	transform: translate(-1px, -1px);
-	box-shadow: 3px 3px 0 var(--vp-shadow-color);
-}
-.coming-soon-ok:active {
-	transform: translate(1px, 1px);
-	box-shadow: 1px 1px 0 var(--vp-shadow-color);
 }

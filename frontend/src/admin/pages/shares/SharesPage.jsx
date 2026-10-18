@@ -1,6 +1,16 @@
 import { ReloadOutlined } from "@ant-design/icons";
 import { useMemo, useState } from "react";
-import { PvButton, PvModal, PvPanel, PvTable, pvMessage } from "@/ui";
+import {
+	PvButton,
+	PvField,
+	PvIconButton,
+	PvInput,
+	PvModal,
+	PvPanel,
+	PvSelect,
+	PvTable,
+	pvMessage,
+} from "@/ui";
 import {
 	useAllNoteShares,
 	useDeleteFolderShare,
@@ -13,6 +23,29 @@ import {
 } from "../../../queries";
 import { formatDateTime, timeAgo } from "../../../utils/dateTime";
 import { PageContent } from "../../components/layout/PageLayout";
+import "./shares.css";
+
+const TYPE_FILTERS = [
+	{ value: "all", label: "All" },
+	{ value: "note", label: "Notes" },
+	{ value: "folder", label: "Folders" },
+];
+const STATUS_FILTERS = [
+	{ value: "all", label: "All" },
+	{ value: "active", label: "Active" },
+	{ value: "disabled", label: "Disabled" },
+];
+const PASSWORD_FILTERS = [
+	{ value: "all", label: "All" },
+	{ value: "protected", label: "Protected" },
+	{ value: "none", label: "No password" },
+];
+const EXPIRY_FILTERS = [
+	{ value: "all", label: "All" },
+	{ value: "expiring", label: "Expiring" },
+	{ value: "expired", label: "Expired" },
+	{ value: "never", label: "Never" },
+];
 
 // Prepend the current origin to a relative URL returned by the backend.
 const absoluteUrl = (url) => {
@@ -46,6 +79,13 @@ const sortValue = (row, key) => {
 	}
 };
 
+// Column sorter (PvTable) over `sortValue`.
+const sortBy = (key) => (a, b) => {
+	const av = sortValue(a, key);
+	const bv = sortValue(b, key);
+	return av < bv ? -1 : av > bv ? 1 : 0;
+};
+
 const SharesPage = () => {
 	const notesQuery = useAllNoteShares();
 	const foldersQuery = useFolderShares(undefined);
@@ -64,8 +104,6 @@ const SharesPage = () => {
 	const [statusFilter, setStatusFilter] = useState("all");
 	const [pwdFilter, setPwdFilter] = useState("all");
 	const [expiryFilter, setExpiryFilter] = useState("all");
-	const [sortKey, setSortKey] = useState("created");
-	const [sortDir, setSortDir] = useState("desc");
 
 	const loading = notesQuery.isLoading || foldersQuery.isLoading;
 
@@ -102,7 +140,7 @@ const SharesPage = () => {
 		return [...noteRows, ...folderRows];
 	}, [notesQuery.data, foldersQuery.data]);
 
-	// Apply filters, then sort.
+	// Apply filters; newest first until a column header picks another order.
 	const visible = useMemo(() => {
 		const now = Date.now();
 		const q = search.trim().toLowerCase();
@@ -123,66 +161,9 @@ const SharesPage = () => {
 			if (q && !`${r.name} ${r.slug}`.toLowerCase().includes(q)) return false;
 			return true;
 		});
-		const dir = sortDir === "asc" ? 1 : -1;
-		return [...filtered].sort((a, b) => {
-			const av = sortValue(a, sortKey);
-			const bv = sortValue(b, sortKey);
-			if (av < bv) return -1 * dir;
-			if (av > bv) return 1 * dir;
-			return 0;
-		});
-	}, [
-		rows,
-		search,
-		typeFilter,
-		statusFilter,
-		pwdFilter,
-		expiryFilter,
-		sortKey,
-		sortDir,
-	]);
-
-	const toggleSort = (key) => {
-		if (sortKey === key) {
-			setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-		} else {
-			setSortKey(key);
-			setSortDir("asc");
-		}
-	};
-
-	// Clickable column header with a sort indicator.
-	const sortHeader = (key, label, align = "left") => (
-		<button
-			type="button"
-			onClick={() => toggleSort(key)}
-			className="vp-sort-header"
-			style={{
-				background: "none",
-				border: 0,
-				padding: 0,
-				margin: 0,
-				cursor: "pointer",
-				color: "inherit",
-				font: "inherit",
-				display: "inline-flex",
-				alignItems: "center",
-				gap: 4,
-				width: "100%",
-				justifyContent:
-					align === "right"
-						? "flex-end"
-						: align === "center"
-							? "center"
-							: "flex-start",
-			}}
-		>
-			{label}
-			<span className="vp-accent">
-				{sortKey === key ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
-			</span>
-		</button>
-	);
+		const byCreated = sortBy("created");
+		return [...filtered].sort((a, b) => byCreated(b, a));
+	}, [rows, search, typeFilter, statusFilter, pwdFilter, expiryFilter]);
 
 	const copy = async (text, label) => {
 		try {
@@ -247,60 +228,49 @@ const SharesPage = () => {
 	const columns = [
 		{
 			key: "type",
-			title: sortHeader("type", "Type"),
+			title: "Type",
 			dataIndex: "type",
+			sorter: sortBy("type"),
 			render: (type) => (
-				<span
-					className="vp-tag"
-					style={{
-						color: type === "note" ? "var(--vp-info)" : "var(--vp-danger)",
-					}}
-				>
+				<span className={`vp-tag sh-type--${type}`}>
 					{type === "note" ? "📝 Note" : "📁 Folder"}
 				</span>
 			),
 		},
 		{
 			key: "name",
-			title: sortHeader("name", "Name"),
+			title: "Name",
 			dataIndex: "name",
+			sorter: sortBy("name"),
 			render: (name, row) => (
-				<code
-					style={{ wordBreak: "break-all" }}
-					title={`${name} · /${row.slug}`}
-				>
+				<code className="sh-name" title={`${name} · /${row.slug}`}>
 					{name}
 				</code>
 			),
 		},
 		{
 			key: "access",
-			title: sortHeader("access", "Access"),
+			title: "Access",
 			dataIndex: "access_level",
+			sorter: sortBy("access"),
 			render: (lvl) => <span className="vp-tag">{lvl}</span>,
 		},
 		{
 			key: "password",
-			title: sortHeader("password", "Password", "center"),
+			title: "Password",
 			align: "center",
+			sorter: sortBy("password"),
 			render: (_v, row) => {
 				if (!row.has_password) return <span title="No password">🔓</span>;
 				if (row.password) {
 					return (
-						<button
-							type="button"
+						<PvIconButton
+							variant="ghost"
+							size="sm"
+							icon="🔒"
+							label={`Password: ${row.password} — click to copy`}
 							onClick={() => copy(row.password, "Password")}
-							title={`Password: ${row.password} — click to copy`}
-							style={{
-								background: "none",
-								border: 0,
-								padding: 0,
-								cursor: "pointer",
-								fontSize: 14,
-							}}
-						>
-							🔒
-						</button>
+						/>
 					);
 				}
 				return <span title="Password-protected">🔒</span>;
@@ -308,8 +278,9 @@ const SharesPage = () => {
 		},
 		{
 			key: "created",
-			title: sortHeader("created", "Created"),
+			title: "Created",
 			dataIndex: "created_at",
+			sorter: sortBy("created"),
 			render: (v) =>
 				v ? (
 					<span title={`${formatDateTime(v).date} ${formatDateTime(v).time}`}>
@@ -321,21 +292,22 @@ const SharesPage = () => {
 		},
 		{
 			key: "expires",
-			title: sortHeader("expires", "Expires"),
+			title: "Expires",
 			dataIndex: "expires_at",
+			sorter: sortBy("expires"),
 			render: renderExpiry,
 		},
 		{
 			key: "status",
-			title: sortHeader("status", "Status"),
+			title: "Status",
 			dataIndex: "is_active",
+			sorter: sortBy("status"),
 			render: (active, row) => (
 				<button
 					type="button"
 					onClick={() => toggleActive(row)}
-					className={`vp-tag ${active ? "vp-tag--green" : ""}`}
+					className={`vp-tag sh-status-toggle ${active ? "vp-tag--green" : ""}`}
 					title={active ? "Click to disable" : "Click to enable"}
-					style={{ cursor: "pointer", border: 0, font: "inherit" }}
 				>
 					{active ? "Active" : "Disabled"}
 				</button>
@@ -346,7 +318,7 @@ const SharesPage = () => {
 			title: "Actions",
 			align: "right",
 			render: (_v, row) => (
-				<div className="vp-row" style={{ gap: 6, justifyContent: "flex-end" }}>
+				<div className="vp-row sh-actions">
 					<PvButton size="sm" onClick={() => copy(row.url, "Link")}>
 						Copy link
 					</PvButton>
@@ -403,68 +375,42 @@ const SharesPage = () => {
 			</div>
 
 			{/* Filter bar */}
-			<div
-				className="vp-row vp-row--wrap"
-				style={{ gap: 8, marginBottom: 12, alignItems: "flex-end" }}
-			>
-				<div className="vp-field" style={{ flex: 1, minWidth: 200 }}>
-					<span className="vp-label">Search</span>
-					<input
-						className="vp-input"
+			<div className="vp-row vp-row--wrap sh-filters">
+				<PvField label="Search" className="sh-filter-search">
+					<PvInput
 						placeholder="Name or slug…"
 						value={search}
 						onChange={(e) => setSearch(e.target.value)}
 					/>
-				</div>
-				<div className="vp-field">
-					<span className="vp-label">Type</span>
-					<select
-						className="vp-input"
+				</PvField>
+				<PvField label="Type">
+					<PvSelect
+						options={TYPE_FILTERS}
 						value={typeFilter}
-						onChange={(e) => setTypeFilter(e.target.value)}
-					>
-						<option value="all">All</option>
-						<option value="note">Notes</option>
-						<option value="folder">Folders</option>
-					</select>
-				</div>
-				<div className="vp-field">
-					<span className="vp-label">Status</span>
-					<select
-						className="vp-input"
+						onChange={setTypeFilter}
+					/>
+				</PvField>
+				<PvField label="Status">
+					<PvSelect
+						options={STATUS_FILTERS}
 						value={statusFilter}
-						onChange={(e) => setStatusFilter(e.target.value)}
-					>
-						<option value="all">All</option>
-						<option value="active">Active</option>
-						<option value="disabled">Disabled</option>
-					</select>
-				</div>
-				<div className="vp-field">
-					<span className="vp-label">Password</span>
-					<select
-						className="vp-input"
+						onChange={setStatusFilter}
+					/>
+				</PvField>
+				<PvField label="Password">
+					<PvSelect
+						options={PASSWORD_FILTERS}
 						value={pwdFilter}
-						onChange={(e) => setPwdFilter(e.target.value)}
-					>
-						<option value="all">All</option>
-						<option value="protected">Protected</option>
-						<option value="none">No password</option>
-					</select>
-				</div>
-				<div className="vp-field">
-					<span className="vp-label">Expiry</span>
-					<select
-						className="vp-input"
+						onChange={setPwdFilter}
+					/>
+				</PvField>
+				<PvField label="Expiry">
+					<PvSelect
+						options={EXPIRY_FILTERS}
 						value={expiryFilter}
-						onChange={(e) => setExpiryFilter(e.target.value)}
-					>
-						<option value="all">All</option>
-						<option value="expiring">Expiring</option>
-						<option value="expired">Expired</option>
-						<option value="never">Never</option>
-					</select>
-				</div>
+						onChange={setExpiryFilter}
+					/>
+				</PvField>
 			</div>
 
 			<PvPanel

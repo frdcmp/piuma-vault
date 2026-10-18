@@ -1,5 +1,6 @@
 import {
 	BulbOutlined,
+	CloseOutlined,
 	DeleteOutlined,
 	ExpandAltOutlined,
 	EyeOutlined,
@@ -9,7 +10,14 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ACCEPT_ATTR, SUPPORTED_LABEL } from "@/processing";
-import { PvModal, pvMessage } from "@/ui";
+import {
+	PvIconButton,
+	PvInput,
+	PvModal,
+	PvSelect,
+	PvUpload,
+	pvMessage,
+} from "@/ui";
 import {
 	clearConversation,
 	createConversation,
@@ -201,7 +209,6 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		onPaste,
 		onDrop,
 	} = useAttachments({ visionEnabled, convRef });
-	const fileRef = useRef(null);
 	const { buildHandlers, reloadActivePath } = useChatStream({
 		convRef,
 		setMessages,
@@ -962,25 +969,18 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				<div className="chat-title">
 					<span className="chat-eyebrow">agent /</span>
 					{agents.length > 1 ? (
-						<select
+						<PvSelect
+							size="sm"
 							className="chat-agent-select"
 							value={effectiveAgent}
-							onChange={(e) => setAgentKind(e.target.value)}
+							onChange={(v) => setAgentKind(v)}
 							title="Agent for new chats"
-							style={{
-								background: "var(--vp-bg-soft)",
-								color: "var(--vp-text)",
-								border: "1px solid var(--vp-border-soft)",
-								padding: "1px 4px",
-								fontSize: 11.5,
-							}}
-						>
-							{agents.map((a) => (
-								<option key={a.kind} value={a.kind}>
-									{a.display_name}
-								</option>
-							))}
-						</select>
+							aria-label="Agent for new chats"
+							options={agents.map((a) => ({
+								value: a.kind,
+								label: a.display_name,
+							}))}
+						/>
 					) : (
 						<span className="chat-name">{agentLabel}</span>
 					)}
@@ -991,34 +991,23 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				>
 					<span className="chat-status-dot" />
 				</div>
-				<button
-					type="button"
-					className="chat-clear"
+				<PvIconButton
+					icon={<FormOutlined />}
+					label="New conversation"
 					onClick={() => setConfirmClearOpen(true)}
-					aria-label="New conversation"
-					title="New conversation"
 					disabled={messages.length === 0}
-				>
-					<FormOutlined />
-				</button>
-				<button
-					type="button"
-					className="chat-clear"
+				/>
+				<PvIconButton
+					icon={<ExpandAltOutlined />}
+					label="Open full-screen chat"
 					onClick={() => navigate("/chat")}
-					aria-label="Open full-screen chat"
-					title="Open full-screen chat"
-				>
-					<ExpandAltOutlined />
-				</button>
+				/>
 				{onClose ? (
-					<button
-						type="button"
-						className="chat-close"
+					<PvIconButton
+						icon={<CloseOutlined />}
+						label="Close chat"
 						onClick={onClose}
-						aria-label="Close chat"
-					>
-						×
-					</button>
+					/>
 				) : null}
 			</div>
 
@@ -1096,26 +1085,25 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 											? "Pick a model"
 											: "Switch conversation"}
 									</strong>
-									<button
-										type="button"
-										className="picker-close"
+									<PvIconButton
+										variant="ghost"
+										size="sm"
+										icon={<CloseOutlined />}
+										label="Close picker"
 										onClick={() => {
 											setOverlay(null);
 											focusInput();
 										}}
-									>
-										×
-									</button>
+									/>
 								</div>
 								{overlay === "sessions" ? (
-									<input
+									<PvInput
+										size="sm"
 										className="picker-search"
-										type="text"
 										value={sessionQuery}
 										onChange={(e) => setSessionQuery(e.target.value)}
 										onKeyDown={handleOverlayNav}
 										placeholder="Search title or message text…"
-										// biome-ignore lint/a11y/noAutofocus: focus the search box when the picker opens
 										autoFocus
 									/>
 								) : null}
@@ -1180,16 +1168,14 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 												>
 													{c.title || "Untitled"}
 												</button>
-												<button
-													type="button"
-													className="picker-del"
+												<PvIconButton
+													variant="ghost"
+													size="sm"
+													icon={<DeleteOutlined />}
+													label="Delete conversation"
 													onClick={() => removeConversation(c.id)}
 													onMouseEnter={() => setOverlayActive(i)}
-													aria-label="Delete conversation"
-													title="Delete conversation"
-												>
-													<DeleteOutlined />
-												</button>
+												/>
 											</div>
 										))
 									)}
@@ -1202,35 +1188,27 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 							onDrop={onDrop}
 							onDragOver={(e) => e.preventDefault()}
 						>
-							<button
-								type="button"
-								className="chat-slash-btn chat-attach-btn"
-								onClick={() => fileRef.current?.click()}
-								title={`Attach a file (${SUPPORTED_LABEL})`}
-								aria-label="Attach a file"
-							>
-								＋
-							</button>
-							<input
-								ref={fileRef}
-								type="file"
+							<PvUpload
 								accept={ACCEPT_ATTR}
 								multiple
-								hidden
-								onChange={(e) => {
-									for (const f of e.target.files || []) addFile(f);
-									e.target.value = "";
+								onFiles={(files) => {
+									for (const f of files) addFile(f);
 								}}
-							/>
-							<button
-								type="button"
-								className="chat-slash-btn"
-								onClick={toggleSlashMenu}
-								title="Commands"
-								aria-label="Open command menu"
 							>
-								/
-							</button>
+								<PvIconButton
+									variant="ghost"
+									icon="＋"
+									label="Attach a file"
+									title={`Attach a file (${SUPPORTED_LABEL})`}
+								/>
+							</PvUpload>
+							<PvIconButton
+								variant="ghost"
+								icon="/"
+								label="Open command menu"
+								title="Commands"
+								onClick={toggleSlashMenu}
+							/>
 							<textarea
 								ref={inputRef}
 								className="chat-input"

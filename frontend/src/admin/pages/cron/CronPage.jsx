@@ -1,5 +1,16 @@
 import { useState } from "react";
-import { PvButton, PvCheckbox, PvModal, pvMessage } from "@/ui";
+import {
+	PvButton,
+	PvCheckbox,
+	PvField,
+	PvIconButton,
+	PvInput,
+	PvModal,
+	PvSegmented,
+	PvSwitch,
+	PvTextarea,
+	pvMessage,
+} from "@/ui";
 import {
 	useCreateCronJob,
 	useCronJobs,
@@ -119,6 +130,13 @@ const scheduleLabel = (job) => {
 	}
 	return `Daily · ${t}`;
 };
+
+const PRESETS = [
+	{ value: "daily", label: "Daily" },
+	{ value: "weekdays", label: "Weekdays" },
+	{ value: "weekly", label: "Weekly" },
+	{ value: "once", label: "Once" },
+];
 
 const STATUS_CLASS = {
 	success: "cron-status--ok",
@@ -271,18 +289,17 @@ export default function CronPage() {
 					{jobs.map((job) => (
 						<div key={job.id} className="cron-job">
 							<div className="cron-job-main">
-								<button
-									type="button"
-									className={`cron-job-toggle${job.enabled ? " is-on" : ""}`}
+								<PvSwitch
+									size="sm"
+									checked={job.enabled}
 									title={
 										job.enabled
 											? "Enabled — click to pause"
 											: "Paused — click to enable"
 									}
-									onClick={() => toggleJob.mutate(job.id)}
-								>
-									{job.enabled ? "●" : "○"}
-								</button>
+									aria-label={`${job.title} enabled`}
+									onChange={() => toggleJob.mutate(job.id)}
+								/>
 								<div className="cron-job-id">
 									<strong className="cron-job-name">{job.title}</strong>
 									<span className="cron-job-sched">{scheduleLabel(job)}</span>
@@ -293,43 +310,41 @@ export default function CronPage() {
 										: "paused"}
 								</span>
 								<div className="cron-job-actions">
-									<button
-										type="button"
-										className="cron-act"
-										title="Run now"
+									<PvIconButton
+										variant="ghost"
+										size="sm"
+										icon="▶"
+										label="Run now"
 										onClick={() => {
 											runNow.mutate(job.id);
 											pvMessage.success("Queued to run now");
 										}}
-									>
-										▶
-									</button>
-									<button
-										type="button"
-										className="cron-act"
-										title="Run history"
+									/>
+									<PvIconButton
+										variant="ghost"
+										size="sm"
+										icon="≡"
+										label="Run history"
+										active={expanded === job.id}
 										onClick={() =>
 											setExpanded(expanded === job.id ? null : job.id)
 										}
-									>
-										≡
-									</button>
-									<button
-										type="button"
-										className="cron-act"
-										title="Edit"
+									/>
+									<PvIconButton
+										variant="ghost"
+										size="sm"
+										icon="✎"
+										label="Edit"
 										onClick={() => openEdit(job)}
-									>
-										✎
-									</button>
-									<button
-										type="button"
-										className="cron-act cron-act--danger"
-										title="Delete"
+									/>
+									<PvIconButton
+										variant="ghost"
+										size="sm"
+										className="cron-del"
+										icon="✕"
+										label="Delete"
 										onClick={() => setPendingDelete(job)}
-									>
-										✕
-									</button>
+									/>
 								</div>
 							</div>
 							{expanded === job.id && <RunHistory jobId={job.id} />}
@@ -346,50 +361,35 @@ export default function CronPage() {
 				onCancel={() => setEditing(null)}
 				className="cron-modal"
 			>
-				<label className="cron-field">
-					<span className="cron-label">Title</span>
-					<input
-						className="cron-input"
+				<PvField label="Title">
+					<PvInput
 						value={form.title}
 						onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
 						placeholder="Morning briefing"
 					/>
-				</label>
-				<label className="cron-field">
-					<span className="cron-label">Prompt (what the agent should do)</span>
-					<textarea
-						className="cron-input cron-textarea"
+				</PvField>
+				<PvField label="Prompt (what the agent should do)">
+					<PvTextarea
 						rows={3}
 						value={form.prompt}
 						onChange={(e) => setForm((f) => ({ ...f, prompt: e.target.value }))}
 						placeholder="Give me today's tasks and calendar as a note titled 'Today'."
 					/>
-				</label>
+				</PvField>
 
-				<div className="cron-field">
-					<span className="cron-label">Schedule</span>
-					<div className="cron-presets">
-						{[
-							{ k: "daily", l: "Daily" },
-							{ k: "weekdays", l: "Weekdays" },
-							{ k: "weekly", l: "Weekly" },
-							{ k: "once", l: "Once" },
-						].map((p) => (
-							<button
-								type="button"
-								key={p.k}
-								className={`cron-preset${form.preset === p.k ? " is-on" : ""}`}
-								onClick={() => setForm((f) => ({ ...f, preset: p.k }))}
-							>
-								{p.l}
-							</button>
-						))}
-					</div>
+				<div className="vp-field">
+					<span className="vp-label">Schedule</span>
+					<PvSegmented
+						size="sm"
+						options={PRESETS}
+						value={form.preset}
+						onChange={(preset) => setForm((f) => ({ ...f, preset }))}
+					/>
 				</div>
 
 				{form.preset === "weekly" && (
-					<div className="cron-field">
-						<span className="cron-label">Days</span>
+					<div className="vp-field">
+						<span className="vp-label">Days</span>
 						<div className="cron-days">
 							{WEEKDAYS.map((w) => (
 								<button
@@ -406,30 +406,26 @@ export default function CronPage() {
 				)}
 
 				{form.preset === "once" ? (
-					<label className="cron-field">
-						<span className="cron-label">When</span>
-						<input
-							className="cron-input"
+					<PvField label="When">
+						<PvInput
 							type="datetime-local"
 							value={form.runAt}
 							onChange={(e) =>
 								setForm((f) => ({ ...f, runAt: e.target.value }))
 							}
 						/>
-					</label>
+					</PvField>
 				) : (
-					<label className="cron-field">
-						<span className="cron-label">Time of day</span>
-						<input
-							className="cron-input"
+					<PvField label="Time of day">
+						<PvInput
 							type="time"
 							value={form.time}
 							onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
 						/>
-					</label>
+					</PvField>
 				)}
 
-				<div className="cron-field cron-opts">
+				<div className="vp-field cron-opts">
 					<PvCheckbox
 						checked={form.notify}
 						onChange={(v) => setForm((f) => ({ ...f, notify: v }))}
@@ -460,13 +456,13 @@ export default function CronPage() {
 						</>
 					)}
 				</div>
-				<div className="cron-field">
+				<div className="vp-field">
 					<PvCheckbox
 						checked={form.allow_destructive}
 						onChange={(v) => setForm((f) => ({ ...f, allow_destructive: v }))}
 						label="Allow destructive tools (delete notes/tasks/events)"
 					/>
-					<span className="cron-hint">
+					<span className="vp-field-hint">
 						Off by default — unattended runs can't delete your data unless
 						enabled.
 					</span>

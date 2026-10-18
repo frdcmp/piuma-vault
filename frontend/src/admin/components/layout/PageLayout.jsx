@@ -1,6 +1,6 @@
-import { Drawer } from "antd";
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
+import { PvDrawer } from "@/ui";
 import useUiStore, { SCREEN_MODES } from "../../../store/uiStore";
 import "./layout.css";
 import HeaderComponent from "./Header";
@@ -40,16 +40,14 @@ const PageLayout = () => {
 			{!isPhone && <Sidebar />}
 
 			{/* Mobile Drawer */}
-			<Drawer
+			<PvDrawer
 				placement="left"
-				closable={false}
 				onClose={() => setSidebarOpen(false)}
 				open={isPhone && sidebarOpen}
 				width={240}
-				styles={{ body: { padding: 0, background: "var(--vp-panel)" } }}
 			>
 				<Sidebar inDrawer onNavigate={() => setSidebarOpen(false)} />
-			</Drawer>
+			</PvDrawer>
 
 			{/* Main content area */}
 			<div
@@ -66,21 +64,6 @@ const PageLayout = () => {
 					</div>
 				</main>
 			</div>
-
-			{/* Mobile menu overlay */}
-			{isPhone && sidebarOpen && (
-				// biome-ignore lint/a11y/useSemanticElements: backdrop uses div with role button
-				<div
-					role="button"
-					tabIndex={0}
-					aria-label="Close sidebar"
-					className="vp-shell-overlay"
-					onClick={() => setSidebarOpen(false)}
-					onKeyDown={(e) => {
-						if (e.key === "Enter" || e.key === " ") setSidebarOpen(false);
-					}}
-				/>
-			)}
 		</div>
 	);
 };

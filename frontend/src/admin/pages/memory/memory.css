@@ -80,6 +80,23 @@
 	gap: 10px;
 	margin-bottom: 16px;
 }
+.vp-select.mem-filter-select {
+	width: auto;
+	min-width: 150px;
+}
+/* Search boxes submit on Enter (and via the button on the L3 tab). */
+.mem-search {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: 1 1 200px;
+}
+.mem-search--entries {
+	max-width: 240px;
+}
+.mem-search--conv {
+	max-width: 360px;
+}
 .mem-muted {
 	color: var(--vp-muted);
 }
@@ -139,6 +156,7 @@
 	overflow: hidden;
 }
 .mem-bar-fill {
+	width: var(--mem-pct, 0%);
 	height: 100%;
 	background: var(--vp-success);
 	transition: width 0.2s ease;
@@ -253,6 +271,7 @@
 	top: 0;
 	bottom: 0;
 	left: 0;
+	width: var(--mem-pos);
 	background: color-mix(in srgb, var(--vp-success) 26%, transparent);
 	border-right: 2px solid var(--vp-success);
 }
@@ -261,6 +280,7 @@
 	position: absolute;
 	top: -4px;
 	bottom: -4px;
+	left: var(--mem-pos);
 	width: 2px;
 	background: var(--vp-success);
 	transform: translateX(-1px);
@@ -269,6 +289,7 @@
 .mem-track-pin {
 	position: absolute;
 	top: 50%;
+	left: var(--mem-pos);
 	width: 12px;
 	height: 12px;
 	background: var(--vp-muted);
@@ -333,215 +354,6 @@
 	flex-wrap: wrap;
 	gap: 4px;
 	align-items: center;
-}
-
-/* =============================================================================
-   Restyle kept antd components to the pixel language.
-   ============================================================================= */
-
-/* ---- Table (mirrors apiKeys vp-table) ------------------------------------- */
-.vp-table .ant-table {
-	background: transparent;
-	font-family: var(--vp-font);
-	color: var(--vp-text);
-}
-.vp-table .ant-table-thead > tr > th {
-	background: var(--vp-bg-soft) !important;
-	color: var(--vp-muted) !important;
-	font-size: 11px;
-	font-weight: 700;
-	letter-spacing: 0.5px;
-	text-transform: uppercase;
-	border-bottom: 2px solid var(--vp-border) !important;
-}
-.vp-table .ant-table-thead > tr > th::before {
-	display: none !important;
-}
-.vp-table .ant-table-tbody > tr > td {
-	background: transparent !important;
-	color: var(--vp-text);
-	border-bottom: 1px solid var(--vp-border-soft) !important;
-	font-size: 13px;
-}
-.vp-table .ant-table-tbody > tr:hover > td,
-.vp-table .ant-table-cell-row-hover {
-	background: var(--vp-bg-soft) !important;
-}
-.vp-table .ant-table-expanded-row > td {
-	background: var(--vp-bg-soft) !important;
-}
-.vp-table .ant-table-placeholder,
-.vp-table .ant-table-placeholder:hover > td {
-	background: transparent !important;
-}
-.vp-table .ant-pagination .ant-pagination-item,
-.vp-table .ant-pagination .ant-pagination-prev .ant-pagination-item-link,
-.vp-table .ant-pagination .ant-pagination-next .ant-pagination-item-link {
-	background: var(--vp-bg-soft) !important;
-	border: 2px solid var(--vp-border) !important;
-	border-radius: 0 !important;
-	color: var(--vp-text) !important;
-}
-.vp-table .ant-pagination .ant-pagination-item-active {
-	border-color: var(--vp-accent) !important;
-}
-.vp-table .ant-pagination .ant-pagination-item-active a {
-	color: var(--vp-accent) !important;
-}
-
-/* ---- Tabs ----------------------------------------------------------------- */
-.mem-root .ant-tabs {
-	font-family: var(--vp-font);
-	color: var(--vp-text);
-}
-.mem-root .ant-tabs-top > .ant-tabs-nav::before {
-	border-bottom: 2px solid var(--vp-border) !important;
-}
-.mem-root .ant-tabs-tab {
-	color: var(--vp-muted) !important;
-	font-weight: 700;
-	letter-spacing: 0.3px;
-}
-.mem-root .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
-	color: var(--vp-accent) !important;
-}
-.mem-root .ant-tabs-ink-bar {
-	background: var(--vp-accent) !important;
-}
-
-/* ---- Segmented ------------------------------------------------------------ */
-.mem-root .ant-segmented {
-	background: var(--vp-panel) !important;
-	border: 2px solid var(--vp-border);
-	border-radius: 0 !important;
-	padding: 2px;
-	font-family: var(--vp-font);
-}
-.mem-root .ant-segmented-item {
-	border-radius: 0 !important;
-	color: var(--vp-muted) !important;
-}
-.mem-root .ant-segmented-item:hover:not(.ant-segmented-item-selected) {
-	color: var(--vp-text) !important;
-	background: transparent !important;
-}
-.mem-root .ant-segmented-item-selected {
-	background: var(--vp-accent) !important;
-	border-radius: 0 !important;
-	box-shadow: none !important;
-}
-/* The label is the element antd actually colors — force dark text on the
-   accent pill (and on the sliding thumb during the click→load transition). */
-.mem-root .ant-segmented-item-selected,
-.mem-root .ant-segmented-item-selected .ant-segmented-item-label,
-.mem-root .ant-segmented-item-selected:hover .ant-segmented-item-label {
-	color: var(--vp-bg) !important;
-	font-weight: 700;
-}
-.mem-root .ant-segmented-thumb {
-	background: var(--vp-accent) !important;
-	border-radius: 0 !important;
-	box-shadow: none !important;
-}
-
-/* ---- Select + search input (closed control) ------------------------------- */
-.mem-root .ant-select .ant-select-selector,
-.mem-root .ant-input,
-.mem-root .ant-input-affix-wrapper {
-	background: var(--vp-bg-soft) !important;
-	border: 2px solid var(--vp-border) !important;
-	border-radius: 0 !important;
-	color: var(--vp-text) !important;
-	font-family: var(--vp-font);
-}
-.mem-root .ant-select-focused .ant-select-selector,
-.mem-root .ant-input:focus,
-.mem-root .ant-input-affix-wrapper-focused {
-	border-color: var(--vp-accent) !important;
-	box-shadow: none !important;
-}
-/* Input.Search wraps the field in an affix wrapper — the wrapper owns the
-   border, so the inner <input> must be borderless/transparent, else it's a
-   box-in-a-box (the "double nested squares"). */
-.mem-root .ant-input-affix-wrapper > .ant-input,
-.mem-root .ant-input-affix-wrapper input.ant-input {
-	border: 0 !important;
-	background: transparent !important;
-}
-.mem-root .ant-select-selection-placeholder,
-.mem-root .ant-input::placeholder {
-	color: var(--vp-faint) !important;
-}
-.mem-root .ant-select-selection-item {
-	color: var(--vp-text) !important;
-}
-.mem-root .ant-select-clear,
-.mem-root .ant-select-arrow {
-	color: var(--vp-muted) !important;
-	background: transparent !important;
-}
-/* Search button: sit flush against the input (shared edge), not a detached
-   second square. */
-.mem-root .ant-input-search > .ant-input-group > .ant-input-group-addon {
-	background: transparent !important;
-}
-.mem-root .ant-input-search-button {
-	background: var(--vp-panel) !important;
-	border: 2px solid var(--vp-border) !important;
-	border-left: 0 !important;
-	border-radius: 0 !important;
-	box-shadow: none !important;
-	color: var(--vp-muted) !important;
-}
-.mem-root .ant-input-search-button:hover {
-	color: var(--vp-accent) !important;
-	border-color: var(--vp-accent) !important;
-	border-left: 0 !important;
-}
-
-/* Portaled select dropdown (rendered at <body>, outside .mem-root). */
-.mem-pop {
-	background: var(--vp-panel) !important;
-	border: 2px solid var(--vp-border) !important;
-	border-radius: 0 !important;
-	font-family: var(--vp-font);
-}
-.mem-pop .ant-select-item {
-	color: var(--vp-text) !important;
-	border-radius: 0 !important;
-}
-.mem-pop .ant-select-item-option-active,
-.mem-pop .ant-select-item-option-selected {
-	background: var(--vp-bg-soft) !important;
-	color: var(--vp-accent) !important;
-}
-
-/* ---- Empty ---------------------------------------------------------------- */
-.mem-root .ant-empty-description {
-	color: var(--vp-muted) !important;
-	font-family: var(--vp-font);
-}
-.vp-table .ant-table-placeholder,
-.vp-table .ant-table-placeholder > td,
-.vp-table .ant-table-placeholder:hover > td {
-	background: transparent !important;
-}
-
-/* ---- Loading (antd Spin) -------------------------------------------------- */
-/* The default Spin mask is a near-white overlay — on the dark page it reads as
-   an ugly grey block. Recolor the mask to the page bg and the dots to accent. */
-.mem-root .ant-spin-container::after {
-	background: var(--vp-bg) !important;
-}
-.mem-root .ant-spin-blur {
-	opacity: 0.35 !important;
-}
-.mem-root .ant-spin-dot-item {
-	background: var(--vp-accent) !important;
-}
-.mem-root .ant-spin-text {
-	color: var(--vp-muted) !important;
-	font-family: var(--vp-font);
 }
 
 /* ---- Legend (pixel expander) ---------------------------------------------- */
@@ -628,6 +440,9 @@
 	font-size: 12.5px;
 	line-height: 1.45;
 	color: var(--vp-text);
+}
+.mem-legend-grid h4.mem-legend-sub {
+	margin-top: 14px;
 }
 .mem-legend-note {
 	margin: 0;

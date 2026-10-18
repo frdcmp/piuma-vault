@@ -7,7 +7,15 @@ import {
 	UndoOutlined,
 } from "@ant-design/icons";
 import { useState } from "react";
-import { PvButton, PvModal, PvPanel, PvTable, pvMessage } from "@/ui";
+import {
+	PvButton,
+	PvIconButton,
+	PvInput,
+	PvModal,
+	PvPanel,
+	PvTable,
+	pvMessage,
+} from "@/ui";
 import {
 	useCreateDump,
 	useDeleteDump,
@@ -162,12 +170,11 @@ const DbDump = () => {
 					>
 						Restore
 					</PvButton>
-					<PvButton
-						size="sm"
+					<PvIconButton
 						variant="danger"
 						icon={<DeleteOutlined />}
+						label="Delete backup"
 						onClick={() => setPendingDelete(record)}
-						aria-label="Delete backup"
 					/>
 				</div>
 			),
@@ -244,7 +251,7 @@ const DbDump = () => {
 				<p>
 					Type <code>RESTORE</code> to confirm:
 				</p>
-				<input
+				<PvInput
 					className="vp-dump-confirm-input"
 					value={restoreConfirmText}
 					onChange={(e) => setRestoreConfirmText(e.target.value)}

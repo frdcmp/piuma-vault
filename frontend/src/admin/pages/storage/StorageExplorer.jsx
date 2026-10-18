@@ -108,13 +108,14 @@ export default function StorageExplorer() {
 				<aside className="tasks-sidebar storage-tree-sidebar">
 					<div className="tasks-sidebar-head">
 						<h2 className="tasks-panel-title">Files</h2>
-						<button
-							type="button"
-							className="tasks-manage-btn"
+						<PvButton
+							variant="ghost"
+							size="sm"
+							icon="◀"
 							onClick={() => navigate(-1)}
 						>
-							◀ back
-						</button>
+							back
+						</PvButton>
 					</div>
 					<div className="storage-tree-scroll">
 						<StorageTree

@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 import WorkspaceShell from "./WorkspaceShell";
+import "./ChatDock.css";
 
 // When embedded in the mobile app's WebView (the native Recorder screen hosts
 // the web `/recorder` scene), render the page bare — no header / chat-dock
@@ -18,14 +19,7 @@ export default function WorkspaceLayout() {
 	// short — there's no global html/body/#root height chain to inherit from.
 	if (isEmbedded)
 		return (
-			<div
-				style={{
-					height: "100dvh",
-					minHeight: "100vh",
-					display: "flex",
-					flexDirection: "column",
-				}}
-			>
+			<div className="workspace-embedded">
 				<Outlet />
 			</div>
 		);

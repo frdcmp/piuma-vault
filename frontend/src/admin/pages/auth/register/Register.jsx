@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { LockGlyph, PvButton } from "@/ui";
+import { LockGlyph, PvAlert, PvButton, PvField, PvInput } from "@/ui";
 import PixelLoader from "../../../../components/PixelLoader";
 import { useAuthStatus, useRegister } from "../../../../queries";
 import Starfield from "../../../components/notes/Starfield";
@@ -49,7 +49,6 @@ const Register = () => {
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [confirm, setConfirm] = useState("");
-	const [showPassword, setShowPassword] = useState(false);
 	const [formError, setFormError] = useState(null);
 	const [landing, setLanding] = useState(false);
 
@@ -165,20 +164,19 @@ const Register = () => {
 								</p>
 
 								{formError && (
-									<div className="vp-auth-alert">
-										<div className="vp-auth-alert-title">⚠ Setup failed</div>
+									<PvAlert
+										type="error"
+										title="Setup failed"
+										className="vp-auth-alert"
+									>
 										{formError}
-									</div>
+									</PvAlert>
 								)}
 
 								<form onSubmit={onSubmit}>
-									<div className="vp-field">
-										<label className="vp-label" htmlFor="register-email">
-											Email
-										</label>
-										<input
+									<PvField label="Email">
+										<PvInput
 											id="register-email"
-											className="vp-input"
 											type="email"
 											autoComplete="username"
 											placeholder="you@example.com"
@@ -186,51 +184,33 @@ const Register = () => {
 											onChange={(e) => setEmail(e.target.value)}
 											required
 										/>
-									</div>
+									</PvField>
 
-									<div className="vp-field">
-										<label className="vp-label" htmlFor="register-password">
-											Password
-										</label>
-										<div className="vp-auth-input-wrap">
-											<input
-												id="register-password"
-												className="vp-input vp-auth-input--reveal"
-												type={showPassword ? "text" : "password"}
-												autoComplete="new-password"
-												placeholder="••••••••"
-												value={password}
-												onChange={(e) => setPassword(e.target.value)}
-												required
-											/>
-											<button
-												type="button"
-												className="vp-auth-reveal"
-												onClick={() => setShowPassword((v) => !v)}
-												aria-label={
-													showPassword ? "Hide password" : "Show password"
-												}
-											>
-												{showPassword ? "hide" : "show"}
-											</button>
-										</div>
-									</div>
+									<PvField label="Password">
+										<PvInput
+											id="register-password"
+											type="password"
+											reveal
+											autoComplete="new-password"
+											placeholder="••••••••"
+											value={password}
+											onChange={(e) => setPassword(e.target.value)}
+											required
+										/>
+									</PvField>
 
-									<div className="vp-field">
-										<label className="vp-label" htmlFor="register-confirm">
-											Confirm password
-										</label>
-										<input
+									<PvField label="Confirm password">
+										<PvInput
 											id="register-confirm"
-											className="vp-input"
-											type={showPassword ? "text" : "password"}
+											type="password"
+											reveal
 											autoComplete="new-password"
 											placeholder="••••••••"
 											value={confirm}
 											onChange={(e) => setConfirm(e.target.value)}
 											required
 										/>
-									</div>
+									</PvField>
 
 									<ul className="vp-auth-checklist">
 										{checks.map((c) => (

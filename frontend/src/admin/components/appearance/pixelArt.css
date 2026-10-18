@@ -1,0 +1,15 @@
+/* Pixel-art grids (PixelCanvas editor + SpritePreview). Per-cell size and
+   colour stay inline — they're the art. */
+.vp-pixcanvas {
+	width: fit-content;
+	line-height: 0;
+	touch-action: none;
+}
+
+.vp-pixpreview {
+	line-height: 0;
+}
+
+.vp-pixrow {
+	display: flex;
+}

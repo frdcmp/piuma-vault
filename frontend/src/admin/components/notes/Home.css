@@ -51,26 +51,6 @@
 	top: 12px;
 	left: 12px;
 	z-index: 10;
-	width: 40px;
-	height: 40px;
-	padding: 0;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-border);
-	color: var(--vp-text);
-	font-family: inherit;
-	font-size: 16pt;
-	font-weight: 900;
-	line-height: 1;
-	cursor: pointer;
-	box-shadow: 2px 2px 0 var(--vp-shadow-color);
-}
-
-.piuma-home-back:hover {
-	border-color: var(--vp-accent);
-	color: var(--vp-accent);
 }
 
 .piuma-home-text {

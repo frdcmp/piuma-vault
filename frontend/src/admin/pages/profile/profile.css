@@ -30,9 +30,6 @@
 	position: absolute;
 	bottom: 0;
 	right: 0;
-	width: 32px;
-	height: 32px;
-	padding: 0;
 }
 .vp-profile-name {
 	margin: 0 0 8px;
@@ -55,4 +52,27 @@
 	.vp-profile-info-grid {
 		grid-template-columns: 1fr;
 	}
+}
+
+.vp-profile-error {
+	color: var(--vp-danger);
+}
+.vp-profile-icon {
+	margin-right: 8px;
+}
+.vp-profile-rows {
+	gap: 10px;
+}
+.vp-profile-toggles {
+	gap: 12px;
+}
+.vp-profile-note {
+	opacity: 0.6;
+	font-size: 0.8rem;
+}
+.vp-profile-field {
+	margin-bottom: 0;
+}
+.vp-profile-field--spaced {
+	margin-top: 16px;
 }

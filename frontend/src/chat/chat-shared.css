@@ -33,19 +33,6 @@
 	padding: 6px 14px;
 	border-bottom: 2px dashed var(--vp-border);
 }
-.chat-back {
-	color: var(--vp-text);
-	text-decoration: none;
-	padding: 4px 10px;
-	border: 2px solid var(--vp-border);
-	background: var(--vp-bg-soft);
-	font-weight: 700;
-	font-family: inherit;
-	cursor: pointer;
-}
-.chat-back:hover {
-	border-color: var(--vp-success);
-}
 .chat-title {
 	flex: 1;
 	display: flex;
@@ -65,22 +52,24 @@
 	font-size: 10.5pt;
 	font-weight: 900;
 }
-/* Header controls — status, clear, close all share one square box so they
-   line up as a matched set (modeled on the close button). */
-.chat-status,
-.chat-clear,
-.chat-close {
+/* Agent picker (a PvSelect) — compact, sized to its content. */
+.chat-title .chat-agent-select {
+	width: auto;
+	min-width: 0;
+	padding: 1px 4px;
+	font-size: 11.5px;
+}
+/* Streaming status box — same square footprint as the PvIconButtons beside it. */
+.chat-status {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	flex: none;
-	width: 28px;
-	height: 28px;
+	box-sizing: border-box;
+	width: 30px;
+	height: 30px;
 	border: 2px solid var(--vp-border);
 	background: var(--vp-bg-soft);
-	color: var(--vp-text);
-	font-family: inherit;
-	line-height: 1;
 }
 .chat-status-dot {
 	width: 8px;
@@ -90,29 +79,6 @@
 .chat-status.streaming .chat-status-dot {
 	background: var(--vp-success);
 }
-.chat-clear {
-	color: var(--vp-muted);
-	font-size: 12pt;
-	cursor: pointer;
-}
-.chat-clear:hover:not(:disabled) {
-	color: var(--vp-success);
-}
-.chat-clear:disabled {
-	opacity: 0.35;
-	cursor: default;
-}
-.chat-close {
-	text-decoration: none;
-	font-weight: 900;
-	font-size: 16pt;
-	cursor: pointer;
-}
-.chat-close:hover {
-	border-color: var(--vp-danger);
-	color: var(--vp-danger);
-}
-
 /* Narrow panel: tighten the header so the controls keep fitting on one row. */
 @container (max-width: 460px) {
 	.chat-header {
@@ -124,15 +90,6 @@
 	}
 	.chat-name {
 		font-size: 11pt;
-	}
-	.chat-status,
-	.chat-clear,
-	.chat-close {
-		width: 28px;
-		height: 28px;
-	}
-	.chat-close {
-		font-size: 15pt;
 	}
 }
 
@@ -153,28 +110,16 @@
 	gap: 22px;
 }
 /* Jump-to-latest — subtle, translucent, only shown when scrolled up. */
+/* A PvIconButton: centred with left/calc (not translateX) so the kit's
+   hover/press transforms don't knock it off-centre. */
 .chat-jump {
 	position: absolute;
 	bottom: 14px;
-	left: 50%;
-	transform: translateX(-50%);
-	width: 32px;
-	height: 32px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	background: color-mix(in srgb, var(--vp-bg) 60%, transparent);
-	border: 1px solid var(--vp-border-soft);
-	color: var(--vp-muted);
-	font-size: 14pt;
-	line-height: 1;
-	cursor: pointer;
+	left: calc(50% - 15px);
 	opacity: 0.7;
 }
 .chat-jump:hover {
 	opacity: 1;
-	border-color: var(--vp-success);
-	color: var(--vp-success);
 }
 .chat-messages-inner {
 	max-width: 880px;
@@ -703,29 +648,6 @@ button.chat-context-tag-main {
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
-/* Composer icon buttons ("+" attach, "/" commands) — borderless, inside the
-   field's frame. */
-.chat-slash-btn {
-	flex: 0 0 auto;
-	width: 30px;
-	height: 30px;
-	padding: 0;
-	background: transparent;
-	border: 0;
-	color: var(--vp-muted);
-	font-family: inherit;
-	font-weight: 900;
-	font-size: 13pt;
-	line-height: 1;
-	cursor: pointer;
-}
-.chat-slash-btn:hover {
-	background: var(--vp-bg-soft);
-	color: var(--vp-success);
-}
-.chat-slash-btn:active {
-	transform: translate(1px, 1px);
-}
 /* Send / stop — a small filled square at the field's right edge. */
 .chat-send {
 	flex: 0 0 auto;
@@ -812,26 +734,6 @@ button.chat-context-tag-main {
 	color: var(--vp-muted);
 	font-weight: 400;
 	font-size: 8pt;
-}
-.chat-image-tag-remove {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 14px;
-	height: 14px;
-	padding: 0;
-	border: 1px solid transparent;
-	background: transparent;
-	color: var(--vp-muted);
-	font-family: inherit;
-	font-size: 11pt;
-	font-weight: 900;
-	line-height: 1;
-	cursor: pointer;
-}
-.chat-image-tag-remove:hover {
-	border-color: var(--vp-danger);
-	color: var(--vp-danger);
 }
 .chat-image-tag-spin {
 	width: 12px;
@@ -1018,42 +920,9 @@ button.chat-context-tag-main {
 	background: none;
 	border-left-color: transparent;
 }
-.picker-del {
-	flex: 0 0 auto;
-	display: flex;
-	align-items: center;
-	background: none;
-	border: none;
-	padding: 4px 8px;
-	color: var(--vp-muted);
-	cursor: pointer;
-	font-size: 13px;
-	transition: color 0.1s ease;
-}
-.picker-del:hover {
-	color: var(--vp-danger);
-}
-
-/* Sessions picker search box. */
+/* Sessions picker search box (a PvInput). */
 .picker-search {
-	width: 100%;
-	box-sizing: border-box;
 	margin: 10px 0 0;
-	padding: 8px 10px;
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-border);
-	border-radius: var(--vp-radius);
-	color: var(--vp-text);
-	font-family: inherit;
-	font-size: 13px;
-	outline: none;
-	transition: border-color 0.1s;
-}
-.picker-search:focus {
-	border-color: var(--vp-success);
-}
-.picker-search::placeholder {
-	color: var(--vp-faint);
 }
 
 /* Picker overlay (sessions/models): header + search stay pinned, list scrolls.
@@ -1112,19 +981,6 @@ button.chat-context-tag-main {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-.picker-close {
-	flex: none;
-	background: none;
-	border: none;
-	color: var(--vp-muted);
-	cursor: pointer;
-	font-size: 16px;
-	line-height: 1;
-	transition: color 0.1s;
-}
-.picker-close:hover {
-	color: var(--vp-danger);
-}
 .picker-list {
 	flex: 1 1 auto;
 	min-height: 0;
@@ -1177,24 +1033,7 @@ button.chat-context-tag-main {
 /* Agent-initiated "Go" action (the `navigate` tool). A click-to-go button —
    never an automatic redirect. */
 .chat-nav-action {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
 	margin: 4px 0;
-	padding: 4px 10px;
-	font: inherit;
-	font-size: 13px;
-	color: var(--vp-text);
-	background: var(--vp-bg-soft);
-	border: 1px solid var(--vp-accent);
-	border-radius: 4px;
-	cursor: pointer;
-}
-.chat-nav-action:hover {
-	background: var(--vp-panel);
-}
-.chat-nav-action-icon {
-	color: var(--vp-accent);
 }
 
 /* Conversation-loading state — pixel Piuma running while history is fetched
@@ -1291,23 +1130,6 @@ button.chat-context-tag-main {
 .chatx-msg-actions:focus-within {
 	opacity: 1;
 }
-.chatx-msg-action {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 26px;
-	height: 26px;
-	box-sizing: border-box;
-	background: var(--vp-bg-soft);
-	border: 1px solid var(--vp-border);
-	color: var(--vp-muted);
-	font-size: 11pt;
-	cursor: pointer;
-}
-.chatx-msg-action:hover {
-	border-color: var(--vp-success);
-	color: var(--vp-success);
-}
 .chatx-msg-model {
 	margin-left: 4px;
 	color: var(--vp-muted);
@@ -1333,25 +1155,6 @@ button.chat-context-tag-main {
 	color: var(--vp-muted);
 	font-size: 8.5pt;
 }
-.chatx-branch-arrow {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 18px;
-	height: 18px;
-	background: none;
-	border: 0;
-	color: var(--vp-muted);
-	font-size: 9pt;
-	cursor: pointer;
-}
-.chatx-branch-arrow:hover:not(:disabled) {
-	color: var(--vp-success);
-}
-.chatx-branch-arrow:disabled {
-	opacity: 0.3;
-	cursor: default;
-}
 .chatx-branch-count {
 	min-width: 26px;
 	text-align: center;
@@ -1374,51 +1177,13 @@ button.chat-context-tag-main {
 .chatx-edit:focus-within {
 	border-color: var(--vp-success);
 }
-.chatx-edit-input {
-	width: 100%;
-	box-sizing: border-box;
-	resize: vertical;
+.chatx-edit .vp-textarea {
 	min-height: 60px;
-	background: var(--vp-bg);
-	border: 1px solid var(--vp-border);
-	padding: 8px 10px;
-	color: var(--vp-text);
-	font-family: inherit;
-	font-size: 11pt;
-	line-height: 1.45;
-	outline: none;
-}
-.chatx-edit-input:focus {
-	border-color: var(--vp-success);
 }
 .chatx-edit-actions {
 	display: flex;
 	justify-content: flex-end;
 	gap: 8px;
-}
-.chatx-edit-btn {
-	padding: 6px 14px;
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-border);
-	color: var(--vp-text);
-	font-family: inherit;
-	font-weight: 700;
-	font-size: 9.5pt;
-	cursor: pointer;
-}
-.chatx-edit-btn:hover {
-	border-color: var(--vp-success);
-}
-.chatx-edit-send {
-	border-color: var(--vp-success);
-	color: var(--vp-success);
-	text-transform: uppercase;
-	letter-spacing: 0.6px;
-}
-.chatx-edit-send:disabled {
-	border-color: var(--vp-border);
-	color: var(--vp-muted);
-	cursor: not-allowed;
 }
 
 /* Capability glyphs in the model pickers (reasoning / vision / tools). */
@@ -1457,8 +1222,4 @@ button.chat-context-tag-main {
 }
 .chat-user-files .chat-image-tag {
 	padding-right: 8px;
-}
-/* The attach button sits left of the "/" button, same footprint. */
-.chat-attach-btn {
-	font-size: 12pt;
 }

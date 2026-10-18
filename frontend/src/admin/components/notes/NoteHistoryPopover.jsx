@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { pvMessage } from "@/ui";
+import { PvButton, PvIconButton, pvConfirm, pvMessage } from "@/ui";
 import {
 	useNoteVersion,
 	useNoteVersions,
@@ -34,6 +34,9 @@ export default function NoteHistoryPopover({ noteId }) {
 	const [open, setOpen] = useState(false);
 	const [selectedId, setSelectedId] = useState(null);
 	const popoverRef = useRef(null);
+	// The confirm dialog portals outside this subtree; while it's up, clicks in
+	// it must not count as "outside" and close the popover.
+	const confirmingRef = useRef(false);
 
 	const { data, isLoading } = useNoteVersions(noteId, { enabled: open });
 	const versions = data?.data ?? [];
@@ -48,6 +51,7 @@ export default function NoteHistoryPopover({ noteId }) {
 	useEffect(() => {
 		if (!open) return;
 		const handleClickOutside = (event) => {
+			if (confirmingRef.current) return;
 			if (popoverRef.current && !popoverRef.current.contains(event.target)) {
 				setOpen(false);
 			}
@@ -60,13 +64,15 @@ export default function NoteHistoryPopover({ noteId }) {
 		if (!open) setSelectedId(null);
 	}, [open]);
 
-	const handleRestore = (versionId) => {
-		if (
-			!window.confirm(
-				"Restore this version? The current state is saved to history first, so you can undo.",
-			)
-		)
-			return;
+	const handleRestore = async (versionId) => {
+		confirmingRef.current = true;
+		const ok = await pvConfirm({
+			title: "Restore this version?",
+			content: "The current state is saved to history first, so you can undo.",
+			okText: "Restore",
+		});
+		confirmingRef.current = false;
+		if (!ok) return;
 		restoreMutation.mutate(
 			{ id: noteId, versionId },
 			{
@@ -87,30 +93,24 @@ export default function NoteHistoryPopover({ noteId }) {
 
 	return (
 		<span className="note-search-anchor" ref={popoverRef}>
-			<button
-				type="button"
-				className="note-ctl-btn"
+			<PvIconButton
+				icon="🕘"
+				label="Version history"
 				onClick={() => setOpen((o) => !o)}
-				title="Version history"
-				aria-label="Version history"
 				aria-haspopup="dialog"
 				aria-expanded={open}
-			>
-				🕘
-			</button>
+			/>
 			{open && (
 				<div className="note-history-pop">
 					<div className="note-history-head">
 						<span>History</span>
-						<button
-							type="button"
-							className="note-ctl-btn"
+						<PvIconButton
+							size="sm"
+							variant="ghost"
+							icon="×"
+							label="Close history"
 							onClick={() => setOpen(false)}
-							title="Close history"
-							aria-label="Close history"
-						>
-							×
-						</button>
+						/>
 					</div>
 
 					{selectedId == null ? (
@@ -149,21 +149,23 @@ export default function NoteHistoryPopover({ noteId }) {
 					) : (
 						<div className="note-history-preview">
 							<div className="note-history-preview-bar">
-								<button
-									type="button"
-									className="pixel-btn"
+								<PvButton
+									size="sm"
+									icon="◀"
 									onClick={() => setSelectedId(null)}
 								>
-									◀ Back
-								</button>
-								<button
-									type="button"
-									className="pixel-btn"
+									Back
+								</PvButton>
+								<PvButton
+									size="sm"
+									variant="accent"
+									icon="⟲"
+									loading={restoreMutation.isPending}
 									disabled={restoreMutation.isPending}
 									onClick={() => handleRestore(selectedId)}
 								>
-									{restoreMutation.isPending ? "Restoring…" : "⟲ Restore"}
-								</button>
+									Restore
+								</PvButton>
 							</div>
 							{previewLoading || !selected ? (
 								<div className="note-history-empty">Loading…</div>

@@ -7,21 +7,24 @@ import {
 	ReadOutlined,
 	ReloadOutlined,
 	RobotOutlined,
+	SearchOutlined,
 	ThunderboltOutlined,
 } from "@ant-design/icons";
-import {
-	Empty,
-	Input,
-	Segmented,
-	Select,
-	Spin,
-	Table,
-	Tabs,
-	Tooltip,
-} from "antd";
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { PvButton, PvExpander, PvPopconfirm, pvMessage } from "@/ui";
+import {
+	PvButton,
+	PvEmpty,
+	PvIconButton,
+	PvInput,
+	PvPopconfirm,
+	PvSegmented,
+	PvSelect,
+	PvSpin,
+	PvTable,
+	PvTabs,
+	PvTooltip,
+	pvMessage,
+} from "@/ui";
 import {
 	useConfirmMemoryEntry,
 	useDeleteMemoryEntry,
@@ -100,7 +103,7 @@ const Bar = ({ pct }) => {
 		p >= 80 ? " mem-bar-fill--hot" : p >= 50 ? " mem-bar-fill--warn" : "";
 	return (
 		<div className="mem-bar">
-			<div className={`mem-bar-fill${tone}`} style={{ width: `${p}%` }} />
+			<div className={`mem-bar-fill${tone}`} style={{ "--mem-pct": `${p}%` }} />
 		</div>
 	);
 };
@@ -194,7 +197,7 @@ const Legend = () => (
 					preferences, personal, work, health, convention, pattern, goal,
 					constraint). Not a fixed list — the agent picks them.
 				</p>
-				<h4 style={{ marginTop: 14 }}>Layers</h4>
+				<h4 className="mem-legend-sub">Layers</h4>
 				<p className="mem-legend-note">
 					<b>L1</b> always-in-context scratchpad (always in the prompt) ·{" "}
 					<b>L2</b> semantic facts retrieved by relevance — confirmed ones plus
@@ -300,7 +303,7 @@ const trackPos = (d) => `${Math.min(100, Math.max(0, (d / TRACK_MAX) * 100))}%`;
  */
 const CorroborationStats = ({ id }) => {
 	const { data, isLoading } = useEntryStats(id);
-	if (isLoading) return <Spin size="small" />;
+	if (isLoading) return <PvSpin />;
 	if (!data) return <span className="mem-muted">No metrics available.</span>;
 
 	const t = data.thresholds || {};
@@ -328,15 +331,15 @@ const CorroborationStats = ({ id }) => {
 			<div className="mem-track">
 				<div
 					className="mem-track-zone"
-					style={{ width: trackPos(t.corroborate_distance) }}
+					style={{ "--mem-pos": trackPos(t.corroborate_distance) }}
 				/>
 				<div
 					className="mem-track-tick"
-					style={{ left: trackPos(t.corroborate_distance) }}
+					style={{ "--mem-pos": trackPos(t.corroborate_distance) }}
 				/>
 				<div
 					className={`mem-track-pin ${inBand ? "mem-track-pin--in" : ""}`}
-					style={{ left: trackPos(n.distance) }}
+					style={{ "--mem-pos": trackPos(n.distance) }}
 				>
 					<span className="mem-track-pin-label">{dist3(n.distance)}</span>
 				</div>
@@ -534,9 +537,9 @@ const Memory = () => {
 				<div className="mem-cell-content">
 					<span>{text}</span>
 					{!row.embedded && (
-						<Tooltip title="No embedding yet (queued / provider down)">
+						<PvTooltip title="No embedding yet (queued / provider down)">
 							<MemTag tone="gold">no vector</MemTag>
-						</Tooltip>
+						</PvTooltip>
 					)}
 				</div>
 			),
@@ -576,11 +579,11 @@ const Memory = () => {
 			key: "created_at",
 			width: 120,
 			render: (d) => (
-				<Tooltip
+				<PvTooltip
 					title={`${formatDateTime(d)?.date} ${formatDateTime(d)?.time}`}
 				>
 					<span className="mem-muted">{timeAgo(d)}</span>
-				</Tooltip>
+				</PvTooltip>
 			),
 		},
 		{
@@ -590,22 +593,20 @@ const Memory = () => {
 			render: (_, row) => (
 				<div className="mem-actions">
 					{row.status !== "confirmed" && (
-						<Tooltip title="Confirm (promote to a trusted fact)">
-							<PvButton
-								size="small"
-								icon={<CheckCircleOutlined />}
-								onClick={() => act(confirmMut, row.id, "confirmed")}
-							/>
-						</Tooltip>
+						<PvIconButton
+							size="sm"
+							icon={<CheckCircleOutlined />}
+							label="Confirm (promote to a trusted fact)"
+							onClick={() => act(confirmMut, row.id, "confirmed")}
+						/>
 					)}
 					{row.status !== "rejected" && (
-						<Tooltip title="Reject (stop retrieving it)">
-							<PvButton
-								size="small"
-								icon={<CloseCircleOutlined />}
-								onClick={() => act(rejectMut, row.id, "rejected")}
-							/>
-						</Tooltip>
+						<PvIconButton
+							size="sm"
+							icon={<CloseCircleOutlined />}
+							label="Reject (stop retrieving it)"
+							onClick={() => act(rejectMut, row.id, "rejected")}
+						/>
 					)}
 					<PvPopconfirm
 						title="Delete this entry permanently?"
@@ -613,7 +614,12 @@ const Memory = () => {
 						okVariant="danger"
 						onConfirm={() => act(deleteMut, row.id, "deleted")}
 					>
-						<PvButton size="small" danger icon={<DeleteOutlined />} />
+						<PvIconButton
+							size="sm"
+							variant="danger"
+							icon={<DeleteOutlined />}
+							label="Delete entry"
+						/>
 					</PvPopconfirm>
 				</div>
 			),
@@ -667,11 +673,11 @@ const Memory = () => {
 			key: "created_at",
 			width: 110,
 			render: (d) => (
-				<Tooltip
+				<PvTooltip
 					title={`${formatDateTime(d)?.date} ${formatDateTime(d)?.time}`}
 				>
 					<span className="mem-muted">{timeAgo(d)}</span>
-				</Tooltip>
+				</PvTooltip>
 			),
 		},
 		{
@@ -709,9 +715,9 @@ const Memory = () => {
 						</p>
 					</div>
 					<div className="mem-header-actions">
-						<Link to="/docs/agent-memory">
-							<PvButton icon={<ReadOutlined />}>Docs</PvButton>
-						</Link>
+						<PvButton to="/docs/agent-memory" icon={<ReadOutlined />}>
+							Docs
+						</PvButton>
 						<PvButton icon={<ReloadOutlined />} onClick={refreshAll}>
 							Refresh
 						</PvButton>
@@ -772,7 +778,7 @@ const Memory = () => {
 					/>
 				</div>
 
-				<Tabs
+				<PvTabs
 					activeKey={tab}
 					onChange={setTab}
 					items={[
@@ -780,7 +786,7 @@ const Memory = () => {
 							key: "l1",
 							label: "Always-in-context (L1)",
 							children: overview.isLoading ? (
-								<Spin />
+								<PvSpin block />
 							) : (
 								<>
 									<TabIntro>
@@ -826,7 +832,8 @@ const Memory = () => {
 										row buttons to confirm, reject, or delete.
 									</TabIntro>
 									<div className="mem-filters">
-										<Segmented
+										<PvSegmented
+											size="sm"
 											value={status}
 											onChange={setStatus}
 											options={[
@@ -836,11 +843,12 @@ const Memory = () => {
 												{ label: "Rejected", value: "rejected" },
 											]}
 										/>
-										<Select
+										<PvSelect
 											allowClear
+											size="sm"
+											className="mem-filter-select"
+											aria-label="Source"
 											placeholder="Source"
-											popupClassName="mem-pop"
-											style={{ minWidth: 150 }}
 											value={source}
 											onChange={setSource}
 											options={[
@@ -850,11 +858,12 @@ const Memory = () => {
 												{ label: "Imported", value: "imported" },
 											]}
 										/>
-										<Select
+										<PvSelect
 											allowClear
+											size="sm"
+											className="mem-filter-select"
+											aria-label="Category"
 											placeholder="Category"
-											popupClassName="mem-pop"
-											style={{ minWidth: 150 }}
 											value={category}
 											onChange={setCategory}
 											options={(stats?.by_category || []).map((c) => ({
@@ -862,29 +871,37 @@ const Memory = () => {
 												value: c.category,
 											}))}
 										/>
-										<Input.Search
-											allowClear
-											placeholder="Search content…"
-											style={{ maxWidth: 240 }}
-											onSearch={setSearch}
-											onChange={(e) => !e.target.value && setSearch("")}
-										/>
+										<form
+											className="mem-search mem-search--entries"
+											onSubmit={(e) => {
+												e.preventDefault();
+												setSearch(new FormData(e.currentTarget).get("q"));
+											}}
+										>
+											<PvInput
+												type="search"
+												name="q"
+												size="sm"
+												aria-label="Search content"
+												placeholder="Search content…"
+												prefix={<SearchOutlined />}
+												onChange={(e) => !e.target.value && setSearch("")}
+											/>
+										</form>
 									</div>
-									<Table
-										className="vp-table"
+									<PvTable
 										rowKey="id"
-										size="small"
+										size="sm"
 										loading={entries.isLoading}
-										dataSource={entries.data || []}
+										data={entries.data || []}
 										columns={entryColumns}
 										pagination={{ pageSize: 20, hideOnSinglePage: true }}
 										expandable={{
 											expandedRowRender: (row) => <EntryDetail row={row} />,
-											expandIcon: PvExpander,
 										}}
-										locale={{
-											emptyText: <Empty description="No memory entries" />,
-										}}
+										emptyText={
+											<PvEmpty compact description="No memory entries" />
+										}
 									/>
 								</>
 							),
@@ -903,34 +920,47 @@ const Memory = () => {
 										to run the same full-text search the agent does.
 									</TabIntro>
 									<div className="mem-filters">
-										<Input.Search
-											allowClear
-											enterButton
-											placeholder="Search past conversations…"
-											style={{ maxWidth: 360 }}
-											onSearch={setConvQuery}
-											onChange={(e) => !e.target.value && setConvQuery("")}
-										/>
+										<form
+											className="mem-search mem-search--conv"
+											onSubmit={(e) => {
+												e.preventDefault();
+												setConvQuery(new FormData(e.currentTarget).get("q"));
+											}}
+										>
+											<PvInput
+												type="search"
+												name="q"
+												size="sm"
+												aria-label="Search past conversations"
+												placeholder="Search past conversations…"
+												prefix={<SearchOutlined />}
+												onChange={(e) => !e.target.value && setConvQuery("")}
+											/>
+											<PvIconButton
+												type="submit"
+												size="sm"
+												icon={<SearchOutlined />}
+												label="Search"
+											/>
+										</form>
 									</div>
-									<Table
-										className="vp-table"
+									<PvTable
 										rowKey="conversation_id"
-										size="small"
+										size="sm"
 										loading={conversations.isFetching}
-										dataSource={conversations.data || []}
+										data={conversations.data || []}
 										columns={convColumns}
 										pagination={{ pageSize: 15, hideOnSinglePage: true }}
-										locale={{
-											emptyText: (
-												<Empty
-													description={
-														convQuery.trim()
-															? "No conversations matched"
-															: "No conversations yet"
-													}
-												/>
-											),
-										}}
+										emptyText={
+											<PvEmpty
+												compact
+												description={
+													convQuery.trim()
+														? "No conversations matched"
+														: "No conversations yet"
+												}
+											/>
+										}
 									/>
 								</>
 							),
@@ -947,19 +977,19 @@ const Memory = () => {
 										was. Empty until you chat with the agent — this is the
 										feedback loop for tuning retrieval.
 									</TabIntro>
-									<Table
-										className="vp-table"
+									<PvTable
 										rowKey="id"
-										size="small"
+										size="sm"
 										loading={turnLogs.isLoading}
-										dataSource={turnLogs.data || []}
+										data={turnLogs.data || []}
 										columns={inspectorColumns}
 										pagination={{ pageSize: 15, hideOnSinglePage: true }}
-										locale={{
-											emptyText: (
-												<Empty description="No turns logged yet — chat with the agent first" />
-											),
-										}}
+										emptyText={
+											<PvEmpty
+												compact
+												description="No turns logged yet — chat with the agent first"
+											/>
+										}
 										expandable={{
 											expandedRowRender: (row) => (
 												<div className="mem-retrieved">
@@ -981,7 +1011,6 @@ const Memory = () => {
 													)}
 												</div>
 											),
-											expandIcon: PvExpander,
 										}}
 									/>
 								</>

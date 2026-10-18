@@ -41,11 +41,9 @@ export default function UserMenu({ size = 42, align = "right" }) {
 	const [open, setOpen] = useState(false);
 	const ref = useRef(null);
 
-	const avatarStyle = {
-		width: size,
-		height: size,
-		fontSize: Math.round(size * 0.29),
-	};
+	// Dynamic avatar size → one custom property; the CSS derives width, height
+	// and font size from it.
+	const avatarStyle = { "--user-menu-avatar-size": `${size}px` };
 
 	useEffect(() => {
 		if (!open) return;

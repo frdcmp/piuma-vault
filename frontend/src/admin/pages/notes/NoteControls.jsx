@@ -1,26 +1,18 @@
 import { useEffect, useRef, useState } from "react";
+import { PvIconButton, PvInput } from "@/ui";
 import useNoteControlsStore from "../../../store/noteControlsStore";
 import NoteHistoryPopover from "../../components/notes/NoteHistoryPopover";
 import SharePopover from "../../components/notes/SharePopover";
 
-// Save-status pill — mirrors the icon the editor header used to show.
-function SaveDot({ status }) {
-	let icon = "✓";
-	let color = "var(--vp-success)";
-	if (status === "saving") {
-		icon = "⏳";
-		color = "var(--vp-accent)";
-	} else if (status === "error") {
-		icon = "×";
-		color = "var(--vp-danger)";
-	}
+// Save-status pill — mirrors the icon the editor header used to show. Shared
+// with the mobile editor header (NoteEditor).
+const SAVE_ICONS = { saving: "⏳", error: "×" };
+export function SaveDot({ status }) {
+	const tone =
+		status === "saving" ? " is-saving" : status === "error" ? " is-error" : "";
 	return (
-		<span
-			className="note-ctl-save"
-			style={{ color }}
-			title={`Save status: ${status}`}
-		>
-			{icon}
+		<span className={`note-ctl-save${tone}`} title={`Save status: ${status}`}>
+			{SAVE_ICONS[status] ?? "✓"}
 		</span>
 	);
 }
@@ -44,9 +36,10 @@ function SearchPopover() {
 	return (
 		<div className="note-search-pop">
 			<div className="note-search-pop-row">
-				<input
+				<PvInput
 					ref={inputRef}
-					className="pixel-input note-search-pop-input"
+					size="sm"
+					className="note-search-pop-input"
 					value={searchQuery}
 					onChange={(e) => setSearchQuery(e.target.value)}
 					onKeyDown={(e) => {
@@ -69,35 +62,27 @@ function SearchPopover() {
 					</span>
 				)}
 			</div>
-			<div className="note-search-pop-nav">
-				<button
-					type="button"
-					className="search-nav-btn"
-					disabled={!searchQuery}
-					onClick={() => setSearchAction({ dir: "prev", ts: Date.now() })}
-					title="Previous (Shift+Enter)"
-				>
-					▲
-				</button>
-				<button
-					type="button"
-					className="search-nav-btn"
-					disabled={!searchQuery}
-					onClick={() => setSearchAction({ dir: "next", ts: Date.now() })}
-					title="Next (Enter)"
-				>
-					▼
-				</button>
-			</div>
-			<button
-				type="button"
-				className="note-ctl-btn"
+			<PvIconButton
+				size="sm"
+				icon="▲"
+				label="Previous (Shift+Enter)"
+				disabled={!searchQuery}
+				onClick={() => setSearchAction({ dir: "prev", ts: Date.now() })}
+			/>
+			<PvIconButton
+				size="sm"
+				icon="▼"
+				label="Next (Enter)"
+				disabled={!searchQuery}
+				onClick={() => setSearchAction({ dir: "next", ts: Date.now() })}
+			/>
+			<PvIconButton
+				size="sm"
+				variant="ghost"
+				icon="×"
+				label="Close search"
 				onClick={closeSearch}
-				title="Close search"
-				aria-label="Close search"
-			>
-				×
-			</button>
+			/>
 		</div>
 	);
 }
@@ -166,32 +151,25 @@ export default function NoteControls({ onClose, compact }) {
 			<div className="note-controls compact" ref={menuRef}>
 				<SaveDot status={saveStatus} />
 				<span className="note-search-anchor" ref={searchRef}>
-					<button
-						type="button"
-						className="note-ctl-btn"
+					<PvIconButton
+						icon="🔍"
+						label="Search in page"
 						onClick={() => {
 							setMenuOpen(false);
 							searchOpen ? closeSearch() : openSearch();
 						}}
 						aria-haspopup="dialog"
 						aria-expanded={searchOpen}
-						title="Search in page"
-						aria-label="Search in page"
-					>
-						🔍
-					</button>
+					/>
 					{searchOpen && <SearchPopover />}
 				</span>
-				<button
-					type="button"
-					className="note-ctl-btn"
+				<PvIconButton
+					icon="⋯"
+					label="Note actions"
 					onClick={() => setMenuOpen((o) => !o)}
 					aria-haspopup="menu"
 					aria-expanded={menuOpen}
-					title="Note actions"
-				>
-					⋯
-				</button>
+				/>
 				{noteId ? <NoteHistoryPopover noteId={noteId} /> : null}
 				{menuOpen && (
 					<div className="note-ctl-menu" role="menu">
@@ -217,30 +195,23 @@ export default function NoteControls({ onClose, compact }) {
 		<div className="note-controls">
 			<SaveDot status={saveStatus} />
 			<span className="note-search-anchor" ref={searchRef}>
-				<button
-					type="button"
-					className="note-ctl-btn"
+				<PvIconButton
+					icon="🔍"
+					label="Search in page"
 					onClick={() => (searchOpen ? closeSearch() : openSearch())}
-					title="Search in page"
-					aria-label="Search in page"
 					aria-haspopup="dialog"
 					aria-expanded={searchOpen}
-				>
-					🔍
-				</button>
+				/>
 				{searchOpen && <SearchPopover />}
 			</span>
 			{noteId ? <NoteHistoryPopover noteId={noteId} /> : null}
 			{noteId ? <SharePopover noteId={noteId} iconOnly /> : null}
-			<button
-				type="button"
-				className="note-ctl-btn danger"
+			<PvIconButton
+				variant="danger"
+				icon="×"
+				label="Close note"
 				onClick={onClose}
-				title="Close note"
-				aria-label="Close note"
-			>
-				×
-			</button>
+			/>
 		</div>
 	);
 }

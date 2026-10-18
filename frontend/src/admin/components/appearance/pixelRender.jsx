@@ -1,4 +1,5 @@
 import { useSpriteCycle } from "../../../sprites";
+import "./pixelArt.css";
 
 // Renderers that take an EXPLICIT palette (unlike the app's <Sprite>, which uses
 // the active mascot's palette from context). Used by the Appearance list and the
@@ -7,10 +8,10 @@ import { useSpriteCycle } from "../../../sprites";
 export function SpritePreview({ rows, palette, pixelSize = 6 }) {
 	const color = (code) => palette[code] || "transparent";
 	return (
-		<div style={{ lineHeight: 0 }}>
+		<div className="vp-pixpreview">
 			{rows.map((row, r) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: static sprite rows never reorder
-				<div key={r} style={{ display: "flex" }}>
+				<div key={r} className="vp-pixrow">
 					{row.split("").map((code, c) => (
 						<div
 							// biome-ignore lint/suspicious/noArrayIndexKey: static sprite cells never reorder

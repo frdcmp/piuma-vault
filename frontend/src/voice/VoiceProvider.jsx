@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { PvButton } from "@/ui";
 import { navTargetToPath } from "../chat/engine/messageModel";
 import {
 	useRunVoiceTool,
@@ -74,14 +75,20 @@ export function VoiceIndicator() {
 	if (status === "idle" || status === "error" || location.pathname === "/voice")
 		return null;
 	return (
-		<button
-			type="button"
+		<PvButton
+			variant="primary"
+			size="sm"
 			className="voice-indicator"
 			title="Voice conversation in progress"
+			icon={
+				<span
+					className={`voice-indicator-dot is-${status}`}
+					aria-hidden="true"
+				/>
+			}
 			onClick={() => navigate("/voice")}
 		>
-			<span className={`voice-indicator-dot is-${status}`} aria-hidden="true" />
 			LIVE
-		</button>
+		</PvButton>
 	);
 }

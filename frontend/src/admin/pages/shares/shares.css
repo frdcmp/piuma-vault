@@ -1,0 +1,34 @@
+/* shares — the all-shares admin table (sh-*). */
+
+.sh-filters {
+	gap: 8px;
+	margin-bottom: 12px;
+	align-items: flex-end;
+}
+.sh-filter-search {
+	flex: 1;
+	min-width: 200px;
+}
+
+.vp-tag.sh-type--note {
+	color: var(--vp-info);
+}
+.vp-tag.sh-type--folder {
+	color: var(--vp-danger);
+}
+
+.sh-name {
+	word-break: break-all;
+}
+
+/* The status chip doubles as the enable/disable toggle. */
+.vp-tag.sh-status-toggle {
+	cursor: pointer;
+	border: 0;
+	font: inherit;
+}
+
+.sh-actions {
+	gap: 6px;
+	justify-content: flex-end;
+}

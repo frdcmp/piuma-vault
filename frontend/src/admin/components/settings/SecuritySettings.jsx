@@ -1,6 +1,6 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
-import { PvButton, PvModal, PvPanel, pvMessage } from "@/ui";
+import { PvButton, PvField, PvInput, PvModal, PvPanel, pvMessage } from "@/ui";
 import {
 	deleteTrustedDevice,
 	getTrustedDevices,
@@ -11,6 +11,7 @@ import {
 import { useUserMe } from "../../../queries";
 import { formatDate } from "../../../utils/dateTime";
 import ScreenLockSettings from "./ScreenLockSettings";
+import "./settings.css";
 
 // Security settings tab.
 //
@@ -159,29 +160,27 @@ const SecuritySettings = () => {
 							Scan the QR code with your authenticator app, then enter the
 							6-digit code below to confirm.
 						</p>
-						<div className="vp-row vp-row--wrap" style={{ gap: 24 }}>
-							<div style={{ background: "var(--vp-highlight)", padding: 12 }}>
+						<div className="vp-row vp-row--wrap ss-otp-setup">
+							<div className="ss-otp-qr">
 								<QRCodeSVG value={setupData.otpauth_uri} size={184} />
 							</div>
-							<div style={{ flex: 1, minWidth: 260 }}>
+							<div className="ss-otp-form">
 								<div className="vp-field">
 									<span className="vp-label">Can't scan? Enter this key</span>
-									<code className="vp-input" style={{ wordBreak: "break-all" }}>
+									<code className="vp-input ss-otp-secret">
 										{setupData.secret}
 									</code>
 								</div>
-								<div className="vp-field">
-									<span className="vp-label">Verification code</span>
-									<input
-										className="vp-input"
+								<PvField label="Verification code">
+									<PvInput
 										placeholder="123456"
 										inputMode="numeric"
 										maxLength={6}
 										value={verifyCode}
 										onChange={(e) => setVerifyCode(e.target.value)}
 									/>
-								</div>
-								<div className="vp-row" style={{ gap: 8 }}>
+								</PvField>
+								<div className="vp-row ss-actions">
 									<PvButton
 										variant="primary"
 										onClick={confirmEnroll}
@@ -205,24 +204,14 @@ const SecuritySettings = () => {
 							Each code can be used once to log in if you lose your
 							authenticator device. They will not be shown again.
 						</p>
-						<div
-							style={{
-								display: "grid",
-								gridTemplateColumns: "1fr 1fr",
-								gap: 8,
-								background: "var(--vp-bg-soft)",
-								border: "2px solid var(--vp-border)",
-								padding: 16,
-								fontFamily: "var(--vp-font)",
-							}}
-						>
+						<div className="ss-backup-codes">
 							{backupCodes.map((c) => (
 								<div key={c} className="vp-text">
 									{c}
 								</div>
 							))}
 						</div>
-						<div className="vp-row" style={{ gap: 8 }}>
+						<div className="vp-row ss-actions">
 							<PvButton onClick={downloadCodes}>Download .txt</PvButton>
 							<PvButton variant="primary" onClick={finishEnroll}>
 								I've saved them
@@ -259,13 +248,9 @@ const SecuritySettings = () => {
 					{devices.length === 0 ? (
 						<p className="vp-text vp-faint">No trusted devices.</p>
 					) : (
-						<div className="vp-stack" style={{ gap: 10 }}>
+						<div className="vp-stack ss-devices">
 							{devices.map((d) => (
-								<div
-									key={d.id}
-									className="vp-card vp-row vp-spread"
-									style={{ alignItems: "flex-start" }}
-								>
+								<div key={d.id} className="vp-card vp-row vp-spread ss-device">
 									<div>
 										<p className="vp-card-title">
 											{d.label || "Unknown device"}
@@ -307,27 +292,24 @@ const SecuritySettings = () => {
 					Confirm your password and a current 6-digit code to disable OTP. This
 					also revokes all trusted devices and invalidates backup codes.
 				</p>
-				<div className="vp-field">
-					<span className="vp-label">Password</span>
-					<input
+				<PvField label="Password">
+					<PvInput
 						type="password"
-						className="vp-input"
+						reveal
 						placeholder="Password"
 						value={disablePwd}
 						onChange={(e) => setDisablePwd(e.target.value)}
 					/>
-				</div>
-				<div className="vp-field">
-					<span className="vp-label">Current code</span>
-					<input
-						className="vp-input"
+				</PvField>
+				<PvField label="Current code">
+					<PvInput
 						placeholder="123456"
 						inputMode="numeric"
 						maxLength={6}
 						value={disableCode}
 						onChange={(e) => setDisableCode(e.target.value)}
 					/>
-				</div>
+				</PvField>
 			</PvModal>
 		</div>
 	);

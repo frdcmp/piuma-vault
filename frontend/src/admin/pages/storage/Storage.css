@@ -120,6 +120,22 @@
 	opacity: 0.7;
 }
 
+.storage-crumb-group {
+	display: inline-flex;
+}
+
+/* Tree banner ("~/storage") highlighted while the root folder is open. */
+.ftree-banner-text.is-current {
+	color: var(--vp-accent);
+}
+
+/* Header row of the (non-embedded) tree: back button + title. */
+.storage-tree-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
 .storage-topbar-actions {
 	display: flex;
 	align-items: center;
@@ -140,8 +156,9 @@
 	user-select: none;
 }
 
-/* Rubber-band selection rectangle (positioned inline, fixed to the viewport). */
+/* Rubber-band selection rectangle (fixed to the viewport; box set inline). */
 .storage-marquee {
+	position: fixed;
 	border: 1px solid var(--vp-success);
 	background: color-mix(in srgb, var(--vp-success) 12%, transparent);
 	pointer-events: none;
@@ -293,15 +310,26 @@
 	border: 1px solid var(--vp-border-soft);
 }
 
+/* Share-file modal (StorageGrid + StorageTree). */
+.storage-share-key {
+	margin-bottom: 10px;
+	word-break: break-all;
+}
+
 .storage-share-url {
 	display: flex;
 	gap: 6px;
 	margin-top: 8px;
 }
 
-.storage-share-url .pixel-input {
+.storage-share-url .vp-input {
 	flex: 1;
 	min-width: 0;
+}
+
+.storage-confirm-body {
+	white-space: pre-wrap;
+	word-break: break-all;
 }
 
 /* Blocking loading overlay (downloads / zips) */

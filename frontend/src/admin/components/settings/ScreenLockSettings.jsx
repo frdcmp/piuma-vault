@@ -1,6 +1,15 @@
 import { useState } from "react";
-import { PvButton, PvModal, PvPanel, pvMessage } from "@/ui";
+import {
+	PvButton,
+	PvField,
+	PvInput,
+	PvModal,
+	PvPanel,
+	PvSelect,
+	pvMessage,
+} from "@/ui";
 import { useScreenLockSettings, useUpdateScreenLock } from "../../../queries";
+import "./settings.css";
 
 // Inactivity-lock config. After the chosen timeout with no activity, a
 // full-screen overlay blocks the app until the 6-digit PIN is entered. The PIN
@@ -121,23 +130,16 @@ const ScreenLockSettings = () => {
 					</div>
 				) : (
 					<>
-						<div className="vp-field">
-							<span className="vp-label">Lock after inactivity</span>
-							<select
-								className="vp-input"
+						<PvField label="Lock after inactivity">
+							<PvSelect
+								options={TIMEOUT_OPTIONS}
 								value={timeoutSeconds}
 								disabled={busy}
-								onChange={(e) => changeTimeout(e.target.value)}
-							>
-								{TIMEOUT_OPTIONS.map((o) => (
-									<option key={o.value} value={o.value}>
-										{o.label}
-									</option>
-								))}
-							</select>
-						</div>
+								onChange={changeTimeout}
+							/>
+						</PvField>
 
-						<div className="vp-row" style={{ gap: 8 }}>
+						<div className="vp-row ss-actions">
 							<PvButton
 								variant={enabled ? "danger" : "primary"}
 								onClick={toggleEnabled}
@@ -163,11 +165,9 @@ const ScreenLockSettings = () => {
 				<p className="vp-text">
 					Choose a 6-digit PIN. You'll enter it to unlock the screen.
 				</p>
-				<div className="vp-field">
-					<span className="vp-label">New PIN</span>
-					<input
+				<PvField label="New PIN">
+					<PvInput
 						type="password"
-						className="vp-input"
 						placeholder="••••••"
 						inputMode="numeric"
 						maxLength={6}
@@ -176,12 +176,10 @@ const ScreenLockSettings = () => {
 							setPin(e.target.value.replace(/\D/g, "").slice(0, 6))
 						}
 					/>
-				</div>
-				<div className="vp-field">
-					<span className="vp-label">Confirm PIN</span>
-					<input
+				</PvField>
+				<PvField label="Confirm PIN">
+					<PvInput
 						type="password"
-						className="vp-input"
 						placeholder="••••••"
 						inputMode="numeric"
 						maxLength={6}
@@ -190,7 +188,7 @@ const ScreenLockSettings = () => {
 							setPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))
 						}
 					/>
-				</div>
+				</PvField>
 			</PvModal>
 		</PvPanel>
 	);

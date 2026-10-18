@@ -1,5 +1,6 @@
 import { memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
+import { PvButton } from "@/ui";
 import { InlineTagSpan } from "../../components/tags/InlineTag";
 import { remarkPlugins } from "../../utils/markdown";
 import { normalizeChatMarkdown } from "../engine/markdown";
@@ -61,20 +62,17 @@ function AssistantBubble({ parts, isStreaming, label, onNavigate }) {
 								const navLabel =
 									p.label || NAV_FALLBACK_LABEL[p.target] || "open";
 								return (
-									<button
+									<PvButton
 										key={p.id}
-										type="button"
+										variant="accent"
+										size="sm"
 										className="chat-nav-action"
+										icon="↗"
 										onClick={() => onNavigate?.(to)}
 										title={to}
 									>
-										<span className="chat-nav-action-icon" aria-hidden="true">
-											↗
-										</span>
-										<span className="chat-nav-action-label">
-											Go → {navLabel}
-										</span>
-									</button>
+										Go → {navLabel}
+									</PvButton>
 								);
 							}
 							return (

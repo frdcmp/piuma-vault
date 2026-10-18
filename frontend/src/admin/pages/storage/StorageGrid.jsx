@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PvMenu, PvModal, pvMessage, pvToast } from "@/ui";
+import {
+	PvButton,
+	PvField,
+	PvInput,
+	PvMenu,
+	PvModal,
+	PvSelect,
+	pvMessage,
+	pvToast,
+} from "@/ui";
 import {
 	useStorageBulkDelete,
 	useStorageDeleteFolder,
@@ -13,6 +22,14 @@ import {
 import { useStorageWorkspace } from "../../../store/storageWorkspaceStore";
 import { formatDate } from "../../../utils/dateTime";
 import FolderShareModal from "./FolderShareModal";
+
+// Lifetimes offered for a signed file-share link (seconds).
+const SHARE_EXPIRY_OPTIONS = [
+	{ value: 300, label: "5 minutes" },
+	{ value: 3600, label: "1 hour" },
+	{ value: 86400, label: "1 day" },
+	{ value: 604800, label: "7 days" },
+];
 
 const formatBytes = (n) => {
 	if (!n) return "0 B";
@@ -551,7 +568,7 @@ export default function StorageGrid({ prefix, onNavigate }) {
 						🏠 root
 					</button>
 					{crumbs.map((c, i) => (
-						<span key={c.path} style={{ display: "inline-flex" }}>
+						<span key={c.path} className="storage-crumb-group">
 							<span className="storage-crumb-sep">/</span>
 							<button
 								type="button"
@@ -590,7 +607,6 @@ export default function StorageGrid({ prefix, onNavigate }) {
 					<div
 						className="storage-marquee"
 						style={{
-							position: "fixed",
 							left: marquee.left,
 							top: marquee.top,
 							width: marquee.right - marquee.left,
@@ -728,20 +744,13 @@ export default function StorageGrid({ prefix, onNavigate }) {
 					setNewFolderName("");
 				}}
 			>
-				<label
-					htmlFor="storage-new-folder"
-					style={{ display: "block", marginBottom: 6, fontSize: 12 }}
-				>
-					Folder name (created under {prefix || "/"})
-				</label>
-				<input
-					id="storage-new-folder"
-					className="pixel-input"
-					style={{ width: "100%", boxSizing: "border-box" }}
-					value={newFolderName}
-					onChange={(e) => setNewFolderName(e.target.value)}
-					placeholder="my-folder"
-				/>
+				<PvField label={`Folder name (created under ${prefix || "/"})`}>
+					<PvInput
+						value={newFolderName}
+						onChange={(e) => setNewFolderName(e.target.value)}
+						placeholder="my-folder"
+					/>
+				</PvField>
 			</PvModal>
 
 			{/* New-file modal */}
@@ -755,20 +764,13 @@ export default function StorageGrid({ prefix, onNavigate }) {
 					setNewFileName("");
 				}}
 			>
-				<label
-					htmlFor="storage-new-file"
-					style={{ display: "block", marginBottom: 6, fontSize: 12 }}
-				>
-					File name (created under {prefix || "/"})
-				</label>
-				<input
-					id="storage-new-file"
-					className="pixel-input"
-					style={{ width: "100%", boxSizing: "border-box" }}
-					value={newFileName}
-					onChange={(e) => setNewFileName(e.target.value)}
-					placeholder="notes.txt"
-				/>
+				<PvField label={`File name (created under ${prefix || "/"})`}>
+					<PvInput
+						value={newFileName}
+						onChange={(e) => setNewFileName(e.target.value)}
+						placeholder="notes.txt"
+					/>
+				</PvField>
 			</PvModal>
 
 			{/* Hidden picker for the "Upload files…" menu action */}
@@ -776,7 +778,7 @@ export default function StorageGrid({ prefix, onNavigate }) {
 				ref={fileInputRef}
 				type="file"
 				multiple
-				style={{ display: "none" }}
+				hidden
 				onChange={(e) => {
 					uploadFiles(e.target.files);
 					e.target.value = "";
@@ -795,9 +797,7 @@ export default function StorageGrid({ prefix, onNavigate }) {
 				}}
 				onCancel={() => setConfirm(null)}
 			>
-				<div style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-					{confirm?.body}
-				</div>
+				<div className="storage-confirm-body">{confirm?.body}</div>
 			</PvModal>
 
 			{/* Share modal */}
@@ -810,42 +810,28 @@ export default function StorageGrid({ prefix, onNavigate }) {
 					setShareUrl("");
 				}}
 			>
-				<div style={{ marginBottom: 10, wordBreak: "break-all" }}>
+				<div className="storage-share-key">
 					<b>{shareKey}</b>
 				</div>
-				<label
-					htmlFor="storage-share-expiry"
-					style={{ display: "block", marginBottom: 6, fontSize: 12 }}
-				>
-					Expires in
-				</label>
-				<select
-					id="storage-share-expiry"
-					className="pixel-input"
-					style={{ width: "100%", boxSizing: "border-box" }}
-					value={shareExpiry}
-					onChange={(e) => setShareExpiry(Number(e.target.value))}
-				>
-					<option value={300}>5 minutes</option>
-					<option value={3600}>1 hour</option>
-					<option value={86400}>1 day</option>
-					<option value={604800}>7 days</option>
-				</select>
-				<button
-					type="button"
-					className="pixel-btn primary"
-					style={{ marginTop: 12 }}
+				<PvField label="Expires in">
+					<PvSelect
+						options={SHARE_EXPIRY_OPTIONS}
+						value={shareExpiry}
+						onChange={setShareExpiry}
+					/>
+				</PvField>
+				<PvButton
+					variant="primary"
+					icon="⤴"
 					onClick={generateShareLink}
 					disabled={signed.isPending}
 				>
-					⤴ Generate share link
-				</button>
+					Generate share link
+				</PvButton>
 				{shareUrl && (
 					<div className="storage-share-url">
-						<input className="pixel-input" value={shareUrl} readOnly />
-						<button type="button" className="pixel-btn" onClick={copyShareLink}>
-							Copy
-						</button>
+						<PvInput value={shareUrl} readOnly />
+						<PvButton onClick={copyShareLink}>Copy</PvButton>
 					</div>
 				)}
 			</PvModal>

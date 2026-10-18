@@ -1,4 +1,9 @@
 /* ── Milkdown Editor Styles ── */
+.pv-milkdown-wrapper {
+	position: relative;
+	padding-bottom: 0;
+}
+
 .pv-milkdown-wrapper .milkdown {
 	background: var(--vp-panel);
 	color: var(--vp-text);
@@ -270,8 +275,31 @@
 		color-mix(in srgb, var(--vp-shadow-color) 20%, transparent);
 }
 
+/* Copy-cell button floated over the hovered table cell; the position comes
+   from the cell's rect as --copy-top / --copy-left. */
+.pv-cell-copy-btn {
+	position: absolute;
+	top: var(--copy-top);
+	left: var(--copy-left);
+	z-index: 10;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	background: transparent;
+	border: none;
+	color: var(--vp-muted);
+	font-size: 12px;
+	cursor: pointer;
+}
 .pv-cell-copy-btn:hover {
-	color: var(--vp-accent) !important;
+	color: var(--vp-accent);
+}
+.pv-cell-copy-btn.is-copied {
+	color: var(--vp-success);
+	cursor: default;
 }
 
 .pv-milkdown-wrapper .milkdown .editor .search-highlight.active {

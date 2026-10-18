@@ -44,18 +44,6 @@
 .cron-job-main:hover {
 	background: var(--vp-bg-soft);
 }
-.cron-job-toggle {
-	flex: 0 0 auto;
-	background: none;
-	border: none;
-	cursor: pointer;
-	font-size: 14px;
-	color: var(--vp-faint);
-	padding: 0;
-}
-.cron-job-toggle.is-on {
-	color: var(--vp-success);
-}
 .cron-job-id {
 	flex: 1 1 auto;
 	min-width: 0;
@@ -82,20 +70,7 @@
 	display: flex;
 	gap: 2px;
 }
-.cron-act {
-	background: none;
-	border: 1px solid transparent;
-	color: var(--vp-muted);
-	cursor: pointer;
-	padding: 2px 7px;
-	font-size: 13px;
-}
-.cron-act:hover {
-	border-color: var(--vp-border);
-	color: var(--vp-text);
-}
-.cron-act--danger:hover {
-	border-color: var(--vp-danger);
+.cron-del.pv-icon-btn:hover {
 	color: var(--vp-danger);
 }
 
@@ -161,41 +136,11 @@
 }
 
 /* Create/edit modal form */
-.cron-field {
-	display: block;
-	margin-bottom: 12px;
-}
-.cron-label {
-	display: block;
-	font-size: 12px;
-	color: var(--vp-muted);
-	margin-bottom: 4px;
-}
-.cron-input {
-	width: 100%;
-	box-sizing: border-box;
-	background: var(--vp-bg-soft);
-	color: var(--vp-text);
-	border: 1px solid var(--vp-border-soft);
-	padding: 7px 9px;
-	font-size: 13px;
-	font-family: inherit;
-}
-.cron-input:focus {
-	outline: none;
-	border-color: var(--vp-success);
-}
-.cron-textarea {
-	resize: vertical;
-	line-height: 1.5;
-}
-.cron-presets,
 .cron-days {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 6px;
 }
-.cron-preset,
 .cron-day {
 	padding: 4px 10px;
 	border: 1px solid var(--vp-border);
@@ -205,24 +150,16 @@
 	font-size: 12px;
 	cursor: pointer;
 }
-.cron-preset.is-on,
 .cron-day.is-on {
 	color: var(--vp-success);
 	border-color: var(--vp-success);
 	background: color-mix(in srgb, var(--vp-success) 10%, transparent);
 }
-.cron-opts {
-	display: flex;
+.vp-field.cron-opts {
+	flex-direction: row;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 16px;
-}
-.cron-hint {
-	display: block;
-	margin-top: 4px;
-	font-size: 11px;
-	color: var(--vp-faint);
-	line-height: 1.4;
 }
 .cron-error {
 	color: var(--vp-danger);

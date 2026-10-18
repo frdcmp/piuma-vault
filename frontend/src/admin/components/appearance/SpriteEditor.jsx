@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { PvButton } from "@/ui";
+import { PvButton, PvField, PvIconButton, PvInput, PvSegmented } from "@/ui";
 import PixelCanvas from "./PixelCanvas";
 import { AnimatedPreview, SpritePreview } from "./pixelRender";
 
@@ -7,6 +7,7 @@ const WIDTH = 16;
 const BODY_ROWS = 10;
 const blankRow = () => ".".repeat(WIDTH);
 const blankLegs = () => [blankRow(), blankRow()];
+const POSES = ["standing", "walk", "gallop"];
 
 // Starting point for a brand-new sprite.
 export const NEW_TEMPLATE = {
@@ -165,10 +166,8 @@ export default function SpriteEditor({
 		<div className="vp-sprite-editor">
 			{/* Meta */}
 			<div className="vp-sprite-meta">
-				<label className="vp-field">
-					<span>Name</span>
-					<input
-						className="vp-input"
+				<PvField label="Name">
+					<PvInput
 						value={name}
 						onChange={(e) => {
 							setName(e.target.value);
@@ -177,17 +176,15 @@ export default function SpriteEditor({
 						}}
 						placeholder="Bubu"
 					/>
-				</label>
-				<label className="vp-field">
-					<span>Key</span>
-					<input
-						className="vp-input"
+				</PvField>
+				<PvField label="Key">
+					<PvInput
 						value={key}
 						disabled={!isNew}
 						onChange={(e) => setKey(e.target.value)}
 						placeholder="bubu"
 					/>
-				</label>
+				</PvField>
 			</div>
 
 			{/* AI generate — kicks off a server-side job that creates a new sprite.
@@ -195,8 +192,7 @@ export default function SpriteEditor({
 			{isNew && (
 				<>
 					<div className="vp-sprite-ai">
-						<input
-							className="vp-input"
+						<PvInput
 							value={aiPrompt}
 							onChange={(e) => setAiPrompt(e.target.value)}
 							onKeyDown={(e) => {
@@ -221,18 +217,12 @@ export default function SpriteEditor({
 				{/* ── Canvas ── */}
 				<section className="vp-editor-panel vp-editor-canvas">
 					<div className="vp-editor-panel-head">
-						<div className="vp-pose-tabs">
-							{["standing", "walk", "gallop"].map((t) => (
-								<button
-									key={t}
-									type="button"
-									className={`vp-pose-tab ${tab === t ? "is-active" : ""}`}
-									onClick={() => setTab(t)}
-								>
-									{t}
-								</button>
-							))}
-						</div>
+						<PvSegmented
+							size="sm"
+							options={POSES}
+							value={tab}
+							onChange={setTab}
+						/>
 
 						{tab !== "standing" && (
 							<div className="vp-frame-bar">
@@ -311,14 +301,13 @@ export default function SpriteEditor({
 									value={def.palette[code]}
 									onChange={(e) => setColor(code, e.target.value)}
 								/>
-								<button
-									type="button"
-									className="vp-palette-del"
+								<PvIconButton
+									variant="ghost"
+									size="sm"
+									icon="✕"
+									label="remove color"
 									onClick={() => removeColor(code)}
-									title="remove color"
-								>
-									✕
-								</button>
+								/>
 							</div>
 						))}
 					</div>
@@ -365,30 +354,26 @@ export default function SpriteEditor({
 				<div className="vp-editor-divider" />
 
 				<div className="vp-sprite-timings">
-					<label className="vp-field">
-						<span>Walk frame ms</span>
-						<input
+					<PvField label="Walk frame ms">
+						<PvInput
 							type="number"
-							className="vp-input"
 							value={def.walkFrameMs}
 							min={30}
 							onChange={(e) =>
 								patch({ walkFrameMs: Number(e.target.value) || 120 })
 							}
 						/>
-					</label>
-					<label className="vp-field">
-						<span>Gallop frame ms</span>
-						<input
+					</PvField>
+					<PvField label="Gallop frame ms">
+						<PvInput
 							type="number"
-							className="vp-input"
 							value={def.gallopFrameMs}
 							min={30}
 							onChange={(e) =>
 								patch({ gallopFrameMs: Number(e.target.value) || 140 })
 							}
 						/>
-					</label>
+					</PvField>
 				</div>
 			</section>
 

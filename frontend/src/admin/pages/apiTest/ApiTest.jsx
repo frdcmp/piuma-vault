@@ -5,8 +5,7 @@ import {
 	LoadingOutlined,
 	SyncOutlined,
 } from "@ant-design/icons";
-import { Spin } from "antd";
-import { PvPanel } from "@/ui";
+import { PvAlert, PvPanel, PvSpin } from "@/ui";
 import { useGetHello } from "../../../queries";
 import { PageContent } from "../../components/layout/PageLayout";
 import "./apiTest.css";
@@ -102,37 +101,21 @@ const ApiTest = () => {
 			>
 				{loading ? (
 					<div className="vp-test-loading">
-						<Spin size="large" />
+						<PvSpin />
 						<p className="vp-muted vp-test-loading-text">
 							Fetching data from backend...
 						</p>
 					</div>
 				) : isError ? (
-					<div className="vp-test-alert vp-test-alert--error">
-						<CloseCircleOutlined className="vp-test-alert-icon" />
-						<div>
-							<strong className="vp-test-alert-title">
-								API Request Failed
-							</strong>
-							<p className="vp-test-alert-desc">
-								Unable to connect to the backend API. Please ensure the server
-								is running.
-							</p>
-						</div>
-					</div>
+					<PvAlert type="error" title="API Request Failed">
+						Unable to connect to the backend API. Please ensure the server is
+						running.
+					</PvAlert>
 				) : (
 					<div className="vp-stack">
-						<div className="vp-test-alert vp-test-alert--success">
-							<CheckCircleOutlined className="vp-test-alert-icon" />
-							<div>
-								<strong className="vp-test-alert-title">
-									Connection Successful
-								</strong>
-								<p className="vp-test-alert-desc">
-									Successfully connected to the backend API
-								</p>
-							</div>
-						</div>
+						<PvAlert type="success" title="Connection Successful">
+							Successfully connected to the backend API
+						</PvAlert>
 						<dl className="vp-test-descriptions">
 							<div className="vp-test-desc-row">
 								<dt>Response Message</dt>

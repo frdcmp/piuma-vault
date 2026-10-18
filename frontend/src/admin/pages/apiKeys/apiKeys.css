@@ -54,6 +54,20 @@
 .vp-keys-table-panel {
 	margin-bottom: 24px;
 }
+.vp-keys-actions {
+	gap: 4px;
+}
+.vp-keys-actions .vp-keys-danger,
+.vp-keys-actions .vp-keys-danger:hover {
+	color: var(--vp-danger);
+}
+
+/* ---- Create / edit dialogs ------------------------------------------------- */
+.vp-keys-scopes {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
 
 /* ---- Raw key reveal modal -------------------------------------------------- */
 .vp-keys-warning {
@@ -96,130 +110,4 @@
 }
 .vp-keys-rawkey-scopes {
 	margin-top: 8px;
-}
-
-/* =============================================================================
-   Restyle the kept antd components (Table, Modal, Form) to the pixel language.
-   ============================================================================= */
-
-/* ---- Table ----------------------------------------------------------------- */
-.vp-table .ant-table {
-	background: transparent;
-	font-family: var(--vp-font);
-	color: var(--vp-text);
-}
-.vp-table .ant-table-thead > tr > th {
-	background: var(--vp-bg-soft) !important;
-	color: var(--vp-muted) !important;
-	font-size: 11px;
-	font-weight: 700;
-	letter-spacing: 0.5px;
-	text-transform: uppercase;
-	border-bottom: 2px solid var(--vp-border) !important;
-}
-.vp-table .ant-table-thead > tr > th::before {
-	display: none !important;
-}
-.vp-table .ant-table-tbody > tr > td {
-	background: transparent !important;
-	color: var(--vp-text);
-	border-bottom: 1px solid var(--vp-border-soft) !important;
-	font-size: 13px;
-}
-.vp-table .ant-table-tbody > tr:hover > td {
-	background: var(--vp-bg-soft) !important;
-}
-.vp-table .ant-table-cell-row-hover {
-	background: var(--vp-bg-soft) !important;
-}
-.vp-table .ant-pagination .ant-pagination-item,
-.vp-table .ant-pagination .ant-pagination-prev .ant-pagination-item-link,
-.vp-table .ant-pagination .ant-pagination-next .ant-pagination-item-link,
-.vp-table .ant-pagination .ant-select-selector {
-	background: var(--vp-bg-soft) !important;
-	border: 2px solid var(--vp-border) !important;
-	border-radius: 0 !important;
-	color: var(--vp-text) !important;
-	font-family: var(--vp-font);
-}
-.vp-table .ant-pagination .ant-pagination-item-active {
-	border-color: var(--vp-accent) !important;
-}
-.vp-table .ant-pagination .ant-pagination-item-active a {
-	color: var(--vp-accent) !important;
-}
-
-/* ---- Modal ----------------------------------------------------------------- */
-.vp-modal .ant-modal-content {
-	background: var(--vp-panel) !important;
-	border: 2px solid var(--vp-border);
-	box-shadow: var(--vp-shadow-lg);
-	border-radius: 0 !important;
-	font-family: var(--vp-font);
-}
-.vp-modal .ant-modal-header {
-	background: transparent !important;
-	border-bottom: 2px solid var(--vp-border);
-	padding-bottom: 12px;
-	margin-bottom: 16px;
-}
-.vp-modal .ant-modal-title {
-	color: var(--vp-accent) !important;
-	font-family: var(--vp-font);
-	font-size: 14px;
-	font-weight: 800;
-	letter-spacing: 0.5px;
-	text-transform: uppercase;
-}
-.vp-modal .ant-modal-close-x {
-	color: var(--vp-muted);
-}
-.vp-modal .ant-modal-footer {
-	border-top: 2px dashed var(--vp-border);
-	margin-top: 16px;
-	padding-top: 16px;
-}
-
-/* ---- Form / inputs --------------------------------------------------------- */
-.vp-modal .ant-form-item-label > label {
-	color: var(--vp-muted) !important;
-	font-size: 11px;
-	font-weight: 700;
-	letter-spacing: 0.5px;
-	text-transform: uppercase;
-	font-family: var(--vp-font);
-}
-.vp-modal .ant-form-item-extra {
-	color: var(--vp-faint) !important;
-	font-size: 11px;
-}
-.vp-modal .ant-input,
-.vp-modal .ant-picker {
-	background: var(--vp-bg-soft) !important;
-	border: 2px solid var(--vp-border) !important;
-	border-radius: 0 !important;
-	color: var(--vp-text) !important;
-	font-family: var(--vp-font);
-}
-.vp-modal .ant-input:focus,
-.vp-modal .ant-picker-focused {
-	border-color: var(--vp-accent) !important;
-	box-shadow: none !important;
-}
-.vp-modal .ant-checkbox-wrapper {
-	color: var(--vp-text);
-	font-family: var(--vp-font);
-	font-size: 12px;
-}
-.vp-modal .ant-checkbox-inner {
-	border-radius: 0 !important;
-	border: 2px solid var(--vp-border) !important;
-	background: var(--vp-bg-soft) !important;
-}
-.vp-modal .ant-checkbox-checked .ant-checkbox-inner {
-	background: var(--vp-accent) !important;
-	border-color: var(--vp-accent) !important;
-}
-.vp-modal .ant-checkbox-checked .ant-checkbox-inner::after {
-	border-color: var(--vp-bg) !important;
 }

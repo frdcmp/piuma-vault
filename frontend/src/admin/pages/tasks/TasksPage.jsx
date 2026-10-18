@@ -21,7 +21,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { PvButton, pvMessage } from "@/ui";
+import { PvButton, PvIconButton, pvMessage } from "@/ui";
 import {
 	BucketTagFilter,
 	ManageBucketsModal,
@@ -106,7 +106,7 @@ function SortableTaskRow({
 			<button
 				type="button"
 				className="task-check"
-				style={{ color: PRIORITY_COLOR[t.priority] }}
+				style={{ "--task-tint": PRIORITY_COLOR[t.priority] }}
 				onClick={() => onToggle(t.id)}
 				disabled={toggling}
 				aria-label="Complete task"
@@ -116,7 +116,7 @@ function SortableTaskRow({
 			{bucket ? (
 				<span
 					className="task-bucket"
-					style={{ color: bucket.color || undefined }}
+					style={{ "--task-tint": bucket.color || undefined }}
 				>
 					{bucket.name}
 				</span>
@@ -147,7 +147,7 @@ function SortableTaskRow({
 							type="button"
 							key={tag}
 							className="task-tag"
-							style={{ color: tagColorOf(tag) }}
+							style={{ "--task-tint": tagColorOf(tag) }}
 							onClick={() => onSelectTag(tag)}
 						>
 							#{tag}
@@ -182,7 +182,7 @@ function StaticTaskRow({
 			<button
 				type="button"
 				className="task-check"
-				style={{ color: PRIORITY_COLOR[t.priority] }}
+				style={{ "--task-tint": PRIORITY_COLOR[t.priority] }}
 				onClick={() => onToggle(t.id)}
 				disabled={toggling}
 				aria-label="Complete task"
@@ -192,7 +192,7 @@ function StaticTaskRow({
 			{bucket ? (
 				<span
 					className="task-bucket"
-					style={{ color: bucket.color || undefined }}
+					style={{ "--task-tint": bucket.color || undefined }}
 				>
 					{bucket.name}
 				</span>
@@ -219,7 +219,7 @@ function StaticTaskRow({
 							type="button"
 							key={tag}
 							className="task-tag"
-							style={{ color: tagColorOf(tag) }}
+							style={{ "--task-tint": tagColorOf(tag) }}
 							onClick={() => onSelectTag(tag)}
 						>
 							#{tag}
@@ -504,13 +504,14 @@ export default function TasksPage() {
 				<aside className="tasks-sidebar">
 					<div className="tasks-sidebar-head">
 						<h2 className="tasks-panel-title">Filter</h2>
-						<button
-							type="button"
-							className="tasks-manage-btn"
+						<PvButton
+							variant="ghost"
+							size="sm"
+							icon="⚙"
 							onClick={() => setManageOpen(true)}
 						>
-							⚙ manage
-						</button>
+							manage
+						</PvButton>
 					</div>
 					<BucketTagFilter
 						scope="tasks"
@@ -712,14 +713,14 @@ export default function TasksPage() {
 												) : null}
 											</span>
 										</button>
-										<button
-											type="button"
+										<PvIconButton
+											variant="ghost"
+											size="sm"
 											className="task-del"
+											icon="✕"
+											label="Delete recurring task"
 											onClick={() => deleteRecurring.mutate(r.id)}
-											aria-label="Delete recurring task"
-										>
-											✕
-										</button>
+										/>
 									</li>
 								))}
 								{recurring.length === 0 ? (

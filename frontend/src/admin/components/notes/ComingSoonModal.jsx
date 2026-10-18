@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
+import { PvButton } from "@/ui";
 import SpriteStage from "./SpriteStage";
 import "./ComingSoonModal.css";
 
@@ -49,9 +50,13 @@ export default function ComingSoonModal({ open, feature, quip = 0, onClose }) {
 					{QUIPS[quip % QUIPS.length]}
 				</div>
 				<div className="coming-soon-sub">We're working on this feature.</div>
-				<button type="button" className="coming-soon-ok" onClick={onClose}>
+				<PvButton
+					variant="primary"
+					className="coming-soon-ok"
+					onClick={onClose}
+				>
 					OK
-				</button>
+				</PvButton>
 			</div>
 		</div>,
 		document.body,

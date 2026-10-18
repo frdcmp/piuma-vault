@@ -1,5 +1,6 @@
 import { SettingOutlined } from "@ant-design/icons";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { PvIconButton } from "@/ui";
 import { Sprite, useSprite } from "../../sprites";
 import { VoiceIndicator } from "../../voice/VoiceProvider";
 import NavMenu from "../NavMenu/NavMenu";
@@ -12,7 +13,6 @@ import "./WorkspaceHeader.css";
 // Storage) — deliberately NOT the admin Header. Just the brand, the cross-app
 // NavMenu, a settings shortcut, and the user menu.
 export default function WorkspaceHeader() {
-	const navigate = useNavigate();
 	const { sprite } = useSprite();
 
 	return (
@@ -28,15 +28,7 @@ export default function WorkspaceHeader() {
 
 			<div className="ws-header-actions">
 				<VoiceIndicator />
-				<button
-					type="button"
-					className="vp-icon-btn"
-					title="Admin"
-					aria-label="Admin"
-					onClick={() => navigate("/settings")}
-				>
-					<SettingOutlined />
-				</button>
+				<PvIconButton to="/settings" icon={<SettingOutlined />} label="Admin" />
 				<NotificationBell />
 				<UserMenu size={30} />
 			</div>

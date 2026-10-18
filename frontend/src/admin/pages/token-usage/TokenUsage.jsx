@@ -1,5 +1,5 @@
 import { ReloadOutlined } from "@ant-design/icons";
-import { DatePicker, Select, Table } from "antd";
+import dayjs from "dayjs";
 import { useMemo, useState } from "react";
 import {
 	Bar,
@@ -13,13 +13,11 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
-import { PvButton } from "@/ui";
+import { PvButton, PvDateTimePicker, PvPanel, PvSelect, PvTable } from "@/ui";
 import { useTokenUsage } from "../../../queries";
 import { useTheme } from "../../../theme";
 import { PageContent } from "../../components/layout/PageLayout";
 import "./token-usage.css";
-
-const { RangePicker } = DatePicker;
 
 const SOURCE_OPTIONS = [
 	{ value: "chat", label: "Chat" },
@@ -84,6 +82,122 @@ const mixHex = (a, b, t) => {
 		.join("")}`;
 };
 
+const MODEL_COLUMNS = [
+	{ title: "Model", dataIndex: "model", key: "model" },
+	{
+		title: "Provider",
+		dataIndex: "provider_kind",
+		key: "provider_kind",
+		render: (v) => v || "—",
+	},
+	{
+		title: "Input",
+		dataIndex: "tokens_input",
+		key: "tokens_input",
+		align: "right",
+		render: fmtTokens,
+	},
+	{
+		title: "Output",
+		dataIndex: "tokens_output",
+		key: "tokens_output",
+		align: "right",
+		render: fmtTokens,
+	},
+	{
+		title: "Cached",
+		dataIndex: "tokens_cached",
+		key: "tokens_cached",
+		align: "right",
+		render: fmtTokens,
+	},
+	{ title: "Audio in / out", key: "audio", align: "right", render: fmtAudio },
+	{
+		title: "Calls",
+		dataIndex: "calls",
+		key: "calls",
+		align: "right",
+		render: fmtTokens,
+	},
+	{
+		title: "Cost",
+		dataIndex: "cost_usd",
+		key: "cost_usd",
+		align: "right",
+		render: fmtCost,
+	},
+];
+
+const SOURCE_COLUMNS = [
+	{ title: "Source", dataIndex: "source", key: "source" },
+	{
+		title: "Total tokens",
+		dataIndex: "total_tokens",
+		key: "total_tokens",
+		align: "right",
+		render: fmtTokens,
+	},
+	{
+		title: "Calls",
+		dataIndex: "calls",
+		key: "calls",
+		align: "right",
+		render: fmtTokens,
+	},
+	{
+		title: "Cost",
+		dataIndex: "cost_usd",
+		key: "cost_usd",
+		align: "right",
+		render: fmtCost,
+	},
+];
+
+const PRICING_COLUMNS = [
+	{ title: "Model", dataIndex: "model", key: "model" },
+	{
+		title: "Provider",
+		dataIndex: "provider_kind",
+		key: "provider_kind",
+		render: (v) => v || "—",
+	},
+	{
+		title: "Input",
+		dataIndex: "price_input",
+		key: "price_input",
+		align: "right",
+		render: fmtPrice,
+	},
+	{
+		title: "Output",
+		dataIndex: "price_output",
+		key: "price_output",
+		align: "right",
+		render: fmtPrice,
+	},
+	{
+		title: "Cached",
+		dataIndex: "price_cached",
+		key: "price_cached",
+		align: "right",
+		render: fmtPrice,
+	},
+	{
+		title: "Audio in",
+		dataIndex: "price_audio_input",
+		key: "price_audio_input",
+		align: "right",
+		render: fmtPrice,
+	},
+	{
+		title: "Audio out",
+		dataIndex: "price_audio_output",
+		key: "price_audio_output",
+		align: "right",
+		render: fmtPrice,
+	},
+];
+
 const TOOLTIP_STYLE = {
 	background: "var(--vp-panel)",
 	border: "2px solid var(--vp-border)",
@@ -118,16 +232,18 @@ const TokenUsage = () => {
 	};
 	const AXIS = tokens.muted;
 	const GRID = tokens.borderSoft;
-	const [range, setRange] = useState(null); // [dayjs, dayjs] | null
+	// Day pickers emit UTC ISO strings of local midnight; null = open-ended.
+	const [from, setFrom] = useState(null);
+	const [to, setTo] = useState(null);
 	const [source, setSource] = useState(undefined);
 
 	const params = useMemo(() => {
 		const p = {};
-		if (range?.[0]) p.from = range[0].format("YYYY-MM-DD");
-		if (range?.[1]) p.to = range[1].add(1, "day").format("YYYY-MM-DD"); // `to` is exclusive
+		if (from) p.from = dayjs(from).format("YYYY-MM-DD");
+		if (to) p.to = dayjs(to).add(1, "day").format("YYYY-MM-DD"); // `to` is exclusive
 		if (source) p.source = source;
 		return p;
-	}, [range, source]);
+	}, [from, to, source]);
 
 	const { data, isLoading, refetch, isFetching } = useTokenUsage(params);
 
@@ -160,20 +276,29 @@ const TokenUsage = () => {
 						</p>
 					</div>
 					<div className="vp-row vp-row--wrap">
-						<RangePicker
-							value={range}
-							onChange={setRange}
-							allowEmpty={[true, true]}
-							popupClassName="tu-pop"
-						/>
-						<Select
+						<div className="vp-row tu-range">
+							<PvDateTimePicker
+								mode="date"
+								value={from}
+								onChange={setFrom}
+								placeholder="Start date"
+							/>
+							<span className="vp-muted">→</span>
+							<PvDateTimePicker
+								mode="date"
+								value={to}
+								onChange={setTo}
+								placeholder="End date"
+							/>
+						</div>
+						<PvSelect
 							allowClear
 							placeholder="All sources"
-							style={{ minWidth: 180 }}
+							className="tu-source"
 							value={source}
 							onChange={setSource}
 							options={SOURCE_OPTIONS}
-							popupClassName="tu-pop"
+							aria-label="Source"
 						/>
 						<PvButton
 							icon={<ReloadOutlined />}
@@ -227,309 +352,144 @@ const TokenUsage = () => {
 					</div>
 
 					{/* Usage over time */}
-					<section className="vp-panel">
-						<header className="vp-panel-bar">
-							<span className="vp-dots">
-								<span />
-								<span />
-								<span />
-							</span>
-							<h3 className="vp-panel-title">Usage over time</h3>
-						</header>
-						<div className="vp-panel-body tu-chart">
-							<ResponsiveContainer width="100%" height={280}>
-								<LineChart data={byDay}>
-									<CartesianGrid stroke={GRID} strokeDasharray="3 3" />
-									<XAxis
-										dataKey="day"
-										fontSize={11}
-										stroke={AXIS}
-										tick={{ fill: AXIS }}
-									/>
-									<YAxis
-										yAxisId="left"
-										fontSize={11}
-										stroke={AXIS}
-										tick={{ fill: AXIS }}
-									/>
-									<YAxis
-										yAxisId="right"
-										orientation="right"
-										fontSize={11}
-										stroke={AXIS}
-										tick={{ fill: AXIS }}
-										tickFormatter={(v) => `$${v.toFixed(2)}`}
-									/>
-									<Tooltip
-										contentStyle={TOOLTIP_STYLE}
-										labelStyle={TOOLTIP_LABEL_STYLE}
-									/>
-									<Legend />
-									<Line
-										yAxisId="left"
-										type="monotone"
-										dataKey="tokens_input"
-										name="Input"
-										stroke={SERIES.input}
-										dot={false}
-									/>
-									<Line
-										yAxisId="left"
-										type="monotone"
-										dataKey="tokens_output"
-										name="Output"
-										stroke={SERIES.output}
-										dot={false}
-									/>
-									<Line
-										yAxisId="right"
-										type="monotone"
-										dataKey="cost_usd"
-										name="Cost ($)"
-										stroke={SERIES.cost}
-										dot={false}
-									/>
-								</LineChart>
-							</ResponsiveContainer>
-						</div>
-					</section>
+					<PvPanel title="Usage over time" bodyClassName="tu-chart">
+						<ResponsiveContainer width="100%" height={280}>
+							<LineChart data={byDay}>
+								<CartesianGrid stroke={GRID} strokeDasharray="3 3" />
+								<XAxis
+									dataKey="day"
+									fontSize={11}
+									stroke={AXIS}
+									tick={{ fill: AXIS }}
+								/>
+								<YAxis
+									yAxisId="left"
+									fontSize={11}
+									stroke={AXIS}
+									tick={{ fill: AXIS }}
+								/>
+								<YAxis
+									yAxisId="right"
+									orientation="right"
+									fontSize={11}
+									stroke={AXIS}
+									tick={{ fill: AXIS }}
+									tickFormatter={(v) => `$${v.toFixed(2)}`}
+								/>
+								<Tooltip
+									contentStyle={TOOLTIP_STYLE}
+									labelStyle={TOOLTIP_LABEL_STYLE}
+								/>
+								<Legend />
+								<Line
+									yAxisId="left"
+									type="monotone"
+									dataKey="tokens_input"
+									name="Input"
+									stroke={SERIES.input}
+									dot={false}
+								/>
+								<Line
+									yAxisId="left"
+									type="monotone"
+									dataKey="tokens_output"
+									name="Output"
+									stroke={SERIES.output}
+									dot={false}
+								/>
+								<Line
+									yAxisId="right"
+									type="monotone"
+									dataKey="cost_usd"
+									name="Cost ($)"
+									stroke={SERIES.cost}
+									dot={false}
+								/>
+							</LineChart>
+						</ResponsiveContainer>
+					</PvPanel>
 
 					{/* Per-model bar chart */}
-					<section className="vp-panel">
-						<header className="vp-panel-bar">
-							<span className="vp-dots">
-								<span />
-								<span />
-								<span />
-							</span>
-							<h3 className="vp-panel-title">Tokens per model</h3>
-						</header>
-						<div className="vp-panel-body tu-chart">
-							<ResponsiveContainer width="100%" height={280}>
-								<BarChart data={modelChart}>
-									<CartesianGrid stroke={GRID} strokeDasharray="3 3" />
-									<XAxis
-										dataKey="name"
-										fontSize={11}
-										stroke={AXIS}
-										tick={{ fill: AXIS }}
-									/>
-									<YAxis fontSize={11} stroke={AXIS} tick={{ fill: AXIS }} />
-									<Tooltip
-										cursor={{ fill: tokens.highlight, fillOpacity: 0.04 }}
-										contentStyle={TOOLTIP_STYLE}
-										labelStyle={TOOLTIP_LABEL_STYLE}
-									/>
-									<Legend />
-									<Bar
-										dataKey="input"
-										name="Input"
-										stackId="t"
-										fill={SERIES.input}
-									/>
-									<Bar
-										dataKey="cached"
-										name="Cached"
-										stackId="t"
-										fill={SERIES.cached}
-									/>
-									<Bar
-										dataKey="output"
-										name="Output"
-										stackId="t"
-										fill={SERIES.output}
-									/>
-								</BarChart>
-							</ResponsiveContainer>
-						</div>
-					</section>
+					<PvPanel title="Tokens per model" bodyClassName="tu-chart">
+						<ResponsiveContainer width="100%" height={280}>
+							<BarChart data={modelChart}>
+								<CartesianGrid stroke={GRID} strokeDasharray="3 3" />
+								<XAxis
+									dataKey="name"
+									fontSize={11}
+									stroke={AXIS}
+									tick={{ fill: AXIS }}
+								/>
+								<YAxis fontSize={11} stroke={AXIS} tick={{ fill: AXIS }} />
+								<Tooltip
+									cursor={{ fill: tokens.highlight, fillOpacity: 0.04 }}
+									contentStyle={TOOLTIP_STYLE}
+									labelStyle={TOOLTIP_LABEL_STYLE}
+								/>
+								<Legend />
+								<Bar
+									dataKey="input"
+									name="Input"
+									stackId="t"
+									fill={SERIES.input}
+								/>
+								<Bar
+									dataKey="cached"
+									name="Cached"
+									stackId="t"
+									fill={SERIES.cached}
+								/>
+								<Bar
+									dataKey="output"
+									name="Output"
+									stackId="t"
+									fill={SERIES.output}
+								/>
+							</BarChart>
+						</ResponsiveContainer>
+					</PvPanel>
 
 					{/* Per-model table */}
-					<section className="vp-panel">
-						<header className="vp-panel-bar">
-							<span className="vp-dots">
-								<span />
-								<span />
-								<span />
-							</span>
-							<h3 className="vp-panel-title">By model</h3>
-						</header>
-						<div className="vp-panel-body">
-							<Table
-								dataSource={byModel}
-								rowKey="model"
-								loading={isLoading}
-								pagination={false}
-								size="small"
-								scroll={{ x: 840 }}
-							>
-								<Table.Column title="Model" dataIndex="model" key="model" />
-								<Table.Column
-									title="Provider"
-									dataIndex="provider_kind"
-									key="provider_kind"
-									render={(v) => v || "—"}
-								/>
-								<Table.Column
-									title="Input"
-									dataIndex="tokens_input"
-									key="tokens_input"
-									align="right"
-									render={fmtTokens}
-								/>
-								<Table.Column
-									title="Output"
-									dataIndex="tokens_output"
-									key="tokens_output"
-									align="right"
-									render={fmtTokens}
-								/>
-								<Table.Column
-									title="Cached"
-									dataIndex="tokens_cached"
-									key="tokens_cached"
-									align="right"
-									render={fmtTokens}
-								/>
-								<Table.Column
-									title="Audio in / out"
-									key="audio"
-									align="right"
-									render={fmtAudio}
-								/>
-								<Table.Column
-									title="Calls"
-									dataIndex="calls"
-									key="calls"
-									align="right"
-									render={fmtTokens}
-								/>
-								<Table.Column
-									title="Cost"
-									dataIndex="cost_usd"
-									key="cost_usd"
-									align="right"
-									render={fmtCost}
-								/>
-							</Table>
-						</div>
-					</section>
+					<PvPanel title="By model">
+						<PvTable
+							columns={MODEL_COLUMNS}
+							data={byModel}
+							rowKey="model"
+							loading={isLoading}
+							size="sm"
+							minWidth={840}
+						/>
+					</PvPanel>
 
 					{/* Per-source table */}
-					<section className="vp-panel">
-						<header className="vp-panel-bar">
-							<span className="vp-dots">
-								<span />
-								<span />
-								<span />
-							</span>
-							<h3 className="vp-panel-title">By source</h3>
-						</header>
-						<div className="vp-panel-body">
-							<Table
-								dataSource={bySource}
-								rowKey="source"
-								loading={isLoading}
-								pagination={false}
-								size="small"
-								scroll={{ x: 600 }}
-							>
-								<Table.Column title="Source" dataIndex="source" key="source" />
-								<Table.Column
-									title="Total tokens"
-									dataIndex="total_tokens"
-									key="total_tokens"
-									align="right"
-									render={fmtTokens}
-								/>
-								<Table.Column
-									title="Calls"
-									dataIndex="calls"
-									key="calls"
-									align="right"
-									render={fmtTokens}
-								/>
-								<Table.Column
-									title="Cost"
-									dataIndex="cost_usd"
-									key="cost_usd"
-									align="right"
-									render={fmtCost}
-								/>
-							</Table>
-						</div>
-					</section>
+					<PvPanel title="By source">
+						<PvTable
+							columns={SOURCE_COLUMNS}
+							data={bySource}
+							rowKey="source"
+							loading={isLoading}
+							size="sm"
+							minWidth={600}
+						/>
+					</PvPanel>
 
 					{/* Rate card — configured price per 1M tokens for each model */}
-					<section className="vp-panel">
-						<header className="vp-panel-bar">
-							<span className="vp-dots">
-								<span />
-								<span />
-								<span />
-							</span>
-							<h3 className="vp-panel-title">Model pricing ($ / 1M tokens)</h3>
-						</header>
-						<div className="vp-panel-body">
-							<Table
-								dataSource={pricing}
-								rowKey={(r) => `${r.provider_kind}:${r.model}`}
-								loading={isLoading}
-								pagination={false}
-								size="small"
-								scroll={{ x: 600 }}
-							>
-								<Table.Column title="Model" dataIndex="model" key="model" />
-								<Table.Column
-									title="Provider"
-									dataIndex="provider_kind"
-									key="provider_kind"
-									render={(v) => v || "—"}
-								/>
-								<Table.Column
-									title="Input"
-									dataIndex="price_input"
-									key="price_input"
-									align="right"
-									render={fmtPrice}
-								/>
-								<Table.Column
-									title="Output"
-									dataIndex="price_output"
-									key="price_output"
-									align="right"
-									render={fmtPrice}
-								/>
-								<Table.Column
-									title="Cached"
-									dataIndex="price_cached"
-									key="price_cached"
-									align="right"
-									render={fmtPrice}
-								/>
-								<Table.Column
-									title="Audio in"
-									dataIndex="price_audio_input"
-									key="price_audio_input"
-									align="right"
-									render={fmtPrice}
-								/>
-								<Table.Column
-									title="Audio out"
-									dataIndex="price_audio_output"
-									key="price_audio_output"
-									align="right"
-									render={fmtPrice}
-								/>
-							</Table>
-							<p className="vp-muted" style={{ marginTop: 8, marginBottom: 0 }}>
-								Prices are editable per model in the Agents page; voice
-								(speech-to- speech) prices in Services → Voice, where
-								input/output are the text rates and audio bills separately. “—”
-								means no price set (local models bill at $0).
-							</p>
-						</div>
-					</section>
+					<PvPanel title="Model pricing ($ / 1M tokens)">
+						<PvTable
+							columns={PRICING_COLUMNS}
+							data={pricing}
+							rowKey={(r) => `${r.provider_kind}:${r.model}`}
+							loading={isLoading}
+							size="sm"
+							minWidth={600}
+						/>
+						<p className="vp-muted tu-note">
+							Prices are editable per model in the Agents page; voice
+							(speech-to- speech) prices in Services → Voice, where input/output
+							are the text rates and audio bills separately. “—” means no price
+							set (local models bill at $0).
+						</p>
+					</PvPanel>
 				</div>
 			</div>
 		</PageContent>

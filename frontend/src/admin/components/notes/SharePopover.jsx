@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { pvMessage } from "@/ui";
+import {
+	PvButton,
+	PvField,
+	PvIconButton,
+	PvInput,
+	PvSelect,
+	PvSwitch,
+	PvTag,
+	pvMessage,
+} from "@/ui";
 import {
 	createShareLink,
 	listShareLinks,
@@ -9,6 +18,12 @@ import useShareDefaultsStore, {
 	SHARE_EXPIRY_OPTIONS,
 } from "../../../store/shareDefaultsStore";
 import ShareSettingsModal from "./ShareSettingsModal";
+import "./SharePopover.css";
+
+const ACCESS_OPTIONS = [
+	{ value: "view", label: "View" },
+	{ value: "edit", label: "Edit" },
+];
 
 export default function SharePopover({ noteId, isMobile, iconOnly }) {
 	const [open, setOpen] = useState(false);
@@ -31,6 +46,13 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 	const [expireEnabled, setExpireEnabled] = useState(defaults.expireEnabled);
 
 	const popoverRef = useRef(null);
+	const passwordRef = useRef(null);
+
+	// Focus the password field whenever it appears (popover opened with the
+	// password default on, or the switch just turned on).
+	useEffect(() => {
+		if (open && passwordEnabled) passwordRef.current?.focus();
+	}, [open, passwordEnabled]);
 
 	const loadShares = async () => {
 		if (!noteId) return;
@@ -204,230 +226,158 @@ export default function SharePopover({ noteId, isMobile, iconOnly }) {
 	};
 
 	return (
-		<div style={{ position: "relative" }} ref={popoverRef}>
-			<button
-				type="button"
-				className={`pixel-btn ${isMobile || iconOnly ? "icon-only" : ""}`}
-				onClick={() => setOpen(!open)}
-				title="Share this note"
-			>
-				🔗 {isMobile || iconOnly ? "" : "Share"}
-			</button>
+		<div className="share-pop" ref={popoverRef}>
+			{isMobile || iconOnly ? (
+				<PvIconButton
+					icon="🔗"
+					label="Share this note"
+					onClick={() => setOpen(!open)}
+					aria-expanded={open}
+				/>
+			) : (
+				<PvButton
+					size="sm"
+					icon="🔗"
+					onClick={() => setOpen(!open)}
+					title="Share this note"
+					aria-expanded={open}
+				>
+					Share
+				</PvButton>
+			)}
 
 			{open && (
-				<div
-					className="pixel-modal"
-					style={{
-						position: "absolute",
-						right: 0,
-						top: "100%",
-						marginTop: 8,
-						zIndex: 100,
-						width: 320,
-						boxShadow: "var(--vp-shadow-lg)",
-					}}
-				>
-					<div
-						style={{
-							display: "flex",
-							alignItems: "center",
-							justifyContent: "space-between",
-							gap: 8,
-							margin: "0 0 12px 0",
-						}}
-					>
-						<h3 style={{ margin: 0, color: "var(--vp-accent)" }}>
-							Share this note
-						</h3>
-						<button
-							type="button"
-							className="pixel-btn icon-only"
-							style={{ padding: "0 6px" }}
+				<div className="share-pop-panel">
+					<div className="share-pop-head">
+						<h3 className="share-pop-title">Share this note</h3>
+						<PvIconButton
+							size="sm"
+							variant="ghost"
+							icon="⚙️"
+							label="Share link defaults"
 							onClick={() => setSettingsOpen(true)}
-							title="Share link defaults"
-							aria-label="Share link defaults"
-						>
-							⚙️
-						</button>
+						/>
 					</div>
 
-					<div style={{ marginBottom: 12 }}>
-						<label style={{ display: "block", marginBottom: 4, fontSize: 12 }}>
-							Access
-						</label>
-						<select
-							className="pixel-input"
+					<PvField label="Access">
+						<PvSelect
+							size="sm"
+							options={ACCESS_OPTIONS}
 							value={accessLevel}
-							onChange={(e) => setAccessLevel(e.target.value)}
-						>
-							<option value="view">View</option>
-							<option value="edit">Edit</option>
-						</select>
-					</div>
+							onChange={setAccessLevel}
+						/>
+					</PvField>
 
-					<div style={{ marginBottom: 12 }}>
-						<div className="pixel-switch-row" style={{ marginBottom: 4 }}>
-							<label style={{ fontSize: 12 }}>Password</label>
-							<button
-								type="button"
-								className={`pixel-switch${passwordEnabled ? " on" : ""}`}
-								role="switch"
-								aria-checked={passwordEnabled}
-								aria-label="Require password"
-								onClick={() => {
-									const next = !passwordEnabled;
-									setPasswordEnabled(next);
-									if (!next) setPassword("");
-									else if (!password) setPassword(defaults.defaultPassword);
-								}}
-							/>
-						</div>
+					<div className="share-pop-group">
+						<PvSwitch
+							size="sm"
+							label="Password"
+							checked={passwordEnabled}
+							aria-label="Require password"
+							onChange={(next) => {
+								setPasswordEnabled(next);
+								if (!next) setPassword("");
+								else if (!password) setPassword(defaults.defaultPassword);
+							}}
+						/>
 						{passwordEnabled && (
-							<input
-								className="pixel-input"
+							<PvInput
+								ref={passwordRef}
+								size="sm"
 								type="password"
 								placeholder="Enter password"
 								value={password}
 								onChange={(e) => setPassword(e.target.value)}
-								autoFocus
 							/>
 						)}
 					</div>
 
-					<div style={{ marginBottom: 12 }}>
-						<div className="pixel-switch-row" style={{ marginBottom: 4 }}>
-							<label style={{ fontSize: 12 }}>Expires</label>
-							<button
-								type="button"
-								className={`pixel-switch${expireEnabled ? " on" : ""}`}
-								role="switch"
-								aria-checked={expireEnabled}
-								aria-label="Set expiry"
-								onClick={() => {
-									const next = !expireEnabled;
-									setExpireEnabled(next);
-									if (!next) setExpiresIn("");
-									else if (!expiresIn) setExpiresIn(defaults.expiresInHours);
-								}}
-							/>
-						</div>
+					<div className="share-pop-group">
+						<PvSwitch
+							size="sm"
+							label="Expires"
+							checked={expireEnabled}
+							aria-label="Set expiry"
+							onChange={(next) => {
+								setExpireEnabled(next);
+								if (!next) setExpiresIn("");
+								else if (!expiresIn) setExpiresIn(defaults.expiresInHours);
+							}}
+						/>
 						{expireEnabled && (
-							<select
-								className="pixel-input"
+							<PvSelect
+								size="sm"
+								options={SHARE_EXPIRY_OPTIONS}
 								value={expiresIn || "1"}
-								onChange={(e) => setExpiresIn(e.target.value)}
-							>
-								{SHARE_EXPIRY_OPTIONS.map((o) => (
-									<option key={o.value} value={o.value}>
-										{o.label}
-									</option>
-								))}
-							</select>
+								onChange={setExpiresIn}
+								aria-label="Expiry"
+							/>
 						)}
 					</div>
 
-					<button
-						className="pixel-btn primary"
-						style={{ width: "100%", justifyContent: "center" }}
-						onClick={handleGenerate}
+					<PvButton
+						variant="primary"
+						block
+						loading={loading}
 						disabled={loading}
+						onClick={handleGenerate}
 					>
-						{loading ? "..." : "Generate Link"}
-					</button>
+						Generate Link
+					</PvButton>
 
 					{shares.length > 0 && (
-						<div style={{ marginTop: 16 }}>
-							<strong style={{ fontSize: 12, color: "var(--vp-muted)" }}>
-								Active shares:
-							</strong>
-							<div style={{ marginTop: 6, maxHeight: 160, overflowY: "auto" }}>
+						<div className="share-pop-shares">
+							<strong className="share-pop-shares-title">Active shares:</strong>
+							<div className="share-pop-list">
 								{shares.map((share) => (
-									<div
-										key={share.id}
-										style={{
-											display: "flex",
-											alignItems: "center",
-											gap: 4,
-											padding: "4px 0",
-											borderBottom: `1px dashed var(--vp-border)`,
-										}}
-									>
-										<span
-											className="pixel-tag"
-											style={{
-												color:
-													share.access_level === "edit"
-														? "var(--vp-danger)"
-														: "var(--vp-info)",
-											}}
+									<div key={share.id} className="share-pop-row">
+										<PvTag
+											color={
+												share.access_level === "edit"
+													? "var(--vp-danger)"
+													: "var(--vp-info)"
+											}
 										>
 											{share.access_level}
-										</span>
-										<code
-											style={{
-												fontSize: 11,
-												flex: 1,
-												overflow: "hidden",
-												textOverflow: "ellipsis",
-											}}
-										>
-											{share.slug}
-										</code>
+										</PvTag>
+										<code className="share-pop-slug">{share.slug}</code>
 										{share.has_password ? (
-											<button
-												type="button"
-												onClick={() => handleCopyPwd(share)}
-												title={
+											<PvIconButton
+												size="sm"
+												variant="ghost"
+												icon="🔒"
+												label={
 													sharePassword(share)
 														? `Password: ${sharePassword(share)} — click to copy`
 														: "Password-protected"
 												}
-												style={{
-													background: "none",
-													border: 0,
-													padding: 0,
-													fontSize: 12,
-													cursor: "pointer",
-												}}
-											>
-												🔒
-											</button>
+												onClick={() => handleCopyPwd(share)}
+											/>
 										) : (
-											<span style={{ fontSize: 12 }}>🔓</span>
+											<span className="share-pop-lock">🔓</span>
 										)}
-										<span
-											style={{
-												fontSize: 10,
-												color: "var(--vp-muted)",
-												width: 40,
-												textAlign: "right",
-											}}
-										>
+										<span className="share-pop-expiry">
 											{formatExpiry(share.expires_at)}
 										</span>
-										<button
-											className="pixel-btn icon-only"
-											style={{ padding: "0 4px" }}
+										<PvIconButton
+											size="sm"
+											icon={copiedSlug === share.slug ? "✓" : "📋"}
+											label="Copy share link"
 											onClick={() => handleCopy(share)}
-											title="Copy share link"
-										>
-											{copiedSlug === share.slug ? "✓" : "📋"}
-										</button>
-										<button
-											className="pixel-btn icon-only"
-											style={{ padding: "0 4px" }}
+										/>
+										<PvIconButton
+											size="sm"
+											icon={copiedAiSlug === share.slug ? "✓" : "🤖"}
+											label="Copy LLM/AI URL (markdown API)"
 											onClick={() => handleCopyLlm(share)}
-											title="Copy LLM/AI URL (markdown API)"
-										>
-											{copiedAiSlug === share.slug ? "✓" : "🤖"}
-										</button>
-										<button
-											className="pixel-btn danger icon-only"
-											style={{ padding: "0 4px" }}
+										/>
+										<PvIconButton
+											size="sm"
+											variant="danger"
+											icon="×"
+											label="Revoke share link"
 											onClick={() => handleRevoke(share.id)}
-										>
-											×
-										</button>
+										/>
 									</div>
 								))}
 							</div>

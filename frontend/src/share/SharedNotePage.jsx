@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useParams, useSearchParams } from "react-router-dom";
+import { PvButton, PvInput } from "@/ui";
 import { fetchSharedNote } from "../api/shares";
 import { InlineTagSpan } from "../components/tags/InlineTag";
 import {
@@ -43,14 +44,15 @@ function MermaidBlock({ chart }) {
 
 	return (
 		<div className="shared-mermaid">
-			<button
-				type="button"
+			<PvButton
+				variant="ghost"
+				size="sm"
 				className="shared-mermaid-toggle"
 				onClick={() => setShowSource((s) => !s)}
 				title={showSource ? "Show rendered diagram" : "Show diagram source"}
 			>
 				{showSource ? "diagram" : "source"}
-			</button>
+			</PvButton>
 			{showSource ? (
 				<pre className="shared-mermaid-src">
 					<code>{chart}</code>
@@ -281,21 +283,24 @@ export default function SharedNotePage() {
 						onSubmit={handlePasswordSubmit}
 						className="shared-note-pwd-form"
 					>
-						<input
+						<PvInput
 							type="password"
+							reveal
 							autoFocus
 							value={pwdInput}
 							onChange={(e) => setPwdInput(e.target.value)}
 							placeholder="Password"
+							aria-label="Password"
 							className="shared-note-pwd-input"
 						/>
-						<button
+						<PvButton
 							type="submit"
-							className="shared-note-pwd-btn"
+							variant="primary"
+							loading={submitting}
 							disabled={submitting}
 						>
-							{submitting ? "…" : "Unlock"}
-						</button>
+							Unlock
+						</PvButton>
 					</form>
 					{error ? <div className="shared-note-error">{error}</div> : null}
 				</div>
@@ -322,14 +327,15 @@ export default function SharedNotePage() {
 				className={`shared-note-card${wide ? " shared-note-card--wide" : ""}`}
 			>
 				<header className="shared-note-header">
-					<button
-						type="button"
+					<PvButton
+						variant="ghost"
+						size="sm"
 						className="shared-note-width-toggle"
 						onClick={toggleWide}
 						title={wide ? "Switch to reading width" : "Expand to full width"}
 					>
 						{wide ? "normal" : "wide"}
-					</button>
+					</PvButton>
 					<h1 className="shared-note-title">{data.note.title || "Untitled"}</h1>
 					<div className="shared-note-meta">
 						{data.note.folder ? (

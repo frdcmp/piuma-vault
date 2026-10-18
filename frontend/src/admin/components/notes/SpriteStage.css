@@ -1,4 +1,6 @@
 .piuma-pixel-art {
+	display: inline-block;
+	line-height: 0;
 	image-rendering: pixelated;
 	animation: piuma-float 3s ease-in-out infinite;
 	filter: drop-shadow(4px 4px 0 var(--vp-shadow-color));

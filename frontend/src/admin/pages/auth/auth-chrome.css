@@ -177,67 +177,21 @@
 	animation: vp-auth-blink 1s steps(1, end) infinite;
 }
 
-/* ---- Alerts ---------------------------------------------------------------- */
+/* ---- Alerts (PvAlert) ----------------------------------------------------- */
 
 .vp-auth-alert {
-	border: 2px solid var(--vp-danger);
-	background: color-mix(in srgb, var(--vp-danger) 10%, transparent);
-	color: var(--vp-text);
-	padding: 12px;
 	margin-bottom: 20px;
-	font-size: 13px;
-	line-height: 1.6;
 }
 
-.vp-auth-alert--warning {
-	border-color: var(--vp-accent);
-	background: color-mix(in srgb, var(--vp-accent) 10%, transparent);
+.vp-auth-alert-line {
+	margin-bottom: 12px;
 }
 
-.vp-auth-alert-title {
-	font-weight: 700;
-	margin-bottom: 6px;
-	text-transform: uppercase;
-	letter-spacing: 0.5px;
-	color: var(--vp-danger);
-}
-
-.vp-auth-alert--warning .vp-auth-alert-title {
-	color: var(--vp-accent);
+.vp-auth-alert-ok {
+	color: var(--vp-success);
 }
 
 /* ---- Fields ---------------------------------------------------------------- */
-
-/* Password field with an inline show/hide toggle. */
-.vp-auth-input-wrap {
-	position: relative;
-	display: block;
-}
-
-.vp-auth-input--reveal {
-	padding-right: 56px;
-}
-
-.vp-auth-reveal {
-	position: absolute;
-	top: 50%;
-	right: 8px;
-	transform: translateY(-50%);
-	background: none;
-	border: none;
-	padding: 2px 4px;
-	cursor: pointer;
-	font-family: var(--vp-font);
-	font-size: 10px;
-	letter-spacing: 1px;
-	text-transform: uppercase;
-	color: var(--vp-faint);
-	transition: color 0.1s;
-}
-
-.vp-auth-reveal:hover {
-	color: var(--vp-accent);
-}
 
 .vp-auth-otp-input {
 	text-align: center;
@@ -302,16 +256,6 @@
 	font-size: 11px;
 	line-height: 1.8;
 	text-align: center;
-}
-
-.vp-auth-code {
-	font-family: var(--vp-font);
-	font-size: 10px;
-	padding: 1px 5px;
-	border: 1px solid var(--vp-border-soft);
-	background: var(--vp-bg-soft);
-	color: var(--vp-accent);
-	white-space: nowrap;
 }
 
 .vp-auth-foot {

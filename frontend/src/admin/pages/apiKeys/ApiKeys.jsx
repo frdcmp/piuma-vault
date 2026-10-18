@@ -2,31 +2,30 @@ import {
 	CopyOutlined,
 	DeleteOutlined,
 	EditOutlined,
-	KeyOutlined,
 	PlusOutlined,
 	ReloadOutlined,
 	StopOutlined,
 } from "@ant-design/icons";
-import {
-	Button,
-	Checkbox,
-	Col,
-	DatePicker,
-	Form,
-	Input,
-	Modal,
-	message,
-	Row,
-	Space,
-	Table,
-} from "antd";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 
 dayjs.extend(relativeTime);
 
 import { useState } from "react";
-import { PvButton, PvPanel } from "@/ui";
+import {
+	PvButton,
+	PvCheckbox,
+	PvDateTimePicker,
+	PvField,
+	PvIconButton,
+	PvInput,
+	PvModal,
+	PvPanel,
+	PvSegmented,
+	PvTable,
+	pvConfirm,
+	pvMessage,
+} from "@/ui";
 import {
 	useCreateApiKey,
 	useDeleteApiKey,
@@ -85,19 +84,53 @@ const SCOPE_LABELS = {
 	"calendar.manage": "Calendar",
 };
 
+const STATUS_FILTERS = [
+	{ value: "all", label: "All" },
+	{ value: "active", label: "Active" },
+	{ value: "revoked", label: "Revoked" },
+];
+
 const ScopeTag = ({ scope }) => (
 	<span className={`vp-tag ${SCOPE_TAG_CLASSES[scope] || ""}`.trim()}>
 		{SCOPE_LABELS[scope] || scope}
 	</span>
 );
 
+// Scope checklist used by the create + edit dialogs.
+const ScopeChecklist = ({ value, onChange }) => {
+	const toggle = (scope, on) =>
+		onChange(on ? [...value, scope] : value.filter((s) => s !== scope));
+	return (
+		<div className="vp-keys-scopes">
+			{SCOPE_OPTIONS.map((opt) => (
+				<PvCheckbox
+					key={opt.value}
+					checked={value.includes(opt.value)}
+					onChange={(on) => toggle(opt.value, on)}
+					label={
+						<>
+							<strong>{opt.label}</strong>{" "}
+							<span className="vp-muted">— {opt.description}</span>
+						</>
+					}
+				/>
+			))}
+		</div>
+	);
+};
+
+const EMPTY_CREATE = { name: "", permissions: [], expires_at: null };
+
 const ApiKeysPage = () => {
 	const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
 	const [isEditModalVisible, setIsEditModalVisible] = useState(false);
 	const [editingKey, setEditingKey] = useState(null);
 	const [rawKeyData, setRawKeyData] = useState(null);
-	const [createForm] = Form.useForm();
-	const [editForm] = Form.useForm();
+	const [createForm, setCreateForm] = useState(EMPTY_CREATE);
+	const [createError, setCreateError] = useState(null);
+	const [editForm, setEditForm] = useState(null); // { name, permissions, is_active }
+	const [editError, setEditError] = useState(null);
+	const [statusFilter, setStatusFilter] = useState("all");
 
 	const { data: apiKeys, isLoading, refetch } = useGetApiKeys();
 	const createMutation = useCreateApiKey();
@@ -105,93 +138,114 @@ const ApiKeysPage = () => {
 	const deleteMutation = useDeleteApiKey();
 	const revokeMutation = useRevokeApiKey();
 
-	const handleCreate = (values) => {
+	const closeCreate = () => {
+		setIsCreateModalVisible(false);
+		setCreateForm(EMPTY_CREATE);
+		setCreateError(null);
+	};
+
+	const closeEdit = () => {
+		setIsEditModalVisible(false);
+		setEditingKey(null);
+		setEditForm(null);
+		setEditError(null);
+	};
+
+	const handleCreate = (e) => {
+		e.preventDefault();
+		if (!createForm.name.trim()) {
+			setCreateError("Please enter a name for this key");
+			return;
+		}
 		const payload = {
-			name: values.name,
-			permissions: values.permissions || ["api.read"],
-			expires_at: values.expires_at ? values.expires_at.toISOString() : null,
+			name: createForm.name,
+			permissions: createForm.permissions.length
+				? createForm.permissions
+				: ["api.read"],
+			expires_at: createForm.expires_at || null,
 		};
 		createMutation.mutate(payload, {
 			onSuccess: (data) => {
-				message.success("API key created successfully");
+				pvMessage.success("API key created successfully");
 				setRawKeyData(data);
-				setIsCreateModalVisible(false);
-				createForm.resetFields();
+				closeCreate();
 			},
 			onError: () => {
-				message.error("Failed to create API key");
+				pvMessage.error("Failed to create API key");
 			},
 		});
 	};
 
-	const handleUpdate = (values) => {
-		if (!editingKey) return;
+	const handleUpdate = (e) => {
+		e.preventDefault();
+		if (!editingKey || !editForm) return;
+		if (!editForm.name.trim()) {
+			setEditError("Please enter a name");
+			return;
+		}
 		const payload = {
-			name: values.name,
-			permissions: values.permissions,
-			is_active: values.is_active,
+			name: editForm.name,
+			permissions: editForm.permissions,
+			is_active: editForm.is_active,
 		};
 		updateMutation.mutate(
 			{ id: editingKey.id, body: payload },
 			{
 				onSuccess: () => {
-					message.success("API key updated successfully");
-					setIsEditModalVisible(false);
-					setEditingKey(null);
-					editForm.resetFields();
+					pvMessage.success("API key updated successfully");
+					closeEdit();
 				},
 				onError: () => {
-					message.error("Failed to update API key");
+					pvMessage.error("Failed to update API key");
 				},
 			},
 		);
 	};
 
-	const handleDelete = (id) => {
-		Modal.confirm({
+	const handleDelete = async (id) => {
+		const ok = await pvConfirm({
 			title: "Delete API Key",
 			content:
 				"This will permanently delete this API key. This action cannot be undone.",
 			okText: "Delete",
-			okType: "danger",
-			onOk: () => {
-				deleteMutation.mutate(id, {
-					onSuccess: () => message.success("API key deleted"),
-					onError: () => message.error("Failed to delete API key"),
-				});
-			},
+			danger: true,
+		});
+		if (!ok) return;
+		deleteMutation.mutate(id, {
+			onSuccess: () => pvMessage.success("API key deleted"),
+			onError: () => pvMessage.error("Failed to delete API key"),
 		});
 	};
 
-	const handleRevoke = (id) => {
-		Modal.confirm({
+	const handleRevoke = async (id) => {
+		const ok = await pvConfirm({
 			title: "Revoke API Key",
 			content:
 				"This will deactivate the API key. It can be re-enabled later by editing the key.",
 			okText: "Revoke",
-			okType: "danger",
-			onOk: () => {
-				revokeMutation.mutate(id, {
-					onSuccess: () => message.success("API key revoked"),
-					onError: () => message.error("Failed to revoke API key"),
-				});
-			},
+			danger: true,
+		});
+		if (!ok) return;
+		revokeMutation.mutate(id, {
+			onSuccess: () => pvMessage.success("API key revoked"),
+			onError: () => pvMessage.error("Failed to revoke API key"),
 		});
 	};
 
 	const showEditModal = (record) => {
 		setEditingKey(record);
-		editForm.setFieldsValue({
-			name: record.name,
-			permissions: record.permissions,
-			is_active: record.is_active,
+		setEditForm({
+			name: record.name ?? "",
+			permissions: record.permissions || [],
+			is_active: !!record.is_active,
 		});
+		setEditError(null);
 		setIsEditModalVisible(true);
 	};
 
 	const copyToClipboard = (text) => {
 		navigator.clipboard.writeText(text).then(() => {
-			message.success("Copied to clipboard!");
+			pvMessage.success("Copied to clipboard!");
 		});
 	};
 
@@ -238,11 +292,6 @@ const ApiKeysPage = () => {
 					<span className="vp-tag vp-tag--red">Revoked</span>
 				);
 			},
-			filters: [
-				{ text: "Active", value: true },
-				{ text: "Revoked", value: false },
-			],
-			onFilter: (value, record) => record.is_active === value,
 		},
 		{
 			title: "Last Used",
@@ -257,33 +306,35 @@ const ApiKeysPage = () => {
 			key: "created_at",
 			render: (date) => formatDate(date),
 			sorter: (a, b) => dayjs(a.created_at).unix() - dayjs(b.created_at).unix(),
-			defaultSortOrder: "descend",
 		},
 		{
 			title: "Actions",
 			key: "actions",
 			render: (_, record) => (
-				<Space>
-					<Button
-						type="text"
+				<div className="vp-row vp-keys-actions">
+					<PvIconButton
+						variant="ghost"
 						icon={<EditOutlined />}
+						label="Edit key"
 						onClick={() => showEditModal(record)}
 					/>
 					{record.is_active && (
-						<Button
-							type="text"
-							danger
+						<PvIconButton
+							variant="ghost"
+							className="vp-keys-danger"
 							icon={<StopOutlined />}
+							label="Revoke key"
 							onClick={() => handleRevoke(record.id)}
 						/>
 					)}
-					<Button
-						type="text"
-						danger
+					<PvIconButton
+						variant="ghost"
+						className="vp-keys-danger"
 						icon={<DeleteOutlined />}
+						label="Delete key"
 						onClick={() => handleDelete(record.id)}
 					/>
-				</Space>
+				</div>
 			),
 		},
 	];
@@ -291,6 +342,18 @@ const ApiKeysPage = () => {
 	const totalKeys = apiKeys?.length || 0;
 	const activeKeys = apiKeys?.filter((k) => k.is_active).length || 0;
 	const revokedKeys = apiKeys?.filter((k) => !k.is_active).length || 0;
+
+	// Newest first (the table's own sorter can still flip it); then the status
+	// filter that used to live in the antd column header.
+	const tableData = [...(apiKeys || [])]
+		.sort((a, b) => dayjs(b.created_at).unix() - dayjs(a.created_at).unix())
+		.filter((k) =>
+			statusFilter === "all"
+				? true
+				: statusFilter === "active"
+					? k.is_active
+					: !k.is_active,
+		);
 
 	return (
 		<PageContent>
@@ -342,100 +405,86 @@ const ApiKeysPage = () => {
 			</div>
 
 			{/* Table */}
-			<PvPanel title="keys.table" noPad className="vp-keys-table-panel">
-				<Table
-					className="vp-table"
+			<PvPanel
+				title="keys.table"
+				noPad
+				className="vp-keys-table-panel"
+				extra={
+					<PvSegmented
+						size="sm"
+						options={STATUS_FILTERS}
+						value={statusFilter}
+						onChange={setStatusFilter}
+					/>
+				}
+			>
+				<PvTable
 					columns={columns}
-					dataSource={apiKeys || []}
+					data={tableData}
 					rowKey="id"
 					loading={isLoading}
-					pagination={{ pageSize: 10, showSizeChanger: true }}
+					pagination={{ pageSize: 10, hideOnSinglePage: true }}
 				/>
 			</PvPanel>
 
 			{/* Create Modal */}
-			<Modal
-				className="vp-modal"
-				title={
-					<Space>
-						<KeyOutlined />
-						<span>Create API Key</span>
-					</Space>
-				}
+			<PvModal
+				title="Create API Key"
 				open={isCreateModalVisible}
-				onCancel={() => {
-					setIsCreateModalVisible(false);
-					createForm.resetFields();
-				}}
+				onCancel={closeCreate}
 				footer={null}
 				width={520}
 			>
-				<Form form={createForm} onFinish={handleCreate} layout="vertical">
-					<Form.Item
-						name="name"
-						label="Key Name"
-						rules={[
-							{ required: true, message: "Please enter a name for this key" },
-						]}
-					>
-						<Input placeholder="e.g. CI/CD Pipeline, Mobile App" />
-					</Form.Item>
-					<Form.Item
-						name="permissions"
-						label="Permissions"
-						extra="Select the scopes this key will have access to"
-					>
-						<Checkbox.Group>
-							<Row gutter={[8, 8]}>
-								{SCOPE_OPTIONS.map((opt) => (
-									<Col span={24} key={opt.value}>
-										<Checkbox value={opt.value}>
-											<strong>{opt.label}</strong>{" "}
-											<span className="vp-muted">— {opt.description}</span>
-										</Checkbox>
-									</Col>
-								))}
-							</Row>
-						</Checkbox.Group>
-					</Form.Item>
-					<Form.Item name="expires_at" label="Expiration (optional)">
-						<DatePicker
-							style={{ width: "100%" }}
-							showTime
+				<form onSubmit={handleCreate}>
+					<PvField label="Key Name" required error={createError}>
+						<PvInput
+							placeholder="e.g. CI/CD Pipeline, Mobile App"
+							value={createForm.name}
+							invalid={!!createError}
+							onChange={(e) => {
+								setCreateForm((f) => ({ ...f, name: e.target.value }));
+								setCreateError(null);
+							}}
+						/>
+					</PvField>
+					<div className="vp-field">
+						<span className="vp-label">Permissions</span>
+						<ScopeChecklist
+							value={createForm.permissions}
+							onChange={(permissions) =>
+								setCreateForm((f) => ({ ...f, permissions }))
+							}
+						/>
+						<span className="vp-field-hint">
+							Select the scopes this key will have access to
+						</span>
+					</div>
+					<div className="vp-field">
+						<span className="vp-label">Expiration (optional)</span>
+						<PvDateTimePicker
+							value={createForm.expires_at}
+							onChange={(expires_at) =>
+								setCreateForm((f) => ({ ...f, expires_at }))
+							}
 							placeholder="Select expiration date"
 						/>
-					</Form.Item>
-					<Form.Item>
-						<div className="vp-row vp-row--wrap">
-							<PvButton
-								variant="primary"
-								type="submit"
-								disabled={createMutation.isPending}
-							>
-								Create Key
-							</PvButton>
-							<PvButton
-								onClick={() => {
-									setIsCreateModalVisible(false);
-									createForm.resetFields();
-								}}
-							>
-								Cancel
-							</PvButton>
-						</div>
-					</Form.Item>
-				</Form>
-			</Modal>
+					</div>
+					<div className="vp-row vp-row--wrap">
+						<PvButton
+							variant="primary"
+							type="submit"
+							disabled={createMutation.isPending}
+						>
+							Create Key
+						</PvButton>
+						<PvButton onClick={closeCreate}>Cancel</PvButton>
+					</div>
+				</form>
+			</PvModal>
 
 			{/* Raw Key Display Modal */}
-			<Modal
-				className="vp-modal"
-				title={
-					<Space>
-						<KeyOutlined />
-						<span>API Key Created</span>
-					</Space>
-				}
+			<PvModal
+				title="API Key Created"
 				open={!!rawKeyData}
 				onCancel={() => setRawKeyData(null)}
 				footer={
@@ -444,8 +493,8 @@ const ApiKeysPage = () => {
 					</PvButton>
 				}
 				width={600}
-				closable={false}
-				maskClosable={false}
+				showClose={false}
+				dismissOnOverlay={false}
 			>
 				<div className="vp-keys-warning">
 					<strong className="vp-keys-warning-title">Save this key now!</strong>
@@ -456,9 +505,10 @@ const ApiKeysPage = () => {
 				</div>
 				<div className="vp-keys-rawkey">
 					<code className="vp-keys-rawkey-code">{rawKeyData?.raw_key}</code>
-					<Button
-						type="text"
+					<PvIconButton
+						variant="ghost"
 						icon={<CopyOutlined />}
+						label="Copy key"
 						onClick={() => copyToClipboard(rawKeyData?.raw_key)}
 						className="vp-keys-rawkey-copy"
 					/>
@@ -474,52 +524,47 @@ const ApiKeysPage = () => {
 						<ScopeTag key={p} scope={p} />
 					))}
 				</div>
-			</Modal>
+			</PvModal>
 
 			{/* Edit Modal */}
-			<Modal
-				className="vp-modal"
-				title={
-					<Space>
-						<EditOutlined />
-						<span>Edit API Key</span>
-					</Space>
-				}
-				open={isEditModalVisible}
-				onCancel={() => {
-					setIsEditModalVisible(false);
-					setEditingKey(null);
-					editForm.resetFields();
-				}}
+			<PvModal
+				title="Edit API Key"
+				open={isEditModalVisible && !!editForm}
+				onCancel={closeEdit}
 				footer={null}
 				width={520}
 			>
-				<Form form={editForm} onFinish={handleUpdate} layout="vertical">
-					<Form.Item
-						name="name"
-						label="Key Name"
-						rules={[{ required: true, message: "Please enter a name" }]}
-					>
-						<Input />
-					</Form.Item>
-					<Form.Item name="permissions" label="Permissions">
-						<Checkbox.Group>
-							<Row gutter={[8, 8]}>
-								{SCOPE_OPTIONS.map((opt) => (
-									<Col span={24} key={opt.value}>
-										<Checkbox value={opt.value}>
-											<strong>{opt.label}</strong>{" "}
-											<span className="vp-muted">— {opt.description}</span>
-										</Checkbox>
-									</Col>
-								))}
-							</Row>
-						</Checkbox.Group>
-					</Form.Item>
-					<Form.Item name="is_active" label="Active" valuePropName="checked">
-						<Checkbox>Key is active</Checkbox>
-					</Form.Item>
-					<Form.Item>
+				{editForm && (
+					<form onSubmit={handleUpdate}>
+						<PvField label="Key Name" required error={editError}>
+							<PvInput
+								value={editForm.name}
+								invalid={!!editError}
+								onChange={(e) => {
+									setEditForm((f) => ({ ...f, name: e.target.value }));
+									setEditError(null);
+								}}
+							/>
+						</PvField>
+						<div className="vp-field">
+							<span className="vp-label">Permissions</span>
+							<ScopeChecklist
+								value={editForm.permissions}
+								onChange={(permissions) =>
+									setEditForm((f) => ({ ...f, permissions }))
+								}
+							/>
+						</div>
+						<div className="vp-field">
+							<span className="vp-label">Active</span>
+							<PvCheckbox
+								checked={editForm.is_active}
+								onChange={(is_active) =>
+									setEditForm((f) => ({ ...f, is_active }))
+								}
+								label="Key is active"
+							/>
+						</div>
 						<div className="vp-row vp-row--wrap">
 							<PvButton
 								variant="primary"
@@ -528,19 +573,11 @@ const ApiKeysPage = () => {
 							>
 								Update Key
 							</PvButton>
-							<PvButton
-								onClick={() => {
-									setIsEditModalVisible(false);
-									setEditingKey(null);
-									editForm.resetFields();
-								}}
-							>
-								Cancel
-							</PvButton>
+							<PvButton onClick={closeEdit}>Cancel</PvButton>
 						</div>
-					</Form.Item>
-				</Form>
-			</Modal>
+					</form>
+				)}
+			</PvModal>
 		</PageContent>
 	);
 };

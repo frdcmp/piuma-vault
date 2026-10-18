@@ -6,15 +6,37 @@ import {
 	MailOutlined,
 	UserOutlined,
 } from "@ant-design/icons";
-import { Avatar, Select, Spin, Switch, Upload } from "antd";
 import { useState } from "react";
-import { PvPanel } from "@/ui";
+import {
+	PvAvatar,
+	PvField,
+	PvIconButton,
+	PvPanel,
+	PvSelect,
+	PvSpin,
+	PvSwitch,
+	PvUpload,
+	pvMessage,
+} from "@/ui";
 import { useUserMe } from "../../../queries";
 import { PageContent } from "../../components/layout/PageLayout";
 import NotificationSettings from "./NotificationSettings";
 import "./profile.css";
 
-const { Option } = Select;
+const LANGUAGE_OPTIONS = [
+	{ value: "en", label: "English" },
+	{ value: "es", label: "Spanish" },
+	{ value: "fr", label: "French" },
+	{ value: "de", label: "German" },
+];
+
+const TIMEZONE_OPTIONS = [
+	{ value: "America/New_York", label: "Eastern Time" },
+	{ value: "America/Chicago", label: "Central Time" },
+	{ value: "America/Denver", label: "Mountain Time" },
+	{ value: "America/Los_Angeles", label: "Pacific Time" },
+	{ value: "Europe/London", label: "GMT" },
+];
 
 const Profile = () => {
 	const { data: userData, isLoading, error } = useUserMe();
@@ -36,41 +58,25 @@ const Profile = () => {
 		},
 	});
 
-	const getInitials = (userData) => {
-		if (userData?.first_name && userData?.last_name) {
-			return (userData.first_name[0] + userData.last_name[0]).toUpperCase();
-		} else if (userData?.first_name) {
-			return userData.first_name.substring(0, 2).toUpperCase();
+	// Avatar upload has no backend endpoint yet — only the client-side checks
+	// exist.
+	const handleAvatarFiles = ([file]) => {
+		if (!file) return;
+		const isJpgOrPng = file.type === "image/jpeg" || file.type === "image/png";
+		if (!isJpgOrPng) {
+			pvMessage.error("You can only upload JPG/PNG file!");
 		}
-		return "US";
-	};
-
-	const handleAvatarUpload = (info) => {
-		if (info.file.status === "done") {
-			message.success(`${info.file.name} file uploaded successfully`);
-		} else if (info.file.status === "error") {
-			message.error(`${info.file.name} file upload failed.`);
+		const isLt2M = file.size / 1024 / 1024 < 2;
+		if (!isLt2M) {
+			pvMessage.error("Image must smaller than 2MB!");
 		}
 	};
 
-	const uploadProps = {
-		name: "avatar",
-		action: "/api/upload/avatar", // This would be your actual upload endpoint
-		showUploadList: false,
-		onChange: handleAvatarUpload,
-		beforeUpload: (file) => {
-			const isJpgOrPng =
-				file.type === "image/jpeg" || file.type === "image/png";
-			if (!isJpgOrPng) {
-				message.error("You can only upload JPG/PNG file!");
-			}
-			const isLt2M = file.size / 1024 / 1024 < 2;
-			if (!isLt2M) {
-				message.error("Image must smaller than 2MB!");
-			}
-			return isJpgOrPng && isLt2M;
-		},
-	};
+	const setPrivacy = (key) => (checked) =>
+		setAdditionalData((prev) => ({
+			...prev,
+			privacy: { ...prev.privacy, [key]: checked },
+		}));
 
 	return (
 		<PageContent>
@@ -86,13 +92,13 @@ const Profile = () => {
 
 				{isLoading && (
 					<div className="vp-profile-center">
-						<Spin size="large" />
+						<PvSpin />
 					</div>
 				)}
 
 				{error && (
 					<div className="vp-profile-center">
-						<p className="vp-text" style={{ color: "var(--vp-danger)" }}>
+						<p className="vp-text vp-profile-error">
 							Failed to load profile data. Please try again.
 						</p>
 					</div>
@@ -106,30 +112,26 @@ const Profile = () => {
 							<PvPanel title="profile">
 								<div className="vp-profile-overview">
 									<div className="vp-profile-avatar-wrap">
-										<Avatar
-											size={120}
-											style={{
-												backgroundColor: "var(--vp-info)",
-												fontSize: "36px",
-											}}
-											icon={<UserOutlined />}
+										<PvAvatar size={120} tone="info">
+											<UserOutlined />
+										</PvAvatar>
+										<PvUpload
+											accept="image/jpeg,image/png"
+											onFiles={handleAvatarFiles}
+											className="vp-profile-avatar-btn"
 										>
-											{getInitials(userData)}
-										</Avatar>
-										<Upload {...uploadProps}>
-											<button
-												type="button"
-												className="vp-btn vp-btn--accent vp-btn--sm vp-profile-avatar-btn"
-											>
-												<CameraOutlined />
-											</button>
-										</Upload>
+											<PvIconButton
+												variant="accent"
+												icon={<CameraOutlined />}
+												label="Upload avatar"
+											/>
+										</PvUpload>
 									</div>
 									<h2 className="vp-h2 vp-profile-name">
 										{userData.first_name} {userData.last_name}
 									</h2>
 									<p className="vp-muted vp-profile-email">
-										<MailOutlined style={{ marginRight: 8 }} />
+										<MailOutlined className="vp-profile-icon" />
 										{userData.email}
 									</p>
 									<p className="vp-text vp-profile-bio">{additionalData.bio}</p>
@@ -138,7 +140,7 @@ const Profile = () => {
 
 							{/* Account Info */}
 							<PvPanel title="account info">
-								<div className="vp-stack" style={{ gap: 10 }}>
+								<div className="vp-stack vp-profile-rows">
 									<div className="vp-row vp-spread">
 										<span className="vp-muted">User ID</span>
 										<span className="vp-text">{userData.user_id}</span>
@@ -168,19 +170,16 @@ const Profile = () => {
 							{/* Personal Information */}
 							<PvPanel title="personal information">
 								<div className="vp-profile-info-grid">
-									<div className="vp-field" style={{ marginBottom: 0 }}>
+									<div className="vp-field vp-profile-field">
 										<span className="vp-label">First Name</span>
 										<span className="vp-text">{userData.first_name}</span>
 									</div>
-									<div className="vp-field" style={{ marginBottom: 0 }}>
+									<div className="vp-field vp-profile-field">
 										<span className="vp-label">Last Name</span>
 										<span className="vp-text">{userData.last_name}</span>
 									</div>
 								</div>
-								<div
-									className="vp-field"
-									style={{ marginTop: 16, marginBottom: 0 }}
-								>
+								<div className="vp-field vp-profile-field vp-profile-field--spaced">
 									<span className="vp-label">Bio</span>
 									<span className="vp-text">{additionalData.bio}</span>
 								</div>
@@ -191,7 +190,7 @@ const Profile = () => {
 								<PvPanel
 									title={
 										<>
-											<BellOutlined style={{ marginRight: 8 }} />
+											<BellOutlined className="vp-profile-icon" />
 											Notifications
 										</>
 									}
@@ -202,49 +201,34 @@ const Profile = () => {
 								<PvPanel
 									title={
 										<>
-											<LockOutlined style={{ marginRight: 8 }} />
+											<LockOutlined className="vp-profile-icon" />
 											Privacy
 										</>
 									}
 								>
-									<div className="vp-stack" style={{ gap: 12 }}>
+									<div className="vp-stack vp-profile-toggles">
 										<div className="vp-row vp-spread">
 											<span className="vp-text">Profile Visible</span>
-											<Switch
+											<PvSwitch
+												aria-label="Profile Visible"
 												checked={additionalData.privacy.profileVisible}
-												onChange={(checked) =>
-													setAdditionalData((prev) => ({
-														...prev,
-														privacy: {
-															...prev.privacy,
-															profileVisible: checked,
-														},
-													}))
-												}
+												onChange={setPrivacy("profileVisible")}
 											/>
 										</div>
 										<div className="vp-row vp-spread">
 											<span className="vp-text">Show Email</span>
-											<Switch
+											<PvSwitch
+												aria-label="Show Email"
 												checked={additionalData.privacy.showEmail}
-												onChange={(checked) =>
-													setAdditionalData((prev) => ({
-														...prev,
-														privacy: { ...prev.privacy, showEmail: checked },
-													}))
-												}
+												onChange={setPrivacy("showEmail")}
 											/>
 										</div>
 										<div className="vp-row vp-spread">
 											<span className="vp-text">Show Phone</span>
-											<Switch
+											<PvSwitch
+												aria-label="Show Phone"
 												checked={additionalData.privacy.showPhone}
-												onChange={(checked) =>
-													setAdditionalData((prev) => ({
-														...prev,
-														privacy: { ...prev.privacy, showPhone: checked },
-													}))
-												}
+												onChange={setPrivacy("showPhone")}
 											/>
 										</div>
 									</div>
@@ -255,49 +239,36 @@ const Profile = () => {
 							<PvPanel
 								title={
 									<>
-										<GlobalOutlined style={{ marginRight: 8 }} />
+										<GlobalOutlined className="vp-profile-icon" />
 										Preferences
 									</>
 								}
 							>
 								<div className="vp-profile-info-grid">
-									<div className="vp-field" style={{ marginBottom: 0 }}>
-										<span className="vp-label">Language</span>
-										<Select
+									<PvField label="Language" className="vp-profile-field">
+										<PvSelect
+											options={LANGUAGE_OPTIONS}
 											value={additionalData.language}
-											style={{ width: "100%" }}
 											onChange={(value) =>
 												setAdditionalData((prev) => ({
 													...prev,
 													language: value,
 												}))
 											}
-										>
-											<Option value="en">English</Option>
-											<Option value="es">Spanish</Option>
-											<Option value="fr">French</Option>
-											<Option value="de">German</Option>
-										</Select>
-									</div>
-									<div className="vp-field" style={{ marginBottom: 0 }}>
-										<span className="vp-label">Timezone</span>
-										<Select
+										/>
+									</PvField>
+									<PvField label="Timezone" className="vp-profile-field">
+										<PvSelect
+											options={TIMEZONE_OPTIONS}
 											value={additionalData.timezone}
-											style={{ width: "100%" }}
 											onChange={(value) =>
 												setAdditionalData((prev) => ({
 													...prev,
 													timezone: value,
 												}))
 											}
-										>
-											<Option value="America/New_York">Eastern Time</Option>
-											<Option value="America/Chicago">Central Time</Option>
-											<Option value="America/Denver">Mountain Time</Option>
-											<Option value="America/Los_Angeles">Pacific Time</Option>
-											<Option value="Europe/London">GMT</Option>
-										</Select>
-									</div>
+										/>
+									</PvField>
 								</div>
 							</PvPanel>
 						</div>

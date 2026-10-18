@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import "./pixelArt.css";
 
 // Clickable/draggable pixel grid. `rows` is an array of equal-length code
 // strings; left-click paints the `paint` code, right-click (or right-drag)
@@ -34,13 +35,10 @@ export default function PixelCanvas({
 	const color = (code) => palette[code] || "transparent";
 
 	return (
-		<div
-			className="vp-pixcanvas"
-			style={{ lineHeight: 0, touchAction: "none", width: "fit-content" }}
-		>
+		<div className="vp-pixcanvas">
 			{rows.map((row, r) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: fixed grid, rows never reorder
-				<div key={r} style={{ display: "flex" }}>
+				<div key={r} className="vp-pixrow">
 					{row.split("").map((code, c) => (
 						<button
 							// biome-ignore lint/suspicious/noArrayIndexKey: fixed grid, cells never reorder

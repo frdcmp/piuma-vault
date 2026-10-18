@@ -200,33 +200,11 @@
 	gap: 12px;
 }
 
-.voice-btn {
-	padding: 10px 18px;
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-border);
-	color: var(--vp-text);
-	font-family: inherit;
-	font-size: 13px;
-	font-weight: 700;
-	letter-spacing: 1.5px;
-	cursor: pointer;
-	box-shadow: 2px 2px 0 var(--vp-shadow-color);
-}
-
-.voice-btn:hover {
-	border-color: var(--vp-accent);
-	color: var(--vp-accent);
-}
-
-.voice-btn--start {
-	border-color: var(--vp-success);
-	color: var(--vp-success);
+/* The start button is the page's call to action — a size up from the kit's md. */
+.vp-btn.voice-start {
 	padding: 12px 24px;
-}
-
-.voice-btn--end {
-	border-color: var(--vp-danger);
-	color: var(--vp-danger);
+	font-size: 13px;
+	letter-spacing: 1.5px;
 }
 
 .voice-hint {
@@ -272,21 +250,12 @@
 	}
 }
 
-/* Header pill (VoiceIndicator) — lives in the workspace header. */
-.voice-indicator {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
+/* Header pill (VoiceIndicator) — lives in the workspace header, same height as
+   its icon buttons. */
+.vp-btn.voice-indicator {
 	height: 30px;
-	padding: 0 10px;
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-success);
-	color: var(--vp-success);
-	font-family: inherit;
-	font-size: 11px;
-	font-weight: 700;
+	gap: 6px;
 	letter-spacing: 1.5px;
-	cursor: pointer;
 }
 
 .voice-indicator-dot {
@@ -302,4 +271,9 @@
 
 .voice-indicator-dot.is-thinking {
 	background: var(--vp-info);
+}
+
+/* The pill fills with --vp-success on hover; keep the dot visible on it. */
+.voice-indicator:hover .voice-indicator-dot {
+	background: currentColor;
 }

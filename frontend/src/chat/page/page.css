@@ -62,93 +62,15 @@
 	text-shadow: 2px 2px 0 var(--vp-shadow-color);
 	text-decoration: none;
 }
-.chatx-home {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	box-sizing: border-box;
-	/* Square, model-selector height (the standard for all chrome buttons). */
-	width: 30px;
-	height: 30px;
-	border: 2px solid var(--vp-border);
-	background: var(--vp-bg-soft);
-	color: var(--vp-muted);
-	font-size: 11pt;
-	text-decoration: none;
-}
-.chatx-home:hover {
-	border-color: var(--vp-success);
-	color: var(--vp-success);
-}
 .chatx-brand-dot {
 	width: 9px;
 	height: 9px;
 	background: var(--vp-success);
 }
-.chatx-new {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	box-sizing: border-box;
-	height: 30px;
-	padding: 0 12px;
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-success);
-	color: var(--vp-success);
-	font-family: inherit;
-	font-weight: 900;
-	font-size: 9.5pt;
-	letter-spacing: 0.6px;
-	text-transform: uppercase;
-	cursor: pointer;
-}
-.chatx-new:hover {
-	transform: translate(-1px, -1px);
-}
-.chatx-new:active {
-	transform: translate(1px, 1px);
-}
-
-.chatx-search {
-	display: flex;
-	align-items: center;
-	gap: 8px;
+/* Search box (a PvInput with a prefix icon): inset from the rail edges. */
+.chatx-sidebar .chatx-search {
+	width: auto;
 	margin: 10px 10px 6px;
-	padding: 0 8px;
-	background: var(--vp-bg);
-	border: 2px solid var(--vp-border);
-}
-.chatx-search:focus-within {
-	border-color: var(--vp-success);
-}
-.chatx-search-icon {
-	color: var(--vp-muted);
-	font-size: 11pt;
-}
-.chatx-search-input {
-	flex: 1;
-	min-width: 0;
-	background: transparent;
-	border: 0;
-	outline: none;
-	padding: 7px 0;
-	color: var(--vp-text);
-	font-family: inherit;
-	font-size: 10pt;
-}
-.chatx-search-input::placeholder {
-	color: var(--vp-muted);
-}
-.chatx-search-clear {
-	background: none;
-	border: 0;
-	color: var(--vp-muted);
-	font-size: 14pt;
-	line-height: 1;
-	cursor: pointer;
-}
-.chatx-search-clear:hover {
-	color: var(--vp-danger);
 }
 
 .chatx-session-list {
@@ -227,29 +149,17 @@
 	font-size: 8pt;
 	letter-spacing: 0.3px;
 }
+/* Row delete (a ghost PvIconButton): pinned bottom-right, shown on hover. */
 .chatx-session-del {
 	position: absolute;
 	right: 4px;
 	bottom: 4px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 24px;
-	height: 22px;
-	background: none;
-	border: 0;
-	color: var(--vp-muted);
-	font-size: 10.5pt;
-	cursor: pointer;
 	opacity: 0;
-	transition: opacity 0.1s;
 }
 .chatx-session:hover .chatx-session-del,
-.chatx-session.is-active .chatx-session-del {
+.chatx-session.is-active .chatx-session-del,
+.chatx-session-del:focus-visible {
 	opacity: 1;
-}
-.chatx-session-del:hover {
-	color: var(--vp-danger);
 }
 
 /* ── Center conversation ───────────────────────────────────────────────────── */
@@ -282,18 +192,9 @@
 	border-bottom: 2px dashed var(--vp-border);
 	background: var(--vp-panel);
 }
-.chatx-hamburger {
+/* Conversations toggle (a PvIconButton) — only shown on narrow screens. */
+.chatx-conv-head .chatx-hamburger {
 	display: none;
-	width: 30px;
-	height: 30px;
-	align-items: center;
-	justify-content: center;
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-border);
-	color: var(--vp-text);
-	font-size: 13pt;
-	line-height: 1;
-	cursor: pointer;
 }
 .chatx-conv-titlewrap {
 	flex: 1;
@@ -346,24 +247,19 @@
 	position: relative;
 	flex: none;
 }
-.chatx-model-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
+/* Model picker trigger (a PvButton): capped width, the name ellipsises. Model
+   ids keep their case. */
+.chatx-model .chatx-model-btn {
 	box-sizing: border-box;
 	height: 30px;
 	max-width: 220px;
-	padding: 0 10px;
-	background: var(--vp-bg-soft);
-	border: 2px solid var(--vp-border);
-	color: var(--vp-text);
-	font-family: inherit;
-	font-size: 9.5pt;
-	font-weight: 700;
-	cursor: pointer;
+	text-transform: none;
 }
-.chatx-model-btn:hover {
-	border-color: var(--vp-success);
+.chatx-model-btn > span {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
 }
 .chatx-model-name {
 	overflow: hidden;
@@ -540,7 +436,7 @@
 		background: color-mix(in srgb, var(--vp-shadow-color) 50%, transparent);
 		cursor: pointer;
 	}
-	.chatx-hamburger {
+	.chatx-conv-head .chatx-hamburger {
 		display: inline-flex;
 	}
 }

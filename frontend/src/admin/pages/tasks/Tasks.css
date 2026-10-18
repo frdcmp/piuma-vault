@@ -73,22 +73,6 @@
 	margin-bottom: 8px;
 }
 
-.tasks-manage-btn {
-	background: none;
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 4px;
-	color: var(--vp-muted);
-	font: inherit;
-	font-size: 0.72rem;
-	padding: 3px 6px;
-	cursor: pointer;
-}
-
-.tasks-manage-btn:hover {
-	color: var(--vp-text);
-	border-color: var(--vp-success);
-}
-
 .tag-search {
 	width: 100%;
 	box-sizing: border-box;
@@ -246,10 +230,11 @@
 	opacity: 0.55;
 }
 
+/* Tinted by priority via --task-tint (set inline per row). */
 .task-check {
 	background: none;
 	border: none;
-	color: var(--vp-success);
+	color: var(--task-tint, var(--vp-success));
 	font-size: 1rem;
 	cursor: pointer;
 	padding: 0;
@@ -387,9 +372,11 @@
 	font-size: 0.72rem;
 }
 
-/* Bucket badge — sits to the left of the title (before .task-main). */
+/* Bucket badge — sits to the left of the title (before .task-main). Takes the
+   bucket's colour via --task-tint; without one it inherits the row text. */
 .task-bucket {
 	flex: none;
+	color: var(--task-tint);
 	padding: 1px 7px;
 	border: 1px solid currentColor;
 	border-radius: 999px;
@@ -417,14 +404,14 @@
 }
 
 /* Clickable tag → sets the sidebar filter. Reset the button chrome so it reads
-   as inline text; the per-tag color is applied inline via tagColor(). */
+   as inline text; the per-tag colour arrives as --task-tint (tagColor()). */
 .task-tag {
 	background: none;
 	border: none;
 	padding: 0;
 	font: inherit;
 	font-size: 0.68rem;
-	color: var(--vp-success);
+	color: var(--task-tint, var(--vp-success));
 	cursor: pointer;
 }
 
@@ -432,16 +419,7 @@
 	text-decoration: underline;
 }
 
-.task-del {
-	background: none;
-	border: none;
-	color: var(--vp-muted);
-	cursor: pointer;
-	font-size: 0.8rem;
-	padding: 2px 4px;
-}
-
-.task-del:hover {
+.task-row .task-del:hover {
 	color: var(--vp-danger);
 }
 
@@ -471,100 +449,25 @@
 }
 
 /* Forms (shared by both modals) — rendered through a portal (outside
-   .tasks-page). */
+   .tasks-page). The form's gap owns the spacing between fields. */
 .tasks-form {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
 }
 
-.tasks-field {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-	font-size: 0.8rem;
-	color: var(--vp-muted);
+.tasks-form .vp-field {
+	margin-bottom: 0;
 }
 
 /* Completion toggle — reflects (and edits) the task's done state in the editor. */
 .task-done-toggle {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
 	align-self: flex-start;
-	padding: 5px 12px;
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 4px;
-	background: var(--vp-bg-soft);
-	color: var(--vp-muted);
-	font: inherit;
-	font-size: 0.8rem;
-	cursor: pointer;
 }
 
-.task-done-toggle:hover {
-	border-color: var(--vp-success);
-}
-
-.task-done-toggle.is-done {
-	border-color: var(--vp-success);
-	color: var(--vp-success);
-}
-
-.task-done-toggle .task-done-box {
-	font-size: 0.95rem;
-	line-height: 1;
-}
-
-.tasks-field--inline {
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
-}
-
-.tasks-field input,
-.tasks-field textarea,
-.tasks-field select {
-	background: var(--vp-bg);
-	border: 1px solid var(--vp-border-soft);
-	border-radius: 4px;
-	color: var(--vp-text);
-	padding: 6px 8px;
-	font: inherit;
-	/* Render native controls (date/time popup + spinners) in dark mode. */
-	color-scheme: dark;
-}
-
-/* Tint the native calendar/clock indicator so it's visible on the dark field. */
-.tasks-field input[type="datetime-local"]::-webkit-calendar-picker-indicator,
-.tasks-field input[type="date"]::-webkit-calendar-picker-indicator {
-	filter: invert(85%) sepia(40%) saturate(600%) hue-rotate(350deg);
-	cursor: pointer;
-}
-
-.tasks-field input:focus,
-.tasks-field textarea:focus,
-.tasks-field select:focus {
-	outline: none;
-	border-color: var(--vp-accent);
-}
-
-/* Native <select> arrow: drop the OS chevron and draw a consistent, evenly
-   spaced one so it aligns with the field text on every platform. */
-.tasks-field select {
-	appearance: none;
-	-webkit-appearance: none;
-	-moz-appearance: none;
-	padding-right: 30px;
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%238a93a3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-	background-repeat: no-repeat;
-	background-position: right 10px center;
-}
-
-/* Notes textarea that grows to fit its content (height driven from JS). */
-.tasks-textarea-auto {
-	resize: none;
-	/* Capped so a giant note still scrolls instead of pushing the modal off-screen. */
+/* Notes textarea that grows to fit its content (PvTextarea autoSize), capped so
+   a giant note still scrolls instead of pushing the modal off-screen. */
+.vp-textarea.tasks-textarea-auto {
 	overflow-y: auto;
 	min-height: 64px;
 	max-height: 320px;
@@ -637,18 +540,12 @@
 	text-decoration: line-through;
 	color: var(--vp-muted);
 }
-.task-view-title-input {
-	background: var(--vp-bg);
-	border: 1px solid var(--vp-accent);
-	border-radius: 4px;
-	color: var(--vp-text);
-	padding: 6px 8px;
-	font: inherit;
+.vp-input.task-view-title-input {
+	padding: 2px 8px;
+	margin: 0 -10px; /* cancel 8px pad + 2px border so the title text stays put */
+	width: auto;
 	font-size: 1.15rem;
 	font-weight: 600;
-}
-.task-view-title-input:focus {
-	outline: none;
 }
 
 /* Metadata: label / value rows. */
@@ -704,9 +601,6 @@
 /* The editor that replaces a value occupies the value column. */
 .task-view-edit {
 	min-width: 0;
-}
-.task-view-select {
-	width: 100%;
 }
 
 /* Priority + bucket dots. */
@@ -769,40 +663,15 @@
 	color: var(--vp-info);
 }
 
-/* The inline editors live OUTSIDE .tasks-field, so they don't inherit the dark
-   form-field theming — restate it (else the notes textarea + priority select
-   render as native white controls). Box metrics match the display value they
-   replace so swapping view->edit doesn't resize/recenter the modal. */
-.task-view-select,
-.task-view .tasks-textarea-auto {
-	background: var(--vp-bg);
-	border: 1px solid var(--vp-accent);
-	border-radius: 4px;
-	color: var(--vp-text);
-	font: inherit;
-	font-size: 0.9rem;
-	color-scheme: dark;
-}
-.task-view-select:focus,
-.task-view .tasks-textarea-auto:focus {
-	outline: none;
-}
-.task-view-select {
-	width: 100%;
+/* Inline editors: box metrics match the display value they replace so swapping
+   view->edit doesn't resize/recenter the modal. */
+.vp-select.task-view-select {
 	min-height: 30px;
-	padding: 4px 28px 4px 8px;
-	appearance: none;
-	-webkit-appearance: none;
-	-moz-appearance: none;
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%238a93a3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-	background-repeat: no-repeat;
-	background-position: right 8px center;
+	padding: 4px 8px;
+	font-size: 0.9rem;
 }
-.task-view .tasks-textarea-auto {
+.task-view .vp-textarea.tasks-textarea-auto {
 	padding: 8px;
 	min-height: 48px;
-}
-.task-view-title-input {
-	padding: 2px 8px;
-	margin: 0 -9px; /* cancel 8px pad + 1px border so the title text stays put */
+	font-size: 0.9rem;
 }

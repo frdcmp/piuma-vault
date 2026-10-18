@@ -1,9 +1,29 @@
 import { useEffect, useState } from "react";
-import { PvModal, pvMessage } from "@/ui";
+import {
+	PvButton,
+	PvField,
+	PvInput,
+	PvModal,
+	PvSelect,
+	PvSwitch,
+	pvMessage,
+} from "@/ui";
 import useShareDefaultsStore, {
 	SHARE_DEFAULTS,
 	SHARE_EXPIRY_OPTIONS,
 } from "../../../store/shareDefaultsStore";
+import "./SharePopover.css";
+
+const ACCESS_OPTIONS = [
+	{ value: "view", label: "View" },
+	{ value: "edit", label: "Edit" },
+];
+
+const COPY_OPTIONS = [
+	{ value: "view", label: "Share link (human view)" },
+	{ value: "llm", label: "LLM/AI URL (markdown API)" },
+	{ value: "none", label: "Nothing — don't copy" },
+];
 
 /**
  * Editor for the browser-local defaults used when creating note share links.
@@ -46,48 +66,27 @@ export default function ShareSettingsModal({ open, onClose }) {
 			onCancel={onClose}
 			showClose
 		>
-			<p
-				style={{
-					margin: "0 0 14px 0",
-					fontSize: 12,
-					color: "var(--vp-muted)",
-				}}
-			>
+			<p className="share-settings-intro">
 				Pre-fills the share form every time you open it. Stored in this browser
 				only.
 			</p>
 
-			<div className="vp-field">
-				<label className="vp-label" htmlFor="share-def-access">
-					Default access
-				</label>
-				<select
-					id="share-def-access"
-					className="vp-select"
+			<PvField label="Default access">
+				<PvSelect
+					options={ACCESS_OPTIONS}
 					value={draft.accessLevel}
-					onChange={(e) => patch({ accessLevel: e.target.value })}
-				>
-					<option value="view">View</option>
-					<option value="edit">Edit</option>
-				</select>
-			</div>
+					onChange={(v) => patch({ accessLevel: v })}
+				/>
+			</PvField>
 
 			<div className="vp-field">
-				<div className="pixel-switch-row">
-					<label className="vp-label" htmlFor="share-def-pwd-toggle">
-						Require password by default
-					</label>
-					<button
-						id="share-def-pwd-toggle"
-						type="button"
-						className={`pixel-switch${draft.passwordEnabled ? " on" : ""}`}
-						role="switch"
-						aria-checked={draft.passwordEnabled}
-						onClick={() => patch({ passwordEnabled: !draft.passwordEnabled })}
-					/>
-				</div>
-				<input
-					className="vp-input"
+				<PvSwitch
+					size="sm"
+					label="Require password by default"
+					checked={draft.passwordEnabled}
+					onChange={(v) => patch({ passwordEnabled: v })}
+				/>
+				<PvInput
 					type="text"
 					autoComplete="off"
 					placeholder="Default password (optional)"
@@ -97,53 +96,32 @@ export default function ShareSettingsModal({ open, onClose }) {
 			</div>
 
 			<div className="vp-field">
-				<div className="pixel-switch-row">
-					<label className="vp-label" htmlFor="share-def-exp-toggle">
-						Expire links by default
-					</label>
-					<button
-						id="share-def-exp-toggle"
-						type="button"
-						className={`pixel-switch${draft.expireEnabled ? " on" : ""}`}
-						role="switch"
-						aria-checked={draft.expireEnabled}
-						onClick={() => patch({ expireEnabled: !draft.expireEnabled })}
-					/>
-				</div>
-				<select
-					className="vp-select"
+				<PvSwitch
+					size="sm"
+					label="Expire links by default"
+					checked={draft.expireEnabled}
+					onChange={(v) => patch({ expireEnabled: v })}
+				/>
+				<PvSelect
+					options={SHARE_EXPIRY_OPTIONS}
 					value={draft.expiresInHours}
 					disabled={!draft.expireEnabled}
-					onChange={(e) => patch({ expiresInHours: e.target.value })}
+					onChange={(v) => patch({ expiresInHours: v })}
 					aria-label="Default expiry"
-				>
-					{SHARE_EXPIRY_OPTIONS.map((o) => (
-						<option key={o.value} value={o.value}>
-							{o.label}
-						</option>
-					))}
-				</select>
+				/>
 			</div>
 
-			<div className="vp-field">
-				<label className="vp-label" htmlFor="share-def-copy">
-					Copy on link creation
-				</label>
-				<select
-					id="share-def-copy"
-					className="vp-select"
+			<PvField label="Copy on link creation">
+				<PvSelect
+					options={COPY_OPTIONS}
 					value={draft.autoCopy}
-					onChange={(e) => patch({ autoCopy: e.target.value })}
-				>
-					<option value="view">Share link (human view)</option>
-					<option value="llm">LLM/AI URL (markdown API)</option>
-					<option value="none">Nothing — don't copy</option>
-				</select>
-			</div>
+					onChange={(v) => patch({ autoCopy: v })}
+				/>
+			</PvField>
 
-			<button type="button" className="vp-btn vp-btn--sm" onClick={handleReset}>
+			<PvButton size="sm" onClick={handleReset}>
 				Reset to defaults
-			</button>
+			</PvButton>
 		</PvModal>
 	);
 }

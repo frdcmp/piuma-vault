@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
+import { PvIconButton } from "@/ui";
 import { useNotesLiveUpdates } from "../../../queries/notesQuery";
 import useChatDockStore from "../../../store/chatDockStore";
 import useNoteControlsStore from "../../../store/noteControlsStore";
@@ -367,16 +368,13 @@ export default function NotesLayout() {
 							controlsPresent) && (
 							<div className="note-topbar">
 								{(railCollapsed || treeCollapsed) && (
-									<button
-										type="button"
-										className="note-ctl-btn notes-tree-toggle"
+									<PvIconButton
+										className="notes-tree-toggle"
+										icon="☰"
+										label="Toggle notes list"
 										onClick={toggleTree}
-										title="Notes list"
-										aria-label="Toggle notes list"
 										aria-expanded={!treeCollapsed && drawerOpen}
-									>
-										☰
-									</button>
+									/>
 								)}
 								<NoteTabs
 									tabs={tabs}
