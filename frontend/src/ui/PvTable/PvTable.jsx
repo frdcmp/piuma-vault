@@ -24,6 +24,7 @@ import "./PvTable.css";
  *   minWidth?:  number                   // table min width; the wrapper scrolls horizontally
  *   pagination: false (default) | { pageSize: number, hideOnSinglePage?: boolean }
  *   expandable?: { expandedRowRender: (row) => ReactNode, rowExpandable?: (row) => boolean }
+ *   defaultSort?: { key, dir: "asc" | "desc" }  // initial sort on a column with a sorter
  */
 export default function PvTable({
 	columns = [],
@@ -37,8 +38,13 @@ export default function PvTable({
 	minWidth,
 	pagination = false,
 	expandable,
+	defaultSort,
 }) {
-	const [sort, setSort] = useState(null); // { key, dir: 1 | -1 }
+	const [sort, setSort] = useState(() =>
+		defaultSort
+			? { key: defaultSort.key, dir: defaultSort.dir === "desc" ? -1 : 1 }
+			: null,
+	); // { key, dir: 1 | -1 }
 	const [page, setPage] = useState(1);
 	const [expanded, setExpanded] = useState(() => new Set());
 
@@ -195,7 +201,7 @@ export default function PvTable({
 						‹
 					</button>
 					<span className="pv-table-pager-info">
-						{page} / {pages}
+						{page} / {pages} · {sorted.length} rows
 					</span>
 					<button
 						type="button"

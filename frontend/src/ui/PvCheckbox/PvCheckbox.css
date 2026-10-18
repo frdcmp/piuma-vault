@@ -57,9 +57,24 @@
 	top: 0;
 	width: 4px;
 	height: 8px;
-	border: solid var(--vp-bg);
+	border: solid var(--vp-on-accent);
 	border-width: 0 2px 2px 0;
 	transform: rotate(45deg);
+}
+
+/* Indeterminate: filled box with a pixel dash. */
+.pv-checkbox-input:indeterminate + .pv-checkbox-box {
+	background: var(--vp-success);
+	border-color: var(--vp-success);
+}
+.pv-checkbox-input:indeterminate + .pv-checkbox-box::after {
+	content: "";
+	position: absolute;
+	left: 2px;
+	top: 5px;
+	width: 8px;
+	height: 2px;
+	background: var(--vp-on-accent);
 }
 
 .pv-checkbox-label {

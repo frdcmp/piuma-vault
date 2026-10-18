@@ -5,8 +5,9 @@ import "./PvSegmented.css";
  *
  * Props:
  *   options:  Array<{ value, label, disabled? }> | Array<string>
- *   value:    the selected value
- *   onChange: (value) => void
+ *   value:    the selected value (an array when `multiple`)
+ *   onChange: (value) => void — with `multiple`, the new array of values
+ *   multiple: any number of options can be on (e.g. weekday toggles)
  *   size:     "md" (default) | "sm"
  *   block:    stretch to full width, options share it equally
  */
@@ -16,6 +17,7 @@ export default function PvSegmented({
 	onChange,
 	size = "md",
 	block = false,
+	multiple = false,
 	className = "",
 	...rest
 }) {
@@ -30,20 +32,33 @@ export default function PvSegmented({
 	]
 		.filter(Boolean)
 		.join(" ");
+	const selected = multiple ? (value ?? []) : [value];
+	const toggle = (v) => {
+		if (!multiple) {
+			if (v !== value) onChange?.(v);
+			return;
+		}
+		onChange?.(
+			selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v],
+		);
+	};
 	return (
 		<div className={classes} {...rest}>
-			{opts.map((o) => (
-				<button
-					key={String(o.value)}
-					type="button"
-					aria-pressed={o.value === value}
-					disabled={o.disabled}
-					className={`pv-segmented-item${o.value === value ? " is-active" : ""}`}
-					onClick={() => o.value !== value && onChange?.(o.value)}
-				>
-					{o.label}
-				</button>
-			))}
+			{opts.map((o) => {
+				const on = selected.includes(o.value);
+				return (
+					<button
+						key={String(o.value)}
+						type="button"
+						aria-pressed={on}
+						disabled={o.disabled}
+						className={`pv-segmented-item${on ? " is-active" : ""}`}
+						onClick={() => toggle(o.value)}
+					>
+						{o.label}
+					</button>
+				);
+			})}
 		</div>
 	);
 }

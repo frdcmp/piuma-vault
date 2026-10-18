@@ -9,7 +9,9 @@ import "./PvInput.css";
  * Props:
  *   size:    "md" (default) | "sm"
  *   invalid: red border (validation error)
- *   prefix / suffix: nodes drawn inside the field (icons, units)
+ *   prefix / suffix: nodes drawn inside the field (icons, units). Passing the
+ *                    prop at all (even null) keeps the wrapper mounted, so a
+ *                    suffix that comes and goes doesn't remount the input.
  *   reveal:  for type="password", adds a show/hide toggle
  */
 export default function PvInput({
@@ -42,7 +44,7 @@ export default function PvInput({
 		</button>
 	);
 
-	if (prefix == null && suffix == null && !toggle) {
+	if (prefix === undefined && suffix === undefined && !toggle) {
 		return (
 			<input
 				type={inputType}

@@ -302,6 +302,10 @@ a.vp-card:hover {
 	border: 0;
 	box-shadow: none;
 }
+.vp-btn--plain {
+	text-transform: none;
+	letter-spacing: normal;
+}
 .vp-btn--block {
 	width: 100%;
 }

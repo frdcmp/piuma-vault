@@ -18,20 +18,20 @@ import { PvButton, PvField, PvInput, PvModal, pvMessage } from "@/ui";
 
 | Component | Purpose | Key props |
 | --- | --- | --- |
-| `PvButton` | Action / link button | `variant` default·primary·danger·accent·ghost, `size` md·sm, `block`, `loading`, `icon`, `to` (router), `href` |
-| `PvIconButton` | Square icon-only button (toolbars, bars, row actions) | `icon`, `label` (required: title + aria-label), `variant` default·ghost·danger·accent, `size` sm·md·lg, `active`, `to`, `href` |
-| `PvInput` | Text input (`.vp-input`) | native input props, `size`, `invalid`, `prefix`, `suffix`, `reveal` (password show/hide) |
+| `PvButton` | Action / link button | `variant` default·primary·danger·accent·ghost·text, `size` md·sm, `block`, `loading`, `icon`, `iconEnd`, `plain` (keep case, for user text), `to` (router), `href` |
+| `PvIconButton` | Square icon-only button (toolbars, bars, row actions) | `icon`, `label` (required: title + aria-label), `variant` default·ghost·ghost-danger·danger·accent, `size` sm·md·lg, `active`, `to`, `href` |
+| `PvInput` | Text input (`.vp-input`) | native input props, `size`, `invalid`, `prefix`, `suffix` (pass the prop, even null, to keep the wrapper stable), `reveal` (password show/hide) |
 | `PvTextarea` | Multi-line input | native props, `autoSize`, `invalid` |
 | `PvSelect` | Native dropdown | `options` [{value,label}]·string[], `value`, `onChange(value)`, `placeholder`, `allowClear`, `size`, `invalid` |
-| `PvField` | Label + control + hint/error | `label`, `hint`, `error`, `required`, children = control |
-| `PvCheckbox` | Checkbox | `checked`, `onChange(checked)`, `label`, `disabled` |
+| `PvField` | Label + control + hint/error | `label`, `hint`, `error`, `required`, `as` label·div (div for composite controls), children = control |
+| `PvCheckbox` | Checkbox | `checked`, `onChange(checked)`, `label`, `disabled`, `indeterminate` |
 | `PvSwitch` | On/off toggle | `checked`, `onChange(checked)`, `label`, `size`, `loading` |
-| `PvSegmented` | One-of-N button row | `options`, `value`, `onChange(value)`, `size`, `block` |
+| `PvSegmented` | One-of-N button row | `options`, `value`, `onChange(value)`, `size`, `block`, `multiple` (value = array) |
 | `PvDateTimePicker` | Date / time / datetime picker | `value`, `onChange`, `mode` date·time·datetime, `placeholder`, `clearable` |
-| `PvUpload` | File picker / drop zone | `onFiles(File[])`, `accept`, `multiple`, `drag`, `disabled` |
+| `PvUpload` | File picker / drop zone | `onFiles(File[])`, `accept`, `multiple`, `drag`, `disabled`, `ref` → `{ open() }` (no children = just the hidden input) |
 | `PvPanel` | The workhorse container (title bar with pixel dots) | `title`, `extra`, `noPad`, `bodyClassName` |
 | `PvTabs` | Tab strip + active panel | `items` [{key,label,children}], `activeKey`·`defaultActiveKey`, `onChange`, `extra` |
-| `PvTable` | Data table | `columns` [{key,title,dataIndex,render,width,align,sorter}], `data`, `rowKey`, `loading`, `emptyText`, `onRowClick`, `size`, `minWidth`, `pagination` {pageSize,hideOnSinglePage}, `expandable` {expandedRowRender,rowExpandable} |
+| `PvTable` | Data table | `columns` [{key,title,dataIndex,render,width,align,sorter}], `data`, `rowKey`, `loading`, `emptyText`, `onRowClick`, `size`, `minWidth`, `pagination` {pageSize,hideOnSinglePage}, `expandable` {expandedRowRender,rowExpandable}, `defaultSort` {key, dir asc·desc} |
 | `PvExpander` | Pixel +/− row toggle (used by `PvTable` expandable rows) | `expanded`, `onExpand(record, e)`, `record` |
 | `PvTag` | Chip | `color`, `onClick`, `onRemove` |
 | `PvAvatar` | Square avatar | `src`, `size`, `tone` accent·success·danger·info·violet·muted, children = initials |

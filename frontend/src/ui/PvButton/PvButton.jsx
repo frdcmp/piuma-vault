@@ -11,9 +11,14 @@ import { Link } from "react-router-dom";
  *            ("text" = borderless compact label, e.g. in a panel title bar)
  *   size:    "md" (default) | "sm"
  *   block:   stretch to full width
- *   icon:    leading node (e.g. an antd icon)
+ *   icon:    leading node (e.g. an @ant-design/icons element)
+ *   iconEnd: trailing node (e.g. a ▾ caret)
+ *   plain:   keep the label's own case (no uppercase) — for user text like titles
  *   loading: show a spinner in place of children
  */
+const VARIANTS = ["default", "primary", "danger", "accent", "ghost", "text"];
+const SIZES = ["md", "sm"];
+
 export default function PvButton({
 	children,
 	variant = "default",
@@ -21,17 +26,26 @@ export default function PvButton({
 	block = false,
 	loading = false,
 	icon,
+	iconEnd,
+	plain = false,
 	to,
 	href,
 	className = "",
 	type = "button",
 	...rest
 }) {
+	if (
+		import.meta.env.DEV &&
+		(!VARIANTS.includes(variant) || !SIZES.includes(size))
+	) {
+		console.warn(`PvButton: unknown variant "${variant}" or size "${size}"`);
+	}
 	const classes = [
 		"vp-btn",
 		variant !== "default" && `vp-btn--${variant}`,
 		size === "sm" && "vp-btn--sm",
 		block && "vp-btn--block",
+		plain && "vp-btn--plain",
 		loading && "vp-btn--loading",
 		className,
 	]
@@ -44,6 +58,7 @@ export default function PvButton({
 		<>
 			{icon != null && <span className="vp-btn-icon">{icon}</span>}
 			{children != null && <span>{children}</span>}
+			{iconEnd != null && <span className="vp-btn-icon">{iconEnd}</span>}
 		</>
 	);
 

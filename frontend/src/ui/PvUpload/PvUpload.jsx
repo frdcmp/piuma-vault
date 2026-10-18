@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useImperativeHandle, useRef, useState } from "react";
 import "./PvUpload.css";
 
 /**
@@ -17,6 +17,8 @@ import "./PvUpload.css";
  *   onFiles:  (File[]) => void
  *   accept, multiple, disabled: as on <input type="file">
  *   drag:     render a drop zone (children = its content) instead of wrapping a trigger
+ *   ref:      exposes { open() } to open the picker from elsewhere (menus, shortcuts);
+ *             with no children nothing is rendered but the hidden input
  */
 export default function PvUpload({
 	onFiles,
@@ -26,11 +28,13 @@ export default function PvUpload({
 	drag = false,
 	className = "",
 	children,
+	ref,
 }) {
 	const inputRef = useRef(null);
 	const [over, setOver] = useState(false);
 
 	const pick = () => !disabled && inputRef.current?.click();
+	useImperativeHandle(ref, () => ({ open: pick }));
 	const hand = (list) => {
 		const files = Array.from(list || []);
 		if (files.length) onFiles?.(multiple ? files : files.slice(0, 1));
@@ -50,6 +54,7 @@ export default function PvUpload({
 		/>
 	);
 
+	if (!drag && children == null) return input;
 	if (!drag) {
 		return (
 			// biome-ignore lint/a11y/noStaticElementInteractions: the child is the focusable trigger (a button)

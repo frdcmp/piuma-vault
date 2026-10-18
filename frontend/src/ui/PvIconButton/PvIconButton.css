@@ -59,6 +59,21 @@
 	transform: none;
 }
 
+.pv-icon-btn--ghost-danger {
+	background: transparent;
+	border-color: transparent;
+	box-shadow: none;
+}
+.pv-icon-btn--ghost-danger:hover {
+	border-color: transparent;
+	box-shadow: none;
+	transform: none;
+	color: var(--vp-danger);
+}
+.pv-icon-btn--ghost-danger:active {
+	transform: none;
+}
+
 .pv-icon-btn--danger {
 	color: var(--vp-danger);
 	border-color: var(--vp-danger);
