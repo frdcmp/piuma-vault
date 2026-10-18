@@ -19,7 +19,6 @@ import {
 	PvTable,
 	pvMessage,
 } from "../../components/ui";
-import "../../vault-pixel.css";
 import "./trash.css";
 
 const TrashPage = () => {

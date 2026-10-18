@@ -1,6 +1,5 @@
 import { HomeOutlined } from "@ant-design/icons";
 import { Link, useLocation } from "react-router-dom";
-import "../../vault-pixel.css";
 import "./layout.css";
 
 // Static label map for top-level routes

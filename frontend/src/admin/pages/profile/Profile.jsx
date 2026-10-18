@@ -12,7 +12,6 @@ import { useUserMe } from "../../../queries";
 import { PageContent } from "../../components/layout/PageLayout";
 import { PvPanel } from "../../components/ui";
 import NotificationSettings from "./NotificationSettings";
-import "../../vault-pixel.css";
 import "./profile.css";
 
 const { Option } = Select;

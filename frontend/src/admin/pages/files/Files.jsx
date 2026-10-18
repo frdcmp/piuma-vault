@@ -37,7 +37,6 @@ import {
 import { formatDate } from "../../../utils/dateTime";
 import { PageContent } from "../../components/layout/PageLayout";
 import { PvButton } from "../../components/ui";
-import "../../vault-pixel.css";
 import "./files.css";
 
 const { Dragger } = Upload;

@@ -6,7 +6,12 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"includes": ["**", "!!**/dist"]
+		"includes": [
+			"**",
+			"!!**/dist",
+			"!src/theme/tokens.css",
+			"!src/theme/tokens.js"
+		]
 	},
 	"formatter": {
 		"enabled": true,

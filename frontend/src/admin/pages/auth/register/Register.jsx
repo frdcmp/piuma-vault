@@ -4,7 +4,6 @@ import PixelLoader from "../../../../components/PixelLoader";
 import { useAuthStatus, useRegister } from "../../../../queries";
 import Starfield from "../../../components/notes/Starfield";
 import { LockGlyph, PvButton } from "../../../components/ui";
-import "../../../vault-pixel.css";
 import "../auth-chrome.css";
 
 /**

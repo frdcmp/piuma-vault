@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { FallbackSprite } from "../sprites";
 import { DOC_GROUPS } from "./docsManifest";
-import "../admin/vault-pixel.css";
 import "../admin/components/layout/layout.css";
 import "./docs.css";
 

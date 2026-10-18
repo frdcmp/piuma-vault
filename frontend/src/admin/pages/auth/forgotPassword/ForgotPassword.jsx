@@ -3,7 +3,6 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useResetPassword } from "../../../../queries";
 import { PvButton } from "../../../components/ui";
-import "../../../vault-pixel.css";
 import "./forgotPassword.css";
 
 const ForgotPassword = () => {

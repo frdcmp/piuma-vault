@@ -1,6 +1,5 @@
 import { PageContent } from "../../components/layout/PageLayout";
 import SecuritySettings from "../../components/settings/SecuritySettings";
-import "../../vault-pixel.css";
 
 const Security = () => {
 	return (

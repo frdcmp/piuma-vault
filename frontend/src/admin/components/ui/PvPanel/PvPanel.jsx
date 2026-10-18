@@ -1,5 +1,3 @@
-import "../../../vault-pixel.css";
-
 /**
  * Pixel-style titled panel — a bordered container with the signature
  * three-dot title bar (matching PvModal). The workhorse layout block

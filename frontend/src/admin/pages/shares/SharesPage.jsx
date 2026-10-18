@@ -19,7 +19,6 @@ import {
 	PvTable,
 	pvMessage,
 } from "../../components/ui";
-import "../../vault-pixel.css";
 
 // Prepend the current origin to a relative URL returned by the backend.
 const absoluteUrl = (url) => {

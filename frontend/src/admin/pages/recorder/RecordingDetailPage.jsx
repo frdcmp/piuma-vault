@@ -8,7 +8,6 @@ import {
 import { formatDateTime } from "../../../utils/dateTime";
 import Starfield from "../../components/notes/Starfield";
 import { PvButton, PvPanel, pvMessage } from "../../components/ui";
-import "../../vault-pixel.css";
 import { colorForSpeaker } from "./speakerColors";
 import "./recorder.css";
 

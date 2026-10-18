@@ -7,7 +7,6 @@ import {
 import { formatDateTime } from "../../../utils/dateTime";
 import Starfield from "../../components/notes/Starfield";
 import { PvButton, PvPanel } from "../../components/ui";
-import "../../vault-pixel.css";
 import "./recorder.css";
 
 // Archive of recorded sessions — the list that used to live on the recorder

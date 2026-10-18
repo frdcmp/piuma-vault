@@ -16,7 +16,6 @@ import {
 import { useTokenUsage } from "../../../queries";
 import { PageContent } from "../../components/layout/PageLayout";
 import { PvButton } from "../../components/ui";
-import "../../vault-pixel.css";
 import "./token-usage.css";
 
 const { RangePicker } = DatePicker;

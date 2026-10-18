@@ -1,5 +1,4 @@
 import { Link } from "react-router-dom";
-import "../../../vault-pixel.css";
 
 /**
  * Pixel-style button built on the shared `.vp-btn` language.

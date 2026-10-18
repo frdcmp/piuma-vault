@@ -26,7 +26,6 @@ import { Link, useLocation } from "react-router-dom";
 import { Sprite, useSprite } from "../../../sprites";
 import SearchModal from "../search/SearchModal";
 import SupportModal from "../support/SupportModal";
-import "../../vault-pixel.css";
 import "./layout.css";
 
 const NAVIGATION = [

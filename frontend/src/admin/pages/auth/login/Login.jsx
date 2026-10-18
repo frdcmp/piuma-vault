@@ -9,7 +9,6 @@ import {
 } from "../../../../queries";
 import Starfield from "../../../components/notes/Starfield";
 import { LockGlyph, PvButton, PvCheckbox } from "../../../components/ui";
-import "../../../vault-pixel.css";
 import "../auth-chrome.css";
 
 const RESEND_COOLDOWN = 30; // seconds

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { recorderWsUrl } from "../../../api/recorder";
+import FloatingChat from "../../../chat/floating/FloatingChat";
 import {
 	useAppendRecording,
 	useCreateRecording,
@@ -9,8 +10,6 @@ import {
 } from "../../../queries";
 import Starfield from "../../components/notes/Starfield";
 import { PvButton, PvModal, pvMessage } from "../../components/ui";
-import "../../vault-pixel.css";
-import FloatingChat from "../../../chat/floating/FloatingChat";
 import BlackHole from "./BlackHole";
 import PixelWaveform from "./PixelWaveform";
 import { colorForSpeaker, resetSpeakerColors } from "./speakerColors";

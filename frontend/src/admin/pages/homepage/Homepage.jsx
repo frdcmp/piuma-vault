@@ -11,7 +11,6 @@ import {
 } from "@ant-design/icons";
 import { PageContent } from "../../components/layout/PageLayout";
 import { PvButton, PvPanel } from "../../components/ui";
-import "../../vault-pixel.css";
 import "./homepage.css";
 
 const FEATURES = [

@@ -10,7 +10,6 @@ import UserMenu from "../../../components/UserMenu";
 import { Sprite, useSprite } from "../../../sprites";
 import useUiStore, { SCREEN_MODES } from "../../../store/uiStore";
 import AppBreadcrumbs from "./Breadcrumbs";
-import "../../vault-pixel.css";
 import "./layout.css";
 
 const HeaderComponent = ({ onSidebarToggle, showSidebarToggle = false }) => {

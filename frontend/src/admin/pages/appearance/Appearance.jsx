@@ -17,7 +17,6 @@ import SpriteEditor, {
 } from "../../components/appearance/SpriteEditor";
 import { PageContent } from "../../components/layout/PageLayout";
 import { PvButton, PvModal, pvMessage } from "../../components/ui";
-import "../../vault-pixel.css";
 import "./appearance.css";
 
 const errMsg = (e, fallback) => e?.response?.data?.error || fallback;
@@ -107,9 +106,7 @@ export default function Appearance() {
 		const mutation = editing.isNew ? createSprite : updateSprite;
 		mutation.mutate(payload, {
 			onSuccess: () => {
-				pvMessage.success(
-					editing.isNew ? "Sprite created" : "Sprite saved",
-				);
+				pvMessage.success(editing.isNew ? "Sprite created" : "Sprite saved");
 				setEditing(null);
 			},
 			onError: (e) => pvMessage.error(errMsg(e, "Failed to save sprite")),

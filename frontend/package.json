@@ -6,8 +6,10 @@
   "type": "module",
   "scripts": {
     "prepare:pdfjs": "mkdir -p public/pdfjs && cp -R node_modules/pdfjs-dist/cmaps node_modules/pdfjs-dist/standard_fonts node_modules/pdfjs-dist/wasm public/pdfjs/",
-    "dev": "bun run prepare:pdfjs && vite",
-    "build": "bun run prepare:pdfjs && vite build",
+    "dev": "bun run prepare:pdfjs && bun run theme:build && vite",
+    "build": "bun run prepare:pdfjs && bun run theme:build && vite build",
+    "theme:build": "bun scripts/build-tokens.mjs",
+    "theme:lint": "bun scripts/lint-theme.mjs",
     "lint": "biome check .",
     "format": "biome format --write .",
     "preview": "vite preview"

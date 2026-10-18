@@ -7,7 +7,6 @@ import { useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useVerifyEmail } from "../../../../queries";
 import { PvButton } from "../../../components/ui";
-import "../../../vault-pixel.css";
 import "./verifyEmail.css";
 
 const VerifyEmail = () => {

@@ -1,5 +1,3 @@
-import "../../../vault-pixel.css";
-
 /**
  * Pixel-art expander toggle — a small square with a chunky 5-cell "plus" that
  * rotates 45° (into a "×") when expanded. An accent corner pixel lights up in

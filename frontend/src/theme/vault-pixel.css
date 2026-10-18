@@ -1,49 +1,14 @@
 /* =============================================================================
-   vault-pixel.css — shared pixel design system for the admin area.
-
-   All admin layout + pages opt into this language by living under a
-   `.vault-pixel` root (applied once on the app shell, and on full-screen auth
-   pages). The palette/tokens mirror the existing pixel components
-   (PvModal.css, Home.css) so everything stays consistent.
+   vault-pixel.css — the shared pixel utility classes (.vp-page, .vp-panel,
+   .vp-btn, .vp-input, .vp-tag …). Colours, fonts, radii and shadows come only
+   from the --vp-* tokens in tokens.css (generated from tokens.json): never put
+   a literal colour here.
 
    Usage from a page:
      <div className="vp-page"> ... </div>
      <section className="vp-panel"> <header className="vp-panel-bar">…</header> … </section>
-     <button className="vp-btn vp-btn--primary">…</button>
+   Prefer the components in @/ui (PvButton, PvPanel, PvInput …) over raw classes.
    ============================================================================= */
-
-/* Tokens are defined on :root (not just .vault-pixel) so they also resolve in
-   portaled DOM — AntD Drawer/Modal/Dropdown render outside the .vault-pixel
-   shell, and would otherwise fall back to black. */
-:root {
-	/* Surfaces */
-	--vp-bg: #14171c;
-	--vp-bg-soft: #15171c;
-	--vp-panel: #1b1e25;
-	--vp-panel-alt: #1f232b;
-
-	/* Lines */
-	--vp-border: #3a4150;
-	--vp-border-soft: #2a2f39;
-
-	/* Ink */
-	--vp-text: #d6dbe5;
-	--vp-muted: #8a93a3;
-	--vp-faint: #5b6373;
-
-	/* Accents */
-	--vp-accent: #f7c948; /* yellow — primary brand */
-	--vp-accent-2: #5cd0a9; /* green — confirm / success */
-	--vp-accent-3: #ff6b6b; /* red — danger */
-	--vp-accent-4: #6ab0ff; /* blue — info / links */
-
-	/* Pixel primitives */
-	--vp-shadow: 2px 2px 0 0 #000;
-	--vp-shadow-lg: 4px 4px 0 0 #000;
-	--vp-radius: 0px;
-	--vp-font:
-		"JetBrainsMono Nerd Font", "JetBrains Mono", "Courier New", monospace;
-}
 
 .vault-pixel {
 	color: var(--vp-text);
@@ -55,8 +20,15 @@
 .vp-scanlines {
 	background-color: var(--vp-bg);
 	background-image:
-		linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
-		linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+		linear-gradient(
+			color-mix(in srgb, var(--vp-highlight) 1.2%, transparent) 1px,
+			transparent 1px
+		),
+		linear-gradient(
+			90deg,
+			color-mix(in srgb, var(--vp-highlight) 1.2%, transparent) 1px,
+			transparent 1px
+		);
 	background-size: 8px 8px;
 }
 
@@ -90,7 +62,7 @@
 	letter-spacing: 1px;
 	text-transform: uppercase;
 	color: var(--vp-accent);
-	text-shadow: 2px 2px 0 #000;
+	text-shadow: 2px 2px 0 var(--vp-shadow-color);
 }
 
 .vp-page-subtitle {
@@ -113,12 +85,12 @@
 .vp-h1 {
 	font-size: 32px;
 	font-weight: 800;
-	text-shadow: 3px 3px 0 #000;
+	text-shadow: 3px 3px 0 var(--vp-shadow-color);
 }
 .vp-h2 {
 	font-size: 18px;
 	font-weight: 800;
-	text-shadow: 2px 2px 0 #000;
+	text-shadow: 2px 2px 0 var(--vp-shadow-color);
 }
 .vp-h3 {
 	font-size: 13px;
@@ -168,13 +140,13 @@
 	background: var(--vp-border);
 }
 .vp-dots span:nth-child(1) {
-	background: var(--vp-accent-3);
+	background: var(--vp-danger);
 }
 .vp-dots span:nth-child(2) {
 	background: var(--vp-accent);
 }
 .vp-dots span:nth-child(3) {
-	background: var(--vp-accent-2);
+	background: var(--vp-success);
 }
 
 .vp-panel-title {
@@ -267,7 +239,7 @@ a.vp-card:hover {
 }
 .vp-btn:active {
 	transform: translate(2px, 2px);
-	box-shadow: 0 0 0 0 #000;
+	box-shadow: 0 0 0 0 var(--vp-shadow-color);
 }
 .vp-btn:disabled {
 	opacity: 0.45;
@@ -278,22 +250,22 @@ a.vp-card:hover {
 	color: var(--vp-muted);
 }
 .vp-btn--primary {
-	color: var(--vp-accent-2);
-	border-color: var(--vp-accent-2);
+	color: var(--vp-success);
+	border-color: var(--vp-success);
 }
 .vp-btn--primary:hover {
-	background: var(--vp-accent-2);
-	color: var(--vp-bg);
-	border-color: var(--vp-accent-2);
+	background: var(--vp-success);
+	color: var(--vp-on-accent);
+	border-color: var(--vp-success);
 }
 .vp-btn--danger {
-	color: var(--vp-accent-3);
-	border-color: var(--vp-accent-3);
+	color: var(--vp-danger);
+	border-color: var(--vp-danger);
 }
 .vp-btn--danger:hover {
-	background: var(--vp-accent-3);
-	color: var(--vp-bg);
-	border-color: var(--vp-accent-3);
+	background: var(--vp-danger);
+	color: var(--vp-on-accent);
+	border-color: var(--vp-danger);
 }
 .vp-btn--accent {
 	color: var(--vp-accent);
@@ -301,7 +273,7 @@ a.vp-card:hover {
 }
 .vp-btn--accent:hover {
 	background: var(--vp-accent);
-	color: var(--vp-bg);
+	color: var(--vp-on-accent);
 	border-color: var(--vp-accent);
 }
 .vp-btn--ghost {
@@ -355,7 +327,8 @@ a.vp-card:hover {
 	width: 100%;
 	background: var(--vp-bg-soft);
 	border: 2px solid var(--vp-border);
-	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+	box-shadow: inset 0 0 0 1px
+		color-mix(in srgb, var(--vp-highlight) 2%, transparent);
 	color: var(--vp-text);
 	font-family: var(--vp-font);
 	font-size: 13px;
@@ -398,16 +371,16 @@ a.vp-card:hover {
 	border-color: var(--vp-accent);
 }
 .vp-tag--green {
-	color: var(--vp-accent-2);
-	border-color: var(--vp-accent-2);
+	color: var(--vp-success);
+	border-color: var(--vp-success);
 }
 .vp-tag--blue {
-	color: var(--vp-accent-4);
-	border-color: var(--vp-accent-4);
+	color: var(--vp-info);
+	border-color: var(--vp-info);
 }
 .vp-tag--red {
-	color: var(--vp-accent-3);
-	border-color: var(--vp-accent-3);
+	color: var(--vp-danger);
+	border-color: var(--vp-danger);
 }
 
 /* ---- Misc helpers ---------------------------------------------------------- */
@@ -437,9 +410,9 @@ a.vp-card:hover {
 	image-rendering: pixelated;
 }
 .vp-link {
-	color: var(--vp-accent-4);
+	color: var(--vp-info);
 	text-decoration: none;
-	border-bottom: 1px dotted var(--vp-accent-4);
+	border-bottom: 1px dotted var(--vp-info);
 	cursor: pointer;
 }
 .vp-link:hover {

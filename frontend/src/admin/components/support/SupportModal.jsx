@@ -1,6 +1,5 @@
 import { GithubOutlined } from "@ant-design/icons";
 import PvModal from "../ui/PvModal";
-import "../../vault-pixel.css";
 
 const supportOptions = [
 	{
@@ -14,12 +13,7 @@ const supportOptions = [
 
 const SupportModal = ({ open, onCancel }) => {
 	return (
-		<PvModal
-			open={open}
-			title="Support"
-			onCancel={onCancel}
-			cancelText="Close"
-		>
+		<PvModal open={open} title="Support" onCancel={onCancel} cancelText="Close">
 			<p className="vp-text vp-muted" style={{ marginTop: 0 }}>
 				Need help? Choose your preferred support channel below:
 			</p>

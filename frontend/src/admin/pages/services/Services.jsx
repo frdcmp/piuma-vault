@@ -16,7 +16,6 @@ import {
 } from "../../../queries";
 import { PageContent } from "../../components/layout/PageLayout";
 import { PvButton, PvModal, PvPanel, pvMessage } from "../../components/ui";
-import "../../vault-pixel.css";
 import "./services.css";
 import EmailAccounts from "./EmailAccounts";
 import McpServers from "./McpServers";

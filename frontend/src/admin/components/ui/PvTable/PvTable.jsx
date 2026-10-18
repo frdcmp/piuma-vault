@@ -1,4 +1,3 @@
-import "../../../vault-pixel.css";
 import "./PvTable.css";
 
 /**

@@ -5,7 +5,6 @@ import { VoiceIndicator } from "../../voice/VoiceProvider";
 import NavMenu from "../NavMenu/NavMenu";
 import NotificationBell from "../NotificationBell";
 import UserMenu from "../UserMenu";
-import "../../admin/vault-pixel.css";
 import "../../admin/components/layout/layout.css";
 import "./WorkspaceHeader.css";
 

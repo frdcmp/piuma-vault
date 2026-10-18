@@ -14,7 +14,6 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import "../../vault-pixel.css";
 import "./SearchModal.css";
 
 // Real navigation targets — mirrors the sidebar plus the other admin routes

@@ -39,7 +39,6 @@ import {
 	PvPopconfirm,
 	pvMessage,
 } from "../../components/ui";
-import "../../vault-pixel.css";
 import "./memory.css";
 
 const AGENT = "vault_agent";

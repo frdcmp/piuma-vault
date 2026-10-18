@@ -11,7 +11,6 @@ import {
 } from "@ant-design/icons";
 import { PageContent } from "../../components/layout/PageLayout";
 import { PvPanel } from "../../components/ui";
-import "../../vault-pixel.css";
 import "./about.css";
 
 const ARCHITECTURE = [

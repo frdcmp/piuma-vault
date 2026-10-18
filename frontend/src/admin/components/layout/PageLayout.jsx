@@ -2,7 +2,6 @@ import { Drawer } from "antd";
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import useUiStore, { SCREEN_MODES } from "../../../store/uiStore";
-import "../../vault-pixel.css";
 import "./layout.css";
 import HeaderComponent from "./Header";
 import Sidebar from "./Sidebar";

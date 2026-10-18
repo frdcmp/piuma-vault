@@ -9,7 +9,6 @@ import { Spin } from "antd";
 import { useGetHello } from "../../../queries";
 import { PageContent } from "../../components/layout/PageLayout";
 import { PvPanel } from "../../components/ui";
-import "../../vault-pixel.css";
 import "./apiTest.css";
 
 const METHOD_TAG_CLASSES = {

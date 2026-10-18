@@ -36,7 +36,6 @@ import {
 import { formatDate, timeAgo } from "../../../utils/dateTime";
 import { PageContent } from "../../components/layout/PageLayout";
 import { PvButton, PvPanel } from "../../components/ui";
-import "../../vault-pixel.css";
 import "./apiKeys.css";
 
 const SCOPE_OPTIONS = [

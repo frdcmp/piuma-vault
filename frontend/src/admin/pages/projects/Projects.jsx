@@ -11,7 +11,6 @@ import { Avatar, Segmented, Table, Tooltip } from "antd";
 import { useNavigate } from "react-router-dom";
 import { PageContent } from "../../components/layout/PageLayout";
 import { PvButton, PvPanel } from "../../components/ui";
-import "../../vault-pixel.css";
 import "./projects.css";
 
 /** Mini stat card — pixel vault style */
@@ -368,10 +367,7 @@ const Projects = () => {
 								},
 							]}
 						/>
-						<PvButton
-							icon={<ArrowLeftOutlined />}
-							onClick={() => navigate(-1)}
-						>
+						<PvButton icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
 							Back
 						</PvButton>
 					</div>

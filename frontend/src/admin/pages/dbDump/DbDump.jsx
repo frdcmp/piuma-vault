@@ -23,7 +23,6 @@ import {
 	PvTable,
 	pvMessage,
 } from "../../components/ui";
-import "../../vault-pixel.css";
 import "./dbDump.css";
 
 // Human-readable file size from a byte count.
