@@ -13,10 +13,11 @@
     <title>Piuma Vault</title>
     <!-- Paint the last-used theme before CSS loads (ThemeSync then applies the saved one). -->
     <script>
+      var theme = null;
       try {
-        var t = localStorage.getItem("pv-theme");
-        if (t) document.documentElement.dataset.theme = t;
-      } catch (e) {}
+        theme = localStorage.getItem("pv-theme");
+      } catch (_e) {}
+      if (theme) document.documentElement.dataset.theme = theme;
     </script>
   </head>
   <body>
