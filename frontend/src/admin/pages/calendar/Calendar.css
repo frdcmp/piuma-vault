@@ -221,6 +221,12 @@
 	border-left-color: var(--vp-info);
 }
 
+/* Later days of a multi-day event: same pill, dashed edge to read as a continuation. */
+.cal-pill--event.is-continued {
+	border-left-style: dashed;
+	opacity: 0.85;
+}
+
 .cal-pill--task {
 	border-left-color: var(--vp-success);
 }

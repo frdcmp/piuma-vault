@@ -55,6 +55,18 @@ const SCOPE_OPTIONS = [
 			"Full access to Bunny storage: list, upload, download, and delete files and folders",
 	},
 	{
+		label: "Tasks (read)",
+		value: "tasks.read",
+		description:
+			"Read-only: list and view tasks & recurring tasks (desktop/agent clients)",
+	},
+	{
+		label: "Calendar (read)",
+		value: "calendar.read",
+		description:
+			"Read-only: list and view calendar events (desktop/agent clients)",
+	},
+	{
 		label: "Tasks",
 		value: "tasks.manage",
 		description:

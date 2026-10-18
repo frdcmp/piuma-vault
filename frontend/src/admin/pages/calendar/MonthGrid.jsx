@@ -80,12 +80,14 @@ const MonthBlock = forwardRef(function MonthBlock(
 									<button
 										type="button"
 										key={ev.id}
-										className="cal-pill cal-pill--event"
+										className={`cal-pill cal-pill--event${ev.continues ? " is-continued" : ""}`}
 										style={ev.color ? { borderLeftColor: ev.color } : undefined}
 										onClick={() => onEventClick(ev)}
 										title={ev.title}
 									>
-										{!ev.all_day ? (
+										{ev.continues ? (
+											<span className="cal-pill-time">→</span>
+										) : !ev.all_day ? (
 											<span className="cal-pill-time">
 												{formatTime(ev.starts_at)}
 											</span>

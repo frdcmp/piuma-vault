@@ -11,7 +11,9 @@
 //! resources just declare a zero-sized marker implementing [`Resource`].
 
 use crate::apps::auth::middleware::Auth;
-use actix_web::{web, HttpRequest, HttpResponse, Responder};
+use crate::apps::auth::models::AuthenticatedUser;
+use actix_web::dev::Payload;
+use actix_web::{web, FromRequest, HttpRequest, HttpResponse, Responder};
 use futures::stream::unfold;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -91,37 +93,26 @@ pub struct SseAuthQuery {
     token: Option<String>,
 }
 
-// Browser EventSource can't send an Authorization header, so this endpoint also
-// accepts the JWT via `?token=`. Native clients (mobile) send `Authorization:
-// Bearer <jwt>` instead, keeping tokens out of URLs and access logs.
-fn extract_token(req: &HttpRequest, query: &SseAuthQuery) -> Option<String> {
-    let header_token = req
-        .headers()
-        .get("Authorization")
-        .and_then(|h| h.to_str().ok())
-        .and_then(|s| {
-            let s = s.trim();
-            if s.len() > 7 && s[..7].eq_ignore_ascii_case("Bearer ") {
-                Some(s[7..].to_string())
-            } else {
-                None
-            }
-        });
-    header_token.or_else(|| query.token.clone())
+// Browser EventSource can't send headers, so the JWT may also ride in `?token=`.
+// Everything else goes through the normal `AuthenticatedUser` extractor: a Bearer
+// JWT (mobile) or an `x-api-key` (desktop clients such as decashell), so a key
+// scoped to a resource can follow its stream too. Only `{action, id}` is streamed,
+// so any authenticated principal may listen.
+async fn authorized(req: &HttpRequest, query: &SseAuthQuery) -> bool {
+    if AuthenticatedUser::from_request(req, &mut Payload::None).await.is_ok() {
+        return true;
+    }
+    query.token.as_deref().is_some_and(|t| Auth::validate_token(t).is_ok())
 }
 
-/// SSE endpoint for one resource kind. Validates the JWT, then streams
+/// SSE endpoint for one resource kind. Authenticates the caller, then streams
 /// `event: <R::EVENT>` frames plus a `: ping` heartbeat.
 pub async fn event_stream<R: Resource>(
     req: HttpRequest,
     query: web::Query<SseAuthQuery>,
     bus: web::Data<ResourceEventBus<R>>,
 ) -> impl Responder {
-    let token = match extract_token(&req, &query) {
-        Some(t) => t,
-        None => return HttpResponse::Unauthorized().finish(),
-    };
-    if Auth::validate_token(&token).is_err() {
+    if !authorized(&req, &query).await {
         return HttpResponse::Unauthorized().finish();
     }
 
