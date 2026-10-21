@@ -21,18 +21,22 @@ export const calendarKeys = {
 // ── Surgical cache reconciliation ─────────────────────────────────────────────
 //
 // Calendar queries are keyed by visible range (from, to, tag) and hold a flat,
-// starts_at-ordered array of events (the client expands recurring *tasks*, not
-// event rrules, so each event is a single row). Rather than refetch every loaded
+// starts_at-ordered array of events (one row per event; the calendar page
+// expands a recurring event's rrule into its occurrences). Rather than refetch every loaded
 // range on a change, patch the affected ranges in place from a fresh event row.
 const byStartsAt = (a, b) => new Date(a.starts_at) - new Date(b.starts_at);
 
 // Does `event` fall in a range cache keyed by (from, to, tag)? Mirrors the
-// server's overlap test: starts before the window ends, ends at/after it begins.
+// server's overlap test: starts before the window ends, and ends at/after it
+// begins — or recurs, so a later occurrence can land in the window.
 const eventInRange = (event, from, to, tag) => {
 	if (tag && !(event.tags ?? []).includes(tag)) return false;
 	const s = new Date(event.starts_at).getTime();
 	const e = new Date(event.ends_at ?? event.starts_at).getTime();
-	return s < new Date(to).getTime() && e >= new Date(from).getTime();
+	return (
+		s < new Date(to).getTime() &&
+		(Boolean(event.rrule) || e >= new Date(from).getTime())
+	);
 };
 
 // Patch a fresh event row into every loaded range cache + its detail entry.

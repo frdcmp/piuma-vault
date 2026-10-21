@@ -35,8 +35,6 @@ import MonthBlock from "./MonthGrid";
 
 const ALL = { key: "all", names: null, label: "All" };
 
-const KEY = (d) => d.format("YYYY-MM-DD");
-
 // Last local day an event occupies. An end exactly at midnight means "through the
 // previous day" (22:00→00:00 must not spill over), hence the 1 ms step back; an end
 // before the start (or none) keeps the event on its start day.
@@ -59,10 +57,11 @@ const EDGE = 800;
  * Continuous month calendar (pixel/terminal aesthetic), mirroring the mobile
  * agenda: an infinite vertical scroll of month blocks. The visible window grows
  * in both directions as you scroll, and the events query range follows it so
- * data is lazy-loaded per window. Three layers per day, all bucketed in the
- * user's LOCAL timezone:
- *   - events (db_calendar_events) on their start day
- *   - one-off tasks with a due_at (deadline pills)
+ * data is lazy-loaded per window. Three kinds of chips, all placed on the
+ * user's LOCAL days:
+ *   - events (db_calendar_events) across the days they span; recurring events
+ *     expanded client-side from their rrule
+ *   - one-off tasks with a due_at (deadline chips)
  *   - recurring-task occurrences (expanded client-side from rrule templates)
  */
 export default function CalendarPage() {
@@ -105,7 +104,7 @@ export default function CalendarPage() {
 		return arr;
 	}, [base, past, future]);
 
-	// Window bounds (memoised so byDay's deps stay stable across renders).
+	// Window bounds (memoised so the items' deps stay stable across renders).
 	const rangeStart = useMemo(() => months[0].startOf("month"), [months]);
 	const rangeEnd = useMemo(
 		() => months[months.length - 1].endOf("month"),
@@ -159,37 +158,63 @@ export default function CalendarPage() {
 		return m;
 	}, [tasks]);
 
-	// Bucket everything into local day cells across the whole visible window.
-	const byDay = useMemo(() => {
-		const map = new Map();
-		const bucket = (key) => {
-			if (!map.has(key))
-				map.set(key, { events: [], deadlines: [], occurrences: [] });
-			return map.get(key);
-		};
-
+	// Everything the grid shows, as chips over local days: events (recurring
+	// ones expanded into each occurrence in the window, keeping their length),
+	// one-off task deadlines and recurring-task occurrences. MonthBlock lays them
+	// out per week.
+	const items = useMemo(() => {
 		// Bucket/tag filter: null names = show everything, else require an overlap
 		// with the selection (applied uniformly to events, deadlines, occurrences).
 		const matches = (t) => !sel.names || t?.some((n) => sel.names.includes(n));
-
+		const out = [];
+		const pushEvent = (ev, start, end) => {
+			const first = start.startOf("day");
+			const last = end ? lastDayOf({ ends_at: end }, first) : first;
+			out.push({
+				key: `e-${ev.id}-${start.valueOf()}`,
+				kind: ev.all_day || last.isAfter(first) ? "bar" : "timed",
+				first,
+				last,
+				at: start.valueOf(),
+				start,
+				ev,
+			});
+		};
 		for (const ev of events) {
 			if (!matches(ev.tags)) continue;
-			// A multi-day event sits in every day it spans (clamped to the window).
-			// Days after the first carry `continues` so cells show "→" instead of
-			// repeating the start time.
-			const first = dayjs(ev.starts_at).startOf("day");
-			const last = lastDayOf(ev, first);
-			let d = first.isBefore(rangeStart) ? rangeStart.startOf("day") : first;
-			for (; !d.isAfter(last) && !d.isAfter(rangeEnd); d = d.add(1, "day")) {
-				bucket(KEY(d)).events.push(
-					d.isSame(first) ? ev : { ...ev, continues: true },
-				);
+			const start = dayjs(ev.starts_at);
+			const end = ev.ends_at ? dayjs(ev.ends_at) : null;
+			if (!ev.rrule) {
+				pushEvent(ev, start, end);
+				continue;
+			}
+			const length = end ? end.diff(start) : 0;
+			const occs = expandRecurrence({
+				rrule: ev.rrule,
+				dtstart: ev.starts_at,
+				rangeStart,
+				rangeEnd,
+			});
+			for (const occ of occs) {
+				pushEvent(ev, occ.at, end ? occ.at.add(length, "millisecond") : null);
 			}
 		}
+		const now = dayjs();
 		for (const t of tasks) {
 			if (t.recurrence_id) continue; // materialized occurrences handled below
-			if (t.due_at && matches(t.tags))
-				bucket(KEY(dayjs(t.due_at))).deadlines.push(t);
+			if (!t.due_at || !matches(t.tags)) continue;
+			const due = dayjs(t.due_at);
+			out.push({
+				key: `t-${t.id}`,
+				kind: "task",
+				first: due.startOf("day"),
+				last: due.startOf("day"),
+				at: due.valueOf(),
+				title: t.title,
+				done: t.done,
+				overdue: !t.done && due.isBefore(now),
+				task: t,
+			});
 		}
 		for (const tpl of recurring) {
 			if (!tpl.active) continue;
@@ -202,15 +227,25 @@ export default function CalendarPage() {
 				until: tpl.until,
 			});
 			for (const occ of occs) {
-				const done = materialized.has(`${tpl.id}|${occ.date}`);
-				bucket(occ.date).occurrences.push({
+				const occurrence = {
 					template: tpl,
 					date: occ.date,
-					done,
+					done: materialized.has(`${tpl.id}|${occ.date}`),
+				};
+				out.push({
+					key: `r-${tpl.id}-${occ.date}`,
+					kind: "task",
+					first: occ.at.startOf("day"),
+					last: occ.at.startOf("day"),
+					at: occ.at.valueOf(),
+					title: tpl.title,
+					done: occurrence.done,
+					recurring: true,
+					occurrence,
 				});
 			}
 		}
-		return map;
+		return out;
 	}, [events, tasks, recurring, materialized, rangeStart, rangeEnd, sel.names]);
 
 	// Grow the window when scrolling near either edge. A single `busy` latch
@@ -261,14 +296,19 @@ export default function CalendarPage() {
 	useEffect(() => {
 		const el = scrollRef.current;
 		if (!el) return;
+		// The observer only says *when* a block crossed the top sliver; the label
+		// is the last month whose top is at or above the container's content top, read
+		// from the layout (an intersection test alone lets the month above win
+		// when its bottom edge sits a sub-pixel inside the zone).
 		const io = new IntersectionObserver(
-			(entries) => {
-				const top = entries
-					.filter((e) => e.isIntersecting)
-					.sort(
-						(a, b) => a.boundingClientRect.top - b.boundingClientRect.top,
-					)[0];
-				if (top) setVisibleLabel(top.target.dataset.label);
+			() => {
+				const top = el.getBoundingClientRect().top + el.clientTop + 1;
+				let label = null;
+				for (const block of el.querySelectorAll(".cal-month")) {
+					if (block.getBoundingClientRect().top > top) break;
+					label = block.dataset.label;
+				}
+				if (label) setVisibleLabel(label);
 			},
 			// Active zone = the top sliver of the scroll container.
 			{ root: el, rootMargin: "0px 0px -85% 0px", threshold: 0 },
@@ -386,8 +426,7 @@ export default function CalendarPage() {
 						key={m.format("YYYY-MM")}
 						ref={m.isSame(base, "month") ? todayBlockRef : undefined}
 						month={m}
-						byDay={byDay}
-						keyOf={KEY}
+						items={items}
 						onEventClick={(ev) => setModal({ event: ev })}
 						onDayClick={(d) => setModal({ date: d })}
 						onDeadlineClick={(t) => setTaskModal({ task: t })}

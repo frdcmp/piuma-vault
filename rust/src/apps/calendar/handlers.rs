@@ -93,10 +93,13 @@ pub async fn list_events(
     }
 
     // Overlap test: an event is visible if it starts before the window ends and
-    // ends (or starts, if open-ended) at/after the window begins.
+    // ends (or starts, if open-ended) at/after the window begins. A recurring
+    // event that started earlier is returned too — the client expands its rrule,
+    // and a later occurrence may fall in the window.
     let mut sql = format!(
         "SELECT {EVENT_FIELDS} FROM db_calendar_events \
-         WHERE user_id = $1 AND starts_at < $2 AND COALESCE(ends_at, starts_at) >= $3"
+         WHERE user_id = $1 AND starts_at < $2 \
+           AND (COALESCE(ends_at, starts_at) >= $3 OR rrule IS NOT NULL)"
     );
     if query.tag.is_some() {
         sql.push_str(

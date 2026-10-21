@@ -108,32 +108,28 @@
 	border-bottom: 1px solid var(--vp-border-soft);
 }
 
+/* One week: a 7-column grid. Row 1 is the day numbers, then one row per chip
+   lane (set inline by MonthGrid), then the filler. The day cells span every
+   row as the clickable background; the chips sit on top of them. */
 .cal-week {
+	--cal-num-h: 24px;
+	--cal-lane-h: 20px;
 	display: grid;
-	grid-template-columns: repeat(7, 1fr);
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	row-gap: 2px;
+	min-height: 104px;
+	padding-bottom: 4px;
+	border-bottom: 1px solid var(--vp-border-soft);
 }
 
 .cal-cell {
 	/* Containing block for the day button's full-cell ::after hit area. */
 	position: relative;
-	min-height: 96px;
-	/* Grid items default to min-width:auto, so a long no-wrap pill would force
-	   its column wider than 1fr (blowing out the equal 7-column layout). Pin
-	   min-width:0 + clip so pills truncate inside the cell instead. */
-	min-width: 0;
-	overflow: hidden;
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	gap: 3px;
-	padding: 4px;
+	/* Reach under the week's bottom padding so the grid lines meet. */
+	margin-bottom: -4px;
 	border-right: 1px solid var(--vp-border-soft);
-	border-bottom: 1px solid var(--vp-border-soft);
 	background: transparent;
-	text-align: left;
 	cursor: pointer;
-	color: inherit;
-	font: inherit;
 }
 
 .cal-cell:hover {
@@ -164,17 +160,17 @@
 
 /* The day number is the cell's "add event" button (strip native chrome); its
    ::after stretches over the whole cell so clicking empty space opens the day.
-   Pills are positioned above it, so they stay separately clickable. */
+   Chips are positioned above it, so they stay separately clickable. */
 .cal-daynum {
 	appearance: none;
 	background: none;
 	border: none;
-	padding: 0;
-	margin: 0;
+	margin: 5px 0 0 6px;
+	padding: 0 4px;
 	font: inherit;
 	font-size: 0.72rem;
+	line-height: 16px;
 	color: var(--vp-muted);
-	align-self: flex-start;
 	cursor: pointer;
 }
 
@@ -187,68 +183,98 @@
 .cal-cell.is-today .cal-daynum {
 	background: var(--vp-accent);
 	color: var(--vp-on-accent);
-	border-radius: 4px;
-	padding: 0 5px;
+	font-weight: 700;
 }
 
-/* Pills */
-.cal-pill {
+/* Chips — one per event / task, spanning its columns of the week grid. */
+.cal-chip {
 	position: relative;
 	z-index: 1;
 	display: flex;
 	align-items: center;
-	gap: 4px;
-	width: 100%;
+	gap: 5px;
+	min-width: 0;
+	margin: 0 3px;
+	padding: 0 6px;
 	border: none;
-	border-left: 3px solid var(--vp-info);
-	background: var(--vp-bg-soft);
+	background: none;
 	color: var(--vp-text);
 	font: inherit;
 	font-size: 0.68rem;
-	padding: 2px 5px;
-	border-radius: 3px;
-	cursor: pointer;
-	overflow: hidden;
+	line-height: 1;
+	text-align: left;
 	white-space: nowrap;
-	min-width: 0;
+	overflow: hidden;
+	cursor: pointer;
 }
 
-.cal-pill:hover {
-	filter: brightness(1.25);
+.cal-chip:hover {
+	filter: brightness(1.2);
 }
 
-.cal-pill--event {
-	border-left-color: var(--vp-info);
+/* All-day and multi-day events: a filled bar in the event's colour, flush to
+   the cell edge where it carries on into the next / previous week. */
+.cal-chip--bar {
+	color: var(--vp-on-accent);
+	font-weight: 700;
 }
 
-/* Later days of a multi-day event: same pill, dashed edge to read as a continuation. */
-.cal-pill--event.is-continued {
-	border-left-style: dashed;
-	opacity: 0.85;
+.cal-chip--bar.cont-before {
+	margin-left: 0;
 }
 
-.cal-pill--task {
-	border-left-color: var(--vp-success);
+.cal-chip--bar.cont-after {
+	margin-right: 0;
 }
 
-.cal-pill.is-done {
-	opacity: 0.55;
+.cal-chip--timed:hover,
+.cal-chip--task:hover {
+	filter: none;
+	background: var(--vp-panel);
 }
 
-.cal-pill-time {
+.cal-chip-mark {
+	flex: 0 0 auto;
+	width: 6px;
+	height: 6px;
+}
+
+.cal-chip-time {
+	flex: 0 0 auto;
 	color: var(--vp-muted);
 	font-size: 0.62rem;
-	flex: 0 0 auto;
 }
 
-.cal-pill-label {
+.cal-chip-label {
 	flex: 1 1 auto;
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
-.cal-pill.is-done .cal-pill-label {
+/* Tasks: an outlined chip with its checkbox — warning when due, danger when
+   overdue, success for a recurring task's occurrence. */
+.cal-chip--task {
+	--cal-task: var(--vp-warning);
+	padding-left: 4px;
+	box-shadow: inset 0 0 0 1px var(--cal-task);
+	color: var(--cal-task);
+	cursor: default;
+}
+
+.cal-chip--task.is-overdue {
+	--cal-task: var(--vp-danger);
+}
+
+.cal-chip--task.is-recurring {
+	--cal-task: var(--vp-success);
+}
+
+.cal-chip--task.is-done {
+	opacity: 0.55;
+}
+
+.cal-chip--task.is-done .cal-chip-label {
 	text-decoration: line-through;
 }
 
@@ -281,7 +307,7 @@
 	/* Above the open button's full-pill ::after. */
 	position: relative;
 	z-index: 1;
-	color: var(--vp-success);
+	color: var(--cal-task);
 	flex: 0 0 auto;
 	/* Rendered as a <button> so only the checkbox toggles done (the rest of the
 	   pill opens the editor); strip the native button chrome. */
@@ -365,10 +391,10 @@
 }
 
 @media (max-width: 640px) {
-	.cal-cell {
+	.cal-week {
 		min-height: 72px;
 	}
-	.cal-pill-label {
+	.cal-chip-time {
 		display: none;
 	}
 }
