@@ -21,28 +21,38 @@ Piuma Vault is a personal workspace you run on your own server. It keeps your no
 <table>
   <tr>
     <td colspan="2" valign="top">
-      <img src="docs/screenshots/chat.png" alt="Chat: the assistant looks up the agenda and searches notes, then summarises the week" />
-      <p><b>Chat.</b> This is the main way to use the vault. The assistant looks things up in your agenda, notes, tasks, files, recordings and memory, and it can search the web. It answers from what it finds and can make changes for you. Each conversation keeps its history and can use a different model. It works with Anthropic, OpenAI, Gemini, DeepSeek, Minimax or a model running on your own machine.</p>
+      <img src="docs/screenshots/chat-actions.png" alt="Chat: the assistant creates two tasks, a calendar event and a note, links to each one and offers a button to open the note" />
+      <p><b>Chat.</b> This is the main way to use the vault. The assistant is connected to everything in it, so you can ask in plain words and it does the work: here it adds two tasks, puts an event in the calendar and writes a note, then links to each one. Click a link to open that note, task or event. It works with Anthropic, OpenAI, Gemini, DeepSeek, Minimax or a model running on your own machine, and each conversation can use a different one.</p>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/workspace.png" alt="Workspace: the notes tree, an open note and the assistant docked beside it" />
-      <p><b>Workspace.</b> You can dock the assistant next to the note you are working on. It reads that note before it answers.</p>
+      <img src="docs/screenshots/chat.png" alt="Chat: the assistant looks up the agenda and searches notes, then summarises the week" />
+      <p><b>Planning.</b> Ask what your week looks like and it reads your calendar, tasks and notes before it answers, so the plan uses what you already wrote down.</p>
     </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/workspace.png" alt="Workspace: the note the assistant just wrote, open next to the chat that wrote it" />
+      <p><b>Workspace.</b> Dock the assistant next to what you are working on. Here the note it just wrote is open beside the chat. It reads the open note before it answers.</p>
+    </td>
+  </tr>
+  <tr>
     <td width="50%" valign="top">
       <img src="docs/screenshots/notes.png" alt="Notes: a folder tree and a note with a table, a diagram and a code block" />
       <p><b>Notes.</b> Markdown notes in folders, with tags and version history. Tables, Mermaid diagrams and code blocks render in place. Any note can be shared at a public link.</p>
     </td>
-  </tr>
-  <tr>
     <td width="50%" valign="top">
       <img src="docs/screenshots/calendar.png" alt="Calendar: a month grid with multi-day bars, timed events and tasks" />
       <p><b>Calendar.</b> A month view that scrolls through the year. An event that lasts several days is one bar across those days. Recurring events and tasks show on every day they happen, and you can tick tasks off from the grid.</p>
     </td>
+  </tr>
+  <tr>
     <td width="50%" valign="top">
       <img src="docs/screenshots/tasks.png" alt="Tasks: overdue, due today and upcoming tasks" />
       <p><b>Tasks.</b> Overdue, today and upcoming tasks on one page. Tasks can have a bucket, tags, a priority, a repeat rule and reminders.</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/storage.png" alt="Storage: a file tree and a folder of files" />
+      <p><b>Storage.</b> A file browser on top of your own S3 bucket (Bunny, Cloudflare R2, AWS S3, MinIO and others). You can make folders, upload, preview files and share a folder at a public link.</p>
     </td>
   </tr>
   <tr>
@@ -61,12 +71,6 @@ Piuma Vault is a personal workspace you run on your own server. It keeps your no
       <p><b>Voice.</b> Talk to the assistant out loud. Press <kbd>Ctrl</kbd> + <kbd>Space</kbd> anywhere in the app to start or stop.</p>
     </td>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/storage.png" alt="Storage: a file tree and a folder of files" />
-      <p><b>Storage.</b> A file browser on top of your own S3 bucket (Bunny, Cloudflare R2, AWS S3, MinIO and others). You can make folders, upload, preview files and share a folder at a public link.</p>
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2" valign="top">
       <img src="docs/screenshots/memory.png" alt="Memory: the facts the assistant has saved, confirmed and pending" />
       <p><b>Memory.</b> This page shows what the assistant remembers about you, and you can edit it. There is a short profile it always sees, a list of facts it looks up when they are relevant, and a search over past conversations. Facts it guesses on its own stay marked as pending until you or later conversations confirm them.</p>
     </td>
@@ -81,9 +85,30 @@ Piuma Vault is a personal workspace you run on your own server. It keeps your no
 
 ## Features
 
-### Assistant and memory
+### An assistant connected to the whole vault
 
-You connect the AI providers you want (Anthropic, OpenAI, Gemini, DeepSeek and others) and chat with an assistant that remembers you between conversations. Its memory has three layers.
+The assistant is wired into every part of the vault. It can read, create, edit and delete things for you, the same way you would by hand. It has more than 80 tools:
+
+* Notes: search by words or meaning, read, create, edit, append, move and delete, and browse folders and tags.
+* Tasks: create, update, complete and delete tasks and recurring tasks, and manage buckets.
+* Calendar: create, move and delete events, and read a combined agenda of events and tasks.
+* Files: list, move and delete files in your bucket, make download links and zip folders.
+* Shares, recordings and its own memory.
+* Outside the vault: web search, reading web pages, sending and reading email, GitHub (read code, open issues and pull requests) and image generation.
+
+When it mentions a note, task or event it links to it, and when you ask to be taken somewhere it shows a Go button. Type `/` in the chat for commands such as `/agenda`, `/todos` (pull action items out of a note) and `/summarize`, and add your own per agent. You can attach notes to a message so it works from them.
+
+It can also work while you are away. On the Scheduled page you give it a prompt and a repeat rule, for example a morning briefing at 07:00 or a weekly review every Sunday. It runs on its own with the same tools and posts the result to the notification bell, with a push notification to your browser or phone.
+
+It also connects to other tools:
+
+* Connect MCP servers on the Services page to give the assistant more tools.
+* Create API keys limited to what a script or another app needs, such as read-only notes or write access to tasks.
+* The repo includes a [Claude Code skill](skills/piuma-vault/SKILL.md) that lets Claude Code read and change your notes, tasks and calendar from the terminal.
+
+### Memory
+
+The assistant remembers you between conversations. Its memory has three layers.
 
 * L1 is a short profile and scratchpad that goes into every prompt.
 * L2 is a list of single facts stored with vector embeddings. The assistant pulls in the ones that match the current conversation. Every few turns it also reads recent chats and writes down facts it thinks are true. Those start as pending and become confirmed when you approve them or when they come up again.
