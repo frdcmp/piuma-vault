@@ -54,7 +54,9 @@ def api(method, path, body=None):
         base + path,
         method=method,
         data=None if body is None else json.dumps(body).encode(),
-        headers={"x-api-key": key, "Content-Type": "application/json"},
+        # Cloudflare in front of the vault rejects Python's default User-Agent
+        # (error 1010), so name the client.
+        headers={"x-api-key": key, "Content-Type": "application/json", "User-Agent": "piuma-sprites/1.0"},
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as res:
@@ -66,8 +68,8 @@ def api(method, path, body=None):
             msg = json.loads(msg).get("error", msg)
         except (ValueError, AttributeError):
             pass
-        if e.code == 403:
-            msg += " (the API key needs the sprites.manage scope)"
+        if e.code == 403 and "sprites.manage" in str(msg):
+            msg += " (add the Sprites scope to the API key)"
         sys.exit(f"sprite: HTTP {e.code} on {method} {path}: {msg}")
 
 
