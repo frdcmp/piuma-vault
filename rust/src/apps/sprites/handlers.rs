@@ -17,9 +17,14 @@ pub const ACTIVE_KEY: &str = "active_sprite";
 /// Fallback mascot when nothing is selected yet.
 pub const DEFAULT_KEY: &str = "piuma";
 
-fn forbidden() -> HttpResponse {
+/// Scope an API key needs to list, create, edit, delete and activate sprites
+/// (`admin_access` passes too). AI generation stays admin-only: it spends LLM
+/// tokens, so a sprites key must not reach it.
+pub const SPRITES_SCOPE: &str = "sprites.manage";
+
+fn forbidden(scope: &str) -> HttpResponse {
     HttpResponse::Forbidden().json(ErrorResponse {
-        error: "Admin access required".to_string(),
+        error: format!("Requires {scope}"),
     })
 }
 
@@ -78,8 +83,8 @@ pub async fn get_active(pool: web::Data<DbPool>) -> impl Responder {
 // ── Admin: list ──
 
 pub async fn list_sprites(user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, SPRITES_SCOPE) {
+        return forbidden(SPRITES_SCOPE);
     }
     let active = active_key(pool.get_ref()).await;
     let rows = sqlx::query_as::<_, SpriteRow>(
@@ -121,7 +126,7 @@ pub async fn generate_sprite(
     body: web::Json<GenerateSpriteRequest>,
 ) -> impl Responder {
     if !check_permission(&user, "admin_access") {
-        return forbidden();
+        return forbidden("admin_access");
     }
     let req = body.into_inner();
     let key = req.key.trim().to_lowercase();
@@ -220,8 +225,8 @@ pub async fn create_sprite(
     pool: web::Data<DbPool>,
     body: web::Json<CreateSpriteRequest>,
 ) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, SPRITES_SCOPE) {
+        return forbidden(SPRITES_SCOPE);
     }
     let req = body.into_inner();
     let key = req.key.trim().to_lowercase();
@@ -276,8 +281,8 @@ pub async fn update_sprite(
     path: web::Path<String>,
     body: web::Json<UpdateSpriteRequest>,
 ) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, SPRITES_SCOPE) {
+        return forbidden(SPRITES_SCOPE);
     }
     let key = path.into_inner();
     let req = body.into_inner();
@@ -341,8 +346,8 @@ pub async fn delete_sprite(
     pool: web::Data<DbPool>,
     path: web::Path<String>,
 ) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, SPRITES_SCOPE) {
+        return forbidden(SPRITES_SCOPE);
     }
     let key = path.into_inner();
     if key == active_key(pool.get_ref()).await {
@@ -370,8 +375,8 @@ pub async fn set_active(
     pool: web::Data<DbPool>,
     body: web::Json<SetActiveRequest>,
 ) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, SPRITES_SCOPE) {
+        return forbidden(SPRITES_SCOPE);
     }
     let key = body.into_inner().key;
     let exists = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM sprites WHERE key = $1)")

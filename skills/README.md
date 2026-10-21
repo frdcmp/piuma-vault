@@ -6,9 +6,10 @@ they describe.
 | Skill | What it covers |
 |---|---|
 | [`piuma-vault`](piuma-vault/SKILL.md) | Driving the running vault over its admin API — notes, tasks, recurring tasks, buckets, calendar events and the merged agenda — via `scripts/vault.sh` and `scripts/agenda.py`. |
+| [`piuma-sprites`](piuma-sprites/SKILL.md) | Designing, previewing and uploading the pixel mascot sprites via `scripts/sprite.py` (needs an API key with the `sprites.manage` scope). |
 
-**In a checkout there is nothing to install.** `.claude/skills/piuma-vault` is a symlink
-committed alongside these files, pointing back at `skills/piuma-vault`, so Claude Code
+**In a checkout there is nothing to install.** each `.claude/skills/<name>` is a symlink
+committed alongside these files, pointing back at `skills/<name>`, so Claude Code
 picks the skill up in this project as soon as you clone or pull — no setup step to forget
 on a second machine.
 

@@ -1,0 +1,32 @@
+{
+ "key": "fox",
+ "name": "Volpe",
+ "definition": {
+  "palette": {"B":"#e07b2e","D":"#9c4a18","W":"#f6eadb","E":"#2a1d14","N":"#2a1d14"},
+  "body": [
+   ".D...D..........",
+   ".BD.DB..........",
+   ".BBBBB......DD..",
+   "BEBBBEB....DBBD.",
+   "BWBBBWB...DBBBB.",
+   "BWWNWWBBBBBBBBB.",
+   ".BWWWBBBBBBBBBW.",
+   "...BBBBBBBBBBWW.",
+   "...BWWWWBBBBB...",
+   "...BWWWWBBBBB..."
+  ],
+  "idleLegs": ["...D.D....D.D...","...D.D....D.D..."],
+  "walkLegs": [
+   ["...D.D....D.D...","..D...D..D...D.."],
+   ["...D.D....D.D...","...D.D....D.D..."],
+   ["....DD....DD....","....DD....DD...."],
+   ["...D.D....D.D...","...D.D....D.D..."]
+  ],
+  "walkFrameMs": 120,
+  "gallopLegs": [
+   ["...DD......DD...","..D..........D.."],
+   ["....DD...DD.....",".....D...D......"]
+  ],
+  "gallopFrameMs": 140
+ }
+}

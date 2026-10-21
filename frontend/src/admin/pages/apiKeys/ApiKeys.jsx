@@ -85,6 +85,12 @@ const SCOPE_OPTIONS = [
 			"Hold conversations and run chat turns. A turn runs the agent's tools, so it can write notes, tasks and events whatever the key's other scopes",
 	},
 	{
+		label: "Sprites",
+		value: "sprites.manage",
+		description:
+			"List, create, edit, delete and activate mascot sprites (not AI generation)",
+	},
+	{
 		label: "Notifications",
 		value: "notifications",
 		description:
@@ -99,6 +105,7 @@ const SCOPE_TAG_CLASSES = {
 	"tasks.manage": "vp-tag--blue",
 	"calendar.manage": "vp-tag--green",
 	"agents.chat": "vp-tag--accent",
+	"sprites.manage": "vp-tag--green",
 	notifications: "vp-tag--blue",
 };
 
@@ -111,6 +118,7 @@ const SCOPE_LABELS = {
 	"tasks.read": "Tasks (read)",
 	"calendar.read": "Calendar (read)",
 	"agents.chat": "Agents (chat)",
+	"sprites.manage": "Sprites",
 	notifications: "Notifications",
 };
 
