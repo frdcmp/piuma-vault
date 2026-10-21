@@ -25,6 +25,10 @@ from pathlib import Path
 
 CONFIG_FILE = Path(os.environ.get("VAULT_CONFIG", Path.home() / ".config/piuma-vault/env"))
 LEG_ROWS = 2
+# The in-app editor hard-codes this grid, so any other size breaks there.
+WIDTH = 16
+BODY_ROWS = 10
+KEY_CHARS = set("abcdefghijklmnopqrstuvwxyz0123456789-_")
 
 
 # ── Config + HTTP ────────────────────────────────────────────────────────────
@@ -106,6 +110,10 @@ def validate(d):
             errors.append(f"palette colour for {code!r} must be #rgb or #rrggbb, got {colour!r}")
     if not body:
         errors.append("body has no rows")
+    elif len(body) != BODY_ROWS:
+        errors.append(f"body must be {BODY_ROWS} rows (the editor assumes it), has {len(body)}")
+    if "." in palette:
+        errors.append("'.' must not be in the palette (it would paint every empty pixel)")
     if len(d.get("idleLegs") or []) != LEG_ROWS:
         errors.append("idleLegs must be exactly 2 rows")
     for name in ("walkLegs", "gallopLegs"):
@@ -126,6 +134,8 @@ def validate(d):
         bad = sorted({len(r) for r in rows if len(r) != width})
         if bad:
             errors.append(f"all rows must be {width} wide; found widths {bad}")
+        elif width != WIDTH:
+            errors.append(f"rows must be {WIDTH} wide (the editor assumes it), are {width}")
         used = {c for r in rows for c in r if c != "."}
         missing = sorted(used - set(palette))
         if missing:
@@ -133,7 +143,30 @@ def validate(d):
         unused = sorted(set(palette) - used)
         if unused:
             warnings.append(f"palette codes never used: {unused}")
+        for name, frames in (("walkLegs", d.get("walkLegs") or []), ("gallopLegs", d.get("gallopLegs") or [])):
+            for i, f in enumerate(frames):
+                for p in floating_leg_pixels(body, f):
+                    warnings.append(f"{name}[{i}]: leg pixel at row {p[0] + 11}, column {p[1]} touches nothing")
+        for p in floating_leg_pixels(body, d.get("idleLegs") or []):
+            warnings.append(f"idleLegs: leg pixel at row {p[0] + 11}, column {p[1]} touches nothing")
     return errors, warnings
+
+
+def floating_leg_pixels(body, legs):
+    """Leg pixels with no filled neighbour (8-way) in the last body row or the
+    other leg row: they read as stray dirt instead of a foot."""
+    if not body or len(legs) != LEG_ROWS:
+        return []
+    grid = [body[-1]] + list(legs)
+    filled = lambda r, c: 0 <= r < len(grid) and 0 <= c < len(grid[r]) and grid[r][c] != "."
+    out = []
+    for r in (1, 2):
+        for c, ch in enumerate(grid[r]):
+            if ch == "." :
+                continue
+            if not any(filled(r + dr, c + dc) for dr in (-1, 0, 1) for dc in (-1, 0, 1) if (dr, dc) != (0, 0)):
+                out.append((r - 1, c))
+    return out
 
 
 def poses(d):
@@ -274,6 +307,8 @@ def cmd_push(a):
     key, name = a.key or fkey, a.name or fname
     if not key or not name:
         sys.exit("sprite: push needs a key and a name (in the file or as --key/--name)")
+    if not set(key) <= KEY_CHARS:
+        sys.exit("sprite: key must be lowercase a-z, 0-9, - or _")
     if not report(d):
         sys.exit(1)
     exists = any(s["key"] == key for s in list_sprites())
