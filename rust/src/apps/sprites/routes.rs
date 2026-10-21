@@ -13,7 +13,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .route("", web::get().to(handlers::list_sprites))
             .route("", web::post().to(handlers::create_sprite))
             .route("/generate", web::post().to(handlers::generate_sprite))
-            // Live updates — a freshly AI-generated sprite is broadcast here.
+            .route("/generations", web::get().to(handlers::list_generations))
+            .route("/render", web::post().to(handlers::render_sheet))
+            .route("/generations/{id}", web::delete().to(handlers::dismiss_generation))
+            // Live updates — each AI-generation round is announced here.
             .route("/events", web::get().to(event_stream::<Sprites>))
             .route("/active", web::put().to(handlers::set_active))
             .route("/{key}", web::put().to(handlers::update_sprite))

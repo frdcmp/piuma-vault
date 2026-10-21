@@ -1,8 +1,9 @@
 use super::events::SpritesEventBus;
-use super::generate;
+use super::generate::{self, GenerationStore};
+use super::render;
 use super::models::{
     ActiveSpriteResponse, CreateSpriteRequest, ErrorResponse, GenerateSpriteRequest,
-    SetActiveRequest, SpriteResponse, SpriteRow, UpdateSpriteRequest,
+    SetActiveRequest, SpriteDefinition, SpriteResponse, SpriteRow, UpdateSpriteRequest,
 };
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
@@ -111,110 +112,78 @@ pub async fn list_sprites(user: AuthenticatedUser, pool: web::Data<DbPool>) -> i
     }
 }
 
-// ── Admin: AI generate (async — kicks off a background job, returns 202) ──
+// ── Admin: AI generation ──
 //
-// LLM sprite generation routinely runs minutes on a reasoning model, well past
-// sane HTTP timeouts. So we validate the request (including a synchronous
-// key-availability check so the admin gets immediate feedback), hand the slow
-// generate-and-save off to a background task, and return 202 right away. When
-// the new sprite lands in the DB the worker publishes a `sprite` SSE event;
-// connected admins re-fetch and it pops into the grid live.
+// Generation runs for minutes in rounds (see `generate`), so this starts a job
+// and returns 202 with its id. Each round lands on the job and is announced on
+// the sprites SSE bus; the admin lists jobs, picks a round, and saves it with
+// the normal create endpoint. Admin-only: it spends LLM tokens.
 pub async fn generate_sprite(
     user: AuthenticatedUser,
     pool: web::Data<DbPool>,
     bus: web::Data<SpritesEventBus>,
+    generations: web::Data<GenerationStore>,
     body: web::Json<GenerateSpriteRequest>,
 ) -> impl Responder {
     if !check_permission(&user, "admin_access") {
         return forbidden("admin_access");
     }
     let req = body.into_inner();
-    let key = req.key.trim().to_lowercase();
-    let name = req.name.trim().to_string();
     let prompt = req.prompt.trim().to_string();
-
-    if name.is_empty() {
-        return HttpResponse::BadRequest().json(ErrorResponse {
-            error: "name is required".to_string(),
-        });
-    }
-    if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        return HttpResponse::BadRequest().json(ErrorResponse {
-            error: "key must be a non-empty slug (a-z, 0-9, -, _)".to_string(),
-        });
-    }
     if prompt.is_empty() {
         return HttpResponse::BadRequest().json(ErrorResponse {
             error: "prompt is required".to_string(),
         });
     }
-
-    // Reject a taken key now rather than letting the background insert fail
-    // silently minutes later.
-    match sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM sprites WHERE key = $1)")
-        .bind(&key)
-        .fetch_one(pool.get_ref())
-        .await
-    {
-        Ok(true) => {
-            return HttpResponse::Conflict().json(ErrorResponse {
-                error: "a sprite with that key already exists".to_string(),
-            })
-        }
-        Ok(false) => {}
-        Err(e) => return server_error(e, "check sprite key"),
+    match generate::start(pool.get_ref(), generations.get_ref(), bus.get_ref(), req.name.trim().to_string(), prompt).await {
+        Ok(started) => HttpResponse::Accepted().json(serde_json::json!({ "id": started.id })),
+        Err(error) => HttpResponse::UnprocessableEntity().json(ErrorResponse { error }),
     }
-
-    let pool = pool.get_ref().clone();
-    let bus = bus.get_ref().clone();
-    tokio::spawn(async move {
-        run_generation(pool, bus, key, name, prompt).await;
-    });
-
-    HttpResponse::Accepted().json(serde_json::json!({ "status": "generating" }))
 }
 
-/// Background worker: generate a definition from the prompt, persist it as a new
-/// sprite, and broadcast a `sprite` event so connected admins see it appear.
-/// Errors are logged — no client is waiting on this call.
-async fn run_generation(
-    pool: DbPool,
-    bus: SpritesEventBus,
-    key: String,
-    name: String,
-    prompt: String,
-) {
-    let definition = match generate::generate_sprite(&pool, &prompt).await {
-        Ok(d) => d,
-        Err(e) => {
-            log::error!("sprites: generation failed for key={key}: {e}");
-            return;
-        }
-    };
-    let definition = match serde_json::to_value(&definition) {
-        Ok(v) => v,
-        Err(e) => {
-            log::error!("sprites: serialize generated definition for key={key}: {e}");
-            return;
-        }
-    };
+pub async fn list_generations(user: AuthenticatedUser, generations: web::Data<GenerationStore>) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden("admin_access");
+    }
+    HttpResponse::Ok().json(generations.list())
+}
 
-    let inserted: Result<Uuid, sqlx::Error> = sqlx::query_scalar(
-        "INSERT INTO sprites (key, name, definition, is_builtin) \
-         VALUES ($1, $2, $3, FALSE) RETURNING id",
-    )
-    .bind(&key)
-    .bind(&name)
-    .bind(&definition)
-    .fetch_one(&pool)
-    .await;
+/// Dismiss a job. A running one stops after its current model call.
+pub async fn dismiss_generation(
+    user: AuthenticatedUser,
+    generations: web::Data<GenerationStore>,
+    bus: web::Data<SpritesEventBus>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    if !check_permission(&user, "admin_access") {
+        return forbidden("admin_access");
+    }
+    let id = path.into_inner();
+    if generations.remove(&id) {
+        bus.publish(ResourceAction::Deleted, id);
+        HttpResponse::NoContent().finish()
+    } else {
+        HttpResponse::NotFound().json(ErrorResponse {
+            error: "generation not found".to_string(),
+        })
+    }
+}
 
-    match inserted {
-        Ok(id) => {
-            log::info!("sprites: AI-generated sprite saved (key={key})");
-            bus.publish(ResourceAction::Created, id);
-        }
-        Err(e) => log::error!("sprites: insert generated sprite key={key}: {e:?}"),
+// ── Admin: render ──
+
+/// The pose sheet (PNG) of a definition: the same image the generator shows
+/// the model each round. The body is a bare definition.
+pub async fn render_sheet(user: AuthenticatedUser, body: web::Json<SpriteDefinition>) -> impl Responder {
+    if !check_permission(&user, SPRITES_SCOPE) {
+        return forbidden(SPRITES_SCOPE);
+    }
+    let def = body.into_inner();
+    if let Err(e) = def.validate() {
+        return HttpResponse::BadRequest().json(ErrorResponse { error: e });
+    }
+    match render::sheet_png(&def) {
+        Ok(png) => HttpResponse::Ok().content_type("image/png").body(png),
+        Err(error) => HttpResponse::BadRequest().json(ErrorResponse { error }),
     }
 }
 

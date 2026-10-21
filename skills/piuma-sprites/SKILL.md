@@ -103,9 +103,7 @@ These come from what goes wrong in the built-ins and in AI-generated attempts.
 * **Face left, face the viewer.** The built-ins put a front-facing face (two eyes, nose
   or muzzle) on the left side of the body and the tail on the right, so the head leads
   when it walks left. The home and loading screens mirror the sprite when it walks
-  right, so it must also look right flipped; nothing else flips it. (The in-app AI
-  generator's prompt asks for a right-facing side profile with one eye, which matches
-  neither the built-ins nor the app. Don't follow it.)
+  right, so it must also look right flipped; nothing else flips it.
 * **Read at 1x.** The sprite is often shown at 2 to 4 pixels per cell. Each feature needs
   at least one full pixel and a contrasting neighbour: two eye pixels, a nose, maybe a
   collar or a belly patch. Leave a transparent column at each side and keep the top row
@@ -129,6 +127,18 @@ These come from what goes wrong in the built-ins and in AI-generated attempts.
   one-pixel change is invisible.
 * **Timing.** `walkFrameMs` 110 to 140 and `gallopFrameMs` 120 to 160 look right; lower
   is frantic.
+
+## The in-app generator
+
+The Appearance page's AI generate uses the same rules (its prompt in
+`rust/src/apps/sprites/generate.rs` follows this guide). It runs up to 4 rounds: a
+draft, then each round the model is shown a PNG of its last take (the same sheet as
+`render`, drawn by `rust/src/apps/sprites/render.rs`) plus what the checks in
+`rust/src/apps/sprites/checks.rs` found, and fixes it. Every round is listed on the
+page to pick from; nothing is saved until the user opens one and saves it. It needs a
+default chat model that can see images. `POST /admin/sprites/render` (body: a bare
+definition) returns that PNG sheet, if you want the vault's own render instead of the
+local one.
 
 ## When it fails
 

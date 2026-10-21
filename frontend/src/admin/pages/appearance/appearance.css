@@ -66,34 +66,92 @@
 	justify-content: center;
 }
 
-/* Placeholder card while a sprite is AI-generating server-side. The mascot
-   gallops in place inside it; the dashed border gently pulses. Content is
-   centered and stacked so it fills the square rather than hugging the top. */
-.vp-sprite-card--pending {
-	border-style: dashed;
-	justify-content: center;
-	gap: 16px;
-	animation: vp-pending-pulse 1.4s ease-in-out infinite;
+/* AI generations: one panel per job, its rounds side by side. */
+.vp-gens {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-top: 16px;
 }
-.vp-sprite-card--pending .vp-sprite-card-art {
-	min-height: 110px;
-}
-.vp-sprite-card--pending .vp-sprite-card-head {
+.vp-gen {
+	border: 1px solid var(--vp-border);
+	background: var(--vp-panel);
+	padding: 12px 14px;
+	display: flex;
 	flex-direction: column;
 	gap: 8px;
 }
-.vp-sprite-card--pending .vp-sprite-card-name {
-	font-size: 15px;
+.vp-gen--running {
+	border-style: dashed;
+	border-color: var(--vp-accent);
+}
+.vp-gen-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+}
+.vp-gen-title {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.vp-gen-meta,
+.vp-gen-prompt {
+	font-family: var(--vp-font);
+	font-size: 11px;
+	color: var(--vp-muted);
+	margin: 0;
+}
+.vp-gen-rounds {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+.vp-gen-round {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-width: 104px;
+	min-height: 104px;
+	padding: 10px;
+	border: 1px solid var(--vp-border);
+	background: var(--vp-bg);
+	color: var(--vp-text);
+	cursor: pointer;
+	image-rendering: pixelated;
+}
+.vp-gen-round:hover {
+	border-color: var(--vp-accent);
+}
+.vp-gen-round--pending {
+	cursor: default;
+	border-style: dashed;
+	animation: vp-pending-pulse 1.4s ease-in-out infinite;
+}
+.vp-gen-round--pending:hover {
+	border-color: var(--vp-border);
+}
+.vp-gen-round-label {
+	font-family: var(--vp-font);
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	color: var(--vp-muted);
+}
+.vp-sprite-badge--warn {
+	border-color: var(--vp-warning);
+	color: var(--vp-warning);
 }
 @keyframes vp-pending-pulse {
 	0%,
 	100% {
 		opacity: 0.55;
-		border-color: var(--vp-border);
 	}
 	50% {
 		opacity: 1;
-		border-color: var(--vp-accent);
 	}
 }
 /* Fallback spinner when there's no sprite to animate yet. */

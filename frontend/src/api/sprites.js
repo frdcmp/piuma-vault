@@ -34,15 +34,23 @@ export const setActiveSprite = async (key) => {
 	return data;
 };
 
-// Kick off AI generation. The LLM call runs server-side for minutes, so this
-// just starts the job and returns 202 immediately — the finished sprite is saved
-// under { name, key } and broadcast over SSE, where the live-updates hook picks
-// it up and it appears in the grid.
-export const generateSprite = async ({ name, key, prompt }) => {
+// Start an AI generation job ({ name, prompt } → { id }). It runs server-side
+// in rounds; each round is announced over SSE and listed by
+// listSpriteGenerations. Nothing is saved until the admin picks a round.
+export const generateSprite = async ({ name, prompt }) => {
 	const { data } = await axiosInstance.post("/admin/sprites/generate", {
 		name,
-		key,
 		prompt,
 	});
 	return data;
+};
+
+// Running and recent generation jobs, newest first, each with its rounds.
+export const listSpriteGenerations = async () => {
+	const { data } = await axiosInstance.get("/admin/sprites/generations");
+	return data;
+};
+
+export const dismissSpriteGeneration = async (id) => {
+	await axiosInstance.delete(`/admin/sprites/generations/${id}`);
 };

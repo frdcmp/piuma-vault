@@ -24,7 +24,7 @@ export const NEW_TEMPLATE = {
 	},
 };
 
-const slugify = (s) =>
+export const slugify = (s) =>
 	s
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
@@ -58,28 +58,16 @@ export default function SpriteEditor({
 	const [gallopIdx, setGallopIdx] = useState(0);
 	const [error, setError] = useState("");
 	const [aiPrompt, setAiPrompt] = useState("");
-	const [aiError, setAiError] = useState("");
 
 	const patch = (p) => setDef((d) => ({ ...d, ...p }));
 
-	// Fire off server-side AI generation for a brand-new sprite. Generation runs
-	// for minutes, so the parent kicks off the job, closes this modal, and the
-	// finished sprite arrives live over SSE — we only validate name/key/prompt.
+	// Start server-side AI generation. It runs in rounds for a few minutes; the
+	// parent closes this editor and the rounds appear on the Appearance page,
+	// where one can be opened back in here to name and save.
 	const handleGenerate = () => {
 		const prompt = aiPrompt.trim();
-		const nm = name.trim();
-		const k = slugify(key);
 		if (!prompt || generating) return;
-		if (!nm) {
-			setAiError("Name is required");
-			return;
-		}
-		if (!k) {
-			setAiError("Key is required");
-			return;
-		}
-		setAiError("");
-		onGenerate({ name: nm, key: k, prompt });
+		onGenerate({ name: name.trim(), prompt });
 	};
 
 	// The 2 leg rows the bottom of the canvas currently binds to.
@@ -187,30 +175,27 @@ export default function SpriteEditor({
 				</PvField>
 			</div>
 
-			{/* AI generate — kicks off a server-side job that creates a new sprite.
-			    Needs a fresh name/key, so it's only offered for new sprites. */}
+			{/* AI generate — starts a server-side job that drafts the sprite in
+			    rounds. Only offered for new sprites. */}
 			{isNew && (
-				<>
-					<div className="vp-sprite-ai">
-						<PvInput
-							value={aiPrompt}
-							onChange={(e) => setAiPrompt(e.target.value)}
-							onKeyDown={(e) => {
-								if (e.key === "Enter") handleGenerate();
-							}}
-							placeholder="Describe a creature — e.g. a small purple owl"
-							disabled={generating}
-						/>
-						<PvButton
-							size="sm"
-							onClick={handleGenerate}
-							disabled={generating || !aiPrompt.trim()}
-						>
-							{generating ? "Starting…" : "✨ AI generate"}
-						</PvButton>
-					</div>
-					{aiError && <p className="vp-text vp-sprite-error">{aiError}</p>}
-				</>
+				<div className="vp-sprite-ai">
+					<PvInput
+						value={aiPrompt}
+						onChange={(e) => setAiPrompt(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === "Enter") handleGenerate();
+						}}
+						placeholder="Describe a creature — e.g. a small purple owl"
+						disabled={generating}
+					/>
+					<PvButton
+						size="sm"
+						onClick={handleGenerate}
+						disabled={generating || !aiPrompt.trim()}
+					>
+						{generating ? "Starting…" : "✨ AI generate"}
+					</PvButton>
+				</div>
 			)}
 
 			<div className="vp-sprite-editor-grid">

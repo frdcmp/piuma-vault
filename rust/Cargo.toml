@@ -63,6 +63,7 @@ native-tls = "0.2"
 mail-parser = "0.9"
 sha2 = "0.10"
 base64 = "0.22"
+png = "0.17"
 chacha20poly1305 = "0.10"
 pgvector = { version = "0.4", features = ["sqlx"] }
 moka = { version = "0.12", features = ["future"] }

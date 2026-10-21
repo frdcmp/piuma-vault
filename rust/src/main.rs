@@ -88,6 +88,8 @@ async fn main() -> io::Result<()> {
     let calendar_bus = apps::calendar::events::CalendarEventBus::new();
     let cron_bus = apps::cron::events::CronEventBus::new();
     let sprites_bus = apps::sprites::events::SpritesEventBus::new();
+    // In-flight and recent AI sprite generations (drafts, not data).
+    let sprite_generations = apps::sprites::generate::GenerationStore::new();
     let notifications_bus = apps::notifications::events::NotificationsEventBus::new();
     // Control plane for in-flight chat turns: STOP (cancel) + INJECT (mailbox).
     let turn_control = apps::agents::control::TurnControl::new();
@@ -142,6 +144,7 @@ async fn main() -> io::Result<()> {
             .app_data(web::Data::new(calendar_bus.clone()))
             .app_data(web::Data::new(cron_bus.clone()))
             .app_data(web::Data::new(sprites_bus.clone()))
+            .app_data(web::Data::new(sprite_generations.clone()))
             .app_data(web::Data::new(notifications_bus.clone()))
             .app_data(web::Data::new(turn_control.clone()))
             .app_data(web::Data::new(recorder_registry.clone()))
