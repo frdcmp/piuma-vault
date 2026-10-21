@@ -184,12 +184,12 @@ pub async fn complete(
 ) -> Result<String, String> {
     match kind {
         "openai" | "lmstudio" | "ollama" => {
-            openai::complete(api_key, base_url, model, messages, max_tokens).await
+            openai::complete(api_key, base_url, model, &to_openai_messages(messages), max_tokens).await
         }
-        "minimax" => minimax::complete(api_key, base_url, model, messages, max_tokens).await,
+        "minimax" => minimax::complete(api_key, base_url, model, &to_openai_messages(messages), max_tokens).await,
         "anthropic" => anthropic::complete(api_key, base_url, model, messages, max_tokens).await,
         "gemini" => gemini::complete(api_key, base_url, model, messages, max_tokens).await,
-        _ => deepseek::complete(api_key, base_url, model, messages, max_tokens).await,
+        _ => deepseek::complete(api_key, base_url, model, &to_openai_messages(messages), max_tokens).await,
     }
 }
 
@@ -207,15 +207,15 @@ pub async fn complete_usage(
 ) -> Result<(String, i32, i32), String> {
     match kind {
         "openai" | "lmstudio" | "ollama" => {
-            openai::complete_usage(api_key, base_url, model, messages, max_tokens).await
+            openai::complete_usage(api_key, base_url, model, &to_openai_messages(messages), max_tokens).await
         }
-        "minimax" => minimax::complete_usage(api_key, base_url, model, messages, max_tokens).await,
+        "minimax" => minimax::complete_usage(api_key, base_url, model, &to_openai_messages(messages), max_tokens).await,
         "anthropic" | "gemini" => {
             let text = complete(kind, api_key, base_url, model, messages, max_tokens).await?;
             let (tin, tout) = (estimate_tokens(messages), estimate_str(&text));
             Ok((text, tin, tout))
         }
-        _ => deepseek::complete_usage(api_key, base_url, model, messages, max_tokens).await,
+        _ => deepseek::complete_usage(api_key, base_url, model, &to_openai_messages(messages), max_tokens).await,
     }
 }
 

@@ -66,14 +66,21 @@ fn user_blocks(content: Option<&Value>) -> Vec<Value> {
                         out.push(json!({ "type": "text", "text": text }));
                     }
                     Some("image") => {
-                        // A `url` source takes only the url — `media_type` is
-                        // required only for base64 sources (Anthropic fetches +
-                        // sniffs the type itself for url sources).
                         let url = b.get("url").and_then(|u| u.as_str()).unwrap_or("");
-                        out.push(json!({
-                            "type": "image",
-                            "source": { "type": "url", "url": url }
-                        }));
+                        // An inline `data:` image (e.g. a sprite render) has to go
+                        // as a base64 source; Anthropic only fetches http(s) urls.
+                        // A `url` source takes only the url (Anthropic fetches and
+                        // sniffs the type itself).
+                        let source = match url
+                            .strip_prefix("data:")
+                            .and_then(|rest| rest.split_once(";base64,"))
+                        {
+                            Some((media_type, data)) => {
+                                json!({ "type": "base64", "media_type": media_type, "data": data })
+                            }
+                            None => json!({ "type": "url", "url": url }),
+                        };
+                        out.push(json!({ "type": "image", "source": source }));
                     }
                     _ => {}
                 }
