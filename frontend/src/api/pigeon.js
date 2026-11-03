@@ -143,6 +143,12 @@ export const learnAllPigeonContacts = async ({ days } = {}) => {
 	return data;
 };
 
+// Names from the WhatsApp address book: { address_book, named, added, … }.
+export const importPigeonWhatsappNames = async () => {
+	const { data } = await axiosInstance.post(`${BASE}/contacts/whatsapp`);
+	return data;
+};
+
 // ── Rules ───────────────────────────────────────────────────────────────────
 
 export const fetchPigeonRules = async () => {

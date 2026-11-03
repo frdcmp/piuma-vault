@@ -451,6 +451,11 @@ pub async fn learn_all(st: web::Data<AppState>, u: InboxWriter, body: web::Json<
     HttpResponse::Ok().json(json!({ "started": started, "days": days }))
 }
 
+/// Names from the user's WhatsApp address book (people::import_whatsapp).
+pub async fn import_whatsapp(st: web::Data<AppState>, u: InboxWriter) -> HttpResponse {
+    reply(people::import_whatsapp(&st, &u.0.user_id).await)
+}
+
 // ── rules ────────────────────────────────────────────────────────────────
 
 pub async fn list_rules(st: web::Data<AppState>, u: InboxReader) -> HttpResponse {

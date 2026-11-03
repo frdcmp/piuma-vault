@@ -21,6 +21,7 @@ import {
 	fetchPigeonRules,
 	fetchPigeonSettings,
 	fetchPigeonSummary,
+	importPigeonWhatsappNames,
 	learnAllPigeonContacts,
 	learnPigeonContact,
 	markPigeonHandled,
@@ -266,6 +267,8 @@ export const useSetPigeonContactSwitches = () =>
 	usePeopleMutation(setPigeonContactSwitches);
 export const useLearnPigeonContact = () =>
 	usePeopleMutation(learnPigeonContact);
+export const useImportPigeonWhatsappNames = () =>
+	usePeopleMutation(importPigeonWhatsappNames);
 export const useLearnAllPigeonContacts = () =>
 	useMutation({ mutationFn: learnAllPigeonContacts });
 

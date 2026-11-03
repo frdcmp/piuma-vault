@@ -42,6 +42,13 @@ fn http() -> &'static reqwest::Client {
     C.get_or_init(|| reqwest::Client::builder().timeout(Duration::from_secs(30)).build().expect("http client"))
 }
 
+/// The user's WhatsApp address book, as the phone shares it: `{phone, name, push, business}`
+/// each, `name` how the user saved them.
+pub async fn address_book(st: &State, user: &str) -> anyhow::Result<Vec<Json>> {
+    let v = bridge(st, user, reqwest::Method::GET, "/contacts", None).await?;
+    Ok(v["contacts"].as_array().cloned().unwrap_or_default())
+}
+
 /// One call to pigeon-whatsapp's API, on the user's session.
 async fn bridge(st: &State, user: &str, method: reqwest::Method, path: &str, body: Option<&Json>) -> anyhow::Result<Json> {
     let c = conf(st)?;

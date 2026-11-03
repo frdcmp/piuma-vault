@@ -154,6 +154,7 @@ func main() {
 	mux.HandleFunc("POST /u/{user}/send", b.auth((*session).send))
 	mux.HandleFunc("POST /u/{user}/typing", b.auth((*session).typing))
 	mux.HandleFunc("POST /u/{user}/logout", b.auth((*session).logout))
+	mux.HandleFunc("GET /u/{user}/contacts", b.auth((*session).contacts))
 	addr := env("WHATSAPP_BIND", ":8080")
 	log.Printf("listening on %s, events to %s", addr, b.webhook)
 	log.Fatal(http.ListenAndServe(addr, mux))
@@ -610,6 +611,41 @@ func (s *session) state() map[string]any {
 
 func (s *session) status(w http.ResponseWriter, _ *http.Request) {
 	reply(w, http.StatusOK, s.state())
+}
+
+// contacts: the user's WhatsApp address book, as the phone shares it with linked devices:
+// each person by phone number, with how the user saved them (name), the name they gave
+// themselves (push) and a business's name.
+func (s *session) contacts(w http.ResponseWriter, r *http.Request) {
+	cli := s.client()
+	if cli.Store.ID == nil {
+		fail(w, http.StatusConflict, fmt.Errorf("not linked"))
+		return
+	}
+	all, err := cli.Store.Contacts.GetAllContacts(r.Context())
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	type entry struct {
+		Phone    string `json:"phone"`
+		Name     string `json:"name,omitempty"`
+		Push     string `json:"push,omitempty"`
+		Business string `json:"business,omitempty"`
+	}
+	out := []entry{}
+	for j, c := range all {
+		j = s.pn(r.Context(), j)
+		if j.Server != types.DefaultUserServer {
+			continue
+		}
+		name := strings.TrimSpace(c.FullName)
+		if name == "" {
+			name = strings.TrimSpace(c.FirstName)
+		}
+		out = append(out, entry{Phone: phone(j), Name: name, Push: strings.TrimSpace(c.PushName), Business: strings.TrimSpace(c.BusinessName)})
+	}
+	reply(w, http.StatusOK, map[string]any{"contacts": out})
 }
 
 // pair: the current QR code (as a PNG, base64), starting the pairing if it isn't running.

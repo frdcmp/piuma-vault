@@ -23,6 +23,7 @@ import {
 import {
 	useAllModels,
 	useDisconnectPigeon,
+	useImportPigeonWhatsappNames,
 	useLearnAllPigeonContacts,
 	usePigeonConnections,
 	usePigeonConnectLink,
@@ -180,6 +181,7 @@ export default function InboxSettings() {
 	const { data: models = [] } = useAllModels({ enabled: isAdmin });
 	const save = useSetPigeonSettings();
 	const learnAll = useLearnAllPigeonContacts();
+	const whatsappNames = useImportPigeonWhatsappNames();
 	const [pairing, setPairing] = useState(null);
 	const closePairing = useCallback(() => setPairing(null), []);
 	const [params, setParams] = useSearchParams();
@@ -342,6 +344,27 @@ export default function InboxSettings() {
 						}
 					>
 						Learn from past chats
+					</PvButton>
+				</PvField>
+				<PvField
+					label="Names from your phone"
+					as="div"
+					hint="Names everyone Pigeon knows only by number the way you saved them on your phone, and adds your saved WhatsApp contacts as people."
+				>
+					<PvButton
+						size="sm"
+						loading={whatsappNames.isPending}
+						onClick={() =>
+							whatsappNames.mutate(undefined, {
+								onSuccess: (r) =>
+									pvMessage.success(
+										`${r.named + r.named_from_whatsapp + r.named_from_messages} named, ${r.added} added (of ${r.address_book} in your address book).`,
+									),
+								onError: (e) => pvMessage.error(errorText(e)),
+							})
+						}
+					>
+						Names from WhatsApp
 					</PvButton>
 				</PvField>
 			</PvPanel>
