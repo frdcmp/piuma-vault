@@ -155,6 +155,8 @@ export function usePigeonItems(id) {
 			return {
 				items: pages.flatMap((p) => p.items ?? []),
 				news: pages.flatMap((p) => p.news ?? []),
+				// who wrote them: handle → { name, slug }
+				senders: Object.assign({}, ...pages.map((p) => p.senders ?? {})),
 			};
 		},
 	});

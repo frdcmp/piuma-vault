@@ -97,7 +97,7 @@ pub async fn list_conversations(st: web::Data<AppState>, u: InboxReader, q: web:
             .map(|(id, connector, title, contact_id, name, slug, last, attention, body, author, unread, cards)| {
                 json!({
                     "id": id, "connector": connector, "title": title, "contact_id": contact_id,
-                    "with": name.clone().or(title.clone()).unwrap_or_else(|| "someone".into()), "slug": slug,
+                    "with": name.clone().or_else(|| slug.as_ref().map(|s| format!("@{s}"))).or(title.clone()).unwrap_or_else(|| "someone".into()), "slug": slug,
                     "last_item_at": last, "attention": attention,
                     "preview": body.map(|b| conversations::clip(&b, 120)), "last_author": author,
                     "unread": unread, "cards": cards,
@@ -159,7 +159,7 @@ pub async fn conversation_items(st: web::Data<AppState>, u: InboxReader, path: w
     let user = &u.0.user_id;
     let id = path.into_inner();
     let r: anyhow::Result<Json> = async {
-        tools::own_conversation(&st, user, id).await?;
+        let conv = tools::own_conversation(&st, user, id).await?;
         let limit = q.limit.unwrap_or(50).clamp(1, 200);
         let mut items: Vec<conversations::Item> = sqlx::query_as(&format!(
             "SELECT {} FROM db_pigeon_items WHERE conversation_id = $1 AND ($2::timestamptz IS NULL OR at < $2) ORDER BY at DESC LIMIT $3",
@@ -184,8 +184,24 @@ pub async fn conversation_items(st: web::Data<AppState>, u: InboxReader, path: w
         .bind(q.before)
         .fetch_all(&st.pool)
         .await?;
+        // who wrote them, as the people Pigeon knows: a group's history gives numbers, not names
+        let mut handles: Vec<String> = items.iter().filter(|i| i.direction == "in").filter_map(|i| i.sender.clone()).collect();
+        handles.sort();
+        handles.dedup();
+        let people: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT h.handle, c.name, c.slug FROM db_pigeon_contact_handles h JOIN db_pigeon_contacts c ON c.id = h.contact_id
+              WHERE h.user_id = $1 AND h.connector = $2 AND h.handle = ANY($3)",
+        )
+        .bind(user)
+        .bind(&conv.connector)
+        .bind(&handles)
+        .fetch_all(&st.pool)
+        .await?;
+        let senders: serde_json::Map<String, Json> =
+            people.into_iter().map(|(handle, name, slug)| (handle, json!({ "name": name, "slug": slug }))).collect();
         Ok(json!({
             "items": items,
+            "senders": senders,
             "news": news.into_iter().map(|(id, text, url, at)| json!({ "id": id, "text": text, "url": url, "at": at })).collect::<Vec<_>>(),
             "more": more,
         }))

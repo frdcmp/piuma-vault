@@ -38,12 +38,14 @@ import { formatDate, formatTime } from "../../../utils/dateTime";
 import {
 	ALERT_HINT,
 	ALERT_OPTIONS,
+	bodyText,
 	channelLabel,
 	channelTone,
 	errorText,
 	initials,
 	mediaLabels,
 	POLICY_OPTIONS,
+	senderLabel,
 	withInherit,
 } from "./inboxText";
 import PigeonCards from "./PigeonCards";
@@ -73,14 +75,12 @@ function useTimeline(data) {
 	}, [data]);
 }
 
-function Message({ item, withName }) {
+// `group`: more than one person writes here, so each message says who
+function Message({ item, group, senders }) {
 	const out = item.direction === "out";
 	const media = mediaLabels(item.media);
-	// a group's messages say who wrote them
-	const sender =
-		!out && item.sender_name && item.sender_name !== withName
-			? item.sender_name
-			: null;
+	const body = bodyText(item.body, item.media);
+	const sender = group && !out ? senderLabel(item, senders) : null;
 	return (
 		<div
 			className={`inbox-msg ${out ? "is-out" : "is-in"}${item.author === "pigeon" ? " is-pigeon" : ""}`}
@@ -98,7 +98,7 @@ function Message({ item, withName }) {
 						))}
 					</div>
 				) : null}
-				{item.body ? <div className="inbox-msg-body">{item.body}</div> : null}
+				{body ? <div className="inbox-msg-body">{body}</div> : null}
 				<div className="inbox-msg-meta">
 					{item.author === "pigeon" ? <span>🕊 Pigeon · </span> : null}
 					{formatTime(item.at)}
@@ -156,6 +156,16 @@ export default function ChatView({ id }) {
 	const { data, isLoading, error } = usePigeonConversation(id);
 	const items = usePigeonItems(id);
 	const timeline = useTimeline(items.data);
+	const senders = items.data?.senders;
+	const group = useMemo(
+		() =>
+			new Set(
+				(items.data?.items ?? [])
+					.filter((i) => i.direction === "in" && i.sender)
+					.map((i) => i.sender),
+			).size > 1,
+		[items.data],
+	);
 	const markRead = useMarkPigeonRead();
 	const handled = useMarkPigeonHandled();
 	const send = useSendPigeonMessage();
@@ -361,7 +371,12 @@ export default function ChatView({ id }) {
 							)}
 						</div>
 					) : (
-						<Message key={r.key} item={r.item} withName={data.with} />
+						<Message
+							key={r.key}
+							item={r.item}
+							group={group}
+							senders={senders}
+						/>
 					),
 				)}
 				<PigeonCards cards={data.cards} conversationId={id} />

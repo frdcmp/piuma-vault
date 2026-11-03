@@ -55,5 +55,29 @@ export const mediaLabels = (media) =>
 		.map((m) => (typeof m === "string" ? m : m?.type))
 		.filter(Boolean);
 
+// A message's words without the "[image]" lines that stand in for its media
+// (the media's own tags say it already).
+export const bodyText = (body, media) => {
+	const labels = new Set(mediaLabels(media).map((m) => `[${m}]`));
+	if (!labels.size || !body) return body;
+	return body
+		.split("\n")
+		.filter((line) => !labels.has(line.trim()))
+		.join("\n")
+		.trim();
+};
+
+// Who wrote a message in a group: the person Pigeon knows, by name or @slug,
+// else the name the channel gave, else their number.
+export const senderLabel = (item, senders) => {
+	const known = senders?.[item.sender];
+	return (
+		known?.name ||
+		(known?.slug ? `@${known.slug}` : null) ||
+		item.sender_name ||
+		item.sender
+	);
+};
+
 export const errorText = (e) =>
 	e?.response?.data?.error || e?.message || "Something went wrong";
