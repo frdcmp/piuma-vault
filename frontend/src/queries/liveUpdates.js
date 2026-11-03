@@ -89,10 +89,11 @@ export function useResourceLiveUpdates({ path, event, queryKey, onEvent }) {
 				} catch {
 					/* malformed — fall through to invalidate */
 				}
-				if (payload?.id) {
-					Promise.resolve(onEvent(qc, payload.action, payload.id)).catch(
-						invalidate,
-					);
+				// {action, id}, or Pigeon's {kind, id} (id may be null)
+				if (payload?.id || payload?.kind) {
+					Promise.resolve(
+						onEvent(qc, payload.action ?? payload.kind, payload.id),
+					).catch(invalidate);
 					return;
 				}
 			}

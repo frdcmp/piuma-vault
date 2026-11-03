@@ -7,6 +7,7 @@ import {
 	deleteModel,
 	deleteProvider,
 	fetchAgents,
+	fetchAllModels,
 	fetchAvailableModels,
 	fetchConversation,
 	fetchConversations,
@@ -28,6 +29,7 @@ export const agentKeys = {
 	providers: ["agents", "providers"],
 	models: (providerId) => ["agents", "models", providerId],
 	availableModels: (providerId) => ["agents", "available-models", providerId],
+	allModels: ["agents", "all-models"],
 	profile: (agent) => ["agents", "profile", agent],
 	personas: (agent) => ["agents", "personas", agent],
 	conversations: (agent) => ["agents", "conversations", agent ?? null],
@@ -71,6 +73,15 @@ export const useModels = (providerId, options = {}) =>
 		queryKey: agentKeys.models(providerId),
 		queryFn: () => fetchModels(providerId),
 		enabled: !!providerId,
+		...options,
+	});
+
+// Every enabled model across providers.
+export const useAllModels = (options = {}) =>
+	useQuery({
+		queryKey: agentKeys.allModels,
+		queryFn: fetchAllModels,
+		staleTime: 60_000,
 		...options,
 	});
 

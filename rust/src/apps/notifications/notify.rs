@@ -31,6 +31,14 @@ pub struct NewNotification {
     pub action_url: Option<String>,
     pub metadata: serde_json::Value,
     pub group_key: Option<String>,
+    /// The Android notification channel the push goes to (the app creates it), else the default.
+    pub push_channel: Option<String>,
+    /// The notification category, for its action buttons (the app registers them).
+    pub push_category: Option<String>,
+    /// Shown without a sound.
+    pub silent: bool,
+    /// The phone app the push goes to (`expo::PIUMA` when unset).
+    pub phone_app: Option<String>,
 }
 
 impl NewNotification {
@@ -49,6 +57,10 @@ impl NewNotification {
             action_url: None,
             metadata: json!({}),
             group_key: None,
+            push_channel: None,
+            push_category: None,
+            silent: false,
+            phone_app: None,
         }
     }
 
@@ -70,6 +82,22 @@ impl NewNotification {
     }
     pub fn group_key(mut self, key: impl Into<String>) -> Self {
         self.group_key = Some(key.into());
+        self
+    }
+    pub fn push_channel(mut self, channel: impl Into<String>) -> Self {
+        self.push_channel = Some(channel.into());
+        self
+    }
+    pub fn push_category(mut self, category: impl Into<String>) -> Self {
+        self.push_category = Some(category.into());
+        self
+    }
+    pub fn silent(mut self, silent: bool) -> Self {
+        self.silent = silent;
+        self
+    }
+    pub fn phone_app(mut self, app: impl Into<String>) -> Self {
+        self.phone_app = Some(app.into());
         self
     }
 }
@@ -174,7 +202,7 @@ pub async fn notify(
 
         if ch.web_push && web_enabled {
             let payload =
-                json!({ "title": n.title, "body": body, "url": url, "tag": tag }).to_string();
+                json!({ "title": n.title, "body": body, "url": url, "tag": tag, "silent": n.silent }).to_string();
             let _ = webpush::dispatch_web(pool, &n.user_id, &payload).await;
         }
         if ch.expo && push_enabled {
@@ -184,7 +212,13 @@ pub async fn notify(
                 "type": n.category,
                 "metadata": n.metadata,
             });
-            let _ = expo::dispatch_expo(pool, &n.user_id, &n.title, &body, &data).await;
+            let opts = expo::PushOptions {
+                app: n.phone_app.clone(),
+                channel: n.push_channel.clone(),
+                category: n.push_category.clone(),
+                silent: n.silent,
+            };
+            let _ = expo::dispatch_expo_with(pool, &n.user_id, &n.title, &body, &data, &opts).await;
         }
     }
 

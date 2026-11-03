@@ -308,6 +308,7 @@ pub async fn chat(
     let req = body.into_inner();
     let msg = req.message;
     let context_ids = req.context_note_ids;
+    let context_pigeon = req.context_pigeon_ids;
     let images = req.images;
     let files = req.files;
     let timezone = req.timezone;
@@ -632,7 +633,8 @@ pub async fn chat(
     for (role, content) in hist {
         messages.push(json!({ "role": role, "content": content }));
     }
-    let context = build_context(db, &user.user_id, &context_ids).await;
+    let mut context = build_context(db, &user.user_id, &context_ids).await;
+    context.push_str(&crate::apps::pigeon::context::for_chat(db, &user.user_id, &context_pigeon).await);
     inject_context(&mut messages, &context);
 
     // ── Stream + tool loop ──

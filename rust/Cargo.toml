@@ -25,6 +25,10 @@ path = "src/bin/cron-worker.rs"
 name = "mcp-worker"
 path = "src/bin/mcp-worker.rs"
 
+[[bin]]
+name = "pigeon-worker"
+path = "src/bin/pigeon-worker.rs"
+
 [dependencies]
 actix-web = "4.3"
 actix-cors = "0.7"
@@ -69,6 +73,11 @@ pgvector = { version = "0.4", features = ["sqlx"] }
 moka = { version = "0.12", features = ["future"] }
 serde_yaml = "0.9"
 web-push = { version = "0.10", default-features = false, features = ["hyper-client"] }
+# Pigeon (apps/pigeon): its connectors' trait objects, errors, and the user's timezone
+anyhow = "1"
+async-trait = "0.1"
+hex = "0.4"
+chrono-tz = "0.10"
 # MCP client (mcp-worker only). Pulls its own reqwest 0.13 — independent of the
 # 0.11 above; the two majors coexist in the dependency graph.
 rmcp = { version = "3.1", features = ["client", "transport-streamable-http-client-reqwest", "transport-child-process"] }

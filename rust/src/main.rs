@@ -17,8 +17,8 @@ use actix_web::{web, App, HttpServer, middleware::Logger};
 use actix_web::dev::Service as _;
 use std::io;
 
-mod db;
-mod apps;
+use backend::{apps, db};
+
 mod cors;
 
 #[tokio::main]
@@ -96,6 +96,10 @@ async fn main() -> io::Result<()> {
     // Live recording sessions: shared between the recorder WS relay and the
     // stop/status REST endpoints.
     let recorder_registry = apps::recorder::session::SessionRegistry::new();
+    // The Inbox (Pigeon): its state, and the live updates from Postgres (the pigeon-worker
+    // changes things too).
+    let pigeon = web::Data::new(apps::pigeon::state::shared(&pool));
+    let pigeon_bus = web::Data::new(apps::pigeon::events::Bus::start(pool.clone()));
 
     // CORS policy is read from the environment once (see cors.rs) and used to
     // build a fresh middleware per worker.
@@ -148,6 +152,8 @@ async fn main() -> io::Result<()> {
             .app_data(web::Data::new(notifications_bus.clone()))
             .app_data(web::Data::new(turn_control.clone()))
             .app_data(web::Data::new(recorder_registry.clone()))
+            .app_data(pigeon.clone())
+            .app_data(pigeon_bus.clone())
             .configure(apps::health::routes::configure_routes)
             .configure(apps::auth::routes::configure_routes)
             .configure(apps::agents::routes::configure_routes)
@@ -172,6 +178,7 @@ async fn main() -> io::Result<()> {
             .configure(apps::mcp::routes::configure_routes)
             .configure(apps::widgets::routes::configure_routes)
             .configure(apps::telemetry::routes::configure_routes)
+            .configure(apps::pigeon::routes::configure_routes)
     })
     .workers(num_cpus::get() * 2)  // 2 workers per CPU core for high concurrency
     .backlog(2048)  // Increased backlog for handling burst traffic

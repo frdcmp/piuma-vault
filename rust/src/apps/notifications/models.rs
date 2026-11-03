@@ -105,6 +105,9 @@ pub struct ExpoTokenRequest {
     pub token: String,
     #[serde(default)]
     pub platform: Option<String>,
+    /// The phone app registering: piuma (the default) or pigeon.
+    #[serde(default)]
+    pub app: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

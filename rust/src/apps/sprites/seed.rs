@@ -1,8 +1,10 @@
 //! Idempotent boot seed for the built-in mascots (Piuma / Bubu / lizard).
 //! Seeds only when the `sprites` table is empty, so user edits and deletions
 //! persist across reboots. After first boot the DB is the source of truth.
+//! Pigeon (the Inbox's agent) is the exception: put back whenever it's missing,
+//! and locked against edits and deletion.
 
-use super::handlers::{ACTIVE_KEY, DEFAULT_KEY};
+use super::handlers::{ACTIVE_KEY, DEFAULT_KEY, PIGEON_KEY};
 use crate::apps::settings::store;
 use crate::db::db::DbPool;
 
@@ -72,6 +74,9 @@ const LIZARD: &str = r##"{
   "gallopFrameMs": 140
 }"##;
 
+/// Pigeon, the Inbox's agent: always there, never edited or deleted (`PIGEON_KEY`).
+const PIGEON: &str = r##"{"palette":{"G":"#9aa5b8","V":"#7f8ba2","D":"#4f5a6e","H":"#7a879e","I":"#3fae8c","P":"#9a68c0","K":"#3a3f4c","O":"#ff8a3d","A":"#b39a62","L":"#f7f2e6","R":"#d23c3c","W":"#cfd6e2","F":"#e8798a"},"body":["................","......HHH.......",".....HHHHH......","AAAAKHOHHH......","ALRA.HIIPP......","AAAA.PIIGGGGG...",".....GPGGVVVVDDD","....WGGGVDDDVDD.","....WWGGVVVDDD..",".....WWGGGGGG..."],"idleLegs":[".......F..F.....","......FF.FF....."],"walkLegs":[[".......F...F....","......FF..FF...."],[".......F..F.....","......FF.FF....."],["......F..F......",".....FF.FF......"],[".......F..F.....","......FF.FF....."]],"walkFrameMs":120,"gallopLegs":[["......F.....F...",".....FF.....FF.."],[".........FF.....","........FFFF...."]],"gallopFrameMs":140}"##;
+
 const BUILTINS: &[(&str, &str, &str)] = &[
     ("piuma", "Piuma", PIUMA),
     ("bubu", "Bubu", BUBU),
@@ -79,6 +84,7 @@ const BUILTINS: &[(&str, &str, &str)] = &[
 ];
 
 pub async fn seed_builtins(pool: &DbPool) {
+    ensure_pigeon(pool).await;
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sprites")
         .fetch_one(pool)
         .await
@@ -114,4 +120,17 @@ pub async fn seed_builtins(pool: &DbPool) {
         let _ = store::set(pool, ACTIVE_KEY, DEFAULT_KEY).await;
     }
     println!("🐾 Seeded built-in sprites (piuma, bubu, lizard)");
+}
+
+/// Pigeon's sprite, put back whenever it's missing: the Inbox draws it.
+async fn ensure_pigeon(pool: &DbPool) {
+    let def: serde_json::Value = serde_json::from_str(PIGEON).expect("Pigeon's sprite is JSON");
+    let res = sqlx::query("INSERT INTO sprites (key, name, definition, is_builtin) VALUES ($1, 'Pigeon', $2, TRUE) ON CONFLICT (key) DO NOTHING")
+        .bind(PIGEON_KEY)
+        .bind(&def)
+        .execute(pool)
+        .await;
+    if let Err(e) = res {
+        log::error!("sprites seed: insert {PIGEON_KEY} failed: {e:?}");
+    }
 }

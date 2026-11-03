@@ -159,6 +159,41 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: pigeon-worker
+  namespace: piuma-vault
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: pigeon-worker}}
+  template:
+    metadata: {labels: {app: pigeon-worker}}
+    spec:
+      # Leave a dead home node after 60 s rather than the cluster's 3600 s: the other home
+      # node holds a replica of every volume, so the pod restarts there.
+      tolerations:
+        - {key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 60}
+        - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 60}
+      containers:
+        - name: pigeon-worker
+          image: __REGISTRY__/piuma-vault-rust:68855e456a29
+          imagePullPolicy: IfNotPresent      # built locally, imported into containerd
+          args: ["pigeon-worker"]
+          envFrom:
+            - configMapRef: {name: pv-config}
+            - secretRef: {name: pv-secret}
+          # Host attribution for telemetry. The node is injected per-pod, but the
+          # "-piuma" suffix is kept: telemetry hardcodes source="backend" and both
+          # this app and keeperproxy ship to the SAME ingest, so `server` is the
+          # only field distinguishing them. A bare node name would merge them.
+          env:
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - name: SERVER_NAME
+              value: "$(NODE_NAME)-piuma"
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 256Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: mcp-worker
   namespace: piuma-vault
 spec:

@@ -91,6 +91,18 @@ const SCOPE_OPTIONS = [
 			"List, create, edit, delete and activate mascot sprites (not AI generation)",
 	},
 	{
+		label: "Inbox (read)",
+		value: "inbox.read",
+		description:
+			"Read the Inbox: chats, messages, Pigeon's cards, people, rules and settings",
+	},
+	{
+		label: "Inbox",
+		value: "inbox.write",
+		description:
+			"Act in the Inbox: send messages as you, answer Pigeon's cards (sending its drafts), change people, rules, switches and connections",
+	},
+	{
 		label: "Notifications",
 		value: "notifications",
 		description:
@@ -106,6 +118,7 @@ const SCOPE_TAG_CLASSES = {
 	"calendar.manage": "vp-tag--green",
 	"agents.chat": "vp-tag--accent",
 	"sprites.manage": "vp-tag--green",
+	"inbox.write": "vp-tag--accent",
 	notifications: "vp-tag--blue",
 };
 
@@ -119,6 +132,8 @@ const SCOPE_LABELS = {
 	"calendar.read": "Calendar (read)",
 	"agents.chat": "Agents (chat)",
 	"sprites.manage": "Sprites",
+	"inbox.read": "Inbox (read)",
+	"inbox.write": "Inbox",
 	notifications: "Notifications",
 };
 

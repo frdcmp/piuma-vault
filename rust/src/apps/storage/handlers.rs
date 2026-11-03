@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use actix_web::{web, HttpResponse, Responder};
 use aws_sdk_s3::{
     config::{BehaviorVersion, Credentials, Region},
@@ -136,18 +137,31 @@ pub(crate) async fn download_url(
     Ok((presigned.uri().to_string(), chrono::Utc::now().timestamp() + secs as i64))
 }
 
-// Storage key of the mobile update manifest published by `mobile/build.sh -p apk`.
-const UPDATE_MANIFEST_KEY: &str = "expo/piuma/apk/latest.json";
+// The phone apps that publish an update manifest (their build.sh -p apk), each at
+// `expo/<app>/apk/latest.json`.
+const UPDATE_APPS: [&str; 2] = ["piuma", "pigeon"];
 
-// GET /storage/app-update-manifest — read the mobile update manifest straight
-// from storage and return it as JSON. Proxied server-side rather than handed out
+#[derive(Debug, Deserialize)]
+pub struct ManifestQuery {
+    /// piuma (the default) or pigeon
+    app: Option<String>,
+}
+
+// GET /storage/app-update-manifest[?app=pigeon] — read a phone app's update manifest
+// straight from storage and return it as JSON. Proxied server-side rather than handed out
 // as a signed CDN URL: the CDN edge can 403 the app's own HTTP client. Any
 // authenticated user may read it — it's only version metadata. 404 until a build
 // has published a manifest.
 pub async fn app_update_manifest(
     _user: AuthenticatedUser,
     pool: web::Data<DbPool>,
+    query: web::Query<ManifestQuery>,
 ) -> impl Responder {
+    let app = query.app.as_deref().unwrap_or("piuma");
+    if !UPDATE_APPS.contains(&app) {
+        return err(actix_web::http::StatusCode::BAD_REQUEST, "app: piuma or pigeon");
+    }
+    let manifest_key = format!("expo/{app}/apk/latest.json");
     let (client, bucket) = match s3_client(pool.get_ref()).await {
         Ok(v) => v,
         Err(e) => return err(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, e),
@@ -155,7 +169,7 @@ pub async fn app_update_manifest(
     let obj = match client
         .get_object()
         .bucket(&bucket)
-        .key(UPDATE_MANIFEST_KEY)
+        .key(&manifest_key)
         .send()
         .await
     {

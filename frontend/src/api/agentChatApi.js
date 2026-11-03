@@ -153,6 +153,7 @@ const buildChatRequest = (
 	files,
 	signal,
 	branch,
+	contextPigeonIds,
 ) => {
 	const token = localStorage.getItem("token");
 	const { regenerate, parentId, fork } = branch || {};
@@ -165,6 +166,7 @@ const buildChatRequest = (
 		body: JSON.stringify({
 			message,
 			context_note_ids: contextNoteIds || [],
+			context_pigeon_ids: contextPigeonIds || [],
 			images: images || [],
 			files: files || [],
 			timezone: localTimezone(),
@@ -185,6 +187,7 @@ export async function streamChat({
 	conversationId,
 	message,
 	contextNoteIds,
+	contextPigeonIds,
 	images,
 	files,
 	signal,
@@ -204,6 +207,7 @@ export async function streamChat({
 			files,
 			signal,
 			branch,
+			contextPigeonIds,
 		);
 		if (resp.status === 401 && localStorage.getItem("refreshToken")) {
 			try {
@@ -216,6 +220,7 @@ export async function streamChat({
 					files,
 					signal,
 					branch,
+					contextPigeonIds,
 				);
 			} catch (refreshErr) {
 				localStorage.removeItem("token");

@@ -1,6 +1,6 @@
 # Production override — compiled release binaries instead of cargo-watch.
 #
-# This file is an OVERRIDE: it only redefines the five rust services' build +
+# This file is an OVERRIDE: it only redefines the six rust services' build +
 # command. It has no db, nginx, environment, volumes or networks of its own and
 # is never valid alone. Select it via COMPOSE_FILE in .env:
 #
@@ -8,12 +8,12 @@
 #
 # then deploy with a plain
 #
-#   docker compose up -d --build          # all five rust services
+#   docker compose up -d --build          # all six rust services
 #   docker compose up -d --build rust     # API only (workers keep their image)
 #
 # (Equivalent to the explicit `-f docker-compose.yml -f docker-compose.prod.yml`.)
 #
-# One image (rust/Dockerfile.prod) holds all five release binaries; each service
+# One image (rust/Dockerfile.prod) holds all six release binaries; each service
 # just runs a different one. The base ./rust:/app mount is kept: with
 # WORKDIR /app the binaries resolve the gitignored JWT/VAPID key material via
 # their legacy ./src/keys fallback path, exactly like dev. Source changes do NOT
@@ -45,6 +45,10 @@ services:
   embedding-worker:
     <<: *prod-build
     command: ["embedding-worker"]
+
+  pigeon-worker:
+    <<: *prod-build
+    command: ["pigeon-worker"]
 
   # Own image variant: runtime + node/uv for stdio MCP child processes.
   mcp-worker:

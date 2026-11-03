@@ -18,6 +18,7 @@ import CronPage from "./admin/pages/cron/CronPage";
 import DbDump from "./admin/pages/dbDump";
 import Files from "./admin/pages/files";
 import Homepage from "./admin/pages/homepage";
+import InboxPage from "./admin/pages/inbox/InboxPage";
 import Memory from "./admin/pages/memory";
 import NoteEditor from "./admin/pages/notes/NoteEditor";
 import NotesLayout from "./admin/pages/notes/NotesLayout";
@@ -104,6 +105,17 @@ function AppContent() {
 						element={
 							<ProtectedRoute requiredPermission="admin_access">
 								<CalendarPage />
+							</ProtectedRoute>
+						}
+					/>
+
+					{/* Inbox — what people send, sorted by Pigeon (the splat keeps the
+					    page mounted across chats) */}
+					<Route
+						path="/inbox/*"
+						element={
+							<ProtectedRoute requiredPermission={null}>
+								<InboxPage />
 							</ProtectedRoute>
 						}
 					/>

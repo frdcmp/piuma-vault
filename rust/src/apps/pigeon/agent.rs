@@ -1,0 +1,437 @@
+//! The agent: the LLM, offered the connectors' actions as tools, proposes what to do about a
+//! conversation. It never acts: each tool call becomes a proposal that goes through its policy
+//! (`actions`). Replies are written in the user's voice for that person on that channel: their
+//! own past messages to them there are the examples, their note on them outranks everything, and
+//! what Pigeon knows about them (`people`: their memory, the user's style with them on the
+//! channel) carries the rest. The prompts call the user by their name (`owner`).
+//!
+//! A triage's round has two parts. The responder writes the reply to them (only that), unless
+//! Jev's gate (`triage::gate`) keeps it for the user: the answer is theirs to give, or they ask
+//! whether it's really the user. The intaker never writes to them: it turns the conversation into
+//! tasks and events, and asks the user (`pigeon_ask_user`) what only they can answer, always when
+//! the reply was kept for them; the answer brings Pigeon back (`after_answer`) to answer them as
+//! the user said. What a round leaves for the user is cards in the Inbox (`cards::round`).
+//!
+//! Also here: the conversation summary (written when asked for and stale).
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use serde_json::{json, Value as Json};
+use uuid::Uuid;
+
+use crate::apps::pigeon::actions::{self, Outcome, Proposal, Source};
+use crate::apps::pigeon::ai::llm;
+use crate::apps::pigeon::cards::{self, ASK_TOOL};
+use crate::apps::pigeon::connectors::{self, ActionDef, Connector, Kind};
+use crate::apps::pigeon::conversations::{self, Contact, Conversation};
+use crate::apps::pigeon::owner::{self, Owner};
+use crate::apps::pigeon::people;
+use crate::apps::pigeon::policy::{self, Policy};
+use crate::apps::pigeon::triage::{Signals, HOLD_AT};
+use crate::apps::pigeon::state::State;
+
+/// The most actions one turn may propose.
+const MAX_PROPOSALS: usize = 3;
+/// The user's own messages to a person shown as examples of their voice.
+const VOICE_EXAMPLES: i64 = 8;
+
+enum Mode<'a> {
+    /// After a triage: the responder (the reply to them) or the intaker (tasks, events, what to
+    /// ask the user), under the policies.
+    AfterTriage { triage_id: i64, sig: &'a Signals, role: Role, held: Option<&'a str>, replied: Option<&'a str> },
+    /// The user (or Piuma for them) asked for a reply: reply actions only, always held for them.
+    Draft { instructions: Option<&'a str> },
+    /// The user answered what Pigeon asked them: act on it (the reply, and an event or task it
+    /// settles), under the policies.
+    Answer { asked: &'a str, answer: &'a str },
+}
+
+/// Who acts in an agent round.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    /// writes the reply to them, and nothing else
+    Responder,
+    /// turns the conversation into tasks and events, and asks the user what only they can answer;
+    /// never writes to them
+    Intaker,
+}
+
+/// The responder after a triage: the reply to them (auto, or waiting for the user).
+pub async fn respond(st: &State, conversation: Uuid, triage_id: i64, sig: &Signals) -> anyhow::Result<Vec<Outcome>> {
+    run(st, conversation, Mode::AfterTriage { triage_id, sig, role: Role::Responder, held: None, replied: None }).await
+}
+
+/// The intaker after a triage: `held` is why the reply was kept for the user (Jev's gate),
+/// `replied` what became of the responder's reply.
+pub async fn intake(st: &State, conversation: Uuid, triage_id: i64, sig: &Signals, held: Option<&str>, replied: Option<&str>) -> anyhow::Result<Vec<Outcome>> {
+    run(st, conversation, Mode::AfterTriage { triage_id, sig, role: Role::Intaker, held, replied }).await
+}
+
+pub async fn draft_reply(st: &State, conversation: Uuid, instructions: Option<&str>) -> anyhow::Result<Vec<Outcome>> {
+    run(st, conversation, Mode::Draft { instructions }).await
+}
+
+pub async fn after_answer(st: &State, conversation: Uuid, asked: &str, answer: &str) -> anyhow::Result<Vec<Outcome>> {
+    // the reply written on the user's answer replaces one still waiting
+    sqlx::query(
+        "UPDATE db_pigeon_actions SET status = 'expired', error = 'replaced: your answer came in', updated_at = NOW()
+          WHERE conversation_id = $1 AND status = 'pending' AND source = 'agent' AND kind = 'reply'",
+    )
+    .bind(conversation)
+    .execute(&st.pool)
+    .await?;
+    run(st, conversation, Mode::Answer { asked, answer }).await
+}
+
+/// One agent round per conversation at a time (a triage and the user's answer to a question can come
+/// together): the second waits and sees what the first did (its replies count for the auto limit).
+fn conversation_lock(id: Uuid) -> Arc<tokio::sync::Mutex<()>> {
+    static LOCKS: std::sync::LazyLock<std::sync::Mutex<HashMap<Uuid, Arc<tokio::sync::Mutex<()>>>>> = std::sync::LazyLock::new(Default::default);
+    let mut locks = LOCKS.lock().expect("agent locks");
+    // the ones nobody holds or waits for go
+    locks.retain(|_, l| Arc::strong_count(l) > 1);
+    locks.entry(id).or_default().clone()
+}
+
+/// Which actions a round may propose: replies, or everything else, or both.
+fn offers(mode: &Mode<'_>, kind: Kind) -> bool {
+    match mode {
+        Mode::Draft { .. } => kind == Kind::Reply,
+        Mode::AfterTriage { role: Role::Responder, .. } => kind == Kind::Reply,
+        Mode::AfterTriage { role: Role::Intaker, .. } => kind != Kind::Reply,
+        Mode::Answer { .. } => true,
+    }
+}
+
+async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome>> {
+    let lock = conversation_lock(id);
+    let _round = lock.lock().await;
+    let conv = conversations::get(&st.pool, id).await?.ok_or_else(|| anyhow::anyhow!("no conversation {id}"))?;
+    let contact = conversations::contact(&st.pool, conv.contact_id).await?;
+    let me = owner::get(&st.pool, &conv.user_id).await;
+
+    // the tools: this conversation's channel actions, and actions that aren't on a conversation
+    // (the vault), the ones this round offers, minus what the policies switched off
+    let drafting = matches!(mode, Mode::Draft { .. });
+    let mut offered: Vec<(Arc<dyn Connector>, ActionDef)> = Vec::new();
+    for (c, def) in connectors::available_actions(st) {
+        if def.on_conversation && c.id() != conv.connector {
+            continue;
+        }
+        if !def.agent || !offers(&mode, def.kind) {
+            continue;
+        }
+        if policy::resolve(&st.pool, &conv.user_id, def.kind, conv.contact_id, Some(id)).await? == Policy::Off && !drafting {
+            continue;
+        }
+        offered.push((c, def));
+    }
+    // the intaker asks the user, unless they're writing there (they're in it)
+    let asking = matches!(mode, Mode::AfterTriage { role: Role::Intaker, .. }) && !actions::user_writing(st, id).await?;
+    if offered.is_empty() && !asking {
+        return Ok(Vec::new());
+    }
+    if let Some(c) = &contact {
+        // what Pigeon knows about them, and how the user writes to them here, brought up to date
+        if let Err(e) = people::ensure_memory(st, c, false).await {
+            log::warn!("memory of {}: {e:#}", c.id);
+        }
+        if offered.iter().any(|(_, d)| d.kind == Kind::Reply) {
+            if let Err(e) = people::ensure_style(st, c, &conv.connector, false).await {
+                log::warn!("{} style of {}: {e:#}", conv.connector, c.id);
+            }
+        }
+    }
+    let why = format!("Why, in one short sentence {} will read", me.name);
+    let mut tools: Vec<Json> = offered
+        .iter()
+        .map(|(c, def)| {
+            json!({ "type": "function", "function": {
+                "name": connectors::tool_name(c.id(), def.name),
+                "description": def.description,
+                "parameters": connectors::tool_schema(def, false, &[("reason", &why)]),
+            }})
+        })
+        .collect();
+    if asking {
+        tools.push(json!({ "type": "function", "function": {
+            "name": ASK_TOOL,
+            "description": format!("Ask {me}, on their phone, something only they can answer about this conversation (whether to meet, \
+                            a date or time, a price, a yes or no, a choice, what to tell them). The answer brings Pigeon back here \
+                            to answer them as {me} said.", me = me.name),
+            "parameters": { "type": "object", "properties": {
+                "question": { "type": "string", "description": "In English, a few words, like a Slack message (the card already shows who and their message): \"dinner at hers Fri 6 Nov 20:00, bring dessert?\"" },
+                "options": { "type": "array", "items": { "type": "string" }, "description": "2 to 4 answers as buttons, a word or three each (\"Yes\", \"Can't\", \"I'll answer\"); leave out for an open question" },
+            }, "required": ["question"] },
+        }}));
+    }
+
+    // their replies off: the user answers them, so Pigeon never asks what to tell them
+    let replies_off = policy::resolve(&st.pool, &conv.user_id, Kind::Reply, conv.contact_id, Some(conv.id)).await? == Policy::Off;
+    let system = system_prompt(&me, &mode, asking, replies_off);
+    let user = context(st, &me, &conv, contact.as_ref(), &mode, replies_off).await?;
+    let reply = llm::complete(&st.pool, &system, &user, &tools).await?;
+
+    let (triage_id, hold_reply) = match &mode {
+        Mode::AfterTriage { triage_id, sig, .. } => (Some(*triage_id), hold_for(sig)),
+        Mode::Draft { .. } => (None, Some("asked for as a draft".to_string())),
+        Mode::Answer { .. } => (None, None),
+    };
+    let mut out = Vec::new();
+    // one reply a round: a second is the same answer again
+    let mut replied = false;
+    let mut asked = false;
+    for call in reply.tool_calls.into_iter().take(MAX_PROPOSALS + 1) {
+        if asking && call.name == ASK_TOOL {
+            let question = call.args["question"].as_str().unwrap_or_default().trim().to_string();
+            if question.is_empty() || asked {
+                continue;
+            }
+            asked = true;
+            let options: Vec<String> = call.args["options"].as_array().into_iter().flatten().filter_map(|o| o.as_str().map(str::to_string)).collect();
+            match cards::ask(st, id, &question, &options).await {
+                Ok(qid) => out.push(Outcome { id: Some(qid), status: "asked".into(), detail: None }),
+                Err(e) => log::warn!("agent on {id}: asking the user: {e:#}"),
+            }
+            continue;
+        }
+        let Some((c, def)) = offered.iter().find(|(c, d)| connectors::tool_name(c.id(), d.name) == call.name) else {
+            log::warn!("agent on {id}: called {} which it wasn't offered", call.name);
+            continue;
+        };
+        if def.kind == Kind::Reply {
+            if replied {
+                log::info!("agent on {id}: a second reply in one round, left");
+                continue;
+            }
+            replied = true;
+        }
+        let mut args = call.args;
+        let reason = args.as_object_mut().and_then(|o| o.remove("reason")).and_then(|r| r.as_str().map(str::to_string));
+        if let Some(o) = args.as_object_mut() {
+            o.remove("conversation_id");
+        }
+        let p = Proposal {
+            user_id: conv.user_id.clone(),
+            conversation_id: Some(id),
+            connector: c.id().to_string(),
+            action: def.name.to_string(),
+            args,
+            reason,
+            source: Source::Agent,
+            triage_id,
+            hold: if def.kind == Kind::Reply || drafting { hold_reply.clone() } else { None },
+        };
+        match actions::propose(st, p).await {
+            Ok(o) => out.push(o),
+            Err(e) => log::warn!("agent on {id}: proposing {}: {e:#}", call.name),
+        }
+    }
+    Ok(out)
+}
+
+/// Why a reply after this triage must wait for the user even under auto.
+fn hold_for(sig: &Signals) -> Option<String> {
+    if sig.sensitive >= HOLD_AT {
+        Some(format!("sensitive ({:.2})", sig.sensitive))
+    } else if sig.mood_changed >= HOLD_AT {
+        Some(format!("the person seems upset or pressing ({:.2})", sig.mood_changed))
+    } else if !sig.others.is_empty() {
+        Some(format!("others are on it, and the reply goes to them too: {}", sig.others.join(", ")))
+    } else {
+        None
+    }
+}
+
+fn system_prompt(me: &Owner, mode: &Mode<'_>, asking: bool, replies_off: bool) -> String {
+    let now = me.now();
+    let name = &me.name;
+    let mut s = format!(
+        "You are Pigeon, {name}'s intake assistant. Messages people send {name} reach you; you propose what to do \
+         about them through the tools. You never act yourself: every tool call is a proposal {name} approves, unless \
+         they told Pigeon to act on its own for that kind of action.\n\n\
+         Now: {} ({name}'s time, {}, UTC{}). Write every date and time in that zone, as ISO 8601 with the offset.\n\n\
+         Rules:\n\
+         - Propose at most {MAX_PROPOSALS} actions, and only ones the conversation calls for. Proposing nothing is fine.\n\
+         - Never invent facts, prices, dates or commitments {name} hasn't stated, and never agree on their behalf.\n\
+         - Every call carries a `reason`: one short sentence in English that {name} will read.",
+        now.format("%A %Y-%m-%d %H:%M"),
+        me.tz,
+        now.format("%:z"),
+    );
+    let replying = format!(
+        "\n- A reply is written as {name}, in the first person, to this person: match the language, length, tone, \
+         greetings and emoji use of {name}'s own messages to them (the examples), and follow {name}'s note on them above all. \
+         One reply at most.\n\
+         - A reply may acknowledge, thank, chat or ask, but accepting a request, a date, a price or a commitment is {name}'s \
+         decision unless their own messages here already did, or their instructions say so: then propose no reply.\n\
+         - Never claim to be {name} or a person, and never deny being Pigeon: when they ask or doubt whether it's really \
+         {name}, propose no reply; that answer is {name}'s."
+    );
+    match mode {
+        Mode::Draft { .. } => {
+            s.push_str(&replying);
+            s.push_str(&format!("\n- {name} asked for a reply now: propose exactly one reply."));
+        }
+        Mode::AfterTriage { role: Role::Responder, .. } => {
+            s.push_str(&replying);
+            s.push_str(&format!("\n- You only answer them: tasks, events and questions for {name} are handled by another part of Pigeon."));
+        }
+        Mode::AfterTriage { role: Role::Intaker, .. } => {
+            s.push_str(&format!(
+                "\n- You never write to them: the reply is another part of Pigeon's (what it did is below). You turn the \
+                 conversation into what {name} must do or remember: a task when there is something to do or remember, \
+                 an event when a date and time are agreed. Titles short and concrete. Don't propose what is already done or \
+                 already waiting (below)."
+            ));
+            if asking && replies_off {
+                s.push_str(&format!(
+                    "\n- {name} answers this person themselves: never ask what to tell them, how to answer, or anything \
+                     about replying. Call {ASK_TOOL} only for a task or an event the conversation leaves to {name} (a date or \
+                     time to fix, something to do), with the question as {name} should read it on their phone. One question \
+                     at most; usually none."
+                ));
+            } else if asking {
+                s.push_str(&format!(
+                    "\n- When something is {name}'s to decide or answer (whether to meet, a date or time, a price, a yes \
+                     or no, a choice, what to tell them), call {ASK_TOOL} with the question as {name} should read it on their \
+                     phone, with options when they're clear. Always ask when Pigeon kept the reply for {name} (below). Don't \
+                     ask about what needs nothing from {name}. One question at most. When they ask whether it's really {name}, \
+                     the options are that {name} answers them, or that Pigeon tells them it's {name}'s assistant; never that \
+                     Pigeon says it's {name}."
+                ));
+            }
+        }
+        Mode::Answer { .. } => {
+            s.push_str(&replying);
+            s.push_str(&format!(
+                "\n- {name} answered what Pigeon asked: act on the answer now. Reply to them as {name}, saying what the \
+                 answer says and nothing it doesn't (no extra details, times or places); propose an event when the answer \
+                 settles a date and time, a task when it leaves {name} something to do. If the answer says to do nothing, \
+                 propose nothing. Even on the answer, never write that it's really {name} writing when it isn't."
+            ));
+        }
+    }
+    s
+}
+
+async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&Contact>, mode: &Mode<'_>, replies_off: bool) -> anyhow::Result<String> {
+    let name = &me.name;
+    let them = conversations::who(contact, conv);
+    let handles = conversations::my_handles(&st.pool, &conv.user_id).await?;
+    let items = conversations::recent_items(&st.pool, conv.id, 25).await?;
+    let mut s = format!("Channel: {}\nConversation with: {them}\n", conv.connector);
+    if let Some(t) = conv.title.as_deref().filter(|t| !t.is_empty()) {
+        s.push_str(&format!("Subject/title: {t}\n"));
+    }
+    if let Some(c) = contact {
+        s.push_str(&c.facts(name));
+        if let Some(note) = c.note.as_deref().filter(|n| !n.trim().is_empty()) {
+            s.push_str(&format!("\n{name}'s note on {them} (follow it):\n{note}\n"));
+        }
+        if let Some(m) = people::memory(st, c.id).await? {
+            s.push_str(&format!("\nWhat Pigeon knows about {them}, from their past conversations:\n{}\n", m.memory));
+        }
+        if let Some(p) = people::style(st, c.id, &conv.connector).await? {
+            s.push_str(&format!("\nHow {name} writes to {them} on {}:\n{}\n", conv.connector, p.profile));
+        }
+        let here = people::voice_examples(st, c.id, Some(&conv.connector), VOICE_EXAMPLES).await?;
+        if !here.is_empty() {
+            s.push_str(&format!("\n{name}'s own recent messages to {them} on {} (their voice):\n", conv.connector));
+            for (_, e) in here {
+                s.push_str(&format!("- {}\n", conversations::clip(&e, 400)));
+            }
+        } else {
+            // none on this channel yet: their messages elsewhere, for language and warmth, not form
+            let elsewhere = people::voice_examples(st, c.id, None, VOICE_EXAMPLES).await?;
+            if !elsewhere.is_empty() {
+                s.push_str(&format!(
+                    "\n{name} hasn't written to {them} on {} yet. {name}'s messages to them elsewhere (match the language and \
+                     warmth; the form on {} may differ):\n",
+                    conv.connector, conv.connector
+                ));
+                for (ch, e) in elsewhere {
+                    s.push_str(&format!("- [{ch}] {}\n", conversations::clip(&e, 400)));
+                }
+            }
+        }
+    }
+    if let Some(w) = conv.window_until {
+        s.push_str(&format!("\nThe channel accepts replies until {}.\n", me.local(w).format("%Y-%m-%d %H:%M")));
+    }
+    s.push_str(&format!("\nThe conversation (oldest first):\n{}", conversations::transcript(&items, &them, (name, &handles), 2000)));
+    match mode {
+        Mode::AfterTriage { sig, role, held, replied, .. } => {
+            if *role == Role::Intaker {
+                match (held, replied) {
+                    _ if replies_off => s.push_str(&format!("\n{name} answers this person themselves (Pigeon doesn't reply to them).\n")),
+                    (Some(why), _) => {
+                        let why = if why.contains("really you") { format!("they ask whether it's really {name} writing") } else { format!("the answer is {name}'s to give") };
+                        s.push_str(&format!("\nPigeon kept the reply to them for {name}: {why}. Ask.\n"))
+                    }
+                    (None, Some("done")) => s.push_str("\nPigeon has already replied to them (above, its message).\n"),
+                    (None, Some("pending")) => s.push_str(&format!("\nPigeon wrote a reply that waits for {name}'s yes.\n")),
+                    _ => s.push_str("\nPigeon proposed no reply to them.\n"),
+                }
+                let waiting = actions::list(st, &conv.user_id, Some("pending"), Some(conv.id), 10).await?;
+                if !waiting.is_empty() {
+                    s.push_str(&format!("Already waiting for {name} here:\n"));
+                    for w in waiting {
+                        s.push_str(&format!("- {} {}\n", w.action, conversations::clip(&w.args.to_string(), 200)));
+                    }
+                }
+            }
+            s.push_str(&format!(
+                "\nPigeon's triage of the newest messages: needs a reply {:.2}, written to {name} {:.2}, something to \
+                 do or remember {:.2}, sensitive {:.2}, upset or pressing {:.2}, importance {:.2}, kind {}.\n",
+                sig.needs_reply,
+                sig.addressed,
+                sig.actionable,
+                sig.sensitive,
+                sig.mood_changed,
+                sig.importance,
+                sig.kind.as_deref().unwrap_or("?")
+            ));
+            if !sig.others.is_empty() {
+                s.push_str(&format!("Also on the newest messages, and copied on a reply: {}.\n", sig.others.join(", ")));
+            }
+        }
+        Mode::Answer { asked, answer } => {
+            s.push_str(&format!("\nPigeon asked {name}: {asked}\n{name}'s answer: {answer}\n"));
+        }
+        Mode::Draft { instructions } => {
+            s.push_str(&format!("\n{name} asks for a reply to this conversation now."));
+            if let Some(i) = instructions.filter(|i| !i.trim().is_empty()) {
+                s.push_str(&format!(" Their instructions: {i}"));
+            }
+            s.push('\n');
+        }
+    }
+    Ok(s)
+}
+
+/// The conversation's summary, written again when items arrived since.
+pub async fn summary(st: &State, conv: &Conversation) -> anyhow::Result<Option<String>> {
+    let fresh = matches!((conv.summary_at, conv.last_item_at), (Some(s), Some(l)) if s >= l);
+    if fresh || conv.last_item_at.is_none() || !llm::available(&st.pool).await {
+        return Ok(conv.summary.clone());
+    }
+    let me = owner::get(&st.pool, &conv.user_id).await;
+    let contact = conversations::contact(&st.pool, conv.contact_id).await?;
+    let them = conversations::who(contact.as_ref(), conv);
+    let items = conversations::recent_items(&st.pool, conv.id, 40).await?;
+    let handles = conversations::my_handles(&st.pool, &conv.user_id).await?;
+    let text = llm::text(
+        &st.pool,
+        &format!(
+            "Summarise a conversation for {name} in 2 to 4 short lines of English: what it is about, where it stands, \
+             and anything open (questions to {name}, things {name} promised, dates). No preamble.",
+            name = me.name
+        ),
+        &format!("Channel: {}\nWith: {them}\n\n{}", conv.connector, conversations::transcript(&items, &them, (&me.name, &handles), 1500)),
+    )
+    .await?;
+    sqlx::query("UPDATE db_pigeon_conversations SET summary = $2, summary_at = NOW() WHERE id = $1").bind(conv.id).bind(&text).execute(&st.pool).await?;
+    Ok(Some(text))
+}

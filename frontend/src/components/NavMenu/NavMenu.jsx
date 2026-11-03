@@ -5,6 +5,7 @@ import {
 	CheckSquareOutlined,
 	FileTextOutlined,
 	FolderOpenOutlined,
+	InboxOutlined,
 	MessageOutlined,
 	SoundOutlined,
 } from "@ant-design/icons";
@@ -19,6 +20,7 @@ const ITEMS = [
 	{ key: "/notes", label: "Notes", icon: <BookOutlined /> },
 	{ key: "/tasks", label: "Tasks", icon: <CheckSquareOutlined /> },
 	{ key: "/calendar", label: "Calendar", icon: <CalendarOutlined /> },
+	{ key: "/inbox", label: "Inbox", icon: <InboxOutlined /> },
 	{ key: "/chat", label: "Chat", icon: <MessageOutlined /> },
 	{ key: "/voice", label: "Voice", icon: <SoundOutlined /> },
 	{ key: "/recorder", label: "Recorder", icon: <AudioOutlined /> },

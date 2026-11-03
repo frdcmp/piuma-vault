@@ -25,6 +25,7 @@ export * from "./mcpServersQuery";
 export * from "./memoryQuery";
 export * from "./notesQuery";
 export * from "./notificationsQuery";
+export * from "./pigeonQuery";
 export * from "./recorderQuery";
 export * from "./screenLockQuery";
 export * from "./servicesQuery";

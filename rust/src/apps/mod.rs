@@ -26,3 +26,4 @@ pub mod image_gen;
 pub mod voice;
 pub mod mcp;
 pub mod widgets;
+pub mod pigeon;

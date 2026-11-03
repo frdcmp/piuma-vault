@@ -56,6 +56,9 @@ const useChatDockStore = create((set) => ({
 	// it is already showing): { id, nonce }. Used by the voice agent so its
 	// conversation fills in live while you talk.
 	focusRequest: null,
+	// Inbox chats attached to the next turns ("Ask Piuma" from a chat): their
+	// latest messages ride along as context. [{ id, title }]; transient.
+	pigeonContext: [],
 
 	openChat: () => {
 		persist(OPEN_KEY, "1");
@@ -82,6 +85,16 @@ const useChatDockStore = create((set) => ({
 		set({ width: CHAT_DEFAULT });
 	},
 	setResizing: (b) => set({ isResizing: !!b }),
+	askPiuma: (chat) =>
+		set((state) => {
+			persist(OPEN_KEY, "1");
+			const rest = state.pigeonContext.filter((c) => c.id !== chat.id);
+			return { open: true, pigeonContext: [...rest, chat] };
+		}),
+	dropPigeonContext: (id) =>
+		set((state) => ({
+			pigeonContext: state.pigeonContext.filter((c) => c.id !== id),
+		})),
 	focusConversation: (id) =>
 		set((state) => ({
 			focusRequest: { id, nonce: (state.focusRequest?.nonce || 0) + 1 },

@@ -83,6 +83,21 @@ services:
       # MCP bridge — the mcp-worker owns all MCP connections; the backend only
       # proxies tool schemas/calls to it over the compose network.
       - MCP_WORKER_URL=http://mcp-worker:8090
+      # Pigeon (the Inbox): see .env.example
+      - PIGEON_JEV_URL=${PIGEON_JEV_URL:-}
+      - PIGEON_JEV_KEY=${PIGEON_JEV_KEY:-}
+      - PIGEON_JEV_MODEL=${PIGEON_JEV_MODEL:-}
+      - PIGEON_GOOGLE_CLIENT_ID=${PIGEON_GOOGLE_CLIENT_ID:-}
+      - PIGEON_GOOGLE_CLIENT_SECRET=${PIGEON_GOOGLE_CLIENT_SECRET:-}
+      - PIGEON_INSTAGRAM_APP_ID=${PIGEON_INSTAGRAM_APP_ID:-}
+      - PIGEON_INSTAGRAM_APP_SECRET=${PIGEON_INSTAGRAM_APP_SECRET:-}
+      - PIGEON_INSTAGRAM_CONFIG_ID=${PIGEON_INSTAGRAM_CONFIG_ID:-}
+      - PIGEON_INSTAGRAM_WEBHOOK_VERIFY_TOKEN=${PIGEON_INSTAGRAM_WEBHOOK_VERIFY_TOKEN:-}
+      - PIGEON_WHATSAPP_BRIDGE_URL=${PIGEON_WHATSAPP_BRIDGE_URL:-}
+      - PIGEON_WHATSAPP_BRIDGE_SECRET=${PIGEON_WHATSAPP_BRIDGE_SECRET:-}
+      - PIGEON_CONSOLE=${PIGEON_CONSOLE:-0}
+      - PIGEON_TRIAGE_DEBOUNCE_SECS=${PIGEON_TRIAGE_DEBOUNCE_SECS:-20}
+      - PIGEON_GMAIL_POLL_SECS=${PIGEON_GMAIL_POLL_SECS:-60}
     networks:
       - network
 
@@ -156,6 +171,59 @@ services:
     networks:
       - network
 
+  # The Inbox's background work (rust/src/apps/pigeon/worker.rs): triage, Gmail's
+  # polling, the pushes, the sweeps, the morning summary, the health checks.
+  pigeon-worker:
+    container_name: ${COMPOSE_NAME}-pigeon-worker
+    build: ./rust
+    restart: unless-stopped
+    profiles: ["server-stack"]
+    command: ["cargo", "watch", "-x", "run --bin pigeon-worker"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./rust:/app
+    environment:
+      - RUST_LOG=${RUST_LOG}
+      - DB_HOST=${DB_HOST}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_PORT=${DB_PORT}
+      - SITE_URL=${SITE_URL}
+      # Pigeon (the Inbox): see .env.example
+      - PIGEON_JEV_URL=${PIGEON_JEV_URL:-}
+      - PIGEON_JEV_KEY=${PIGEON_JEV_KEY:-}
+      - PIGEON_JEV_MODEL=${PIGEON_JEV_MODEL:-}
+      - PIGEON_GOOGLE_CLIENT_ID=${PIGEON_GOOGLE_CLIENT_ID:-}
+      - PIGEON_GOOGLE_CLIENT_SECRET=${PIGEON_GOOGLE_CLIENT_SECRET:-}
+      - PIGEON_INSTAGRAM_APP_ID=${PIGEON_INSTAGRAM_APP_ID:-}
+      - PIGEON_INSTAGRAM_APP_SECRET=${PIGEON_INSTAGRAM_APP_SECRET:-}
+      - PIGEON_INSTAGRAM_CONFIG_ID=${PIGEON_INSTAGRAM_CONFIG_ID:-}
+      - PIGEON_INSTAGRAM_WEBHOOK_VERIFY_TOKEN=${PIGEON_INSTAGRAM_WEBHOOK_VERIFY_TOKEN:-}
+      - PIGEON_WHATSAPP_BRIDGE_URL=${PIGEON_WHATSAPP_BRIDGE_URL:-}
+      - PIGEON_WHATSAPP_BRIDGE_SECRET=${PIGEON_WHATSAPP_BRIDGE_SECRET:-}
+      - PIGEON_CONSOLE=${PIGEON_CONSOLE:-0}
+      - PIGEON_TRIAGE_DEBOUNCE_SECS=${PIGEON_TRIAGE_DEBOUNCE_SECS:-20}
+      - PIGEON_GMAIL_POLL_SECS=${PIGEON_GMAIL_POLL_SECS:-60}
+    networks:
+      - network
+
+  # WhatsApp for Pigeon: one linked device per user (whatsapp-bridge/). Its
+  # sessions are in a named volume (nothing in the checkout); compose network only.
+  whatsapp-bridge:
+    container_name: ${COMPOSE_NAME}-whatsapp-bridge
+    build: ./whatsapp-bridge
+    restart: unless-stopped
+    profiles: ["whatsapp"]
+    volumes:
+      - whatsapp_data:/data
+    environment:
+      - PIGEON_WHATSAPP_BRIDGE_SECRET=${PIGEON_WHATSAPP_BRIDGE_SECRET:-}
+      - PIGEON_WEBHOOK_URL=http://rust:8080/pigeon/webhooks/whatsapp
+    networks:
+      - network
+
   embedding-worker:
     container_name: ${COMPOSE_NAME}-embedding-worker
     build: ./rust
@@ -208,3 +276,6 @@ services:
 networks:
   network:
     driver: bridge
+
+volumes:
+  whatsapp_data:

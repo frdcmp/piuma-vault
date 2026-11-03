@@ -17,6 +17,12 @@ use uuid::Uuid;
 pub const ACTIVE_KEY: &str = "active_sprite";
 /// Fallback mascot when nothing is selected yet.
 pub const DEFAULT_KEY: &str = "piuma";
+/// Pigeon's sprite (the Inbox's agent): fixed, so the Inbox always draws the same bird.
+pub const PIGEON_KEY: &str = "pigeon";
+
+fn locked() -> HttpResponse {
+    HttpResponse::Forbidden().json(ErrorResponse { error: "Pigeon's sprite is fixed: it can't be changed or deleted".to_string() })
+}
 
 /// Scope an API key needs to list, create, edit, delete and activate sprites
 /// (`admin_access` passes too). AI generation stays admin-only: it spends LLM
@@ -254,6 +260,9 @@ pub async fn update_sprite(
         return forbidden(SPRITES_SCOPE);
     }
     let key = path.into_inner();
+    if key == PIGEON_KEY {
+        return locked();
+    }
     let req = body.into_inner();
 
     if let Some(def) = &req.definition {
@@ -319,6 +328,9 @@ pub async fn delete_sprite(
         return forbidden(SPRITES_SCOPE);
     }
     let key = path.into_inner();
+    if key == PIGEON_KEY {
+        return locked();
+    }
     if key == active_key(pool.get_ref()).await {
         return HttpResponse::BadRequest().json(ErrorResponse {
             error: "cannot delete the active sprite — switch the active mascot first".to_string(),

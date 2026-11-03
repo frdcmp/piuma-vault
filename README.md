@@ -132,6 +132,14 @@ The assistant remembers you between conversations. Its memory has three layers.
 * Tasks with due dates, priorities, buckets, tags, repeat rules and reminders.
 * The assistant can read both, so you can ask it to plan your day.
 
+### Inbox
+
+* What people send you on WhatsApp, Instagram and Gmail, in one place, as chats.
+* Pigeon, the vault's messenger, sorts what comes in, drafts replies in your voice and suggests tasks and events. Each one waits for your tap, unless you switch a person or a chat to Auto.
+* Piuma, the assistant, can read and search your chats and draft replies, but anything sent or any big change still needs your yes.
+* Rules for what a sender keeps sending (bank alerts, receipts): note it in the vault, then archive or trash it.
+* On the phone it is its own app, Pigeon: your chats with Piuma pinned on top, and pushes with the card's buttons, so you can send a draft or answer a question without opening it.
+
 ### Voice and recorder
 
 * Record meetings and voice memos. Speech is transcribed live with speaker labels, and each recording gets a summary note.
@@ -157,7 +165,7 @@ The assistant remembers you between conversations. Its memory has three layers.
 
 ## Architecture
 
-The backend is written in Rust with Actix-web and the frontend is a React app. Nginx serves the frontend and passes API calls to the backend. Background workers handle embeddings, notifications and scheduled agent jobs.
+The backend is written in Rust with Actix-web and the frontend is a React app. Nginx serves the frontend and passes API calls to the backend. Background workers handle embeddings, notifications, scheduled agent jobs and the Inbox.
 
 ```mermaid
 flowchart TD
@@ -173,6 +181,8 @@ flowchart TD
     Worker -.->|Generates 1536-Dim Vectors| AO[Azure OpenAI <br/> text-embedding-3-large]
     NW[notification-worker <br/> Web Push + Expo] -->|Dispatches due alerts| DB
     CW[cron-worker <br/> scheduled agent jobs] -->|Runs RRULE schedules| DB
+    PW[pigeon-worker <br/> the Inbox] -->|Polls channels, sorts, drafts| DB
+    PW -.->|Linked device| WA[whatsapp-bridge <br/> whatsmeow]
 
     classDef store fill:#1b1e25,stroke:#3a4150,stroke-width:2px;
     class DB store;
@@ -254,6 +264,8 @@ cp .env.example .env
 | `DB_PORT_EXTERNAL` | Host port mapped to Postgres, so you can connect with `psql` from your machine. |
 | `DB_VERIFY_SCHEMA` | At startup, check the database tables against the definitions in `db_init`. `1` is on, `0` is off. |
 | `SITE_URL` | The public URL of the site. Authenticator apps also show it as the name of the account. |
+
+The Inbox's own settings are in the Pigeon section of `.env.example`: Jev (`PIGEON_JEV_*`, which sorts what comes in), the Google and Instagram apps, and the WhatsApp bridge. A channel whose settings are missing stays off. The bridge runs under its own profile: add `whatsapp` to `COMPOSE_PROFILES` to start it.
 
 > The JWT and Web Push (VAPID) keys are generated into `rust/src/keys/` on the first build. You don't need to set them.
 

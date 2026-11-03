@@ -37,7 +37,9 @@ cfg_all = load('.env.k8s')
 
 # Key names only; values live in .env.k8s. These render into a k8s Secret.
 SECRET={'DB_PASSWORD','CLOUDFLARE_API_TOKEN','CLOUDFLARED_TOKEN',
-        'CLOUDFLARE_ACCOUNT_ID','TELEMETRY_API_KEY'}
+        'CLOUDFLARE_ACCOUNT_ID','TELEMETRY_API_KEY',
+        'PIGEON_JEV_KEY','PIGEON_GOOGLE_CLIENT_SECRET','PIGEON_INSTAGRAM_APP_SECRET',
+        'PIGEON_INSTAGRAM_WEBHOOK_VERIFY_TOKEN','PIGEON_WHATSAPP_BRIDGE_SECRET'}
 
 # Deploy-time substitutions: consumed by this script, read by no pod.
 DEPLOY_ONLY={'REGISTRY_HOST'}

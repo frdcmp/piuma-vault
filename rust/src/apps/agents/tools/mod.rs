@@ -24,6 +24,7 @@ mod image;
 mod navigation;
 pub mod memory;
 mod notes;
+mod pigeon;
 mod recordings;
 mod self_config;
 mod shares;
@@ -51,6 +52,7 @@ fn all_defs() -> Vec<(&'static str, &'static str, Value)> {
     defs.extend(recordings::defs());
     defs.extend(db_backup::defs());
     defs.extend(image::defs());
+    defs.extend(pigeon::defs());
     defs
 }
 
@@ -81,6 +83,18 @@ pub fn schemas_for(enabled: &[String]) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+/// The vault writes Pigeon's vault connector makes (a task, an event, a note, a line added), as
+/// the user: the same tools Piuma has, without the rest of the catalogue (Pigeon's own among it).
+pub async fn vault_write(pool: &DbPool, user_id: &str, name: &str, args: &Value) -> Result<Value, String> {
+    match name {
+        "create_task" => tasks::create_task(pool, user_id, args).await,
+        "create_event" => calendar::create_event(pool, user_id, args).await,
+        "create_note" => notes::create_note(pool, user_id, args).await,
+        "append_to_note" => notes::append_to_note(pool, user_id, args).await,
+        other => Err(format!("not a vault write: {other}")),
+    }
 }
 
 /// Execute a tool, returning a JSON result (serialised into the tool message).
@@ -193,6 +207,8 @@ pub async fn dispatch(
         "backup_database" => db_backup::backup_database(pool, args).await,
         // ── Image generation (provider from admin → Services; result stored in S3) ──
         "generate_image" => image::generate_image(pool, user_id, args).await,
+        // ── Pigeon (the Inbox: messages to people are drafts) ──
+        other if other.starts_with(pigeon::PREFIX) => pigeon::call(pool, user_id, other, args).await,
         // ── MCP (`mcp__{server}__{tool}` → external server, via the mcp-worker) ──
         other if other.starts_with(super::mcp::TOOL_PREFIX) => super::mcp::call(other, args).await,
         other => Err(format!("unknown tool: {other}")),

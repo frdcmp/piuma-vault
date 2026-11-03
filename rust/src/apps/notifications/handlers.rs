@@ -81,13 +81,18 @@ pub async fn register_expo_token(
     body: web::Json<ExpoTokenRequest>,
     pool: web::Data<DbPool>,
 ) -> impl Responder {
+    let app = body.app.as_deref().unwrap_or(expo::PIUMA);
+    if app != expo::PIUMA && app != expo::PIGEON {
+        return HttpResponse::BadRequest().json(err("app: piuma or pigeon"));
+    }
     let res = sqlx::query(
-        "INSERT INTO db_expo_push_tokens (user_id, token, platform) VALUES ($1, $2, $3) \
-         ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id, platform = EXCLUDED.platform",
+        "INSERT INTO db_expo_push_tokens (user_id, token, platform, app) VALUES ($1, $2, $3, $4) \
+         ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id, platform = EXCLUDED.platform, app = EXCLUDED.app",
     )
     .bind(&user.user_id)
     .bind(&body.token)
     .bind(&body.platform)
+    .bind(app)
     .execute(pool.get_ref())
     .await;
 

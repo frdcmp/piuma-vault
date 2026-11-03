@@ -564,6 +564,8 @@ const TABLES: &[TableDefinition] = &[
                 user_id TEXT NOT NULL,
                 token TEXT NOT NULL UNIQUE,
                 platform TEXT,
+                -- the phone app the token is for: piuma (alarms, reports) or pigeon (the Inbox)
+                app TEXT NOT NULL DEFAULT 'piuma' CHECK (app IN ('piuma', 'pigeon')),
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
         "#,
@@ -1056,6 +1058,430 @@ const TABLES: &[TableDefinition] = &[
                 tool_cache JSONB,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[],
+    },
+    // ── Pigeon (apps/pigeon): email, chats and social in one inbox ──────────
+    // A connected account of a channel: the user's Gmail, WhatsApp number,
+    // Instagram account. `secret` holds its tokens encrypted (apps::shares::crypto);
+    // `cursor` is where its intake got to (Gmail's historyId).
+    TableDefinition {
+        name: "db_pigeon_connections",
+        sql: r#"
+            CREATE TABLE db_pigeon_connections (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                connector TEXT NOT NULL,
+                account TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'connected' CHECK (status IN ('connected', 'error', 'disconnected')),
+                settings JSONB NOT NULL DEFAULT '{}',
+                secret TEXT,
+                cursor TEXT,
+                last_ok_at TIMESTAMPTZ,
+                last_error TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (connector, account)
+            )
+        "#,
+        indices: &["CREATE INDEX IF NOT EXISTS idx_pigeon_connections_user ON db_pigeon_connections (user_id)"],
+    },
+    // One-time links to connect an account (OAuth state): only the token's SHA-256.
+    TableDefinition {
+        name: "db_pigeon_connect_links",
+        sql: r#"
+            CREATE TABLE db_pigeon_connect_links (
+                token_sha TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                connector TEXT NOT NULL,
+                expires_at TIMESTAMPTZ NOT NULL,
+                used_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[],
+    },
+    // A person, across channels. `note` is the user's own ("my brother, keep it
+    // short") and outranks what Pigeon learns; `relationship` and `language` are
+    // facts the prompts state; `slug` their @handle in the Inbox; `note_id` their
+    // contact note in the vault (/contacts/<slug>/index).
+    TableDefinition {
+        name: "db_pigeon_contacts",
+        sql: r#"
+            CREATE TABLE db_pigeon_contacts (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                name TEXT,
+                slug TEXT,
+                note TEXT,
+                relationship TEXT,
+                language TEXT,
+                note_id UUID REFERENCES notes(id) ON DELETE SET NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (user_id, slug)
+            )
+        "#,
+        indices: &["CREATE INDEX IF NOT EXISTS idx_pigeon_contacts_user ON db_pigeon_contacts (user_id)"],
+    },
+    // How a contact is known on a channel: an email address, a phone number, an
+    // Instagram id or @username.
+    TableDefinition {
+        name: "db_pigeon_contact_handles",
+        sql: r#"
+            CREATE TABLE db_pigeon_contact_handles (
+                user_id TEXT NOT NULL,
+                connector TEXT NOT NULL,
+                handle TEXT NOT NULL,
+                contact_id UUID NOT NULL REFERENCES db_pigeon_contacts(id) ON DELETE CASCADE,
+                display_name TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (user_id, connector, handle)
+            )
+        "#,
+        indices: &["CREATE INDEX IF NOT EXISTS idx_pigeon_handles_contact ON db_pigeon_contact_handles (contact_id)"],
+    },
+    // What Pigeon knows about a person, written by the LLM from their
+    // conversations on every channel; `items` is how many it was written from.
+    TableDefinition {
+        name: "db_pigeon_contact_memories",
+        sql: r#"
+            CREATE TABLE db_pigeon_contact_memories (
+                contact_id UUID PRIMARY KEY REFERENCES db_pigeon_contacts(id) ON DELETE CASCADE,
+                memory TEXT NOT NULL,
+                items INTEGER NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[],
+    },
+    // How the user writes to a person on one channel, from their own messages there.
+    TableDefinition {
+        name: "db_pigeon_contact_styles",
+        sql: r#"
+            CREATE TABLE db_pigeon_contact_styles (
+                contact_id UUID NOT NULL REFERENCES db_pigeon_contacts(id) ON DELETE CASCADE,
+                connector TEXT NOT NULL,
+                profile TEXT NOT NULL,
+                messages INTEGER NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (contact_id, connector)
+            )
+        "#,
+        indices: &[],
+    },
+    // A thread on a channel. `attention` is what the last triage said it needs
+    // (reply / action / fyi), cleared when handled; `needs_note` why it needs the
+    // user when nothing else says it (the ✋ card); `triage_due_at` queues the next
+    // triage (debounced); `window_until` is a channel's reply window.
+    TableDefinition {
+        name: "db_pigeon_conversations",
+        sql: r#"
+            CREATE TABLE db_pigeon_conversations (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                connection_id INTEGER REFERENCES db_pigeon_connections(id) ON DELETE SET NULL,
+                connector TEXT NOT NULL,
+                external_id TEXT NOT NULL,
+                contact_id UUID REFERENCES db_pigeon_contacts(id) ON DELETE SET NULL,
+                title TEXT,
+                last_in_at TIMESTAMPTZ,
+                last_out_at TIMESTAMPTZ,
+                last_item_at TIMESTAMPTZ,
+                window_until TIMESTAMPTZ,
+                triage_due_at TIMESTAMPTZ,
+                attention TEXT CHECK (attention IN ('reply', 'action', 'fyi')),
+                needs_note TEXT,
+                importance REAL,
+                kind TEXT,
+                triaged_at TIMESTAMPTZ,
+                handled_at TIMESTAMPTZ,
+                read_at TIMESTAMPTZ,
+                summary TEXT,
+                summary_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (user_id, connector, external_id)
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_pigeon_conversations_triage ON db_pigeon_conversations (triage_due_at) WHERE triage_due_at IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_pigeon_conversations_user ON db_pigeon_conversations (user_id, last_item_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_pigeon_conversations_contact ON db_pigeon_conversations (contact_id)",
+        ],
+    },
+    // One message, either way. author: them, me (the user, from their phone or
+    // mail client, or the Inbox), pigeon (sent by an action). `raw` is the
+    // channel's payload, as it came.
+    TableDefinition {
+        name: "db_pigeon_items",
+        sql: r#"
+            CREATE TABLE db_pigeon_items (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                conversation_id UUID NOT NULL REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                connector TEXT NOT NULL,
+                external_id TEXT NOT NULL,
+                direction TEXT NOT NULL CHECK (direction IN ('in', 'out')),
+                author TEXT NOT NULL CHECK (author IN ('them', 'me', 'pigeon')),
+                sender TEXT,
+                sender_name TEXT,
+                subject TEXT,
+                body TEXT NOT NULL DEFAULT '',
+                media JSONB NOT NULL DEFAULT '[]',
+                raw JSONB,
+                at TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (conversation_id, external_id)
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_pigeon_items_conversation ON db_pigeon_items (conversation_id, at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_pigeon_items_search ON db_pigeon_items USING gin (to_tsvector('simple', coalesce(subject, '') || ' ' || body))",
+        ],
+    },
+    // Jev's answers for one batch of incoming items, kept whole (`answers`) so the
+    // thresholds can be re-tuned on real traffic.
+    TableDefinition {
+        name: "db_pigeon_triage",
+        sql: r#"
+            CREATE TABLE db_pigeon_triage (
+                id BIGSERIAL PRIMARY KEY,
+                conversation_id UUID NOT NULL REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                item_ids UUID[] NOT NULL DEFAULT '{}',
+                model TEXT NOT NULL,
+                answers JSONB NOT NULL,
+                needs_reply REAL,
+                actionable REAL,
+                sensitive REAL,
+                mood_changed REAL,
+                importance REAL,
+                kind TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &["CREATE INDEX IF NOT EXISTS idx_pigeon_triage_conversation ON db_pigeon_triage (conversation_id, created_at DESC)"],
+    },
+    // Every action, proposed or done: the log and the approval queue (the Inbox's
+    // ✍ and 💡 cards). `kind` is what its policy goes by; `policy` what applied
+    // (ask, auto, or direct: the user did it); `source` who proposed it.
+    TableDefinition {
+        name: "db_pigeon_actions",
+        sql: r#"
+            CREATE TABLE db_pigeon_actions (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                conversation_id UUID REFERENCES db_pigeon_conversations(id) ON DELETE SET NULL,
+                connector TEXT NOT NULL,
+                action TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK (kind IN ('reply', 'record', 'organize')),
+                args JSONB NOT NULL DEFAULT '{}',
+                status TEXT NOT NULL CHECK (status IN ('pending', 'done', 'dropped', 'expired', 'failed')),
+                source TEXT NOT NULL CHECK (source IN ('agent', 'rule', 'user', 'piuma')),
+                policy TEXT NOT NULL CHECK (policy IN ('ask', 'auto', 'direct')),
+                reason TEXT,
+                triage_id BIGINT REFERENCES db_pigeon_triage(id) ON DELETE SET NULL,
+                decided_by TEXT,
+                decided_at TIMESTAMPTZ,
+                result JSONB,
+                error TEXT,
+                expires_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[
+            "CREATE INDEX IF NOT EXISTS idx_pigeon_actions_pending ON db_pigeon_actions (user_id, created_at) WHERE status = 'pending'",
+            "CREATE INDEX IF NOT EXISTS idx_pigeon_actions_conversation ON db_pigeon_actions (conversation_id)",
+        ],
+    },
+    // off / ask / auto per kind of action: the user's default, then per contact,
+    // then per conversation (the most specific wins). scope_id is '' for the default.
+    TableDefinition {
+        name: "db_pigeon_policies",
+        sql: r#"
+            CREATE TABLE db_pigeon_policies (
+                user_id TEXT NOT NULL,
+                scope TEXT NOT NULL CHECK (scope IN ('default', 'contact', 'conversation')),
+                scope_id TEXT NOT NULL DEFAULT '',
+                kind TEXT NOT NULL CHECK (kind IN ('reply', 'record', 'organize')),
+                policy TEXT NOT NULL CHECK (policy IN ('off', 'ask', 'auto')),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (user_id, scope, scope_id, kind)
+            )
+        "#,
+        indices: &[],
+    },
+    // Per-user switches and markers (auto_enabled: the one switch that stops every
+    // auto action; the daily summary's last run).
+    TableDefinition {
+        name: "db_pigeon_settings",
+        sql: r#"
+            CREATE TABLE db_pigeon_settings (
+                user_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value JSONB NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (user_id, key)
+            )
+        "#,
+        indices: &[],
+    },
+    // The user's rules for what a sender keeps sending (a bank's alerts, receipts):
+    // items on `connector` ('*': any) from `sender` (an address, or @domain) and/or
+    // the person `contact_id`, with `subject_has` in the subject and the
+    // `recipients` conditions met, that Jev agrees are what `expects` describes, get
+    // the rule's steps instead of the agent: `record_tool` with arguments the LLM
+    // fills from `record_instructions`, then `then_action` on the message.
+    TableDefinition {
+        name: "db_pigeon_rules",
+        sql: r#"
+            CREATE TABLE db_pigeon_rules (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                connector TEXT NOT NULL,
+                sender TEXT,
+                subject_has TEXT,
+                expects TEXT NOT NULL,
+                record_tool TEXT,
+                record_instructions TEXT,
+                then_action TEXT NOT NULL DEFAULT 'none' CHECK (then_action IN ('none', 'mark_read', 'archive', 'trash')),
+                mode TEXT NOT NULL DEFAULT 'ask' CHECK (mode IN ('ask', 'auto', 'paused')),
+                contact_id UUID REFERENCES db_pigeon_contacts(id) ON DELETE CASCADE,
+                recipients JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (user_id, name)
+            )
+        "#,
+        indices: &[],
+    },
+    // A rule meeting an item: Jev's match, the steps planned, and what came of them.
+    TableDefinition {
+        name: "db_pigeon_rule_runs",
+        sql: r#"
+            CREATE TABLE db_pigeon_rule_runs (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                rule_id INTEGER NOT NULL REFERENCES db_pigeon_rules(id) ON DELETE CASCADE,
+                item_id UUID NOT NULL REFERENCES db_pigeon_items(id) ON DELETE CASCADE,
+                conversation_id UUID NOT NULL REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                matched REAL,
+                status TEXT NOT NULL CHECK (status IN ('pending', 'done', 'failed', 'skipped', 'dropped', 'expired')),
+                reason TEXT,
+                steps JSONB NOT NULL DEFAULT '[]',
+                results JSONB NOT NULL DEFAULT '[]',
+                error TEXT,
+                decided_by TEXT,
+                decided_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (rule_id, item_id)
+            )
+        "#,
+        indices: &["CREATE INDEX IF NOT EXISTS idx_pigeon_rule_runs_pending ON db_pigeon_rule_runs (created_at) WHERE status = 'pending'"],
+    },
+    // A question Pigeon puts to the user (the ❓ card) because the answer is
+    // theirs to give; the answer sends Pigeon back to the conversation.
+    TableDefinition {
+        name: "db_pigeon_questions",
+        sql: r#"
+            CREATE TABLE db_pigeon_questions (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                conversation_id UUID NOT NULL REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                question TEXT NOT NULL,
+                options JSONB NOT NULL DEFAULT '[]',
+                status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'answered', 'expired')),
+                answer TEXT,
+                answered_by TEXT,
+                answered_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &["CREATE INDEX IF NOT EXISTS idx_pigeon_questions_open ON db_pigeon_questions (conversation_id) WHERE status = 'open'"],
+    },
+    // A big change asked of Piuma (replies to auto, a rule that trashes, a merge),
+    // waiting for the user's tap in the Inbox before it runs.
+    TableDefinition {
+        name: "db_pigeon_confirmations",
+        sql: r#"
+            CREATE TABLE db_pigeon_confirmations (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                conversation_id UUID REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                tool TEXT NOT NULL,
+                args JSONB NOT NULL DEFAULT '{}',
+                summary TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'failed', 'cancelled')),
+                result JSONB,
+                decided_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[],
+    },
+    // News for the user, nothing to decide: what Pigeon did on an answer (with a
+    // link), a health problem, the morning summary. In the person's chat, or
+    // General when `conversation_id` is null.
+    TableDefinition {
+        name: "db_pigeon_news",
+        sql: r#"
+            CREATE TABLE db_pigeon_news (
+                id BIGSERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                conversation_id UUID REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                text TEXT NOT NULL,
+                url TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &["CREATE INDEX IF NOT EXISTS idx_pigeon_news_user ON db_pigeon_news (user_id, created_at DESC)"],
+    },
+    // The user said auto replies may answer again now in a conversation: the wait
+    // after they wrote there themselves, and the hourly count, start from here.
+    TableDefinition {
+        name: "db_pigeon_auto_resumed",
+        sql: r#"
+            CREATE TABLE db_pigeon_auto_resumed (
+                conversation_id UUID PRIMARY KEY REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[],
+    },
+    // How loud a person is on the user's phone: a contact's, a conversation's (a
+    // WhatsApp group's) or the user's default (neither); none: smart.
+    TableDefinition {
+        name: "db_pigeon_alert_levels",
+        sql: r#"
+            CREATE TABLE db_pigeon_alert_levels (
+                id BIGSERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                contact_id UUID REFERENCES db_pigeon_contacts(id) ON DELETE CASCADE,
+                conversation_id UUID REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                level TEXT NOT NULL CHECK (level IN ('all', 'smart', 'quiet', 'off')),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                CHECK (contact_id IS NULL OR conversation_id IS NULL)
+            )
+        "#,
+        indices: &[
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pigeon_alert_levels_contact ON db_pigeon_alert_levels (contact_id) WHERE contact_id IS NOT NULL",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pigeon_alert_levels_conversation ON db_pigeon_alert_levels (conversation_id) WHERE conversation_id IS NOT NULL",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pigeon_alert_levels_default ON db_pigeon_alert_levels (user_id) WHERE contact_id IS NULL AND conversation_id IS NULL",
+        ],
+    },
+    // What's wrong with Pigeon now: since when, when the user was told (a problem
+    // gone is deleted, and told if it was).
+    TableDefinition {
+        name: "db_pigeon_health_alerts",
+        sql: r#"
+            CREATE TABLE db_pigeon_health_alerts (
+                user_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                text TEXT NOT NULL,
+                since TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                notified_at TIMESTAMPTZ,
+                PRIMARY KEY (user_id, key)
             )
         "#,
         indices: &[],

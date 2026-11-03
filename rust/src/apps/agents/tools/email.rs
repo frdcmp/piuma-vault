@@ -1,4 +1,5 @@
-//! `send_email` agent tool. Sends a plain-text email via the SMTP service.
+//! `send_email` agent tool. Sends a plain-text email via the SMTP service to the owner; to
+//! anyone else it is a draft in the Inbox (`apps::pigeon`), for the user to send.
 //!
 //! Guardrails (the owner opted to allow arbitrary recipients): every send is
 //! BCC'd to the vault owner for visibility, logged to `db_email_log` for audit,
@@ -18,7 +19,8 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
         (
             "send_email",
             "Send a plain-text email. Use for reports/summaries the user asked to receive by email. \
-             If `to` is omitted it goes to the vault owner. The owner is always BCC'd. If the result \
+             If `to` is omitted it goes to the vault owner. The owner is always BCC'd. To anyone else it \
+             becomes a draft in the Inbox (from the user's Gmail) that the user sends themselves. If the result \
              has `needs_configuration: true`, no sending account is set up — tell the user to add one \
              in Settings → Services → Email and enable sending.",
             json!({
@@ -69,11 +71,6 @@ pub async fn send_email(pool: &DbPool, user_id: &str, args: &Value) -> Result<Va
         return Err("subject and body are required".to_string());
     }
 
-    // No sending account → tell the agent to ask the user to configure one.
-    if crate::apps::email::service::default_sender(pool).await.is_err() {
-        return Ok(needs_config("sending (SMTP)", "sending"));
-    }
-
     // The vault owner's address — used as the default recipient and the BCC.
     let owner: Option<String> = sqlx::query_scalar("SELECT email FROM db_users WHERE id = $1")
         .bind(user_id)
@@ -88,6 +85,19 @@ pub async fn send_email(pool: &DbPool, user_id: &str, args: &Value) -> Result<Va
         .filter(|s| !s.is_empty())
         .or_else(|| owner.clone())
         .ok_or_else(|| "no recipient and no owner email on file".to_string())?;
+
+    // To someone else: a message to a person is a draft in the Inbox (Pigeon, from the user's
+    // Gmail), sent by the user's own tap there. System mail (to the owner) goes out here.
+    if owner.as_deref().is_none_or(|o| !o.eq_ignore_ascii_case(&to)) {
+        let st = crate::apps::pigeon::state::shared(pool);
+        let draft = json!({ "to": to, "subject": subject, "text": body });
+        return crate::apps::pigeon::tools::draft_email(&st, user_id, draft).await.map_err(|e| format!("{e:#}"));
+    }
+
+    // No sending account → tell the agent to ask the user to configure one.
+    if crate::apps::email::service::default_sender(pool).await.is_err() {
+        return Ok(needs_config("sending (SMTP)", "sending"));
+    }
 
     // Rate limit: refuse once the rolling-24h count hits the cap.
     let recent: i64 = sqlx::query_scalar(

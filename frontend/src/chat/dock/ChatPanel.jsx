@@ -289,6 +289,14 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		[lockedContext],
 	);
 
+	// Inbox chats attached with "Ask Piuma" (sent with every turn until removed).
+	const pigeonContext = useChatDockStore((s) => s.pigeonContext);
+	const dropPigeonContext = useChatDockStore((s) => s.dropPigeonContext);
+	const sentPigeonIds = useMemo(
+		() => pigeonContext.map((c) => c.id),
+		[pigeonContext],
+	);
+
 	useEffect(() => () => abortRef.current?.abort(), []);
 
 	const confirmClear = useCallback(() => {
@@ -434,6 +442,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				conversationId: convId,
 				message: text,
 				contextNoteIds: sentContextIds,
+				contextPigeonIds: sentPigeonIds,
 				images: readyImages.map((p) => ({
 					url: p.url,
 					key: p.key,
@@ -465,6 +474,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		effectiveAgent,
 		sentContextPaths,
 		sentContextIds,
+		sentPigeonIds,
 		readyImages,
 		readyDocs,
 		busy,
@@ -1036,8 +1046,17 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 
 			<div className="chat-composer">
 				<div className="chat-composer-inner">
-					{contextChips.length > 0 ? (
+					{contextChips.length > 0 || pigeonContext.length > 0 ? (
 						<div className="chat-context-tags">
+							{pigeonContext.map((chat) => (
+								<ContextTag
+									key={`pigeon-${chat.id}`}
+									label={chat.title}
+									title={`Inbox: ${chat.title}`}
+									locked
+									onRemove={() => dropPigeonContext(chat.id)}
+								/>
+							))}
 							{contextChips.map((chip) => (
 								<ContextTag
 									key={chip.id}

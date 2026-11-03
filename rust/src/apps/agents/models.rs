@@ -293,6 +293,10 @@ pub struct ChatTurnReq {
     pub message: String,
     #[serde(default)]
     pub context_note_ids: Vec<Uuid>,
+    /// Inbox conversations attached ("Ask Piuma" from a chat): their latest messages are
+    /// injected as context the same way.
+    #[serde(default)]
+    pub context_pigeon_ids: Vec<Uuid>,
     /// Images attached to this turn. Forwarded to the provider only when the
     /// active model has `supports_vision`; otherwise persisted but not sent.
     #[serde(default)]

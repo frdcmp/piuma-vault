@@ -1,0 +1,208 @@
+//! Meta's Instagram API with Unified Login, as Pigeon uses it: the login dialog (Facebook Login for
+//! Business with the app's configuration), the code → a Business Integration System User token
+//! (owned by the user's business portfolio; it lasts as the configuration says, never by
+//! default), graph.facebook.com calls with it (each carrying the appsecret_proof), and the
+//! webhook's signature.
+
+use std::sync::OnceLock;
+use std::time::Duration;
+
+use hmac::{Hmac, Mac};
+use serde_json::Value as Json;
+use sha2::Sha256;
+
+use crate::apps::pigeon::config::InstagramConf;
+use crate::apps::pigeon::sign;
+use crate::apps::shares::crypto;
+use crate::apps::pigeon::state::State;
+
+const AUTH_URL: &str = "https://www.facebook.com/dialog/oauth";
+pub const GRAPH: &str = "https://graph.facebook.com/v26.0";
+
+fn http() -> &'static reqwest::Client {
+    static C: OnceLock<reqwest::Client> = OnceLock::new();
+    C.get_or_init(|| reqwest::Client::builder().timeout(Duration::from_secs(30)).user_agent("piuma-vault-pigeon/1").build().expect("reqwest client"))
+}
+
+pub fn redirect_uri(st: &State) -> String {
+    format!("{}/pigeon/connect/instagram/callback", st.cfg.api_url())
+}
+
+/// The login dialog: the configuration says what's asked (the Instagram account, its messages),
+/// not a scope; `prompt=login` offers Instagram's login beside Facebook's. As the app's dashboard
+/// writes it for the configuration.
+pub fn login_url(c: &InstagramConf, redirect_uri: &str, state: &str) -> String {
+    let q = [
+        ("client_id", c.app_id.as_str()),
+        ("config_id", c.config_id.as_str()),
+        ("display", "popup"),
+        ("redirect_uri", redirect_uri),
+        ("response_type", "code"),
+        ("override_default_response_type", "true"),
+        ("prompt", "login"),
+        ("state", state),
+    ];
+    let qs: Vec<String> = q.iter().map(|(k, v)| format!("{k}={}", urlencoding::encode(v))).collect();
+    format!("{AUTH_URL}?{}", qs.join("&"))
+}
+
+/// Meta's refusal of a call.
+#[derive(Debug)]
+pub struct GraphError {
+    pub what: String,
+    pub status: u16,
+    pub code: Option<i64>,
+    pub message: String,
+}
+
+impl std::fmt::Display for GraphError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.code {
+            Some(c) => write!(f, "Instagram {}: {} {} (code {c})", self.what, self.status, self.message),
+            None => write!(f, "Instagram {}: {} {}", self.what, self.status, self.message),
+        }
+    }
+}
+
+impl std::error::Error for GraphError {}
+
+impl GraphError {
+    fn of(what: String, status: u16, body: &Json) -> GraphError {
+        let message = body["error"]["message"].as_str().or(body["error_message"].as_str()).or(body["error"].as_str()).unwrap_or("no details").to_string();
+        GraphError { what, status, code: body["error"]["code"].as_i64(), message }
+    }
+}
+
+/// The token no longer works (expired, the app removed from the business portfolio, the account
+/// moved to another one): only connecting the account again helps.
+pub fn token_dead(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<GraphError>().is_some_and(|g| g.code == Some(190))
+}
+
+/// Meta's request limit reached (the app's, the user's or the account's): nothing more until it
+/// lets up, so stop rather than keep asking.
+pub fn rate_limited(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<GraphError>().is_some_and(|g| matches!(g.code, Some(4 | 17 | 32 | 613 | 80002)))
+}
+
+/// The authorization code → (the system-user token, seconds it lasts when it ends at all).
+pub async fn exchange(st: &State, c: &InstagramConf, code: &str) -> anyhow::Result<(String, Option<i64>)> {
+    let res = http()
+        .get(format!("{GRAPH}/oauth/access_token"))
+        .query(&[
+            ("client_id", c.app_id.as_str()),
+            ("client_secret", c.app_secret.as_str()),
+            ("redirect_uri", redirect_uri(st).as_str()),
+            ("code", code),
+        ])
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Meta unreachable: {}", e.without_url()))?;
+    let status = res.status();
+    let body: Json = res.json().await.unwrap_or(Json::Null);
+    if !status.is_success() {
+        return Err(GraphError::of("refused the code".into(), status.as_u16(), &body).into());
+    }
+    let token = body["access_token"].as_str().ok_or_else(|| anyhow::anyhow!("Meta's answer has no access_token"))?.to_string();
+    Ok((token, body["expires_in"].as_i64().filter(|s| *s > 0)))
+}
+
+/// A token, with its appsecret_proof (the HMAC-SHA256 of the token under the app secret, which
+/// Meta asks for when the app requires it).
+pub struct Token {
+    pub access: String,
+    proof: String,
+}
+
+impl Token {
+    pub fn new(c: &InstagramConf, access: String) -> Token {
+        let mut mac = Hmac::<Sha256>::new_from_slice(c.app_secret.as_bytes()).expect("hmac takes any key");
+        mac.update(access.as_bytes());
+        Token { proof: hex::encode(mac.finalize().into_bytes()), access }
+    }
+}
+
+/// A graph.facebook.com call with the account's token.
+pub async fn graph(token: &Token, method: &str, path: &str, query: &[(&str, String)], body: Option<&Json>) -> anyhow::Result<Json> {
+    let url = format!("{GRAPH}{path}");
+    let mut req = if method == "POST" { http().post(&url) } else { http().get(&url) };
+    req = req.bearer_auth(&token.access).query(query).query(&[("appsecret_proof", &token.proof)]);
+    req = match body {
+        Some(b) => req.json(b),
+        None if method == "POST" => req.header(reqwest::header::CONTENT_LENGTH, "0"),
+        None => req,
+    };
+    let res = req.send().await.map_err(|e| anyhow::anyhow!("Instagram unreachable: {}", e.without_url()))?;
+    let status = res.status();
+    let body: Json = res.json().await.unwrap_or(Json::Null);
+    if !status.is_success() {
+        return Err(GraphError::of(format!("{method} {path}"), status.as_u16(), &body).into());
+    }
+    Ok(body)
+}
+
+/// The account's token (encrypted in `db_pigeon_connections`).
+pub async fn token(st: &State, connection: i32) -> anyhow::Result<Token> {
+    let c = st.cfg.instagram.as_ref().ok_or_else(|| anyhow::anyhow!("Instagram is not configured"))?;
+    let sealed: Option<String> = sqlx::query_scalar("SELECT secret FROM db_pigeon_connections WHERE id = $1").bind(connection).fetch_optional(&st.pool).await?.flatten();
+    let opened = crypto::decrypt(&st.pool, &sealed.ok_or_else(|| anyhow::anyhow!("no token stored"))?).await;
+    let secret: Json = serde_json::from_str(&opened.ok_or_else(|| anyhow::anyhow!("the stored token can't be read: connect the account again"))?)?;
+    let access = secret["access_token"].as_str().ok_or_else(|| anyhow::anyhow!("no token stored: connect the account again"))?;
+    Ok(Token::new(c, access.to_string()))
+}
+
+/// Whether `header` (`sha256=<hex>`) is the HMAC-SHA256 of `body` under the app secret.
+pub fn signature_ok(app_secret: &str, body: &[u8], header: Option<&str>) -> bool {
+    sign::signature_ok(app_secret, body, header)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn conf() -> InstagramConf {
+        InstagramConf { app_id: "1234567890".into(), app_secret: "s3cret".into(), config_id: "777".into(), verify_token: None }
+    }
+
+    #[test]
+    fn a_signature_is_checked() {
+        let body = br#"{"object":"instagram"}"#;
+        let mut mac = Hmac::<Sha256>::new_from_slice(b"s3cret").unwrap();
+        mac.update(body);
+        let good = format!("sha256={}", hex::encode(mac.finalize().into_bytes()));
+        assert!(signature_ok("s3cret", body, Some(&good)));
+        assert!(!signature_ok("other", body, Some(&good)), "another secret");
+        assert!(!signature_ok("s3cret", br#"{"object":"instagrem"}"#, Some(&good)), "another body");
+        assert!(!signature_ok("s3cret", body, None), "no header");
+        assert!(!signature_ok("s3cret", body, Some("sha1=abc")), "not sha256");
+        assert!(!signature_ok("s3cret", body, Some("sha256=zz")), "not hex");
+    }
+
+    #[test]
+    fn the_login_url_carries_the_configuration() {
+        let u = login_url(&conf(), "https://vault.example.com/api/v1/pigeon/connect/instagram/callback", "tok&1");
+        assert!(u.starts_with("https://www.facebook.com/dialog/oauth?client_id=1234567890&config_id=777&display=popup&"));
+        assert!(u.contains("redirect_uri=https%3A%2F%2Fvault.example.com%2Fapi%2Fv1%2Fpigeon%2Fconnect%2Finstagram%2Fcallback"));
+        assert!(u.contains("response_type=code&override_default_response_type=true&prompt=login&state=tok%261"));
+        assert!(!u.contains("scope="), "the configuration replaces the scope");
+    }
+
+    #[test]
+    fn a_token_carries_its_proof() {
+        let t = Token::new(&conf(), "EAAB".into());
+        let mut mac = Hmac::<Sha256>::new_from_slice(b"s3cret").unwrap();
+        mac.update(b"EAAB");
+        assert_eq!(t.proof, hex::encode(mac.finalize().into_bytes()));
+    }
+
+    #[test]
+    fn an_expired_token_is_told_apart() {
+        let body = serde_json::json!({ "error": { "message": "Error validating access token", "type": "OAuthException", "code": 190 } });
+        let dead: anyhow::Error = GraphError::of("GET /x".into(), 400, &body).into();
+        assert!(token_dead(&dead));
+        assert_eq!(dead.to_string(), "Instagram GET /x: 400 Error validating access token (code 190)");
+        let other: anyhow::Error = GraphError::of("POST /x/messages".into(), 400, &serde_json::json!({ "error": { "message": "outside window", "code": 10 } })).into();
+        assert!(!token_dead(&other));
+        assert!(!token_dead(&anyhow::anyhow!("Instagram unreachable")));
+    }
+}
