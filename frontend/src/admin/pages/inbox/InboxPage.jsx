@@ -9,8 +9,9 @@ import InboxRules from "./InboxRules";
 import InboxSettings from "./InboxSettings";
 import "./inbox.css";
 
-// The Inbox's own pages; any other `/inbox/:x` is a chat (the id the phone's
-// pushes open too).
+// The Inbox's own pages; `/inbox/p/:person` is a person's chat (all their
+// channels), any other `/inbox/:x` a thread (the id the phone's pushes open
+// too; one that is a person's opens their chat).
 const PAGES = new Set(["general", "people", "rules", "settings"]);
 
 // The Inbox: what people send (WhatsApp, Instagram, Gmail…) as chats, with
@@ -20,13 +21,15 @@ const PAGES = new Set(["general", "people", "rules", "settings"]);
 export default function InboxPage() {
 	usePigeonLiveUpdates();
 	const seg = useMatch("/inbox/:seg")?.params?.seg ?? null;
+	const person = useMatch("/inbox/p/:person")?.params?.person ?? null;
 	const activeId = seg && !PAGES.has(seg) ? seg : null;
+	const activeKey = person ? `p:${person}` : activeId ? `c:${activeId}` : null;
 
 	return (
 		// On a narrow screen the list and the open page take turns.
-		<div className={`inbox-page${seg ? " is-showing" : ""}`}>
+		<div className={`inbox-page${seg || person ? " is-showing" : ""}`}>
 			<div className="inbox-rail">
-				<InboxRail activeId={activeId} page={activeId ? null : seg} />
+				<InboxRail activeKey={activeKey} page={activeKey ? null : seg} />
 			</div>
 			<main className="inbox-main">
 				<Routes>
@@ -42,6 +45,7 @@ export default function InboxPage() {
 					<Route path="people" element={<InboxPeople />} />
 					<Route path="rules" element={<InboxRules />} />
 					<Route path="settings" element={<InboxSettings />} />
+					<Route path="p/:person" element={<ChatView person={person} />} />
 					<Route path=":id" element={<ChatView id={activeId} />} />
 				</Routes>
 			</main>

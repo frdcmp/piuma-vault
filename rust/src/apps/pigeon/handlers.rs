@@ -641,3 +641,259 @@ pub async fn console_receive(st: web::Data<AppState>, u: InboxWriter, body: web:
     .await;
     reply(r)
 }
+
+// ── chats by person ──────────────────────────────────────────────────────
+//
+// A person's chat is everything with them, on every channel: their threads (a WhatsApp chat,
+// Instagram DMs, email threads) shown as one. A group, with no one person, stays a chat of
+// its own. The threads stay as they are underneath: only the views are by person.
+
+/// How a person is shown: their @slug, else their name, else what the thread is called.
+fn person_label(slug: Option<&str>, name: Option<&str>, title: Option<&str>) -> String {
+    slug.map(|s| format!("@{s}")).or_else(|| name.map(str::to_string)).or_else(|| title.map(str::to_string)).unwrap_or_else(|| "someone".into())
+}
+
+#[derive(sqlx::FromRow)]
+struct ChatRow {
+    contact_id: Option<Uuid>,
+    conversation_id: Option<Uuid>,
+    latest: Uuid,
+    title: Option<String>,
+    connectors: Vec<String>,
+    last_item_at: Option<DateTime<Utc>>,
+    attention: Option<String>,
+    unread: bool,
+    cards: i64,
+    name: Option<String>,
+    slug: Option<String>,
+    body: Option<String>,
+    author: Option<String>,
+    connector: Option<String>,
+}
+
+/// The chat list by person, latest first: each person once (all their channels), each group once.
+pub async fn list_chats(st: web::Data<AppState>, u: InboxReader, q: web::Query<ListQuery>) -> HttpResponse {
+    let user = &u.0.user_id;
+    let r: anyhow::Result<Json> = async {
+        let rows: Vec<ChatRow> = sqlx::query_as(
+            "WITH conv AS (
+               SELECT c.id, c.connector, c.title, c.contact_id, c.last_item_at, c.attention,
+                      c.last_in_at IS NOT NULL AND c.last_in_at > COALESCE(c.read_at, '-infinity'::timestamptz) AS unread,
+                      (SELECT COUNT(*) FROM db_pigeon_actions a WHERE a.conversation_id = c.id AND a.status = 'pending')
+                    + (SELECT COUNT(*) FROM db_pigeon_questions q WHERE q.conversation_id = c.id AND q.status = 'open')
+                    + (SELECT COUNT(*) FROM db_pigeon_rule_runs r WHERE r.conversation_id = c.id AND r.status = 'pending')
+                    + (SELECT COUNT(*) FROM db_pigeon_confirmations f WHERE f.conversation_id = c.id AND f.status = 'pending')
+                    + (CASE WHEN c.needs_note IS NULL THEN 0 ELSE 1 END) AS cards
+                 FROM db_pigeon_conversations c
+                WHERE c.user_id = $1 AND c.last_item_at IS NOT NULL
+             ), chats AS (
+               SELECT COALESCE(contact_id::text, id::text) AS key,
+                      (array_agg(contact_id))[1] AS contact_id,
+                      CASE WHEN bool_and(contact_id IS NULL) THEN (array_agg(id))[1] END AS conversation_id,
+                      (array_agg(id ORDER BY last_item_at DESC))[1] AS latest,
+                      (array_agg(title ORDER BY last_item_at DESC))[1] AS title,
+                      array_agg(DISTINCT connector) AS connectors,
+                      max(last_item_at) AS last_item_at,
+                      max(attention) AS attention,
+                      bool_or(unread) AS unread,
+                      sum(cards)::bigint AS cards
+                 FROM conv GROUP BY 1
+             )
+             SELECT ch.contact_id, ch.conversation_id, ch.latest, ch.title, ch.connectors, ch.last_item_at, ch.attention, ch.unread, ch.cards,
+                    ct.name, ct.slug, li.body, li.author, li.connector
+               FROM chats ch
+               LEFT JOIN db_pigeon_contacts ct ON ct.id = ch.contact_id
+               LEFT JOIN LATERAL (SELECT i.body, i.author, i.connector FROM db_pigeon_items i WHERE i.conversation_id = ch.latest ORDER BY i.at DESC LIMIT 1) li ON true
+              WHERE ($2::text IS NULL OR $2 = ANY(ch.connectors))
+                AND ($3::timestamptz IS NULL OR ch.last_item_at < $3)
+                AND ($4::text IS NULL OR ct.name ILIKE '%' || $4 || '%' OR ch.title ILIKE '%' || $4 || '%'
+                     OR ct.slug LIKE lower(ltrim($4, '@')) || '%')
+                AND (NOT $6 OR ch.attention IS NOT NULL OR ch.cards > 0)
+              ORDER BY ch.last_item_at DESC LIMIT $5",
+        )
+        .bind(user)
+        .bind(q.connector.as_deref().filter(|c| !c.is_empty()))
+        .bind(q.before)
+        .bind(q.q.as_deref().map(str::trim).filter(|s| !s.is_empty()))
+        .bind(q.limit.unwrap_or(50).clamp(1, 200))
+        .bind(q.filter.as_deref() == Some("needs"))
+        .fetch_all(&st.pool)
+        .await?;
+        let out: Vec<Json> = rows
+            .into_iter()
+            .map(|r| {
+                json!({
+                    "key": match (r.contact_id, r.conversation_id) { (Some(c), _) => format!("p:{c}"), (_, Some(c)) => format!("c:{c}"), _ => format!("c:{}", r.latest) },
+                    "contact_id": r.contact_id, "conversation_id": r.conversation_id, "latest": r.latest,
+                    "with": person_label(r.slug.as_deref(), r.name.as_deref(), r.title.as_deref()),
+                    "name": r.name.clone().or(r.title.clone()), "slug": r.slug,
+                    "connectors": r.connectors, "connector": r.connector,
+                    "last_item_at": r.last_item_at, "attention": r.attention,
+                    "preview": r.body.map(|b| conversations::clip(&b, 120)), "last_author": r.author,
+                    "unread": r.unread, "cards": r.cards,
+                })
+            })
+            .collect();
+        Ok(json!({ "chats": out }))
+    }
+    .await;
+    reply(r)
+}
+
+/// A person's threads, the latest first.
+async fn person_threads(st: &AppState, user: &str, contact: Uuid) -> anyhow::Result<Vec<conversations::Conversation>> {
+    Ok(sqlx::query_as(&format!(
+        "SELECT {} FROM db_pigeon_conversations WHERE user_id = $1 AND contact_id = $2 ORDER BY last_item_at DESC NULLS LAST",
+        conversations::CONVERSATION_COLS
+    ))
+    .bind(user)
+    .bind(contact)
+    .fetch_all(&st.pool)
+    .await?)
+}
+
+/// One person's chat: who they are, their threads (each channel's), the cards waiting on any of
+/// them, and their switches. `conversation` is the latest thread.
+pub async fn get_person_chat(st: web::Data<AppState>, u: InboxReader, path: web::Path<Uuid>) -> HttpResponse {
+    let user = &u.0.user_id;
+    let id = path.into_inner();
+    let r: anyhow::Result<Json> = async {
+        let contact = people::mine(&st, user, id).await?;
+        let threads = person_threads(&st, user, id).await?;
+        let mut cards_out = Vec::new();
+        for t in &threads {
+            for c in cards::list(&st, user, Some(t.id)).await? {
+                let mut v = serde_json::to_value(c)?;
+                v["conversation_id"] = json!(t.id);
+                cards_out.push(v);
+            }
+        }
+        let reply_own: Option<String> =
+            sqlx::query_scalar("SELECT policy FROM db_pigeon_policies WHERE user_id = $1 AND scope = 'contact' AND scope_id = $2 AND kind = 'reply'")
+                .bind(user)
+                .bind(id.to_string())
+                .fetch_optional(&st.pool)
+                .await?;
+        let alerts_own: Option<String> = sqlx::query_scalar("SELECT level FROM db_pigeon_alert_levels WHERE user_id = $1 AND contact_id = $2")
+            .bind(user)
+            .bind(id)
+            .fetch_optional(&st.pool)
+            .await?;
+        let unread = threads.iter().any(|t| t.last_in_at.is_some_and(|i| t.read_at.is_none_or(|r| i > r)));
+        Ok(json!({
+            "contact": contact,
+            "with": person_label(contact.slug.as_deref(), contact.name.as_deref(), None),
+            "name": contact.name,
+            "conversation": threads.first(),
+            "threads": threads,
+            "unread": unread,
+            "cards": cards_out,
+            "switches": {
+                "reply": policy::resolve(&st.pool, user, Kind::Reply, None, None).await?.as_str(),
+                "reply_own": reply_own,
+                "alerts": alerts::resolve(&st.pool, user, None, None).await?.as_str(),
+                "alerts_own": alerts_own,
+                "auto_enabled": policy::auto_enabled(&st.pool, user).await?,
+            },
+        }))
+    }
+    .await;
+    reply(r)
+}
+
+#[derive(Deserialize)]
+pub struct PersonItemsQuery {
+    before: Option<DateTime<Utc>>,
+    limit: Option<i64>,
+    /// one channel's messages only
+    connector: Option<String>,
+}
+
+/// A person's messages and news across their threads (or one channel's), oldest first, with
+/// each message's thread and channel.
+pub async fn person_items(st: web::Data<AppState>, u: InboxReader, path: web::Path<Uuid>, q: web::Query<PersonItemsQuery>) -> HttpResponse {
+    let user = &u.0.user_id;
+    let id = path.into_inner();
+    let r: anyhow::Result<Json> = async {
+        people::mine(&st, user, id).await?;
+        let connector = q.connector.as_deref().filter(|c| !c.is_empty());
+        let threads: Vec<Uuid> = person_threads(&st, user, id).await?.into_iter().filter(|t| connector.is_none_or(|c| t.connector == c)).map(|t| t.id).collect();
+        let limit = q.limit.unwrap_or(50).clamp(1, 200);
+        let mut items: Vec<Json> = sqlx::query_scalar(&format!(
+            "SELECT row_to_json(x)::jsonb FROM (SELECT {}, conversation_id, connector FROM db_pigeon_items
+               WHERE conversation_id = ANY($1) AND ($2::timestamptz IS NULL OR at < $2) ORDER BY at DESC LIMIT $3) x",
+            conversations::ITEM_COLS
+        ))
+        .bind(&threads)
+        .bind(q.before)
+        .bind(limit)
+        .fetch_all(&st.pool)
+        .await?;
+        items.reverse();
+        let more = items.len() as i64 == limit;
+        let at = |v: &Json| v["at"].as_str().and_then(|s| DateTime::parse_from_rfc3339(s).ok()).map(|t| t.with_timezone(&Utc));
+        let from = if more { items.first().and_then(at) } else { None };
+        let news: Vec<(i64, String, Option<String>, DateTime<Utc>)> = sqlx::query_as(
+            "SELECT id, text, url, created_at FROM db_pigeon_news WHERE user_id = $1 AND conversation_id = ANY($2)
+               AND ($3::timestamptz IS NULL OR created_at >= $3) AND ($4::timestamptz IS NULL OR created_at < $4) ORDER BY created_at",
+        )
+        .bind(user)
+        .bind(&threads)
+        .bind(from)
+        .bind(q.before)
+        .fetch_all(&st.pool)
+        .await?;
+        let mut handles: Vec<String> =
+            items.iter().filter(|i| i["direction"] == "in").filter_map(|i| i["sender"].as_str().map(str::to_string)).collect();
+        handles.sort();
+        handles.dedup();
+        let people_rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT h.handle, c.name, c.slug FROM db_pigeon_contact_handles h JOIN db_pigeon_contacts c ON c.id = h.contact_id
+              WHERE h.user_id = $1 AND h.handle = ANY($2)",
+        )
+        .bind(user)
+        .bind(&handles)
+        .fetch_all(&st.pool)
+        .await?;
+        let senders: serde_json::Map<String, Json> =
+            people_rows.into_iter().map(|(handle, name, slug)| (handle, json!({ "name": name, "slug": slug }))).collect();
+        Ok(json!({
+            "items": items,
+            "senders": senders,
+            "news": news.into_iter().map(|(id, text, url, at)| json!({ "id": id, "text": text, "url": url, "at": at })).collect::<Vec<_>>(),
+            "more": more,
+        }))
+    }
+    .await;
+    reply(r)
+}
+
+/// The user opened a person's chat: what came in on any of their threads is read.
+pub async fn person_read(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>) -> HttpResponse {
+    let user = &u.0.user_id;
+    let id = path.into_inner();
+    let r: anyhow::Result<Json> = async {
+        people::mine(&st, user, id).await?;
+        sqlx::query("UPDATE db_pigeon_conversations SET read_at = NOW() WHERE user_id = $1 AND contact_id = $2").bind(user).bind(id).execute(&st.pool).await?;
+        events::publish(&st.pool, user, "conversations", None).await;
+        Ok(json!({ "read": id }))
+    }
+    .await;
+    reply(r)
+}
+
+/// Nothing more to do with this person: each of their threads that needed the user is handled.
+pub async fn person_handled(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>) -> HttpResponse {
+    let user = &u.0.user_id;
+    let id = path.into_inner();
+    let r: anyhow::Result<Json> = async {
+        for t in person_threads(&st, user, id).await? {
+            if t.attention.is_some() || t.needs_note.is_some() {
+                tools::mark_handled(&st, t.id).await?;
+            }
+        }
+        Ok(json!({ "handled": id }))
+    }
+    .await;
+    reply(r)
+}

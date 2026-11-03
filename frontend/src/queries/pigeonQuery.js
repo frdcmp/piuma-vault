@@ -8,6 +8,7 @@ import {
 	deletePigeonRule,
 	disconnectPigeon,
 	draftPigeonReply,
+	fetchPigeonChats,
 	fetchPigeonConnections,
 	fetchPigeonConnectLink,
 	fetchPigeonContact,
@@ -18,6 +19,8 @@ import {
 	fetchPigeonItemHtml,
 	fetchPigeonItems,
 	fetchPigeonPairing,
+	fetchPigeonPersonChat,
+	fetchPigeonPersonItems,
 	fetchPigeonRuleRuns,
 	fetchPigeonRules,
 	fetchPigeonSettings,
@@ -26,6 +29,8 @@ import {
 	learnAllPigeonContacts,
 	learnPigeonContact,
 	markPigeonHandled,
+	markPigeonPersonHandled,
+	markPigeonPersonRead,
 	markPigeonRead,
 	mergePigeonContacts,
 	pressPigeonCard,
@@ -59,6 +64,21 @@ export const pigeonKeys = {
 	settings: () => ["pigeon", "settings"],
 	connections: () => ["pigeon", "connections"],
 	pairing: (connector) => ["pigeon", "pairing", connector],
+	chats: (params) => ["pigeon", "chats", params ?? {}],
+	person: (id) => ["pigeon", "person", id],
+	personItems: (id, connector) => [
+		"pigeon",
+		"person-items",
+		id,
+		connector ?? "",
+	],
+};
+
+// Everything a chat shows, by person or by thread: refreshed whenever any thread changes.
+const invalidateChats = (qc) => {
+	qc.invalidateQueries({ queryKey: ["pigeon", "chats"] });
+	qc.invalidateQueries({ queryKey: ["pigeon", "person"] });
+	qc.invalidateQueries({ queryKey: ["pigeon", "person-items"] });
 };
 
 // ── Live updates ────────────────────────────────────────────────────────────
@@ -67,6 +87,7 @@ export const pigeonKeys = {
 // normal routes. A conversation event refreshes that chat and the list.
 const applyPigeonEvent = (qc, kind, id) => {
 	const inv = (queryKey) => qc.invalidateQueries({ queryKey });
+	if (kind !== "message_in" && kind !== "connections") invalidateChats(qc);
 	switch (kind) {
 		case "conversation":
 			inv(pigeonKeys.lists());
@@ -196,6 +217,7 @@ const useChatMutation = (fn) => {
 		mutationFn: fn,
 		onSuccess: (_d, vars) => {
 			const id = typeof vars === "object" ? vars?.id : vars;
+			invalidateChats(qc);
 			qc.invalidateQueries({ queryKey: pigeonKeys.lists() });
 			if (id) {
 				qc.invalidateQueries({ queryKey: pigeonKeys.conversation(id) });
@@ -225,6 +247,7 @@ export function usePressPigeonCard() {
 	return useMutation({
 		mutationFn: ({ conversationId: _c, ...card }) => pressPigeonCard(card),
 		onSuccess: (_d, { conversationId }) => {
+			invalidateChats(qc);
 			qc.invalidateQueries({ queryKey: pigeonKeys.lists() });
 			if (conversationId) {
 				qc.invalidateQueries({
@@ -237,6 +260,76 @@ export function usePressPigeonCard() {
 		},
 	});
 }
+
+// ── Chats by person ─────────────────────────────────────────────────────────
+
+// params: { filter?: "needs", connector?, q? }
+export function usePigeonChats(params = {}) {
+	return useInfiniteQuery({
+		queryKey: pigeonKeys.chats(params),
+		queryFn: ({ pageParam }) =>
+			fetchPigeonChats({
+				...params,
+				before: pageParam ?? undefined,
+				limit: LIST_PAGE,
+			}),
+		initialPageParam: null,
+		getNextPageParam: (last) => {
+			const rows = last?.chats ?? [];
+			return rows.length === LIST_PAGE ? rows.at(-1)?.last_item_at : undefined;
+		},
+		select: (data) => data.pages.flatMap((p) => p.chats ?? []),
+	});
+}
+
+export function usePigeonPersonChat(id) {
+	return useQuery({
+		queryKey: pigeonKeys.person(id),
+		queryFn: () => fetchPigeonPersonChat(id),
+		enabled: !!id,
+	});
+}
+
+// A person's messages (one channel's when `connector` is set), oldest first.
+export function usePigeonPersonItems(id, connector) {
+	return useInfiniteQuery({
+		queryKey: pigeonKeys.personItems(id, connector),
+		queryFn: ({ pageParam }) =>
+			fetchPigeonPersonItems({
+				id,
+				connector: connector || undefined,
+				before: pageParam ?? undefined,
+				limit: ITEMS_PAGE,
+			}),
+		initialPageParam: null,
+		getNextPageParam: (last) => (last?.more ? last.items?.[0]?.at : undefined),
+		enabled: !!id,
+		select: (data) => {
+			const pages = [...data.pages].reverse();
+			return {
+				items: pages.flatMap((p) => p.items ?? []),
+				news: pages.flatMap((p) => p.news ?? []),
+				senders: Object.assign({}, ...pages.map((p) => p.senders ?? {})),
+			};
+		},
+	});
+}
+
+const usePersonMutation = (fn) => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: fn,
+		onSuccess: () => {
+			invalidateChats(qc);
+			qc.invalidateQueries({ queryKey: pigeonKeys.lists() });
+		},
+	});
+};
+
+export const useMarkPigeonPersonRead = () =>
+	usePersonMutation(markPigeonPersonRead);
+export const useMarkPigeonPersonHandled = () =>
+	usePersonMutation(markPigeonPersonHandled);
 
 // ── People ──────────────────────────────────────────────────────────────────
 
@@ -261,6 +354,7 @@ const usePeopleMutation = (fn) => {
 	return useMutation({
 		mutationFn: fn,
 		onSuccess: () => {
+			invalidateChats(qc);
 			qc.invalidateQueries({ queryKey: ["pigeon", "contacts"] });
 			qc.invalidateQueries({ queryKey: ["pigeon", "contact"] });
 			qc.invalidateQueries({ queryKey: ["pigeon", "conversation"] });

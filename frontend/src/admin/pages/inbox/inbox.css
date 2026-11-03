@@ -548,3 +548,28 @@
 	text-decoration: underline;
 	cursor: pointer;
 }
+
+/* a chat row's real name, beside the @slug it's titled by */
+.inbox-row-realname {
+	color: var(--vp-muted);
+	font-weight: normal;
+	font-size: 0.85em;
+}
+
+/* a person's chat: the channel chips over the messages, and where a reply goes */
+.inbox-chat-channels {
+	padding: 6px 12px;
+	border-bottom: 1px dashed var(--vp-border);
+}
+.inbox-reply-on {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 12px 0;
+	color: var(--vp-muted);
+	font-size: 9pt;
+}
+.inbox-msg-channel {
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}

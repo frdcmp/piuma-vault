@@ -8,7 +8,7 @@ import {
 	SendOutlined,
 } from "@ant-design/icons";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
 	PvAlert,
 	PvAvatar,
@@ -27,12 +27,17 @@ import {
 import {
 	useDraftPigeonReply,
 	useMarkPigeonHandled,
+	useMarkPigeonPersonHandled,
+	useMarkPigeonPersonRead,
 	useMarkPigeonRead,
 	usePigeonConversation,
 	usePigeonItemHtml,
 	usePigeonItems,
+	usePigeonPersonChat,
+	usePigeonPersonItems,
 	usePigeonSummary,
 	useSendPigeonMessage,
+	useSetPigeonContactSwitches,
 	useSetPigeonConversationSwitches,
 } from "../../../queries";
 import useChatDockStore from "../../../store/chatDockStore";
@@ -112,12 +117,20 @@ function EmailView({ id, onClose }) {
 	);
 }
 
+// An email's text in a chat: its start, the rest behind "View email".
+const EMAIL_CLIP = 700;
+
 // `group`: more than one person writes here, so each message says who.
-// `onOpen`: an email's, opens it as it was sent.
-function Message({ item, group, senders, onOpen }) {
+// `onOpen`: an email's, opens it as it was sent (its text is clipped here).
+// `channel`: where it came, when a person's chat mixes channels.
+function Message({ item, group, senders, onOpen, channel }) {
 	const out = item.direction === "out";
 	const media = mediaLabels(item.media);
-	const body = bodyText(item.body, item.media);
+	const full = bodyText(item.body, item.media);
+	const body =
+		onOpen && full && full.length > EMAIL_CLIP
+			? `${full.slice(0, EMAIL_CLIP).trimEnd()}…`
+			: full;
 	const sender = group && !out ? senderLabel(item, senders) : null;
 	return (
 		<div
@@ -147,6 +160,9 @@ function Message({ item, group, senders, onOpen }) {
 							View email
 						</button>
 					) : null}
+					{channel ? (
+						<span className="inbox-msg-channel">{channel} · </span>
+					) : null}
 					{item.author === "pigeon" ? <span>🕊 Pigeon · </span> : null}
 					{formatTime(item.at)}
 				</div>
@@ -155,20 +171,15 @@ function Message({ item, group, senders, onOpen }) {
 	);
 }
 
-// The chat's own switches: may Pigeon reply here, and how it rings.
-function Switches({ id, switches }) {
-	const set = useSetPigeonConversationSwitches();
-	const save = (patch) =>
-		set.mutate(
-			{ id, ...patch },
-			{ onError: (e) => pvMessage.error(errorText(e)) },
-		);
+// The switches: may Pigeon reply here, and how it rings. A person's are theirs
+// on every channel; a group's its own.
+function Switches({ switches, onSave, scope }) {
 	const reply = switches.reply_own ?? "inherit";
 	const alerts = switches.alerts_own ?? "inherit";
 	return (
 		<div className="inbox-switches">
 			<PvField
-				label="Pigeon's replies here"
+				label={`Pigeon's replies ${scope}`}
 				as="div"
 				hint={
 					reply === "auto" && !switches.auto_enabled
@@ -180,7 +191,7 @@ function Switches({ id, switches }) {
 					size="sm"
 					options={withInherit(POLICY_OPTIONS, switches.reply)}
 					value={reply}
-					onChange={(v) => save({ reply: v })}
+					onChange={(v) => onSave({ reply: v })}
 				/>
 			</PvField>
 			<PvField
@@ -192,19 +203,31 @@ function Switches({ id, switches }) {
 					size="sm"
 					options={withInherit(ALERT_OPTIONS, switches.alerts)}
 					value={alerts}
-					onChange={(v) => save({ alerts: v })}
+					onChange={(v) => onSave({ alerts: v })}
 				/>
 			</PvField>
 		</div>
 	);
 }
 
-export default function ChatView({ id }) {
-	const { data, isLoading, error } = usePigeonConversation(id);
-	const items = usePigeonItems(id);
+const unique = (xs) => [...new Set(xs)];
+
+// A chat: a person's (`person`: all their threads, every channel, as one) or a
+// thread's of its own (`id`: a group). A thread that is a person's opens their
+// chat instead.
+export default function ChatView({ id, person }) {
+	const navigate = useNavigate();
+	const threadChat = usePigeonConversation(person ? null : id);
+	const personChat = usePigeonPersonChat(person);
+	const { data, isLoading, error } = person ? personChat : threadChat;
+	const [channel, setChannel] = useState("");
+	const threadItems = usePigeonItems(person ? null : id);
+	const personItems = usePigeonPersonItems(person, channel);
+	const items = person ? personItems : threadItems;
 	const timeline = useTimeline(items.data);
 	const senders = items.data?.senders;
 	const [email, setEmail] = useState(null);
+	const [replyChannel, setReplyChannel] = useState(null);
 	const group = useMemo(
 		() =>
 			new Set(
@@ -215,7 +238,11 @@ export default function ChatView({ id }) {
 		[items.data],
 	);
 	const markRead = useMarkPigeonRead();
+	const markPersonRead = useMarkPigeonPersonRead();
 	const handled = useMarkPigeonHandled();
+	const personHandled = useMarkPigeonPersonHandled();
+	const setThreadSwitches = useSetPigeonConversationSwitches();
+	const setPersonSwitches = useSetPigeonContactSwitches();
 	const send = useSendPigeonMessage();
 	const draft = useDraftPigeonReply();
 	const askPiuma = useChatDockStore((s) => s.askPiuma);
@@ -226,26 +253,52 @@ export default function ChatView({ id }) {
 	const switchesRef = useRef(null);
 	const scrollRef = useRef(null);
 	const stickRef = useRef(true);
-	const summary = usePigeonSummary(id, showSummary);
 
 	const conv = data?.conversation;
-	const unread =
-		conv?.last_in_at &&
-		(!conv.read_at || new Date(conv.last_in_at) > new Date(conv.read_at));
+	const threads = person ? (data?.threads ?? []) : conv ? [conv] : [];
+	const channels = unique(threads.map((t) => t.connector));
+	// where a reply goes: the channel picked, else the one they last wrote on
+	const lastIn = [...(items.data?.items ?? [])]
+		.reverse()
+		.find((i) => i.direction === "in");
+	const replyOn =
+		replyChannel ||
+		channel ||
+		lastIn?.connector ||
+		conv?.connector ||
+		channels[0];
+	const thread = threads.find((t) => t.connector === replyOn) ?? conv;
+	const tid = thread?.id;
+	const summary = usePigeonSummary(tid, showSummary);
+	const unread = person
+		? data?.unread
+		: conv?.last_in_at &&
+			(!conv.read_at || new Date(conv.last_in_at) > new Date(conv.read_at));
+
+	// A thread that is someone's opens as their chat.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: on the thread's person only
+	useEffect(() => {
+		if (!person && conv?.contact_id)
+			navigate(`/inbox/p/${conv.contact_id}`, { replace: true });
+	}, [person, conv?.contact_id]);
 
 	// Opening the chat reads what came in.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: once per new message in, not per mutation object
 	useEffect(() => {
-		if (id && unread) markRead.mutate(id);
-	}, [id, unread]);
+		if (!unread) return;
+		if (person) markPersonRead.mutate(person);
+		else if (id) markRead.mutate(id);
+	}, [id, person, unread]);
 
-	// A new chat starts with an empty composer, at the bottom.
+	// A new chat starts with an empty composer, every channel shown, at the bottom.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: runs when the chat changes
 	useEffect(() => {
 		setText("");
 		setShowSummary(false);
+		setChannel("");
+		setReplyChannel(null);
 		stickRef.current = true;
-	}, [id]);
+	}, [id, person]);
 
 	// Stay at the bottom as messages come in, unless the user scrolled up.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: runs when messages or cards change
@@ -269,34 +322,36 @@ export default function ChatView({ id }) {
 			</div>
 		);
 
+	const fail = (e) => pvMessage.error(errorText(e));
 	const onSend = () => {
 		const t = text.trim();
-		if (!t) return;
+		if (!t || !tid) return;
 		stickRef.current = true;
 		send.mutate(
-			{ id, text: t },
-			{
-				onSuccess: () => setText(""),
-				onError: (e) => pvMessage.error(errorText(e)),
-			},
+			{ id: tid, text: t },
+			{ onSuccess: () => setText(""), onError: fail },
 		);
 	};
 
 	const onDraft = () => {
+		if (!tid) return;
 		stickRef.current = true;
 		draft.mutate(
-			{ id, instructions: text.trim() },
+			{ id: tid, instructions: text.trim() },
 			{
 				onSuccess: () => {
 					setText("");
 					pvMessage.success("Pigeon wrote a draft");
 				},
-				onError: (e) => pvMessage.error(errorText(e)),
+				onError: fail,
 			},
 		);
 	};
 
-	const needsYou = conv.attention || conv.needs_note;
+	const needsYou = threads.some((t) => t.attention || t.needs_note);
+	const mixed = person && channels.length > 1;
+	const contact = data.contact;
+	const realName = person ? data.name : null;
 
 	return (
 		<section className="inbox-chat">
@@ -307,21 +362,20 @@ export default function ChatView({ id }) {
 					label="Back to the chats"
 					className="inbox-back"
 				/>
-				<PvAvatar size={36} tone={channelTone(conv.connector)}>
-					{initials(data.with)}
+				<PvAvatar size={36} tone={channelTone(thread?.connector)}>
+					{initials(realName || data.with)}
 				</PvAvatar>
 				<div className="inbox-chat-who">
 					<div className="inbox-chat-name">{data.with}</div>
 					<div className="inbox-chat-sub">
-						{channelLabel(conv.connector)}
-						{data.contact?.slug ? ` · @${data.contact.slug}` : ""}
-						{data.contact?.relationship
-							? ` · ${data.contact.relationship}`
-							: ""}
-						{data.contact?.note_id ? (
+						{realName && realName !== data.with ? `${realName} · ` : ""}
+						{channels.map(channelLabel).join(", ")}
+						{!person && contact?.slug ? ` · @${contact.slug}` : ""}
+						{contact?.relationship ? ` · ${contact.relationship}` : ""}
+						{contact?.note_id ? (
 							<>
 								{" · "}
-								<Link to={`/notes/${data.contact.note_id}`}>note</Link>
+								<Link to={`/notes/${contact.note_id}`}>note</Link>
 							</>
 						) : null}
 					</div>
@@ -332,9 +386,9 @@ export default function ChatView({ id }) {
 							icon={<CheckOutlined />}
 							label="Handled: nothing more to do"
 							onClick={() =>
-								handled.mutate(id, {
-									onError: (e) => pvMessage.error(errorText(e)),
-								})
+								person
+									? personHandled.mutate(person, { onError: fail })
+									: handled.mutate(id, { onError: fail })
 							}
 						/>
 					) : null}
@@ -347,7 +401,7 @@ export default function ChatView({ id }) {
 					<span ref={switchesRef}>
 						<PvIconButton
 							icon={<ControlOutlined />}
-							label="This chat's switches"
+							label={person ? "Their switches" : "This chat's switches"}
 							active={switchesOpen}
 							onClick={() => setSwitchesOpen((o) => !o)}
 						/>
@@ -356,7 +410,7 @@ export default function ChatView({ id }) {
 						size="sm"
 						variant="accent"
 						icon={<MessageOutlined />}
-						onClick={() => askPiuma({ id, title: data.with })}
+						onClick={() => askPiuma({ id: tid, title: data.with })}
 						title="Open Piuma with this chat attached"
 					>
 						Ask Piuma
@@ -368,11 +422,39 @@ export default function ChatView({ id }) {
 					onClose={() => setSwitchesOpen(false)}
 					align="end"
 					width={360}
-					title="This chat"
+					title={person ? data.with : "This chat"}
 				>
-					<Switches id={id} switches={data.switches} />
+					<Switches
+						switches={data.switches}
+						scope={person ? "to them" : "here"}
+						onSave={(patch) =>
+							person
+								? setPersonSwitches.mutate(
+										{ id: person, ...patch },
+										{ onError: fail },
+									)
+								: setThreadSwitches.mutate({ id, ...patch }, { onError: fail })
+						}
+					/>
 				</PvPopover>
 			</header>
+
+			{mixed ? (
+				<div className="inbox-chat-channels">
+					<PvSegmented
+						size="sm"
+						options={[
+							{ value: "", label: "All" },
+							...channels.map((c) => ({ value: c, label: channelLabel(c) })),
+						]}
+						value={channel}
+						onChange={(v) => {
+							stickRef.current = true;
+							setChannel(v);
+						}}
+					/>
+				</div>
+			) : null}
 
 			{showSummary ? (
 				<div className="inbox-summary">
@@ -424,21 +506,44 @@ export default function ChatView({ id }) {
 							item={r.item}
 							group={group}
 							senders={senders}
-							onOpen={conv.connector === "gmail" ? setEmail : undefined}
+							channel={
+								mixed && !channel
+									? channelLabel(r.item.connector ?? conv.connector)
+									: null
+							}
+							onOpen={
+								(r.item.connector ?? conv.connector) === "gmail"
+									? setEmail
+									: undefined
+							}
 						/>
 					),
 				)}
-				<PigeonCards cards={data.cards} conversationId={id} />
+				<PigeonCards cards={data.cards} conversationId={tid} />
 			</div>
 			<EmailView id={email} onClose={() => setEmail(null)} />
 
-			{conv.window_until && new Date(conv.window_until) < new Date() ? (
+			{thread?.window_until && new Date(thread.window_until) < new Date() ? (
 				<PvAlert type="warning" title="The reply window is closed">
-					{channelLabel(conv.connector)} only takes a reply within its window
+					{channelLabel(thread.connector)} only takes a reply within its window
 					after their last message.
 				</PvAlert>
 			) : null}
 
+			{mixed ? (
+				<div className="inbox-reply-on">
+					Reply on
+					<PvSegmented
+						size="sm"
+						options={channels.map((c) => ({
+							value: c,
+							label: channelLabel(c),
+						}))}
+						value={replyOn}
+						onChange={setReplyChannel}
+					/>
+				</div>
+			) : null}
 			<footer className="inbox-composer">
 				<PvTextarea
 					autoSize
@@ -452,7 +557,7 @@ export default function ChatView({ id }) {
 							onSend();
 						}
 					}}
-					placeholder={`Write to ${data.with}… (or tell Pigeon what to say, then ✍)`}
+					placeholder={`Write to ${data.with}${mixed ? ` on ${channelLabel(replyOn)}` : ""}… (or tell Pigeon what to say, then ✍)`}
 					aria-label="Your message"
 				/>
 				<PvIconButton

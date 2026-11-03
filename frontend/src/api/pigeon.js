@@ -143,6 +143,47 @@ export const learnAllPigeonContacts = async ({ days } = {}) => {
 	return data;
 };
 
+// ── Chats by person ─────────────────────────────────────────────────────────
+//
+// A person's chat is all their threads (WhatsApp, Instagram, email…) as one;
+// a group stays its own chat.
+
+// params: { filter?: "needs", connector?, q?, before?, limit? } → { chats }
+export const fetchPigeonChats = async (params = {}) => {
+	const { data } = await axiosInstance.get(`${BASE}/chats`, { params });
+	return data;
+};
+
+export const fetchPigeonPersonChat = async (id) => {
+	const { data } = await axiosInstance.get(`${BASE}/chats/person/${id}`);
+	return data;
+};
+
+// A person's messages across their threads, or one channel's: { items, news, senders, more }.
+export const fetchPigeonPersonItems = async ({
+	id,
+	connector,
+	before,
+	limit,
+}) => {
+	const { data } = await axiosInstance.get(`${BASE}/chats/person/${id}/items`, {
+		params: { connector, before, limit },
+	});
+	return data;
+};
+
+export const markPigeonPersonRead = async (id) => {
+	const { data } = await axiosInstance.post(`${BASE}/chats/person/${id}/read`);
+	return data;
+};
+
+export const markPigeonPersonHandled = async (id) => {
+	const { data } = await axiosInstance.post(
+		`${BASE}/chats/person/${id}/handled`,
+	);
+	return data;
+};
+
 // An email as it was sent: { html } (null when it has none), fetched from Gmail.
 export const fetchPigeonItemHtml = async (id) => {
 	const { data } = await axiosInstance.get(`${BASE}/items/${id}/html`);

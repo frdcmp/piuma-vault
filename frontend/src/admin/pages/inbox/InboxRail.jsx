@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { PvAvatar, PvIconButton, PvInput, PvSegmented, PvSpin } from "@/ui";
-import { usePigeonConversations, usePigeonGeneral } from "../../../queries";
+import { usePigeonChats, usePigeonGeneral } from "../../../queries";
 import { timeAgo } from "../../../utils/dateTime";
 import { channelLabel, channelTone, initials } from "./inboxText";
 
@@ -16,12 +16,27 @@ const FILTERS = [
 	{ value: "needs", label: "Needs you" },
 ];
 
-// The chat list: General (what isn't about one chat) on top, then the chats,
-// latest first, more loading as it scrolls. Search by name, title or @slug.
-export default function InboxRail({ activeId, page }) {
+const CHANNELS = [
+	{ value: "", label: "Every channel" },
+	{ value: "whatsapp", label: "WhatsApp" },
+	{ value: "instagram", label: "Instagram" },
+	{ value: "gmail", label: "Gmail" },
+];
+
+// Where a chat opens: a person's (all their channels), else the group's own.
+export const chatPath = (c) =>
+	c.contact_id
+		? `/inbox/p/${c.contact_id}`
+		: `/inbox/${c.conversation_id ?? c.latest}`;
+
+// The chat list: General (what isn't about one chat) on top, then a chat per
+// person (all their channels in one) and per group, latest first, more loading
+// as it scrolls. Search by @slug, name or title; narrow to a channel.
+export default function InboxRail({ activeKey, page }) {
 	const [raw, setRaw] = useState("");
 	const [q, setQ] = useState("");
 	const [filter, setFilter] = useState("all");
+	const [channel, setChannel] = useState("");
 
 	useEffect(() => {
 		const t = setTimeout(() => setQ(raw.trim()), 220);
@@ -30,6 +45,7 @@ export default function InboxRail({ activeId, page }) {
 
 	const params = {
 		...(filter === "needs" ? { filter: "needs" } : {}),
+		...(channel ? { connector: channel } : {}),
 		...(q ? { q } : {}),
 	};
 	const {
@@ -38,7 +54,7 @@ export default function InboxRail({ activeId, page }) {
 		hasNextPage,
 		isFetchingNextPage,
 		fetchNextPage,
-	} = usePigeonConversations(params);
+	} = usePigeonChats(params);
 	const { data: general } = usePigeonGeneral();
 	const generalCards = general?.cards?.length ?? 0;
 
@@ -106,6 +122,13 @@ export default function InboxRail({ activeId, page }) {
 					value={filter}
 					onChange={setFilter}
 				/>
+				<PvSegmented
+					size="sm"
+					block
+					options={CHANNELS}
+					value={channel}
+					onChange={setChannel}
+				/>
 			</div>
 
 			<div className="inbox-list" onScroll={onScroll}>
@@ -142,25 +165,32 @@ export default function InboxRail({ activeId, page }) {
 				) : (
 					chats.map((c) => (
 						<Link
-							key={c.id}
-							to={`/inbox/${c.id}`}
-							className={`inbox-row${c.id === activeId ? " is-active" : ""}${
+							key={c.key}
+							to={chatPath(c)}
+							className={`inbox-row${c.key === activeKey ? " is-active" : ""}${
 								c.unread ? " is-unread" : ""
 							}`}
 						>
 							<PvAvatar size={36} tone={channelTone(c.connector)}>
-								{initials(c.with)}
+								{initials(c.name || c.with)}
 							</PvAvatar>
 							<span className="inbox-row-main">
 								<span className="inbox-row-top">
-									<span className="inbox-row-name">{c.with}</span>
+									<span className="inbox-row-name">
+										{c.with}
+										{c.slug && c.name ? (
+											<span className="inbox-row-realname"> {c.name}</span>
+										) : null}
+									</span>
 									<span className="inbox-row-time">
 										{timeAgo(c.last_item_at)}
 									</span>
 								</span>
 								<span className="inbox-row-preview">
 									<span className="inbox-row-channel">
-										{channelLabel(c.connector)}
+										{(c.connectors?.length > 1 ? c.connectors : [c.connector])
+											.map(channelLabel)
+											.join(" · ")}
 									</span>
 									{c.last_author === "me"
 										? "You: "
