@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import {
 	PvButton,
 	PvDrawer,
+	PvEmpty,
 	PvField,
 	PvIconButton,
 	PvInput,
@@ -39,7 +40,7 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 // One person: who they are, the vault note about them, what Pigeon should know,
 // their switches; merge a duplicate in, or learn them from past chats.
 function ContactDrawer({ id, people, onClose }) {
-	const { data: c, isLoading } = usePigeonContact(id);
+	const { data: c, isLoading, error } = usePigeonContact(id);
 	const { data: settings } = usePigeonSettings();
 	const save = useSetPigeonContact();
 	const saveNote = useSetPigeonContactNote();
@@ -49,8 +50,10 @@ function ContactDrawer({ id, people, onClose }) {
 	const [form, setForm] = useState(null);
 	const [mergeId, setMergeId] = useState(null);
 
+	// the form is this person's only: none while they load, or once the drawer closes
 	useEffect(() => {
-		if (c)
+		if (!c) setForm(null);
+		else
 			setForm({
 				name: c.name ?? "",
 				slug: (c.slug ?? "").replace(/^@/, ""),
@@ -123,7 +126,9 @@ function ContactDrawer({ id, people, onClose }) {
 			width={420}
 			title={c?.name || c?.slug || "Someone"}
 		>
-			{isLoading || !form ? (
+			{error ? (
+				<PvEmpty description={errorText(error)} />
+			) : isLoading || !form || !c ? (
 				<PvSpin block />
 			) : (
 				<div className="inbox-contact">
