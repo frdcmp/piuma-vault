@@ -23,6 +23,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/admin/pigeon/contacts", web::put().to(h::set_contact))
         .route("/admin/pigeon/contacts/learn", web::post().to(h::learn_all))
         .route("/admin/pigeon/contacts/whatsapp", web::post().to(h::import_whatsapp))
+        .route("/admin/pigeon/items/{id}/html", web::get().to(h::item_html))
         .route("/admin/pigeon/contacts/{id}", web::get().to(h::get_contact))
         .route("/admin/pigeon/contacts/{id}/note", web::put().to(h::set_contact_note))
         .route("/admin/pigeon/contacts/{id}/merge", web::post().to(h::merge_contacts))

@@ -103,21 +103,36 @@ fn decode(data: &str) -> Option<String> {
     Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
+/// A message's first non-blank part of this type, decoded (a blank part doesn't count: some
+/// senders put an empty text/plain beside the real HTML).
+fn find(p: &Json, mime: &str) -> Option<String> {
+    if p["mimeType"].as_str() == Some(mime) {
+        if let Some(d) = p["body"]["data"].as_str() {
+            if let Some(t) = decode(d).filter(|t| !t.trim().is_empty()) {
+                return Some(t);
+            }
+        }
+    }
+    p["parts"].as_array()?.iter().find_map(|part| find(part, mime))
+}
+
+/// A message's own HTML, as it was sent (None: plain text only).
+pub fn html(payload: &Json) -> Option<String> {
+    find(payload, "text/html")
+}
+
 /// The text of a message: its text/plain part, or (when there's none, or it's blank) its
 /// text/html one stripped of tags.
 fn body(payload: &Json) -> String {
-    // a blank part doesn't count: some senders put an empty text/plain beside the real HTML
-    fn find(p: &Json, mime: &str) -> Option<String> {
-        if p["mimeType"].as_str() == Some(mime) {
-            if let Some(d) = p["body"]["data"].as_str() {
-                if let Some(t) = decode(d).filter(|t| !t.trim().is_empty()) {
-                    return Some(t);
-                }
-            }
-        }
-        p["parts"].as_array()?.iter().find_map(|part| find(part, mime))
-    }
-    find(payload, "text/plain").or_else(|| find(payload, "text/html").map(|h| strip_html(&h))).unwrap_or_default()
+    // some senders' text/plain is HTML after all (a <style> block, tags): it's cleaned the same way
+    let plain = find(payload, "text/plain").map(|t| if looks_like_html(&t) { strip_html(&t) } else { t });
+    plain.filter(|t| !t.trim().is_empty()).or_else(|| find(payload, "text/html").map(|h| strip_html(&h))).unwrap_or_default()
+}
+
+/// Whether text is HTML in disguise: a style or script block, or the tags of a page.
+fn looks_like_html(t: &str) -> bool {
+    let lower = t.to_ascii_lowercase();
+    ["<style", "<script", "<html", "<body", "<div", "<table", "<br>", "<br/>", "<br />", "</p>"].iter().any(|tag| lower.contains(tag))
 }
 
 /// HTML to readable text: no scripts or styles, no tags, the common entities decoded.
@@ -291,6 +306,8 @@ mod tests {
     #[test]
     fn html_only() {
         assert_eq!(strip_html("<html><head><style>x{}</style></head><body><p>Hi&nbsp;there</p><br>Bye</body></html>"), "Hi there\nBye");
+        assert!(looks_like_html("Thanks\n<style type=\"text/css\">a {color: red}</style>"));
+        assert!(!looks_like_html("if a < b then 2 > 1"));
     }
 
     #[test]

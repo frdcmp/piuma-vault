@@ -15,6 +15,7 @@ import {
 	fetchPigeonConversation,
 	fetchPigeonConversations,
 	fetchPigeonGeneral,
+	fetchPigeonItemHtml,
 	fetchPigeonItems,
 	fetchPigeonPairing,
 	fetchPigeonRuleRuns,
@@ -160,6 +161,16 @@ export function usePigeonItems(id) {
 				senders: Object.assign({}, ...pages.map((p) => p.senders ?? {})),
 			};
 		},
+	});
+}
+
+// An email as it was sent, while it's open.
+export function usePigeonItemHtml(id) {
+	return useQuery({
+		queryKey: ["pigeon", "item-html", id],
+		queryFn: () => fetchPigeonItemHtml(id),
+		enabled: !!id,
+		staleTime: 60 * 60 * 1000,
 	});
 }
 

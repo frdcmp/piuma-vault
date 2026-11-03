@@ -528,3 +528,23 @@
 		display: none;
 	}
 }
+
+/* an email as it was sent: on white, as its sender laid it out */
+.inbox-email-frame {
+	display: block;
+	width: 100%;
+	height: 70vh;
+	border: 0;
+	background: #fff;
+}
+
+.inbox-msg-open {
+	background: none;
+	border: 0;
+	padding: 0;
+	margin-right: 8px;
+	color: var(--vp-accent);
+	font: inherit;
+	text-decoration: underline;
+	cursor: pointer;
+}

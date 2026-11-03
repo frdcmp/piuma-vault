@@ -143,6 +143,12 @@ export const learnAllPigeonContacts = async ({ days } = {}) => {
 	return data;
 };
 
+// An email as it was sent: { html } (null when it has none), fetched from Gmail.
+export const fetchPigeonItemHtml = async (id) => {
+	const { data } = await axiosInstance.get(`${BASE}/items/${id}/html`);
+	return data;
+};
+
 // Names from the WhatsApp address book: { address_book, named, added, … }.
 export const importPigeonWhatsappNames = async () => {
 	const { data } = await axiosInstance.post(`${BASE}/contacts/whatsapp`);

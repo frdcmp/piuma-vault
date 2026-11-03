@@ -451,6 +451,12 @@ pub async fn learn_all(st: web::Data<AppState>, u: InboxWriter, body: web::Json<
     HttpResponse::Ok().json(json!({ "started": started, "days": days }))
 }
 
+/// An email as it was sent: `{ html }` (null when it has none).
+pub async fn item_html(st: web::Data<AppState>, u: InboxReader, path: web::Path<Uuid>) -> HttpResponse {
+    let r = crate::apps::pigeon::connectors::gmail::html_of(&st, &u.0.user_id, path.into_inner()).await;
+    reply(r.map(|html| json!({ "html": html })))
+}
+
 /// Names from the user's WhatsApp address book (people::import_whatsapp).
 pub async fn import_whatsapp(st: web::Data<AppState>, u: InboxWriter) -> HttpResponse {
     reply(people::import_whatsapp(&st, &u.0.user_id).await)

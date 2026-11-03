@@ -24,6 +24,24 @@ use api::Got;
 
 pub struct Gmail;
 
+/// An email as it was sent: its HTML, fetched from Gmail (the vault keeps the text only).
+/// None: the email has no HTML, or it isn't one of the user's emails.
+pub async fn html_of(st: &State, user: &str, item: Uuid) -> anyhow::Result<Option<String>> {
+    let found: Option<(String, Option<i32>)> = sqlx::query_as(
+        "SELECT i.external_id, c.connection_id FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
+          WHERE i.id = $1 AND c.user_id = $2 AND i.connector = $3",
+    )
+    .bind(item)
+    .bind(user)
+    .bind(ID)
+    .fetch_optional(&st.pool)
+    .await?;
+    let Some((mid, Some(connection))) = found else { return Ok(None) };
+    let token = api::access_token(st, connection).await?;
+    let msg = api::gmail_ok(&token, "GET", &format!("/messages/{mid}"), &[("format", "full".to_string())], None).await?;
+    Ok(parse::html(&msg["payload"]))
+}
+
 /// archive, mark_read and trash: the whole thread, or one message of it.
 fn message_param() -> Json {
     json!({ "type": "object", "properties": {

@@ -84,8 +84,82 @@ pub fn describe(row: &actions::ActionRow) -> String {
             format!("📌 {}{due}", s("title"))
         }
         (_, "create_event") => format!("📅 {} · {}", s("title"), short_when(&s("start"))),
-        _ => format!("{}.{}: {}", row.connector, row.action, conversations::clip(&a.to_string(), 200)),
+        (_, act) if tidy_label(act).is_some() => tidy_label(act).unwrap_or_default().to_string(),
+        // anything else: its name in words, and what it's given when it's given something
+        (_, act) => {
+            let what = act.replace('_', " ");
+            match a.as_object().filter(|o| !o.is_empty()) {
+                Some(_) => format!("{what}: {}", conversations::clip(&a.to_string(), 200)),
+                None => what,
+            }
+        }
     }
+}
+
+/// What can be done to an email in place, and its button.
+const TIDY: [(&str, &str); 3] = [("archive", "📥 Archive"), ("mark_read", "👁 Mark read"), ("trash", "🗑 Delete")];
+
+fn tidy_label(action: &str) -> Option<&'static str> {
+    TIDY.iter().find(|(a, _)| *a == action).map(|(_, l)| *l)
+}
+
+/// Archiving, reading or deleting an email: one card for all of them on a conversation.
+pub fn is_tidy(row: &actions::ActionRow) -> bool {
+    row.kind != "reply" && row.connector == "gmail" && tidy_label(&row.action).is_some()
+}
+
+/// The conversation's tidy-ups as one card: what Pigeon suggests, and each choice as a button
+/// (`a:archive`, …; "y" takes the first suggestion).
+fn tidy_card(rows: &[&actions::ActionRow]) -> Card {
+    let suggested: Vec<String> =
+        rows.iter().filter_map(|r| tidy_label(&r.action)).map(|l| l.split_once(' ').map_or(l, |(_, w)| w).to_lowercase()).collect();
+    let mut buttons: Vec<Button> = TIDY.iter().map(|(a, l)| button(l, &format!("a:{a}"))).collect();
+    buttons.push(button("Keep it", "n"));
+    Card {
+        kind: "suggestion",
+        id: rows[0].id,
+        text: format!("🧹 Tidy up this email? Pigeon suggests: {}", suggested.join(", ")),
+        draft: None,
+        free_text: false,
+        buttons,
+        created_at: rows[0].created_at,
+    }
+}
+
+/// A tidy-up card pressed: the choice runs (the suggestion that was it, else the card's own
+/// turned into it), every other tidy-up on the conversation is dropped.
+async fn press_tidy(st: &AppState, user: &str, row: actions::ActionRow, button: &str, by: &str) -> anyhow::Result<String> {
+    let choice = match button {
+        "n" => None,
+        "y" => Some(row.action.clone()),
+        b => Some(b.strip_prefix("a:").filter(|a| tidy_label(a).is_some()).ok_or_else(|| anyhow::anyhow!("not a choice: {b}"))?.to_string()),
+    };
+    let siblings: Vec<actions::ActionRow> =
+        actions::list(st, user, Some("pending"), row.conversation_id, 50).await?.into_iter().filter(is_tidy).collect();
+    let pick = choice.as_ref().map(|c| siblings.iter().find(|s| &s.action == c).map(|s| s.id).unwrap_or(row.id));
+    if let (Some(id), Some(c)) = (pick, &choice) {
+        if id == row.id && &row.action != c {
+            sqlx::query("UPDATE db_pigeon_actions SET action = $2 WHERE id = $1 AND status = 'pending'").bind(id).bind(c).execute(&st.pool).await?;
+        }
+    }
+    for s in siblings.iter().filter(|s| Some(s.id) != pick) {
+        actions::drop(st, s.id, by, Some("another choice on the card")).await?;
+    }
+    let outcome = match pick {
+        Some(id) => {
+            let done = actions::approve(st, id, None, by).await?;
+            if done.status == "done" {
+                news(st, user, done.conversation_id, &format!("✅ {}", describe(&done)), None, false).await;
+            }
+            outcome_of(&done)
+        }
+        None => "🗑 Kept as it is".to_string(),
+    };
+    match row.conversation_id {
+        Some(c) => events::conversation(&st.pool, c).await,
+        None => events::publish(&st.pool, user, "news", None).await,
+    }
+    Ok(outcome)
 }
 
 /// An action as a card: ✍ a reply to send, 💡 something to add.
@@ -136,7 +210,11 @@ pub async fn list(st: &State, user: &str, conversation: Option<Uuid>) -> anyhow:
         }
         let mut rows = actions::list(st, user, Some("pending"), Some(conversation), 20).await?;
         rows.sort_by_key(|a| (a.kind != "reply", a.created_at));
-        out.extend(rows.iter().map(action_card));
+        let (tidy, rest): (Vec<_>, Vec<_>) = rows.iter().partition(|r| is_tidy(r));
+        out.extend(rest.into_iter().map(action_card));
+        if !tidy.is_empty() {
+            out.push(tidy_card(&tidy));
+        }
         let runs: Vec<(Uuid, i32, Json, Option<String>, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
             "SELECT id, rule_id, steps, reason, created_at FROM db_pigeon_rule_runs WHERE conversation_id = $1 AND status = 'pending' ORDER BY created_at",
         )
@@ -431,6 +509,9 @@ pub async fn press(st: &AppState, user: &str, kind: &str, id: Uuid, button: &str
     match kind {
         "draft" | "suggestion" => {
             let row = actions::get(st, id).await?.filter(|r| r.user_id == user).ok_or_else(|| anyhow::anyhow!("that card is gone"))?;
+            if is_tidy(&row) && row.status == "pending" {
+                return press_tidy(st, user, row, button, by).await;
+            }
             let row = if button == "y" {
                 let edits = match (text, row.kind.as_str()) {
                     (Some(t), "reply") => Some(json!({ "text": t })),

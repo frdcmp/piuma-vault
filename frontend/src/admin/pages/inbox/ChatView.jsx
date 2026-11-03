@@ -16,6 +16,7 @@ import {
 	PvEmpty,
 	PvField,
 	PvIconButton,
+	PvModal,
 	PvPopover,
 	PvSegmented,
 	PvSpin,
@@ -28,6 +29,7 @@ import {
 	useMarkPigeonHandled,
 	useMarkPigeonRead,
 	usePigeonConversation,
+	usePigeonItemHtml,
 	usePigeonItems,
 	usePigeonSummary,
 	useSendPigeonMessage,
@@ -75,8 +77,44 @@ function useTimeline(data) {
 	}, [data]);
 }
 
-// `group`: more than one person writes here, so each message says who
-function Message({ item, group, senders }) {
+// An email as it was sent, in a frame of its own: no scripts run, links open in a new tab.
+function EmailView({ id, onClose }) {
+	const { data, isLoading, error } = usePigeonItemHtml(id);
+	const doc = data?.html
+		? `<base target="_blank"><meta name="referrer" content="no-referrer">${data.html}`
+		: null;
+	return (
+		<PvModal
+			open={!!id}
+			title="The email"
+			onCancel={onClose}
+			footer={null}
+			showClose
+			width={780}
+		>
+			{error ? (
+				<PvAlert type="error" title="Couldn't fetch the email">
+					{errorText(error)}
+				</PvAlert>
+			) : isLoading ? (
+				<PvSpin block label="Fetching it from Gmail…" />
+			) : doc ? (
+				<iframe
+					className="inbox-email-frame"
+					title="The email"
+					sandbox="allow-popups allow-popups-to-escape-sandbox"
+					srcDoc={doc}
+				/>
+			) : (
+				<PvEmpty description="This email is plain text: it's all in the chat." />
+			)}
+		</PvModal>
+	);
+}
+
+// `group`: more than one person writes here, so each message says who.
+// `onOpen`: an email's, opens it as it was sent.
+function Message({ item, group, senders, onOpen }) {
 	const out = item.direction === "out";
 	const media = mediaLabels(item.media);
 	const body = bodyText(item.body, item.media);
@@ -100,6 +138,15 @@ function Message({ item, group, senders }) {
 				) : null}
 				{body ? <div className="inbox-msg-body">{body}</div> : null}
 				<div className="inbox-msg-meta">
+					{onOpen ? (
+						<button
+							type="button"
+							className="inbox-msg-open"
+							onClick={() => onOpen(item.id)}
+						>
+							View email
+						</button>
+					) : null}
 					{item.author === "pigeon" ? <span>🕊 Pigeon · </span> : null}
 					{formatTime(item.at)}
 				</div>
@@ -157,6 +204,7 @@ export default function ChatView({ id }) {
 	const items = usePigeonItems(id);
 	const timeline = useTimeline(items.data);
 	const senders = items.data?.senders;
+	const [email, setEmail] = useState(null);
 	const group = useMemo(
 		() =>
 			new Set(
@@ -376,11 +424,13 @@ export default function ChatView({ id }) {
 							item={r.item}
 							group={group}
 							senders={senders}
+							onOpen={conv.connector === "gmail" ? setEmail : undefined}
 						/>
 					),
 				)}
 				<PigeonCards cards={data.cards} conversationId={id} />
 			</div>
+			<EmailView id={email} onClose={() => setEmail(null)} />
 
 			{conv.window_until && new Date(conv.window_until) < new Date() ? (
 				<PvAlert type="warning" title="The reply window is closed">
