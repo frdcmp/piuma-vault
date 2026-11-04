@@ -143,6 +143,7 @@ pub async fn get_conversation(st: web::Data<AppState>, u: InboxReader, path: web
                 "alerts": alerts::resolve(&st.pool, user, conv.contact_id, Some(id)).await?.as_str(),
                 "alerts_own": own_alerts,
                 "auto_enabled": policy::auto_enabled(&st.pool, user).await?,
+                "auto_paused_until": actions::quiet_until(&st, id).await?,
             },
             "cards": cards::list(&st, user, Some(id)).await?,
         }))
@@ -276,6 +277,21 @@ pub async fn mark_handled(st: web::Data<AppState>, u: InboxWriter, path: web::Pa
         tools::own_conversation(&st, user, id).await?;
         tools::mark_handled(&st, id).await?;
         Ok(json!({ "handled": id }))
+    }
+    .await;
+    reply(r)
+}
+
+/// Auto replies answer here again now: the wait after the user wrote here themselves (and the
+/// hourly count) start over, and what came in meanwhile is answered.
+pub async fn resume_auto(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>) -> HttpResponse {
+    let user = &u.0.user_id;
+    let id = path.into_inner();
+    let r: anyhow::Result<Json> = async {
+        tools::own_conversation(&st, user, id).await?;
+        actions::resume_auto(&st, &[id]).await?;
+        events::conversation(&st.pool, id).await;
+        Ok(json!({ "resumed": [id] }))
     }
     .await;
     reply(r)
@@ -824,6 +840,10 @@ pub async fn get_person_chat(st: web::Data<AppState>, u: InboxReader, path: web:
             .fetch_optional(&st.pool)
             .await?;
         let unread = threads.iter().any(|t| t.last_in_at.is_some_and(|i| t.read_at.is_none_or(|r| i > r)));
+        let mut auto_paused_until = None;
+        for t in &threads {
+            auto_paused_until = auto_paused_until.max(actions::quiet_until(&st, t.id).await?);
+        }
         let (avatar, avatar_photo) = avatars::Links::new(&st.pool).await.of(&st.pool, contact.avatar_key.as_deref()).await;
         Ok(json!({
             "avatar": avatar, "avatar_photo": avatar_photo,
@@ -840,6 +860,7 @@ pub async fn get_person_chat(st: web::Data<AppState>, u: InboxReader, path: web:
                 "alerts": alerts::resolve(&st.pool, user, None, None).await?.as_str(),
                 "alerts_own": alerts_own,
                 "auto_enabled": policy::auto_enabled(&st.pool, user).await?,
+                "auto_paused_until": auto_paused_until,
             },
         }))
     }
@@ -940,6 +961,22 @@ pub async fn person_handled(st: web::Data<AppState>, u: InboxWriter, path: web::
             }
         }
         Ok(json!({ "handled": id }))
+    }
+    .await;
+    reply(r)
+}
+
+/// Auto replies answer a person again now, on every channel of theirs.
+pub async fn person_resume_auto(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>) -> HttpResponse {
+    let user = &u.0.user_id;
+    let id = path.into_inner();
+    let r: anyhow::Result<Json> = async {
+        let ids: Vec<Uuid> = person_threads(&st, user, id).await?.iter().map(|t| t.id).collect();
+        actions::resume_auto(&st, &ids).await?;
+        for t in &ids {
+            events::conversation(&st.pool, *t).await;
+        }
+        Ok(json!({ "resumed": ids }))
     }
     .await;
     reply(r)
