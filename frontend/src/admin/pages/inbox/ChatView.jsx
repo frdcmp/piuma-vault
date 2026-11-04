@@ -238,7 +238,6 @@ export default function ChatView({ id, person }) {
 	const timeline = useTimeline(items.data);
 	const senders = items.data?.senders;
 	const [email, setEmail] = useState(null);
-	const [replyChannel, setReplyChannel] = useState(null);
 	const group = useMemo(
 		() =>
 			!person &&
@@ -269,14 +268,11 @@ export default function ChatView({ id, person }) {
 	const conv = data?.conversation;
 	const threads = person ? (data?.threads ?? []) : conv ? [conv] : [];
 	const channels = unique(threads.map((t) => t.connector));
-	// where a reply goes: the channel picked, else the one they last wrote on
-	const lastIn = [...(items.data?.items ?? [])]
-		.reverse()
-		.find((i) => i.direction === "in");
+	// where a reply goes: the channel of the last message shown (the chips on
+	// top narrow it to one)
 	const replyOn =
-		replyChannel ||
 		channel ||
-		lastIn?.connector ||
+		items.data?.items?.at(-1)?.connector ||
 		conv?.connector ||
 		channels[0];
 	const thread = threads.find((t) => t.connector === replyOn) ?? conv;
@@ -308,7 +304,6 @@ export default function ChatView({ id, person }) {
 		setText("");
 		setShowSummary(false);
 		setChannel("");
-		setReplyChannel(null);
 		stickRef.current = true;
 	}, [id, person]);
 
@@ -538,20 +533,6 @@ export default function ChatView({ id, person }) {
 				</PvAlert>
 			) : null}
 
-			{mixed ? (
-				<div className="inbox-reply-on">
-					Reply on
-					<PvSegmented
-						size="sm"
-						options={channels.map((c) => ({
-							value: c,
-							label: channelLabel(c),
-						}))}
-						value={replyOn}
-						onChange={setReplyChannel}
-					/>
-				</div>
-			) : null}
 			<footer className="inbox-composer">
 				<PvTextarea
 					autoSize

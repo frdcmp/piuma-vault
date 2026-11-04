@@ -556,18 +556,10 @@
 	font-size: 0.85em;
 }
 
-/* a person's chat: the channel chips over the messages, and where a reply goes */
+/* a person's chat: the channel chips over the messages */
 .inbox-chat-channels {
 	padding: 6px 12px;
 	border-bottom: 1px dashed var(--vp-border);
-}
-.inbox-reply-on {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 4px 12px 0;
-	color: var(--vp-muted);
-	font-size: 9pt;
 }
 .inbox-msg-channel {
 	text-transform: uppercase;
