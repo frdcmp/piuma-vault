@@ -24,6 +24,9 @@ pub const URGENT_AT: f64 = 0.7;
 pub const ADDRESSED_AT: f64 = 0.5;
 /// The user wrote in the conversation this recently: only what waits for an answer is answered.
 const RECENT_MINUTES: i32 = 60;
+/// Below this importance (Jev sure it's low: a hotel's "we miss you"), only something surely to do
+/// is something to do.
+const LOW_IMPORTANCE: f64 = 0.2;
 /// Kinds that never need the user, when Jev is this sure.
 const NOISE: &[&str] = &["newsletter", "automated", "spam"];
 const NOISE_AT: f64 = 0.6;
@@ -36,7 +39,7 @@ const KINDS: &[(&str, Option<&str>)] = &[
     ("money", Some("payments, invoices, prices, quotes")),
     ("social", Some("friends or family chatting, greetings, news")),
     ("update", Some("information for {me}, nothing asked")),
-    ("newsletter", Some("a newsletter or marketing")),
+    ("newsletter", Some("a newsletter or marketing, a business inviting {me} back")),
     ("automated", Some("an automatic notification, receipt or alert")),
     ("spam", None),
 ];
@@ -140,9 +143,13 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
     let Some(conv) = conversations::get(&st.pool, id).await? else { return Ok("stopped") };
     let items = conversations::recent_items(&st.pool, id, 30).await?;
     // what came in since the last triage started (all of it, the first time; history brought in
-    // on connect counts as seen)
-    let new: Vec<&conversations::Item> =
-        items.iter().filter(|i| i.direction == "in" && conv.triaged_at.map_or(true, |t| i.created_at > t)).collect();
+    // on connect counts as seen), and since the last message written to them: what came before
+    // it was answered (it stays in the earlier conversation, in its place)
+    let last_out = items.iter().filter(|i| i.direction == "out").map(|i| i.at).max();
+    let new: Vec<&conversations::Item> = items
+        .iter()
+        .filter(|i| i.direction == "in" && conv.triaged_at.map_or(true, |t| i.created_at > t) && last_out.map_or(true, |o| i.at > o))
+        .collect();
     if new.is_empty() {
         return Ok("stopped");
     }
@@ -191,7 +198,13 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
          too, like 'how are you?'), a greeting or news from a friend, a request. No for what closes the exchange (a thank-you, an \
          'ok', an emoji) and for anything automated (receipts, notifications, newsletters).",
     ));
-    q.insert("actionable".into(), jev::noul("Do the new messages hold something {me} has to do or remember: a task, a deadline, a date, an appointment, a promise?"));
+    q.insert(
+        "actionable".into(),
+        jev::noul(
+            "Do the new messages hold something {me} has to do or remember: a task, a deadline, a date, an appointment, a promise? \
+             A business inviting {me} to come back, book, buy, review or rate is no.",
+        ),
+    );
     q.insert("sensitive".into(), jev::noul("Are the new messages about money, prices, contracts, commitments, health, a conflict or bad news, where a wrong reply would cost something?"));
     q.insert("mood_changed".into(), jev::noul("Is the person upset, annoyed, worried or pressing urgently in the new messages?"));
     q.insert(
@@ -439,7 +452,7 @@ pub fn attention(sig: &Signals, kind_p: f64) -> Option<&'static str> {
     // written to someone else: theirs to answer
     if sig.needs_reply >= REPLY_AT && sig.addressed >= ADDRESSED_AT {
         Some("reply")
-    } else if sig.actionable >= ACTION_AT {
+    } else if sig.actionable >= if sig.importance < LOW_IMPORTANCE { WINDING_ACTION_AT } else { ACTION_AT } {
         Some("action")
     } else if sig.importance >= FYI_AT {
         Some("fyi")
@@ -461,6 +474,8 @@ mod tests {
         assert_eq!(attention(&s(0.3, 0.2, 0.2, "social"), 0.6), None);
         assert_eq!(attention(&s(0.9, 0.9, 0.9, "newsletter"), 0.8), None, "sure noise needs nothing");
         assert_eq!(attention(&s(0.9, 0.2, 0.9, "newsletter"), 0.4), Some("reply"), "unsure noise is still looked at");
+        assert_eq!(attention(&s(0.1, 0.68, 0.07, "request"), 0.6), None, "a low-importance maybe-task is nothing");
+        assert_eq!(attention(&s(0.1, 0.9, 0.07, "request"), 0.6), Some("action"), "a sure one still is");
         let copied = Signals { addressed: 0.2, ..s(0.9, 0.2, 0.6, "question") };
         assert_eq!(attention(&copied, 0.6), Some("fyi"), "a question to someone else is only worth knowing");
     }
