@@ -130,6 +130,7 @@ pub static DEF: AgentDef = AgentDef {
         "pigeon_set_contact",
         "pigeon_set_note",
         "pigeon_merge_contacts",
+        "pigeon_names_from_whatsapp",
         "pigeon_learn",
         "pigeon_policies",
         "pigeon_set_policy",

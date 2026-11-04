@@ -235,6 +235,15 @@ pub async fn ingest(pool: &DbPool, inc: &Incoming, debounce: Duration) -> anyhow
     log::debug!("pigeon item {item_id} in {conversation_id}");
     // its photos, videos and files, into storage
     crate::apps::pigeon::media::fetch_soon(pool, item_id, &inc.media);
+    // someone known only by number whose message carries their name takes it
+    if inc.direction == Direction::In {
+        if let Some((_, Some(name))) = &inc.counterpart {
+            let st = crate::apps::pigeon::state::shared(pool);
+            if let Err(e) = crate::apps::pigeon::people::name_from_message(&st, conversation_id, name).await {
+                log::warn!("pigeon: naming the person of {conversation_id}: {e:#}");
+            }
+        }
+    }
     crate::apps::pigeon::events::publish(pool, &inc.user_id, "conversation", Some(conversation_id)).await;
     // a new message from them: the worker pushes it to the phone, by their alert switch
     if inc.direction == Direction::In && inc.triage {

@@ -469,9 +469,15 @@ pub async fn item_html(st: web::Data<AppState>, u: InboxReader, path: web::Path<
     reply(r.map(|html| json!({ "html": html })))
 }
 
-/// Names from the user's WhatsApp address book (people::import_whatsapp).
-pub async fn import_whatsapp(st: web::Data<AppState>, u: InboxWriter) -> HttpResponse {
-    reply(people::import_whatsapp(&st, &u.0.user_id).await)
+#[derive(Deserialize)]
+pub struct OnlyQuery {
+    /// just this person
+    contact_id: Option<Uuid>,
+}
+
+/// Names from the user's WhatsApp address book (people::import_whatsapp), for everyone or one.
+pub async fn import_whatsapp(st: web::Data<AppState>, u: InboxWriter, q: web::Query<OnlyQuery>) -> HttpResponse {
+    reply(people::import_whatsapp(&st, &u.0.user_id, q.contact_id).await)
 }
 
 // ── rules ────────────────────────────────────────────────────────────────

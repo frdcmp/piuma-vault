@@ -423,12 +423,47 @@ fn bare(name: Option<&str>) -> bool {
 /// A Postgres pattern for the same: a name that is only digits, spaces, +, - and brackets.
 const BARE_NAME: &str = r"^[0-9+ ()-]*$";
 
+/// Someone still known only by number or address whose message carries a name (WhatsApp's, the
+/// email's From) takes it, and a slug from it. `conversation`: theirs.
+pub async fn name_from_message(st: &State, conversation: Uuid, name: &str) -> anyhow::Result<()> {
+    let name = name.trim();
+    if bare(Some(name)) {
+        return Ok(());
+    }
+    let renamed: Option<Uuid> = sqlx::query_scalar(
+        "UPDATE db_pigeon_contacts c SET name = $2, updated_at = NOW() FROM db_pigeon_conversations v
+          WHERE v.id = $1 AND c.id = v.contact_id AND (c.name IS NULL OR c.name ~ $3 OR c.name LIKE '%@%')
+          RETURNING c.id",
+    )
+    .bind(conversation)
+    .bind(name)
+    .bind(BARE_NAME)
+    .fetch_optional(&st.pool)
+    .await?;
+    if let Some(id) = renamed {
+        log::info!("pigeon: contact {id} named {name} from their message");
+        slugs::of(st, id).await?;
+    }
+    Ok(())
+}
+
 /// Names from the user's WhatsApp address book: someone known only by number takes the name the
 /// user saved them under, and each saved contact who isn't among the people yet becomes one. The
 /// nameless left take the name WhatsApp shows for them, else the one their messages carry. New
-/// names get their slugs.
-pub async fn import_whatsapp(st: &State, user: &str) -> anyhow::Result<Json> {
-    let book = connectors::whatsapp::address_book(st, user).await?;
+/// names get their slugs. `only`: just this person (nobody added).
+pub async fn import_whatsapp(st: &State, user: &str, only: Option<Uuid>) -> anyhow::Result<Json> {
+    let mut book = connectors::whatsapp::address_book(st, user).await?;
+    if let Some(id) = only {
+        let theirs: Vec<String> = sqlx::query_scalar("SELECT handle FROM db_pigeon_contact_handles WHERE user_id = $1 AND contact_id = $2 AND connector = 'whatsapp'")
+            .bind(user)
+            .bind(id)
+            .fetch_all(&st.pool)
+            .await?;
+        if theirs.is_empty() {
+            anyhow::bail!("this person has no WhatsApp number in the Inbox");
+        }
+        book.retain(|e| e["phone"].as_str().is_some_and(|p| theirs.iter().any(|h| h == p)));
+    }
     let text = |v: &Json| v.as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
     let (mut named, mut added) = (0, 0);
     for e in &book {
@@ -461,7 +496,7 @@ pub async fn import_whatsapp(st: &State, user: &str) -> anyhow::Result<Json> {
             }
             // only the people the user saved on the phone, not everyone in their groups
             None => {
-                if let Some(n) = &saved {
+                if let Some(n) = saved.as_ref().filter(|_| only.is_none()) {
                     let mut tx = st.pool.begin().await?;
                     let id: Uuid = sqlx::query_scalar("INSERT INTO db_pigeon_contacts (user_id, name) VALUES ($1, $2) RETURNING id")
                         .bind(user)
@@ -484,10 +519,11 @@ pub async fn import_whatsapp(st: &State, user: &str) -> anyhow::Result<Json> {
     let from_channel = sqlx::query(
         "UPDATE db_pigeon_contacts c SET name = h.display_name, updated_at = NOW() FROM db_pigeon_contact_handles h
           WHERE h.contact_id = c.id AND c.user_id = $1 AND (c.name IS NULL OR c.name ~ $2 OR c.name LIKE '%@%')
-            AND h.display_name IS NOT NULL AND h.display_name !~ $2",
+            AND h.display_name IS NOT NULL AND h.display_name !~ $2 AND ($3::uuid IS NULL OR c.id = $3)",
     )
     .bind(user)
     .bind(BARE_NAME)
+    .bind(only)
     .execute(&st.pool)
     .await?
     .rows_affected();
@@ -498,15 +534,25 @@ pub async fn import_whatsapp(st: &State, user: &str) -> anyhow::Result<Json> {
                    JOIN db_pigeon_items i ON i.connector = h.connector AND i.sender = h.handle AND i.direction = 'in'
                   WHERE h.user_id = $1 AND i.sender_name IS NOT NULL AND i.sender_name !~ $2
                   ORDER BY h.contact_id, i.at DESC) s
-          WHERE s.contact_id = c.id AND (c.name IS NULL OR c.name ~ $2 OR c.name LIKE '%@%')",
+          WHERE s.contact_id = c.id AND (c.name IS NULL OR c.name ~ $2 OR c.name LIKE '%@%') AND ($3::uuid IS NULL OR c.id = $3)",
     )
     .bind(user)
     .bind(BARE_NAME)
+    .bind(only)
     .execute(&st.pool)
     .await?
     .rows_affected();
     let slugged = slugs::backfill(st).await?;
+    let person = match only {
+        Some(id) => sqlx::query_as::<_, (Option<String>, Option<String>)>("SELECT name, slug FROM db_pigeon_contacts WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&st.pool)
+            .await?
+            .map(|(name, slug)| json!({ "id": id, "name": name, "slug": slug })),
+        None => None,
+    };
     Ok(json!({
+        "person": person,
         "address_book": book.len(), "named": named, "added": added,
         "named_from_whatsapp": from_channel, "named_from_messages": from_messages, "slugs_given": slugged,
     }))

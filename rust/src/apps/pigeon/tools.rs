@@ -205,6 +205,11 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
             }, "required": ["contact_id", "merge_id"] }),
         ),
         (
+            "pigeon_names_from_whatsapp",
+            "Name the people known only by their number from the user's WhatsApp: the name the user saved them under on the phone, else the one WhatsApp shows, else the one their messages carry; each gets an @slug. With contact_id: just that person. Without: everyone, and the people saved on the phone who aren't in the Inbox yet are added.",
+            json!({ "type": "object", "properties": { "contact_id": id("Only this person (from pigeon_contacts)") } }),
+        ),
+        (
             "pigeon_learn",
             "Learn about people from their past conversations: older conversations come in from the channels as history (never sorted or answered), then each person's memory and, per channel, how the user writes to them are written. With contact_id: that person, now (default the last 365 days). Without: everyone the user wrote to in the last `days` (default 90), in the background.",
             json!({ "type": "object", "properties": {
@@ -461,6 +466,7 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
             Ok(json!({ "contact_id": id, "note": note }))
         }
         "pigeon_merge_contacts" => people::merge(st, user, uuid_arg(args, "contact_id")?, uuid_arg(args, "merge_id")?).await,
+        "pigeon_names_from_whatsapp" => people::import_whatsapp(st, user, opt_uuid(args, "contact_id")?).await,
         "pigeon_learn" => {
             let days = |d: i64| args.get("days").and_then(Json::as_i64).unwrap_or(d).clamp(1, 3650);
             match opt_uuid(args, "contact_id")? {
