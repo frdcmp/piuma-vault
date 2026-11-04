@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use crate::apps::auth::access::{gated, GateFuture};
 use crate::apps::auth::models::AuthenticatedUser;
+use crate::apps::auth::middleware::check_permission;
 use crate::apps::pigeon::ai::llm;
 use crate::apps::pigeon::connectors::{console, Kind};
 use crate::apps::pigeon::policy::{self, Policy};
@@ -941,5 +942,38 @@ pub async fn item_media(st: web::Data<AppState>, u: InboxReader, path: web::Path
                 .streaming(stream)
         }
         Err(e) => HttpResponse::NotFound().json(json!({ "error": format!("{e:#}") })),
+    }
+}
+
+/// The Inbox tools that only read: an `inbox.read` key may run them; the rest need `inbox.write`.
+const READ_TOOLS: &[&str] = &[
+    "pigeon_inbox", "pigeon_search", "pigeon_conversation", "pigeon_pending", "pigeon_rules", "pigeon_rule_runs",
+    "pigeon_actions", "pigeon_contacts", "pigeon_policies", "pigeon_summary", "pigeon_connectors",
+];
+
+/// Piuma's Inbox tools, for a script or another assistant (the piuma-vault skill's pigeon.py):
+/// each with what it does, its arguments' JSON schema, and whether it changes anything.
+pub async fn list_tools(_u: InboxReader) -> HttpResponse {
+    let tools: Vec<Json> = tools::defs()
+        .into_iter()
+        .map(|(name, description, parameters)| json!({ "name": name, "description": description, "parameters": parameters, "writes": !READ_TOOLS.contains(&name) }))
+        .collect();
+    HttpResponse::Ok().json(json!({ "tools": tools }))
+}
+
+/// One Inbox tool run as Piuma would (a big change becomes a card for the user's tap in the Inbox).
+pub async fn run_tool(st: web::Data<AppState>, user: AuthenticatedUser, path: web::Path<String>, body: Option<web::Json<Json>>) -> HttpResponse {
+    let name = path.into_inner();
+    if !tools::names().contains(&name.as_str()) {
+        return HttpResponse::NotFound().json(json!({ "error": format!("no Inbox tool {name}") }));
+    }
+    let need = if READ_TOOLS.contains(&name.as_str()) { "inbox.read" } else { "inbox.write" };
+    if !check_permission(&user, need) {
+        return HttpResponse::Forbidden().json(json!({ "error": format!("Access denied: {need} permission required") }));
+    }
+    let args = body.map(|b| b.into_inner()).filter(|a| a.is_object()).unwrap_or_else(|| json!({}));
+    match tools::call(&st, &user.user_id, &name, &args).await {
+        Ok(v) => HttpResponse::Ok().json(v),
+        Err(e) => HttpResponse::BadRequest().json(json!({ "error": e })),
     }
 }

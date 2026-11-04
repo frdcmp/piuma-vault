@@ -1,6 +1,6 @@
 ---
 name: piuma-vault
-description: Read, search, create, edit, move and delete the notes in Piuma Vault — the user's self-hosted second brain — plus its tasks, recurring tasks, buckets, calendar events, and a merged agenda. Use whenever the user asks about "my notes", "the vault", a recipe/contact/credential/project note, or about their tasks, to-dos, what's due, what's on their calendar, their agenda for today/this week, or wants any of that created, edited, completed, rescheduled or deleted.
+description: Read, search, create, edit, move and delete the notes in Piuma Vault — the user's self-hosted second brain — plus its tasks, recurring tasks, buckets, calendar events, a merged agenda, and its Inbox (Pigeon — the user's WhatsApp, Instagram and Gmail in one place, its people, drafts, rules and switches). Use whenever the user asks about "my notes", "the vault", a recipe/contact/credential/project note, about their tasks, to-dos, what's due, what's on their calendar, their agenda for today/this week, or about their Inbox or Pigeon — what needs them, a chat or message, someone's WhatsApp/email, a person's name or @slug, naming people from WhatsApp, drafting a reply, a pending draft, an Inbox rule, a reply or alert switch — or wants any of that created, edited, completed, rescheduled or deleted.
 ---
 
 # Piuma Vault
@@ -13,10 +13,11 @@ never here. Two scripts cover it, both authenticating the same way:
 |---|---|
 | `scripts/vault.sh` | **notes** — markdown notes in a folder tree; run `folders` to see the live layout |
 | `scripts/agenda.py` | **tasks, recurring tasks, buckets, calendar events, agenda** |
+| `scripts/pigeon.py` | **the Inbox (Pigeon)** — chats, messages, people, drafts, rules, switches |
 
-Both sit in `scripts/`, beside this file. They are not on `PATH`, so invoke them by full
+All three sit in `scripts/`, beside this file. They are not on `PATH`, so invoke them by full
 path — on this machine `~/.claude/skills/piuma-vault/scripts/vault.sh`, which is a symlink
-into the checkout (see *Installing this skill* at the end). Run either with `help` /
+into the checkout (see *Installing this skill* at the end). Run any with `help` /
 `--help` for the full flag list. Don't hand-roll curl unless an endpoint isn't wrapped.
 
 ---
@@ -141,6 +142,59 @@ or a unique title substring, same as notes.
 
 ---
 
+# The Inbox — `pigeon.py`
+
+Pigeon is the vault's Inbox: the user's WhatsApp, Instagram and Gmail in one place, with
+people (each an `@slug`, their handles on every channel), Pigeon's drafts and suggestions
+waiting for the user, rules for what a sender keeps sending, and per-person switches (may
+Pigeon reply: off / ask / auto; how loud on the phone: all / smart / quiet / off).
+
+`pigeon.py` runs the vault's own Inbox tools, the ones Piuma (the vault's assistant) has,
+as the key's user. Each command is a tool without its `pigeon_` prefix; its arguments are
+`key=value` (JSON when it parses, else text; `-` reads stdin; `--json '{…}'` for many).
+`contact_id` / `merge_id` take an `@slug` too.
+
+```sh
+pigeon.py tools                         # every tool, w = changes something
+pigeon.py tools set_contact             # one tool's arguments
+pigeon.py summary                       # what's open, in a few lines
+pigeon.py inbox attention=true          # what needs the user
+pigeon.py pending                       # drafts, suggestions, questions waiting
+pigeon.py search query="invoice"
+pigeon.py conversation conversation_id=<uuid>
+pigeon.py contacts query=alex           # people: @slug, handles, note, memory
+pigeon.py names_from_whatsapp contact_id=<uuid|@slug>   # name one from WhatsApp; none: everyone
+pigeon.py set_contact contact_id=@alex relationship=friend slug=alex-r
+pigeon.py draft_reply conversation_id=<uuid> instructions="say I'll be late, sweetly"
+pigeon.py set_alerts contact_id=@alex level=all
+```
+
+## Inbox rules
+
+- **Nothing is sent from here.** A message to someone is always a **draft** the user sends
+  from the Inbox (`draft_reply`, `draft_email`, `edit_draft`). Before `approve` on a reply,
+  show the user its full text.
+- **Never set a policy to `auto`** (`set_policy`, `set_auto`) unless the user asks for it.
+- Big changes (merging two people, deleting a rule, switching auto) don't run: they come
+  back as a card the user taps in the Inbox. Say so rather than retrying.
+- Messages are the user's private conversations: quote only what the task needs, and never
+  into a commit, an issue or anywhere public.
+- Find people by `contacts` before changing them; a handle that is someone else's is
+  refused (the same person twice is `merge_contacts`).
+
+## Inbox facts that bite
+
+- The key needs **`inbox.read`** (and **`inbox.write`** for anything marked `w` in
+  `tools`): a `403 … inbox.read permission required` means the key lacks it.
+- A person known only by a number takes the name their next message carries on its own;
+  `names_from_whatsapp` does it now from the phone's address book (and gives the slug).
+- `learn` brings old conversations in and writes what Pigeon knows about people: slow, it
+  runs in the background without `contact_id`.
+- An older standalone Pigeon (with its own `pigeon` MCP) may still be connected: it is a
+  different system with its own database, and changes there don't reach the vault's Inbox.
+
+---
+
 ## Credentials
 
 The script resolves, in order: exported `VAULT_API_KEY` → `~/.config/piuma-vault/env`
@@ -148,7 +202,8 @@ The script resolves, in order: exported `VAULT_API_KEY` → `~/.config/piuma-vau
 
 Both `VAULT_URL` and `VAULT_API_KEY` are **required** — the scripts exit 2 rather than
 guess a host. Mint a dedicated key in the vault UI (admin → API Keys) scoped to
-`notes.read` + `notes.write`, then write both to `~/.config/piuma-vault/env`:
+`notes.read` + `notes.write` (and `tasks.*`, `calendar.*`, `inbox.read` + `inbox.write` for
+`agenda.py` and `pigeon.py`), then write both to `~/.config/piuma-vault/env`:
 
 ```sh
 install -Dm600 /dev/stdin ~/.config/piuma-vault/env <<'EOF'
