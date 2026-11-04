@@ -527,6 +527,7 @@ pub async fn list_conversations(
     let res = sqlx::query_as::<_, ConversationRow>(
         "SELECT * FROM db_chat_conversations c \
          WHERE c.archived_at IS NULL \
+           AND c.metadata->>'incognito' IS DISTINCT FROM 'true' \
            AND ($1::text IS NULL OR c.agent = $1) \
            AND ($2::text IS NULL \
                 OR c.title ILIKE '%' || $2 || '%' \
@@ -567,14 +568,23 @@ pub async fn create_conversation(
             .ok()
             .flatten(),
     };
+    // incognito ones a client left behind (the app killed before it deleted its own) go after a day
+    if b.incognito {
+        let _ = sqlx::query(
+            "DELETE FROM db_chat_conversations WHERE metadata->>'incognito' = 'true' AND updated_at < NOW() - INTERVAL '1 day'",
+        )
+        .execute(pool.get_ref())
+        .await;
+    }
     match sqlx::query_as::<_, ConversationRow>(
-        "INSERT INTO db_chat_conversations (agent, title, model_id, identity) \
-         VALUES ($1, $2, $3, $4) RETURNING *",
+        "INSERT INTO db_chat_conversations (agent, title, model_id, identity, metadata) \
+         VALUES ($1, $2, $3, $4, $5) RETURNING *",
     )
     .bind(def.kind)
     .bind(&b.title)
     .bind(model_id)
     .bind(def.persona)
+    .bind(if b.incognito { json!({ "incognito": true }) } else { json!({}) })
     .fetch_one(pool.get_ref())
     .await
     {

@@ -76,6 +76,18 @@ Output ONLY the lines, no preamble.";
 /// `db_agent_profiles`, counts assistant turns, and runs the pass only on the
 /// cadence boundary. Safe to spawn; best-effort.
 pub async fn maybe_run(pool: &DbPool, conv_id: Uuid, agent: String) {
+    // an incognito conversation leaves nothing behind: no facts derived from it
+    let incognito: bool = sqlx::query_scalar("SELECT metadata->>'incognito' = 'true' FROM db_chat_conversations WHERE id = $1")
+        .bind(conv_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+        .unwrap_or(false);
+    if incognito {
+        return;
+    }
     let profile: Option<AgentProfileRow> = sqlx::query_as(
         "SELECT * FROM db_agent_profiles WHERE agent = $1",
     )

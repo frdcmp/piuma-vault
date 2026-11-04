@@ -231,6 +231,10 @@ pub struct CreateConversationReq {
     pub model_id: Option<Uuid>,
     #[serde(default)]
     pub title: Option<String>,
+    /// Kept for nothing (the phone's Piuma chat): left out of the conversation list and of what
+    /// Piuma derives into its memory, and deleted when the client leaves it or a day on.
+    #[serde(default)]
+    pub incognito: bool,
 }
 
 #[derive(Debug, Deserialize)]
