@@ -16,7 +16,6 @@ import {
 	PvEmpty,
 	PvField,
 	PvIconButton,
-	PvModal,
 	PvPopover,
 	PvSegmented,
 	PvSpin,
@@ -31,7 +30,6 @@ import {
 	useMarkPigeonPersonRead,
 	useMarkPigeonRead,
 	usePigeonConversation,
-	usePigeonItemHtml,
 	usePigeonItems,
 	usePigeonPersonChat,
 	usePigeonPersonItems,
@@ -42,6 +40,7 @@ import {
 } from "../../../queries";
 import useChatDockStore from "../../../store/chatDockStore";
 import { formatDate, formatTime } from "../../../utils/dateTime";
+import EmailFrame, { OpenEmail } from "./EmailFrame";
 import InboxMedia from "./InboxMedia";
 import {
 	ALERT_HINT,
@@ -59,6 +58,7 @@ import {
 	withInherit,
 } from "./inboxText";
 import PigeonCards from "./PigeonCards";
+import SentBy from "./SentBy";
 import SwitchInfo from "./SwitchInfo";
 
 // A chat's messages and Pigeon's news, oldest first, with a day line whenever
@@ -86,63 +86,22 @@ function useTimeline(data) {
 	}, [data]);
 }
 
-// An email as it was sent, in a frame of its own: no scripts run, links open in a new tab.
-function EmailView({ id, onClose }) {
-	const { data, isLoading, error } = usePigeonItemHtml(id);
-	const doc = data?.html
-		? `<base target="_blank"><meta name="referrer" content="no-referrer">${data.html}`
-		: null;
-	return (
-		<PvModal
-			open={!!id}
-			title="The email"
-			onCancel={onClose}
-			footer={null}
-			showClose
-			width={780}
-		>
-			{error ? (
-				<PvAlert type="error" title="Couldn't fetch the email">
-					{errorText(error)}
-				</PvAlert>
-			) : isLoading ? (
-				<PvSpin block label="Fetching it from Gmail…" />
-			) : doc ? (
-				<iframe
-					className="inbox-email-frame"
-					title="The email"
-					sandbox="allow-popups allow-popups-to-escape-sandbox"
-					srcDoc={doc}
-				/>
-			) : (
-				<PvEmpty description="This email is plain text: it's all in the chat." />
-			)}
-		</PvModal>
-	);
-}
-
-// An email's text in a chat: its start, the rest behind "View email".
-const EMAIL_CLIP = 700;
-
 // `group`: more than one person writes here, so each message says who.
-// `onOpen`: an email's, opens it as it was sent (its text is clipped here).
+// `email`: it's an email, shown as it was sent.
 // `channel`: where it came, when a person's chat mixes channels.
-function Message({ item, group, senders, onOpen, channel }) {
+// `connector`: its channel's id.
+function Message({ item, group, senders, email, channel, connector }) {
 	const out = item.direction === "out";
 	const media = mediaWords(item.media);
 	const files = mediaFiles(item.media);
-	const full = bodyText(item.body, item.media);
-	const body =
-		onOpen && full && full.length > EMAIL_CLIP
-			? `${full.slice(0, EMAIL_CLIP).trimEnd()}…`
-			: full;
+	const body = bodyText(item.body, item.media);
 	const sender = group && !out ? senderLabel(item, senders) : null;
 	const reactions = reactionGroups(item.reactions, senders);
 	return (
 		<div
 			className={`inbox-msg ${out ? "is-out" : "is-in"}${item.author === "pigeon" ? " is-pigeon" : ""}`}
 		>
-			<div className="inbox-bubble">
+			<div className={`inbox-bubble${email ? " is-email" : ""}`}>
 				{sender ? <div className="inbox-msg-sender">{sender}</div> : null}
 				{item.subject ? (
 					<div className="inbox-msg-subject">{item.subject}</div>
@@ -156,21 +115,22 @@ function Message({ item, group, senders, onOpen, channel }) {
 					</div>
 				) : null}
 				<InboxMedia item={item.id} files={files} />
-				{body ? <div className="inbox-msg-body">{body}</div> : null}
+				{email ? (
+					<EmailFrame
+						id={item.id}
+						fallback={
+							body ? <div className="inbox-msg-body">{body}</div> : null
+						}
+					/>
+				) : body ? (
+					<div className="inbox-msg-body">{body}</div>
+				) : null}
 				<div className="inbox-msg-meta">
-					{onOpen ? (
-						<button
-							type="button"
-							className="inbox-msg-open"
-							onClick={() => onOpen(item.id)}
-						>
-							View email
-						</button>
-					) : null}
+					<OpenEmail url={item.open_url} />
 					{channel ? (
 						<span className="inbox-msg-channel">{channel} · </span>
 					) : null}
-					{item.author === "pigeon" ? <span>🕊 Pigeon · </span> : null}
+					<SentBy item={item} connector={connector} />
 					{formatTime(item.at)}
 				</div>
 			</div>
@@ -257,7 +217,6 @@ export default function ChatView({ id, person }) {
 	const items = person ? personItems : threadItems;
 	const timeline = useTimeline(items.data);
 	const senders = items.data?.senders;
-	const [email, setEmail] = useState(null);
 	const group = useMemo(
 		() =>
 			!person &&
@@ -545,17 +504,13 @@ export default function ChatView({ id, person }) {
 									? channelLabel(r.item.connector ?? conv.connector)
 									: null
 							}
-							onOpen={
-								(r.item.connector ?? conv.connector) === "gmail"
-									? setEmail
-									: undefined
-							}
+							connector={r.item.connector ?? conv.connector}
+							email={(r.item.connector ?? conv.connector) === "gmail"}
 						/>
 					),
 				)}
 				<PigeonCards cards={data.cards} conversationId={tid} />
 			</div>
-			<EmailView id={email} onClose={() => setEmail(null)} />
 
 			{thread?.window_until && new Date(thread.window_until) < new Date() ? (
 				<PvAlert type="warning" title="The reply window is closed">

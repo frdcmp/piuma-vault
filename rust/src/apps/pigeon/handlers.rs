@@ -15,7 +15,7 @@ use crate::apps::pigeon::ai::llm;
 use crate::apps::pigeon::connectors::{console, Kind};
 use crate::apps::pigeon::policy::{self, Policy};
 use crate::apps::pigeon::state::AppState;
-use crate::apps::pigeon::{actions, agent, alerts, avatars, cards, connect, conversations, events, media, people, rules, tools, triage};
+use crate::apps::pigeon::{actions, agent, alerts, avatars, cards, connect, conversations, events, items, media, people, rules, tools, triage};
 use crate::apps::settings::store;
 
 pub struct InboxReader(pub AuthenticatedUser);
@@ -234,6 +234,21 @@ pub async fn send(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>
         let row = actions::direct(&st, user, &conv.connector, "send_reply", json!({ "text": text }), Some(id), "user (Inbox)").await?;
         if row.status != "done" {
             anyhow::bail!("{}", row.error.unwrap_or_else(|| format!("not sent ({})", row.status)));
+        }
+        // the connector stored it as Pigeon's: it's the user's
+        let item: Option<Uuid> = sqlx::query_scalar(
+            "SELECT i.id FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
+              WHERE c.id = $1 AND c.user_id = $3 AND i.direction = 'out' AND i.author = 'pigeon' AND i.body = $2
+                AND i.created_at > NOW() - INTERVAL '10 minutes'
+              ORDER BY i.created_at DESC LIMIT 1",
+        )
+        .bind(id)
+        .bind(text)
+        .bind(user)
+        .fetch_optional(&st.pool)
+        .await?;
+        if let Some(item) = item {
+            items::mark_mine(&st.pool, item).await?;
         }
         Ok(actions::view(&row))
     }

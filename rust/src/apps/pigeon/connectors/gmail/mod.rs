@@ -25,8 +25,9 @@ use api::Got;
 
 pub struct Gmail;
 
-/// An email as it was sent: its HTML, fetched from Gmail (the vault keeps the text only).
-/// None: the email has no HTML, or it isn't one of the user's emails.
+/// An email as it was sent: its HTML, fetched from Gmail once and made safe to show
+/// (`parse::email_page`), then kept on the message. None: the email has no HTML, or it isn't one
+/// of the user's emails.
 pub async fn html_of(st: &State, user: &str, item: Uuid) -> anyhow::Result<Option<String>> {
     let found: Option<(String, Option<i32>)> = sqlx::query_as(
         "SELECT i.external_id, c.connection_id FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
@@ -38,9 +39,20 @@ pub async fn html_of(st: &State, user: &str, item: Uuid) -> anyhow::Result<Optio
     .fetch_optional(&st.pool)
     .await?;
     let Some((mid, Some(connection))) = found else { return Ok(None) };
+    // kept on the message once made ("": it has none)
+    let kept: Option<String> = sqlx::query_scalar("SELECT raw->>'page' FROM db_pigeon_items WHERE id = $1").bind(item).fetch_one(&st.pool).await?;
+    if let Some(page) = kept {
+        return Ok(Some(page).filter(|p| !p.is_empty()));
+    }
     let token = api::access_token(st, connection).await?;
     let msg = api::gmail_ok(&token, "GET", &format!("/messages/{mid}"), &[("format", "full".to_string())], None).await?;
-    Ok(parse::html(&msg["payload"]))
+    let page = parse::html(&msg["payload"]).map(|h| parse::email_page(&h));
+    sqlx::query("UPDATE db_pigeon_items SET raw = jsonb_set(COALESCE(raw, '{}'::jsonb), '{page}', to_jsonb($2::text)) WHERE id = $1")
+        .bind(item)
+        .bind(page.as_deref().unwrap_or(""))
+        .execute(&st.pool)
+        .await?;
+    Ok(page)
 }
 
 /// An email's attached file, from Gmail (`mid`: its message, `aid`: the attachment).

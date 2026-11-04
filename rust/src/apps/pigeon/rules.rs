@@ -616,6 +616,8 @@ mod tests {
             to_addrs: json!([]),
             cc_addrs: json!([]),
             reactions: serde_json::json!({}),
+            open_url: None,
+            via: None,
         }
     }
 

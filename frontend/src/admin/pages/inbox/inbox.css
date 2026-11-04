@@ -308,9 +308,17 @@
 }
 .inbox-msg-meta {
 	margin-top: 2px;
-	text-align: right;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 4px;
 	color: var(--vp-faint);
 	font-size: 8pt;
+}
+/* who sent it (Pigeon's sprite, WhatsApp's logo), as tall as the time */
+.inbox-sent-by {
+	flex: none;
+	display: block;
 }
 
 /* ── Pigeon's cards ────────────────────────────────────────────────────── */
@@ -707,4 +715,33 @@
 	align-self: center;
 	display: block;
 	margin-bottom: 8px;
+}
+
+/* an email in its bubble, as it was sent (a white page, folded when long) */
+.inbox-bubble.is-email {
+	max-width: min(94%, 720px);
+	width: min(94%, 720px);
+}
+.inbox-email-view {
+	position: relative;
+	overflow: hidden;
+	margin: 4px 0;
+	background: #fff;
+}
+.inbox-email-view iframe {
+	display: block;
+	width: 100%;
+	border: 0;
+}
+.inbox-email-view.is-folded::after {
+	content: "";
+	position: absolute;
+	inset: auto 0 0 0;
+	height: 60px;
+	background: linear-gradient(transparent, #fff);
+	pointer-events: none;
+}
+.inbox-email-loading {
+	color: var(--vp-muted);
+	font-size: 9pt;
 }

@@ -55,11 +55,18 @@ pub struct Item {
     pub cc_addrs: Json,
     /// emoji on it, one per person: `{who: {emoji, at, me, name}}` (who: their handle, or "me")
     pub reactions: Json,
+    /// where it opens in its own app, on the web (an email in its mailbox)
+    pub open_url: Option<String>,
+    /// the user's sent from the Inbox: "inbox" (None: from the channel's own app)
+    pub via: Option<String>,
 }
 
 pub const ITEM_COLS: &str = "id, direction, author, sender, sender_name, subject, body, media, at, created_at, \
      COALESCE(raw->'to', '[]'::jsonb) AS to_addrs, COALESCE(raw->'cc', '[]'::jsonb) AS cc_addrs, \
-     COALESCE(raw->'reactions', '{}'::jsonb) AS reactions";
+     COALESCE(raw->'reactions', '{}'::jsonb) AS reactions, raw->>'via' AS via, \
+     (SELECT 'https://mail.google.com/mail/?authuser=' || k.account || '#all/' || db_pigeon_items.external_id \
+        FROM db_pigeon_conversations v JOIN db_pigeon_connections k ON k.id = v.connection_id \
+       WHERE v.id = db_pigeon_items.conversation_id AND db_pigeon_items.connector = 'gmail') AS open_url";
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Contact {
@@ -230,6 +237,8 @@ mod tests {
             to_addrs: serde_json::json!(["me@example.com"]),
             cc_addrs: serde_json::json!([]),
             reactions: serde_json::json!({}),
+            open_url: None,
+            via: None,
         }
     }
 

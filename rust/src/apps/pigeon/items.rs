@@ -252,12 +252,12 @@ pub async fn ingest(pool: &DbPool, inc: &Incoming, debounce: Duration) -> anyhow
     Ok(Some(Ingested { conversation_id }))
 }
 
-/// The user's own words sent through Pigeon (written in the Inbox): the item is theirs, as if
-/// from their phone; the conversation is handled, what Pigeon proposed or asked there is stale,
+/// The user's own words sent through Pigeon (written in the Inbox): the item is theirs (`via`
+/// "inbox": not from their phone); the conversation is handled, what Pigeon proposed or asked there is stale,
 /// and Pigeon steps back there for a while (actions::user_writing).
 pub async fn mark_mine(pool: &DbPool, item: Uuid) -> anyhow::Result<()> {
     let mut tx = pool.begin().await?;
-    let conversation: Uuid = sqlx::query_scalar("UPDATE db_pigeon_items SET author = 'me' WHERE id = $1 RETURNING conversation_id").bind(item).fetch_one(&mut *tx).await?;
+    let conversation: Uuid = sqlx::query_scalar("UPDATE db_pigeon_items SET author = 'me', raw = COALESCE(raw, '{}'::jsonb) || '{\"via\": \"inbox\"}' WHERE id = $1 RETURNING conversation_id").bind(item).fetch_one(&mut *tx).await?;
     sqlx::query("UPDATE db_pigeon_conversations SET attention = NULL, needs_note = NULL, handled_at = NOW(), triage_due_at = NULL WHERE id = $1").bind(conversation).execute(&mut *tx).await?;
     sqlx::query(
         "UPDATE db_pigeon_actions SET status = 'expired', error = 'replied themselves', updated_at = NOW()

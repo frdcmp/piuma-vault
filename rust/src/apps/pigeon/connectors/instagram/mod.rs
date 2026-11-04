@@ -230,14 +230,15 @@ async fn name_of(st: &State, user: &str, token: &api::Token, igsid: &str) -> Opt
 }
 
 /// Meta echoes every message the account sends, Pigeon's own too, and the echo's mid needn't be
-/// the send's message_id: a message of Pigeon's in that conversation in the last minutes with the
-/// same text is the one echoed (else the user would seem to have written, and auto replies hold).
+/// the send's message_id: a message sent through Pigeon (its own, or the user's from the Inbox) in
+/// that conversation in the last minutes with the same text is the one echoed (else it'd be stored
+/// twice, as if from their phone, and auto replies would hold).
 const ECHO_WITHIN: &str = "10 minutes";
 
 async fn pigeon_sent(st: &State, user: &str, other: &str, body: &str) -> anyhow::Result<bool> {
     Ok(sqlx::query_scalar(&format!(
         "SELECT EXISTS (SELECT 1 FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
-          WHERE c.user_id = $4 AND c.connector = $1 AND c.external_id = $2 AND i.author = 'pigeon' AND i.body = $3
+          WHERE c.user_id = $4 AND c.connector = $1 AND c.external_id = $2 AND (i.author = 'pigeon' OR i.raw->>'via' = 'inbox') AND i.body = $3
             AND i.at > NOW() - INTERVAL '{ECHO_WITHIN}')"
     ))
     .bind(ID)

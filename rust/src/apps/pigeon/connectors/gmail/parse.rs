@@ -145,6 +145,36 @@ fn find(p: &Json, mime: &str) -> Option<String> {
     p["parts"].as_array()?.iter().find_map(|part| find(part, mime))
 }
 
+/// An email's HTML as a page the apps show inside a chat: its scripts, frames, forms and event
+/// handlers gone (ammonia), its layout and images kept, links opening outside, on a white page
+/// that fits the bubble.
+pub fn email_page(html: &str) -> String {
+    use std::collections::HashSet;
+    let mut tags: HashSet<&str> = ammonia::Builder::default().clone_tags();
+    tags.extend(["style", "center", "font", "span", "div", "table", "tbody", "thead", "tfoot", "tr", "td", "th", "img", "u", "s"]);
+    let attrs: HashSet<&str> = [
+        "style", "class", "align", "valign", "width", "height", "bgcolor", "background", "border", "cellpadding", "cellspacing", "color",
+        "face", "size", "dir", "colspan", "rowspan", "title", "alt", "src", "href",
+    ]
+    .into_iter()
+    .collect();
+    let body = ammonia::Builder::default()
+        .tags(tags)
+        .rm_clean_content_tags(["style"])
+        .generic_attributes(attrs)
+        .link_rel(Some("noopener noreferrer"))
+        .url_schemes(["http", "https", "mailto", "tel", "data", "cid"].into_iter().collect())
+        .clean(html)
+        .to_string();
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\">\
+         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><base target=\"_blank\">\
+         <style>html,body{{margin:0;background:#fff;color:#1a1a1a}}body{{padding:10px;font:14px/1.45 -apple-system,Roboto,Segoe UI,sans-serif;\
+         overflow-wrap:anywhere}}img{{max-width:100%!important;height:auto!important}}table{{max-width:100%!important}}</style></head>\
+         <body>{body}</body></html>"
+    )
+}
+
 /// A message's own HTML, as it was sent (None: plain text only).
 pub fn html(payload: &Json) -> Option<String> {
     find(payload, "text/html")
@@ -360,5 +390,17 @@ mod tests {
         assert_eq!(a.len(), 2);
         assert_eq!((a[0].id.as_str(), a[0].name.as_str(), a[0].size), ("A1", "Invoice.pdf", 1234));
         assert_eq!(a[1].mime, "image/png");
+    }
+
+    #[test]
+    fn email_page_is_safe_and_keeps_the_layout() {
+        let page = email_page(
+            "<html><head><style>.x{color:red}</style><script>alert(1)</script></head><body>\
+             <table width=\"600\"><tr><td class=\"x\" style=\"padding:4px\" onclick=\"steal()\">Hi <a href=\"javascript:alert(1)\">bad</a> \
+             <a href=\"https://x.y/z\">good</a><img src=\"https://x.y/i.png\"></td></tr></table><iframe src=\"https://evil\"></iframe></body></html>",
+        );
+        assert!(!page.contains("<script") && !page.contains("alert(1)") && !page.contains("onclick") && !page.contains("<iframe"), "{page}");
+        assert!(page.contains(".x{color:red}") && page.contains("style=\"padding:4px\"") && page.contains("https://x.y/z") && page.contains("<img"), "{page}");
+        assert!(page.contains("<base target=\"_blank\">"));
     }
 }
