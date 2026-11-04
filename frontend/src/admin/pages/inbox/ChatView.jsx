@@ -51,6 +51,7 @@ import {
 	errorText,
 	initials,
 	mediaFiles,
+	mediaLinks,
 	mediaWords,
 	POLICY_OPTIONS,
 	reactionGroups,
@@ -94,6 +95,7 @@ function Message({ item, group, senders, email, channel, connector }) {
 	const out = item.direction === "out";
 	const media = mediaWords(item.media);
 	const files = mediaFiles(item.media);
+	const links = mediaLinks(item.media);
 	const body = bodyText(item.body, item.media);
 	const sender = group && !out ? senderLabel(item, senders) : null;
 	const reactions = reactionGroups(item.reactions, senders);
@@ -114,6 +116,20 @@ function Message({ item, group, senders, email, channel, connector }) {
 						))}
 					</div>
 				) : null}
+				{links.map((l) => (
+					<a
+						key={l.url}
+						className="inbox-shared"
+						href={l.url}
+						target="_blank"
+						rel="noreferrer"
+					>
+						<span className="inbox-shared-name">▶ {l.name} ↗</span>
+						{l.title ? (
+							<span className="inbox-shared-title">{l.title}</span>
+						) : null}
+					</a>
+				))}
 				<InboxMedia item={item.id} files={files} />
 				{email ? (
 					<EmailFrame

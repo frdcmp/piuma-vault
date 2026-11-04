@@ -60,11 +60,31 @@ export const mediaLabels = (media) =>
 export const mediaFiles = (media) =>
 	(Array.isArray(media) ? media : []).filter((m) => m?.id && m?.kind);
 
-// What isn't a file, in words (a location, a contact, a poll, an old message's
-// "image" from before files were kept).
+const isLink = (m) =>
+	!(m?.id && m?.kind) && typeof m?.payload?.url === "string";
+
+const LINK_NAMES = {
+	ig_reel: "Reel",
+	share: "Post",
+	ig_post: "Post",
+	story_mention: "Story",
+	reel: "Reel",
+};
+
+// What's shared as a link (an Instagram reel, post or story): { url, title,
+// name }, opened with a click.
+export const mediaLinks = (media) =>
+	(Array.isArray(media) ? media : []).filter(isLink).map((m) => ({
+		url: m.payload.url,
+		title: m.payload.title?.trim() || null,
+		name: LINK_NAMES[m.type] ?? "Link",
+	}));
+
+// What isn't a file nor a link, in words (a location, a contact, a poll, an
+// old message's "image" from before files were kept).
 export const mediaWords = (media) =>
 	(Array.isArray(media) ? media : [])
-		.filter((m) => !(m?.id && m?.kind))
+		.filter((m) => !(m?.id && m?.kind) && !isLink(m))
 		.map((m) => (typeof m === "string" ? m : m?.type))
 		.filter(Boolean);
 
