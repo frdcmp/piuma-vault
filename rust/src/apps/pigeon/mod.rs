@@ -22,6 +22,7 @@ pub mod ai;
 pub mod alerts;
 pub mod avatars;
 pub mod cards;
+pub mod composing;
 pub mod config;
 pub mod confirm;
 pub mod connect;

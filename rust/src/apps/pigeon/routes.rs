@@ -17,6 +17,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/admin/pigeon/conversations/{id}/handled", web::post().to(h::mark_handled))
         .route("/admin/pigeon/conversations/{id}/resume", web::post().to(h::resume_auto))
         .route("/admin/pigeon/conversations/{id}/draft", web::post().to(h::draft))
+        .route("/admin/pigeon/conversations/{id}/composed", web::post().to(h::composed))
         .route("/admin/pigeon/conversations/{id}/summary", web::get().to(h::summary))
         .route("/admin/pigeon/conversations/{id}/switches", web::put().to(h::conversation_switches))
         .route("/admin/pigeon/general", web::get().to(h::general))

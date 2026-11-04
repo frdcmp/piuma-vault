@@ -15,7 +15,7 @@ use crate::apps::pigeon::ai::llm;
 use crate::apps::pigeon::connectors::{console, Kind};
 use crate::apps::pigeon::policy::{self, Policy};
 use crate::apps::pigeon::state::AppState;
-use crate::apps::pigeon::{actions, agent, alerts, avatars, cards, connect, conversations, events, items, media, people, rules, tools, triage};
+use crate::apps::pigeon::{actions, agent, alerts, avatars, cards, composing, connect, conversations, events, items, media, people, rules, tools, triage};
 use crate::apps::settings::store;
 
 pub struct InboxReader(pub AuthenticatedUser);
@@ -404,9 +404,8 @@ pub async fn draft(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid
     let r: anyhow::Result<Json> = async {
         tools::own_conversation(&st, user, id).await?;
         if body.compose {
-            let text = agent::compose_reply(&st, id, body.instructions.as_deref())
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("Pigeon wrote nothing this time: try again, or tell it what to say"))?;
+            // written in its own task: the phone leaving mid-way doesn't stop it (`composed`)
+            let text = composing::compose(st.get_ref().clone(), user.clone(), id, body.instructions.clone()).await?;
             return Ok(json!({ "text": text }));
         }
         let out = agent::draft_reply(&st, id, body.instructions.as_deref()).await?;
@@ -414,6 +413,19 @@ pub async fn draft(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid
             anyhow::bail!("Pigeon wrote no draft this time: try again, or tell it what to say");
         }
         Ok(json!({ "drafted": out.len() }))
+    }
+    .await;
+    reply(r)
+}
+
+/// The words Pigeon wrote for the message box while the phone was away: `{writing}`, `{text}`,
+/// `{error}` or `{}`; taken once.
+pub async fn composed(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>) -> HttpResponse {
+    let user = &u.0.user_id;
+    let id = path.into_inner();
+    let r: anyhow::Result<Json> = async {
+        tools::own_conversation(&st, user, id).await?;
+        Ok(composing::take(id))
     }
     .await;
     reply(r)

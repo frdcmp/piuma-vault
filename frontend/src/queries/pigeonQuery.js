@@ -122,6 +122,9 @@ const applyPigeonEvent = (qc, kind, id) => {
 		case "pigeon_working":
 			// where Pigeon is with a chat's newest messages: the phone shows it
 			return;
+		case "pigeon_composed":
+			// the words Pigeon wrote for the phone's message box: the phone takes them
+			return;
 		default:
 			inv(pigeonKeys.all);
 	}

@@ -26,6 +26,9 @@ pub mod kinds {
     /// Where Pigeon is with a conversation's newest messages (`id`; `data`: {stage, until?,
     /// outcome?}): reading · analysing · deciding · typing · done. The chat shows it.
     pub const WORKING: &str = "pigeon_working";
+    /// The reply Pigeon wrote for the user's message box is ready (`id`: the conversation): the
+    /// chat takes it (`composing::take`).
+    pub const COMPOSED: &str = "pigeon_composed";
 }
 const HEARTBEAT_SECS: u64 = 20;
 
