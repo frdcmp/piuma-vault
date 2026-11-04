@@ -319,6 +319,8 @@
 .inbox-sent-by {
 	flex: none;
 	display: block;
+	color: var(--vp-faint);
+	opacity: 0.7;
 }
 
 /* ── Pigeon's cards ────────────────────────────────────────────────────── */
