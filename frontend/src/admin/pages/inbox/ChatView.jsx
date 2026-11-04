@@ -56,6 +56,7 @@ import {
 	withInherit,
 } from "./inboxText";
 import PigeonCards from "./PigeonCards";
+import SwitchInfo from "./SwitchInfo";
 
 // A chat's messages and Pigeon's news, oldest first, with a day line whenever
 // the day changes.
@@ -179,7 +180,12 @@ function Switches({ switches, onSave, scope }) {
 	return (
 		<div className="inbox-switches">
 			<PvField
-				label={`Pigeon's replies ${scope}`}
+				label={
+					<>
+						Pigeon's replies {scope}
+						<SwitchInfo kind="reply" />
+					</>
+				}
 				as="div"
 				hint={
 					reply === "auto" && !switches.auto_enabled
@@ -195,7 +201,12 @@ function Switches({ switches, onSave, scope }) {
 				/>
 			</PvField>
 			<PvField
-				label="Alerts"
+				label={
+					<>
+						Alerts
+						<SwitchInfo kind="alerts" />
+					</>
+				}
 				as="div"
 				hint={ALERT_HINT[alerts === "inherit" ? switches.alerts : alerts]}
 			>
@@ -230,12 +241,13 @@ export default function ChatView({ id, person }) {
 	const [replyChannel, setReplyChannel] = useState(null);
 	const group = useMemo(
 		() =>
+			!person &&
 			new Set(
 				(items.data?.items ?? [])
 					.filter((i) => i.direction === "in" && i.sender)
 					.map((i) => i.sender),
 			).size > 1,
-		[items.data],
+		[items.data, person],
 	);
 	const markRead = useMarkPigeonRead();
 	const markPersonRead = useMarkPigeonPersonRead();

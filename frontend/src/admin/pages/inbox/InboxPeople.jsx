@@ -34,6 +34,7 @@ import {
 	POLICY_OPTIONS,
 	withInherit,
 } from "./inboxText";
+import SwitchInfo from "./SwitchInfo";
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
@@ -183,7 +184,15 @@ function ContactDrawer({ id, people, onClose }) {
 						Save
 					</PvButton>
 
-					<PvField label="Pigeon's replies to them" as="div">
+					<PvField
+						label={
+							<>
+								Pigeon's replies to them
+								<SwitchInfo kind="reply" />
+							</>
+						}
+						as="div"
+					>
 						<PvSegmented
 							size="sm"
 							options={withInherit(POLICY_OPTIONS, defaults.reply ?? "ask")}
@@ -193,7 +202,15 @@ function ContactDrawer({ id, people, onClose }) {
 							}
 						/>
 					</PvField>
-					<PvField label="Alerts" as="div">
+					<PvField
+						label={
+							<>
+								Alerts
+								<SwitchInfo kind="alerts" />
+							</>
+						}
+						as="div"
+					>
 						<PvSegmented
 							size="sm"
 							options={withInherit(ALERT_OPTIONS, settings?.alerts ?? "smart")}

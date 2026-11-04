@@ -81,3 +81,54 @@ export const senderLabel = (item, senders) => {
 
 export const errorText = (e) =>
 	e?.response?.data?.error || e?.message || "Something went wrong";
+
+// What each switch value does, for the ⓘ next to a switch.
+export const SWITCH_INFO = {
+	reply: {
+		title: "Pigeon's replies",
+		rows: [
+			{
+				label: "Default",
+				text: "Follows the wider setting: the person's own, else the Inbox's default (Settings). The value in brackets is the one in force.",
+			},
+			{
+				label: "Off",
+				text: "Pigeon doesn't write replies by itself. You write yours, or press ✍ and it drafts one for you.",
+			},
+			{
+				label: "Ask",
+				text: "When a reply is due, Pigeon writes it and leaves it as a card. Nothing goes out until you press Send; you can change it or drop it.",
+			},
+			{
+				label: "Auto",
+				text: "Pigeon sends its replies itself and tells you in the chat. A reply it isn't sure of still waits for you as a card, and with Auto switched off in Settings it always asks.",
+			},
+		],
+	},
+	alerts: {
+		title: "Alerts",
+		rows: [
+			{
+				label: "Default",
+				text: "Follows the wider setting: the person's own, else the Inbox's default (Settings). The value in brackets is the one in force.",
+			},
+			{
+				label: "All",
+				text: "Every message they send rings your phone, and so does every card.",
+			},
+			{
+				label: "Smart",
+				text: "Their messages arrive silently; a card (a draft, a question, something waiting on you) rings.",
+			},
+			{
+				label: "Quiet",
+				text: "Everything arrives silently: messages and cards are on the phone, without a sound.",
+			},
+			{
+				label: "Off",
+				text: "Nothing reaches the phone; it all waits in the Inbox.",
+			},
+		],
+		foot: "Something urgent (someone in trouble, something that can't wait) rings whatever the switch says.",
+	},
+};

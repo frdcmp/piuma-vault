@@ -573,3 +573,26 @@
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 }
+
+/* the ⓘ beside a switch, and what it explains */
+.inbox-switch-info {
+	vertical-align: middle;
+	margin-left: 4px;
+}
+.inbox-switch-explain {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin: 0;
+}
+.inbox-switch-explain dt {
+	color: var(--vp-accent);
+	font-weight: 700;
+}
+.inbox-switch-explain dd {
+	margin: 2px 0 0;
+}
+.inbox-switch-foot {
+	margin: 12px 0 0;
+	color: var(--vp-muted);
+}

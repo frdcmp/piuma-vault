@@ -40,6 +40,7 @@ import {
 	errorText,
 	POLICY_OPTIONS,
 } from "./inboxText";
+import SwitchInfo from "./SwitchInfo";
 
 // WhatsApp pairs as a linked device: the QR the bridge shows, scanned from the
 // phone (WhatsApp → Linked devices). The code turns over, so it's polled.
@@ -250,7 +251,12 @@ export default function InboxSettings() {
 					/>
 				</PvField>
 				<PvField
-					label="Replies to people"
+					label={
+						<>
+							Replies to people
+							<SwitchInfo kind="reply" top />
+						</>
+					}
 					as="div"
 					hint="The default; a person or a chat can have its own."
 				>
@@ -278,7 +284,12 @@ export default function InboxSettings() {
 					/>
 				</PvField>
 				<PvField
-					label="Alerts on the phone"
+					label={
+						<>
+							Alerts on the phone
+							<SwitchInfo kind="alerts" top />
+						</>
+					}
 					as="div"
 					hint={ALERT_HINT[s.alerts]}
 				>
