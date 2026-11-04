@@ -58,6 +58,15 @@ export const draftPigeonReply = async ({ id, instructions }) => {
 	return data;
 };
 
+// A reply's words for your own box (no card): { text }.
+export const composePigeonReply = async ({ id, instructions }) => {
+	const { data } = await axiosInstance.post(
+		`${BASE}/conversations/${id}/draft`,
+		{ instructions: instructions || null, compose: true },
+	);
+	return data;
+};
+
 export const fetchPigeonSummary = async (id) => {
 	const { data } = await axiosInstance.get(
 		`${BASE}/conversations/${id}/summary`,

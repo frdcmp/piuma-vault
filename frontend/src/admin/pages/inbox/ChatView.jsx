@@ -25,7 +25,7 @@ import {
 	pvMessage,
 } from "@/ui";
 import {
-	useDraftPigeonReply,
+	useComposePigeonReply,
 	useMarkPigeonHandled,
 	useMarkPigeonPersonHandled,
 	useMarkPigeonPersonRead,
@@ -256,7 +256,7 @@ export default function ChatView({ id, person }) {
 	const setThreadSwitches = useSetPigeonConversationSwitches();
 	const setPersonSwitches = useSetPigeonContactSwitches();
 	const send = useSendPigeonMessage();
-	const draft = useDraftPigeonReply();
+	const draft = useComposePigeonReply();
 	const askPiuma = useChatDockStore((s) => s.askPiuma);
 
 	const [text, setText] = useState("");
@@ -348,15 +348,11 @@ export default function ChatView({ id, person }) {
 	const onDraft = () => {
 		if (!tid) return;
 		stickRef.current = true;
+		// Pigeon writes the reply into the box (what you typed is what it follows);
+		// you send it, or change it first.
 		draft.mutate(
 			{ id: tid, instructions: text.trim() },
-			{
-				onSuccess: () => {
-					setText("");
-					pvMessage.success("Pigeon wrote a draft");
-				},
-				onError: fail,
-			},
+			{ onSuccess: (d) => setText(d.text), onError: fail },
 		);
 	};
 

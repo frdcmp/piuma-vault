@@ -41,7 +41,8 @@ enum Mode<'a> {
     /// ask the user), under the policies.
     AfterTriage { triage_id: i64, sig: &'a Signals, role: Role, held: Option<&'a str>, replied: Option<&'a str> },
     /// The user (or Piuma for them) asked for a reply: reply actions only, always held for them.
-    Draft { instructions: Option<&'a str> },
+    /// `compose`: the words come back for the user's box instead of a card
+    Draft { instructions: Option<&'a str>, compose: bool },
     /// The user answered what Pigeon asked them: act on it (the reply, and an event or task it
     /// settles), under the policies.
     Answer { asked: &'a str, answer: &'a str },
@@ -69,7 +70,14 @@ pub async fn intake(st: &State, conversation: Uuid, triage_id: i64, sig: &Signal
 }
 
 pub async fn draft_reply(st: &State, conversation: Uuid, instructions: Option<&str>) -> anyhow::Result<Vec<Outcome>> {
-    run(st, conversation, Mode::Draft { instructions }).await
+    run(st, conversation, Mode::Draft { instructions, compose: false }).await
+}
+
+/// A reply's words for the user's own message box: written like a draft, proposed to nobody (no
+/// card); they send it, or change it, themselves. None: Pigeon wrote none.
+pub async fn compose_reply(st: &State, conversation: Uuid, instructions: Option<&str>) -> anyhow::Result<Option<String>> {
+    let out = run(st, conversation, Mode::Draft { instructions, compose: true }).await?;
+    Ok(out.into_iter().find(|o| o.status == "composed").and_then(|o| o.detail))
 }
 
 pub async fn after_answer(st: &State, conversation: Uuid, asked: &str, answer: &str) -> anyhow::Result<Vec<Outcome>> {
@@ -206,6 +214,13 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
                 continue;
             }
             replied = true;
+        }
+        if let Mode::Draft { compose: true, .. } = mode {
+            if let Some(text) = call.args["text"].as_str().map(str::trim).filter(|t| !t.is_empty()) {
+                out.push(Outcome { id: None, status: "composed".into(), detail: Some(text.to_string()) });
+                break;
+            }
+            continue;
         }
         let mut args = call.args;
         let reason = args.as_object_mut().and_then(|o| o.remove("reason")).and_then(|r| r.as_str().map(str::to_string));
@@ -404,7 +419,7 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
         Mode::Answer { asked, answer } => {
             s.push_str(&format!("\nPigeon asked {name}: {asked}\n{name}'s answer: {answer}\n"));
         }
-        Mode::Draft { instructions } => {
+        Mode::Draft { instructions, .. } => {
             s.push_str(&format!("\n{name} asks for a reply to this conversation now."));
             if let Some(i) = instructions.filter(|i| !i.trim().is_empty()) {
                 s.push_str(&format!(" Their instructions: {i}"));

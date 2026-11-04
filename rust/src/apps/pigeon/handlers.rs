@@ -263,14 +263,23 @@ pub async fn mark_handled(st: web::Data<AppState>, u: InboxWriter, path: web::Pa
 #[derive(Deserialize)]
 pub struct DraftBody {
     instructions: Option<String>,
+    /// the words back for the user's message box ({ text }), no card
+    #[serde(default)]
+    compose: bool,
 }
 
-/// Pigeon writes a reply now, as a draft card.
+/// Pigeon writes a reply now: a draft card, or (`compose`) the words for the user's own box.
 pub async fn draft(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>, body: web::Json<DraftBody>) -> HttpResponse {
     let user = &u.0.user_id;
     let id = path.into_inner();
     let r: anyhow::Result<Json> = async {
         tools::own_conversation(&st, user, id).await?;
+        if body.compose {
+            let text = agent::compose_reply(&st, id, body.instructions.as_deref())
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Pigeon wrote nothing this time: try again, or tell it what to say"))?;
+            return Ok(json!({ "text": text }));
+        }
         let out = agent::draft_reply(&st, id, body.instructions.as_deref()).await?;
         if !out.iter().any(|o| o.status == "pending") {
             anyhow::bail!("Pigeon wrote no draft this time: try again, or tell it what to say");

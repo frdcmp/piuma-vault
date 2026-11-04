@@ -5,6 +5,7 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import {
+	composePigeonReply,
 	deletePigeonRule,
 	disconnectPigeon,
 	draftPigeonReply,
@@ -230,6 +231,9 @@ const useChatMutation = (fn) => {
 export const useSendPigeonMessage = () => useChatMutation(sendPigeonMessage);
 export const useMarkPigeonHandled = () => useChatMutation(markPigeonHandled);
 export const useDraftPigeonReply = () => useChatMutation(draftPigeonReply);
+// Pigeon's words for your box; nothing changes on the vault.
+export const useComposePigeonReply = () =>
+	useMutation({ mutationFn: composePigeonReply });
 export const useSetPigeonConversationSwitches = () =>
 	useChatMutation(setPigeonConversationSwitches);
 
