@@ -129,6 +129,16 @@ pub async fn propose(st: &State, p: Proposal) -> anyhow::Result<Outcome> {
         return Ok(Outcome { id: None, status: "off".into(), detail: Some(format!("{} actions are off here", def.kind.as_str())) });
     }
 
+    // the same thing again (an event on the day of one, a task or event with the title of one,
+    // the user took or dropped in this conversation this week): not proposed twice
+    if let (Source::Agent, Some(c)) = (&p.source, &conv) {
+        let decided = decided_lately(st, c.id, 7, 50).await?;
+        if let Some(twin) = decided.iter().find(|a| a.action == p.action && same_thing(&p.action, &p.args, &a.args)) {
+            log::info!("pigeon: {} proposed again in {}: the user already {} it ({}); not again", p.action, c.id, twin.status, twin.id);
+            return Ok(Outcome { id: None, status: "repeat".into(), detail: Some(format!("already {}: {}", twin.status, twin.args["title"].as_str().unwrap_or("it"))) });
+        }
+    }
+
     let mut hold = p.hold.clone();
     if pol == Policy::Auto && hold.is_none() {
         if !policy::auto_enabled(&st.pool, &p.user_id).await? {
@@ -392,6 +402,20 @@ pub async fn redraft(st: &State, id: Uuid, text: &str) -> anyhow::Result<ActionR
     Ok(row)
 }
 
+/// Whether a proposal is the one decided already: the same title (words only, any case), or
+/// for an event the same day.
+fn same_thing(action: &str, args: &Json, decided: &Json) -> bool {
+    let words = |v: &Json| -> Vec<String> {
+        v["title"].as_str().unwrap_or_default().to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect()
+    };
+    let (a, b) = (words(args), words(decided));
+    if !a.is_empty() && a == b {
+        return true;
+    }
+    let day = |v: &Json| v["start"].as_str().map(|s| s.chars().take(10).collect::<String>()).filter(|d| d.len() == 10);
+    action.ends_with("add_event") && day(args).is_some() && day(args) == day(decided)
+}
+
 /// What the user decided on Pigeon's proposals in a conversation lately (`days`): the ones they
 /// took (done) and the ones they dropped, newest first. The agent reads them so it doesn't
 /// propose the same again.
@@ -529,4 +553,19 @@ pub fn view(row: &ActionRow) -> Json {
         "expires_at": row.expires_at,
         "created_at": row.created_at,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_same_thing_again() {
+        let ev = |t: &str, d: &str| json!({ "title": t, "start": d });
+        assert!(same_thing("add_event", &ev("Cena con Mauro a casa", "2026-11-05"), &ev("Cena da noi con Mauro", "2026-11-05T20:00:00+07:00")), "same day");
+        assert!(!same_thing("add_event", &ev("Caffè", "2026-11-06"), &ev("Cena da noi con Mauro", "2026-11-05")));
+        assert!(same_thing("add_task", &json!({ "title": "Reply to Nut yourself today!" }), &json!({ "title": "reply to nut yourself today" })), "same words");
+        assert!(!same_thing("add_task", &json!({ "title": "Reply to Nut" }), &json!({ "title": "Call Nut" })));
+        assert!(!same_thing("add_task", &json!({}), &json!({})), "no title is no match");
+    }
 }
