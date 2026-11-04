@@ -209,6 +209,8 @@ pub async fn list(st: &State, user: &str, conversation: Option<Uuid>) -> anyhow:
             out.push(Card { kind: "question", id, text: format!("❓ {question}"), draft: None, free_text: true, buttons, created_at });
         }
         let mut rows = actions::list(st, user, Some("pending"), Some(conversation), 20).await?;
+        // an auto one is on its way (Pigeon is typing it): nothing to approve
+        rows.retain(|r| r.policy != "auto");
         rows.sort_by_key(|a| (a.kind != "reply", a.created_at));
         let (tidy, rest): (Vec<_>, Vec<_>) = rows.iter().partition(|r| is_tidy(r));
         out.extend(rest.into_iter().map(action_card));

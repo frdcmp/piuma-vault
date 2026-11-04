@@ -193,7 +193,14 @@ pub async fn propose(st: &State, p: Proposal) -> anyhow::Result<Outcome> {
                 return Ok(Outcome { id: Some(id), status: "cancelled".into(), detail: Some(why.into()) });
             }
         }
-        let row = execute(st, id, "pigeon (auto)").await?;
+        let row = match execute(st, id, "pigeon (auto)").await {
+            Ok(row) => row,
+            // the user approved it while Pigeon was typing it: it went, theirs
+            Err(e) => match get(st, id).await? {
+                Some(row) if row.status != "pending" => row,
+                _ => return Err(e),
+            },
+        };
         return Ok(Outcome { id: Some(id), status: row.status, detail: row.error });
     }
     Ok(Outcome { id: Some(id), status: "pending".into(), detail: hold })
@@ -292,12 +299,18 @@ async fn reply_guard(st: &State, c: &conversations::Conversation) -> anyhow::Res
     Ok(None)
 }
 
-/// Run a pending action through its connector; it ends done or failed.
+/// Run a pending action through its connector; it ends done or failed. Its row stays locked while
+/// it runs: a second run of it (an auto reply the user approved while it was typing) waits, then
+/// finds it done and runs nothing.
 pub async fn execute(st: &State, id: Uuid, by: &str) -> anyhow::Result<ActionRow> {
-    let row = get(st, id).await?.ok_or_else(|| anyhow::anyhow!("no action {id}"))?;
-    if row.status != "pending" {
-        anyhow::bail!("action {id} is {}, not pending", row.status);
+    let mut tx = st.pool.begin().await?;
+    let status: Option<String> = sqlx::query_scalar("SELECT status FROM db_pigeon_actions WHERE id = $1 FOR UPDATE").bind(id).fetch_optional(&mut *tx).await?;
+    match status.as_deref() {
+        None => anyhow::bail!("no action {id}"),
+        Some("pending") => {}
+        Some(s) => anyhow::bail!("action {id} is {s}, not pending"),
     }
+    let row = get(st, id).await?.ok_or_else(|| anyhow::anyhow!("no action {id}"))?;
     let result = match connectors::find(st, &row.connector) {
         Some(c) if c.available(st).is_ok() => c.run(st, &row.user_id, &row.action, &row.args, row.conversation_id).await,
         _ => Err(anyhow::anyhow!("connector {} is not available", row.connector)),
@@ -318,8 +331,9 @@ pub async fn execute(st: &State, id: Uuid, by: &str) -> anyhow::Result<ActionRow
     .bind(&result)
     .bind(&error)
     .bind(by)
-    .execute(&st.pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
     if status == "done" && row.kind == "reply" {
         if let Some(c) = row.conversation_id {
             sqlx::query("UPDATE db_pigeon_conversations SET attention = NULL, needs_note = NULL, handled_at = NOW() WHERE id = $1").bind(c).execute(&st.pool).await?;
