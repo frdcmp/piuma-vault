@@ -6,7 +6,7 @@
 //
 //   bun scripts/build-tokens.mjs                 write the web files
 //   bun scripts/build-tokens.mjs --check         exit 1 if the web files are stale
-//   bun scripts/build-tokens.mjs --mobile ../mobile
+//   bun scripts/build-tokens.mjs --mobile ../../piuma-vault-mobile
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

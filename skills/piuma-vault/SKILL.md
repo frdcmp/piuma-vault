@@ -198,7 +198,7 @@ pigeon.py set_alerts contact_id=@alex level=all
 ## Credentials
 
 The script resolves, in order: exported `VAULT_API_KEY` → `~/.config/piuma-vault/env`
-(`VAULT_URL=` / `VAULT_API_KEY=`) → `~/docker/piuma-vault/piuma-vault-mobile/.env`.
+(`VAULT_URL=` / `VAULT_API_KEY=`) → `~/docker/piuma-vault-mobile/.env`.
 
 Both `VAULT_URL` and `VAULT_API_KEY` are **required** — the scripts exit 2 rather than
 guess a host. Mint a dedicated key in the vault UI (admin → API Keys) scoped to

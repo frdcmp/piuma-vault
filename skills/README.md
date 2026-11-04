@@ -7,6 +7,7 @@ they describe.
 |---|---|
 | [`piuma-vault`](piuma-vault/SKILL.md) | Driving the running vault over its admin API — notes, tasks, recurring tasks, buckets, calendar events and the merged agenda — via `scripts/vault.sh` and `scripts/agenda.py`. |
 | [`piuma-sprites`](piuma-sprites/SKILL.md) | Designing, previewing and uploading the pixel mascot sprites via `scripts/sprite.py` (needs an API key with the `sprites.manage` scope). |
+| [`vault-deploy`](vault-deploy/SKILL.md) | Developing and shipping the vault itself: checking a change, deploying to k3s (images, tags, rollout, health), production's database, logs and hand migrations. |
 
 **In a checkout there is nothing to install.** each `.claude/skills/<name>` is a symlink
 committed alongside these files, pointing back at `skills/<name>`, so Claude Code
@@ -22,4 +23,4 @@ ln -s "$PWD/skills/piuma-vault" ~/.claude/skills/piuma-vault   # from a checkout
 ```
 
 No credentials are committed here; the scripts resolve an API key from `VAULT_API_KEY`,
-then `~/.config/piuma-vault/env`, then `piuma-vault-mobile/.env`.
+then `~/.config/piuma-vault/env`, then the phone app's `.env` (`~/docker/piuma-vault-mobile`).

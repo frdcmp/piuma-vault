@@ -5,7 +5,7 @@ set -uo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────
 CONFIG_FILE="${VAULT_CONFIG:-$HOME/.config/piuma-vault/env}"
-MOBILE_ENV="$HOME/docker/piuma-vault/piuma-vault-mobile/.env"
+MOBILE_ENV="$HOME/docker/piuma-vault-mobile/.env"
 
 load_creds() {
   # Precedence: exported env > ~/.config/piuma-vault/env > mobile .env

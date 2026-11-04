@@ -35,7 +35,7 @@ def die(msg: str, code: int = 1):
 def load_creds() -> tuple[str, str]:
     url, key = os.environ.get("VAULT_URL"), os.environ.get("VAULT_API_KEY")
     for path in (Path(os.environ.get("VAULT_CONFIG", Path.home() / ".config/piuma-vault/env")),
-                 Path.home() / "docker/piuma-vault/piuma-vault-mobile/.env"):
+                 Path.home() / "docker/piuma-vault-mobile/.env"):
         if key:
             break
         if not path.is_file():

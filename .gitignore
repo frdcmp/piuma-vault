@@ -18,7 +18,6 @@ bun.lock
 keys
 
 # ---- Mobile app (private; not part of the public repo — rebuild your own) ----
-mobile/
 
 # ---- Data / runtime (never commit DB data, dumps, or local backups) ----
 postgres_data
@@ -53,7 +52,6 @@ update_servers.sh
 .codegraph/
 REASONIX.md
 reasonix.toml
-piuma-vault-mobile/
 
 # k8s Secret/ConfigMap rendered from .env — never commit
 k8s/00-config.yaml
@@ -65,3 +63,8 @@ k8s/.rendered/
 
 # Cluster env. This repo is PUBLIC: never commit it, encrypted or otherwise.
 .env.k8s
+
+# Claude Code memory: personal, and this repo is public; it stays on this machine
+.claude/memory/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
