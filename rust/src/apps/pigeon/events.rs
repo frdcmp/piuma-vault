@@ -158,7 +158,9 @@ pub async fn stream(req: HttpRequest, query: web::Query<SseAuth>, bus: web::Data
                     }
                     Err(broadcast::error::RecvError::Closed) => return None,
                 },
-                _ = tick.tick() => return Some((Ok(web::Bytes::from_static(b": ping\n\n")), (rx, tick, user))),
+                // a heartbeat the apps can watch (its own event name: a client that doesn't know it
+                // ignores it); a stream gone quiet is reopened
+                _ = tick.tick() => return Some((Ok(web::Bytes::from_static(b"event: ping\ndata: {}\n\n")), (rx, tick, user))),
             }
         }
     });

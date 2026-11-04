@@ -119,6 +119,9 @@ const applyPigeonEvent = (qc, kind, id) => {
 		case "message_in":
 			// the phone's push; the conversation event refreshes the chat
 			return;
+		case "pigeon_working":
+			// where Pigeon is with a chat's newest messages: the phone shows it
+			return;
 		default:
 			inv(pigeonKeys.all);
 	}
