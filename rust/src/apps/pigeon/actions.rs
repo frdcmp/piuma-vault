@@ -392,6 +392,23 @@ pub async fn redraft(st: &State, id: Uuid, text: &str) -> anyhow::Result<ActionR
     Ok(row)
 }
 
+/// What the user decided on Pigeon's proposals in a conversation lately (`days`): the ones they
+/// took (done) and the ones they dropped, newest first. The agent reads them so it doesn't
+/// propose the same again.
+pub async fn decided_lately(st: &State, conversation: Uuid, days: i32, limit: i64) -> anyhow::Result<Vec<ActionRow>> {
+    Ok(sqlx::query_as(&format!(
+        "SELECT {ACTION_COLS} FROM db_pigeon_actions
+          WHERE conversation_id = $1 AND source = 'agent' AND status IN ('done', 'dropped')
+            AND decided_by NOT LIKE 'pigeon%' AND decided_at > NOW() - make_interval(days => $2)
+          ORDER BY decided_at DESC LIMIT $3"
+    ))
+    .bind(conversation)
+    .bind(days)
+    .bind(limit)
+    .fetch_all(&st.pool)
+    .await?)
+}
+
 pub async fn drop(st: &State, id: Uuid, by: &str, why: Option<&str>) -> anyhow::Result<ActionRow> {
     let n = sqlx::query(
         "UPDATE db_pigeon_actions SET status = 'dropped', decided_by = $2, decided_at = NOW(), error = $3, updated_at = NOW()

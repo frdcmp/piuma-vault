@@ -400,6 +400,25 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
                         s.push_str(&format!("- {} {}\n", w.action, conversations::clip(&w.args.to_string(), 200)));
                     }
                 }
+                // what they decided lately: a task they took is done, one they dropped they don't want,
+                // and neither comes back on the next message
+                let decided = actions::decided_lately(st, conv.id, 7, 20).await?;
+                let (taken, dropped): (Vec<_>, Vec<_>) = decided.iter().partition(|a| a.status == "done");
+                if !taken.is_empty() {
+                    s.push_str(&format!("{name} already took these here (done; don't propose them again):\n"));
+                    for a in taken {
+                        s.push_str(&format!("- {} {}\n", a.action, conversations::clip(&a.args.to_string(), 200)));
+                    }
+                }
+                if !dropped.is_empty() {
+                    s.push_str(&format!(
+                        "{name} dropped these here (they don't want them: never propose them again, nor anything like them, \
+                         unless the newest messages bring something new):\n"
+                    ));
+                    for a in dropped {
+                        s.push_str(&format!("- {} {}\n", a.action, conversations::clip(&a.args.to_string(), 200)));
+                    }
+                }
             }
             s.push_str(&format!(
                 "\nPigeon's triage of the newest messages: needs a reply {:.2}, written to {name} {:.2}, something to \
