@@ -15,7 +15,7 @@ use crate::apps::pigeon::ai::llm;
 use crate::apps::pigeon::connectors::{console, Kind};
 use crate::apps::pigeon::policy::{self, Policy};
 use crate::apps::pigeon::state::AppState;
-use crate::apps::pigeon::{actions, agent, alerts, cards, connect, conversations, events, media, people, rules, tools, triage};
+use crate::apps::pigeon::{actions, agent, alerts, avatars, cards, connect, conversations, events, media, people, rules, tools, triage};
 use crate::apps::settings::store;
 
 pub struct InboxReader(pub AuthenticatedUser);
@@ -131,9 +131,11 @@ pub async fn get_conversation(st: web::Data<AppState>, u: InboxReader, path: web
             .bind(id)
             .fetch_optional(&st.pool)
             .await?;
+        let (avatar, avatar_photo) = avatars::Links::new(&st.pool).await.of(&st.pool, contact.as_ref().and_then(|c| c.avatar_key.as_deref())).await;
         Ok(json!({
             "conversation": conv,
             "with": conversations::who(contact.as_ref(), &conv),
+            "avatar": avatar, "avatar_photo": avatar_photo,
             "contact": contact,
             "switches": {
                 "reply": reply_policy.as_str(),
@@ -691,6 +693,7 @@ struct ChatRow {
     cards: i64,
     name: Option<String>,
     slug: Option<String>,
+    avatar_key: Option<String>,
     body: Option<String>,
     author: Option<String>,
     connector: Option<String>,
@@ -725,7 +728,7 @@ pub async fn list_chats(st: web::Data<AppState>, u: InboxReader, q: web::Query<L
                  FROM conv GROUP BY 1
              )
              SELECT ch.contact_id, ch.conversation_id, ch.latest, ch.title, ch.connectors, ch.last_item_at, ch.attention, ch.unread, ch.cards,
-                    ct.name, ct.slug, li.body, li.author, li.connector
+                    ct.name, ct.slug, ct.avatar_key, li.body, li.author, li.connector
                FROM chats ch
                LEFT JOIN db_pigeon_contacts ct ON ct.id = ch.contact_id
                LEFT JOIN LATERAL (SELECT i.body, i.author, i.connector FROM db_pigeon_items i WHERE i.conversation_id = ch.latest ORDER BY i.at DESC LIMIT 1) li ON true
@@ -744,10 +747,12 @@ pub async fn list_chats(st: web::Data<AppState>, u: InboxReader, q: web::Query<L
         .bind(q.filter.as_deref() == Some("needs"))
         .fetch_all(&st.pool)
         .await?;
-        let out: Vec<Json> = rows
-            .into_iter()
-            .map(|r| {
-                json!({
+        let links = avatars::Links::new(&st.pool).await;
+        let mut out: Vec<Json> = Vec::with_capacity(rows.len());
+        for r in rows {
+            let avatar = links.of(&st.pool, r.avatar_key.as_deref()).await.0;
+            out.push(json!({
+                    "avatar": avatar,
                     "key": match (r.contact_id, r.conversation_id) { (Some(c), _) => format!("p:{c}"), (_, Some(c)) => format!("c:{c}"), _ => format!("c:{}", r.latest) },
                     "contact_id": r.contact_id, "conversation_id": r.conversation_id, "latest": r.latest,
                     "with": person_label(r.slug.as_deref(), r.name.as_deref(), r.title.as_deref()),
@@ -756,9 +761,8 @@ pub async fn list_chats(st: web::Data<AppState>, u: InboxReader, q: web::Query<L
                     "last_item_at": r.last_item_at, "attention": r.attention,
                     "preview": r.body.map(|b| conversations::clip(&b, 120)), "last_author": r.author,
                     "unread": r.unread, "cards": r.cards,
-                })
-            })
-            .collect();
+            }));
+        }
         Ok(json!({ "chats": out }))
     }
     .await;
@@ -805,7 +809,9 @@ pub async fn get_person_chat(st: web::Data<AppState>, u: InboxReader, path: web:
             .fetch_optional(&st.pool)
             .await?;
         let unread = threads.iter().any(|t| t.last_in_at.is_some_and(|i| t.read_at.is_none_or(|r| i > r)));
+        let (avatar, avatar_photo) = avatars::Links::new(&st.pool).await.of(&st.pool, contact.avatar_key.as_deref()).await;
         Ok(json!({
+            "avatar": avatar, "avatar_photo": avatar_photo,
             "contact": contact,
             "with": person_label(contact.slug.as_deref(), contact.name.as_deref(), None),
             "name": contact.name,

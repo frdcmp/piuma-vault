@@ -20,6 +20,7 @@ pub mod actions;
 pub mod agent;
 pub mod ai;
 pub mod alerts;
+pub mod avatars;
 pub mod cards;
 pub mod config;
 pub mod confirm;

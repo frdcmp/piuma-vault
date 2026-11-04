@@ -10,7 +10,7 @@ use tokio::task::spawn_local;
 
 use crate::apps::pigeon::events::{kinds, Bus};
 use crate::apps::pigeon::state::{self, AppState};
-use crate::apps::pigeon::{actions, cards, health, media, rules, slugs, summary, triage};
+use crate::apps::pigeon::{actions, avatars, cards, health, media, rules, slugs, summary, triage};
 use crate::db::db::DbPool;
 
 /// Run until the process ends. Call inside a `LocalSet`.
@@ -75,6 +75,12 @@ async fn sweeps(st: AppState) {
         }
         if let Err(e) = cards::sweep(&st).await {
             log::warn!("pigeon: expiring questions: {e:#}");
+        }
+        // people's profile pictures: the new ones, and weekly again
+        match avatars::sweep(&st).await {
+            Ok(n) if n > 0 => log::info!("pigeon: {n} profile picture(s) kept"),
+            Ok(_) => {}
+            Err(e) => log::warn!("pigeon avatars: {e:#}"),
         }
         // files that didn't make it into storage yet
         if let Err(e) = media::retry(&st).await {

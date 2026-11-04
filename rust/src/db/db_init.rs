@@ -1118,6 +1118,10 @@ const TABLES: &[TableDefinition] = &[
                 relationship TEXT,
                 language TEXT,
                 note_id UUID REFERENCES notes(id) ON DELETE SET NULL,
+                -- their profile picture in storage (apps/pigeon/avatars.rs: the photo; beside it
+                -- `.px.png`, pixelated), and when it was last looked for (NULL: never)
+                avatar_key TEXT,
+                avatar_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE (user_id, slug)

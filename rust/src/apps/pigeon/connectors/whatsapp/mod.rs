@@ -50,6 +50,18 @@ pub async fn address_book(st: &State, user: &str) -> anyhow::Result<Vec<Json>> {
     Ok(v["contacts"].as_array().cloned().unwrap_or_default())
 }
 
+/// A person's WhatsApp profile picture (a link for a while), when they have one the user may see.
+pub async fn picture_url(st: &State, user: &str, phone: &str) -> Option<String> {
+    let c = conf(st).ok()?;
+    let url = format!("{}/u/{}/avatar", c.bridge_url, urlencoding::encode(user));
+    let r = http().get(url).bearer_auth(&c.secret).query(&[("phone", phone)]).send().await.ok()?;
+    if !r.status().is_success() {
+        return None;
+    }
+    let v: Json = r.json().await.ok()?;
+    v["url"].as_str().filter(|u| !u.is_empty()).map(str::to_string)
+}
+
 /// One call to pigeon-whatsapp's API, on the user's session.
 async fn bridge(st: &State, user: &str, method: reqwest::Method, path: &str, body: Option<&Json>) -> anyhow::Result<Json> {
     let c = conf(st)?;

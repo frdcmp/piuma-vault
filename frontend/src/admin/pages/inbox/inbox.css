@@ -692,3 +692,19 @@
 	color: var(--vp-muted);
 	font-size: 8pt;
 }
+
+/* people's profile pictures: pixel art, kept crisp at any size */
+.inbox-avatar img {
+	image-rendering: pixelated;
+	object-fit: cover;
+}
+.inbox-person-cell {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+.inbox-contact-photo {
+	align-self: center;
+	display: block;
+	margin-bottom: 8px;
+}

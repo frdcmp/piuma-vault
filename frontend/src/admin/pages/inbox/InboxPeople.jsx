@@ -2,6 +2,7 @@ import { ArrowLeftOutlined, SearchOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+	PvAvatar,
 	PvButton,
 	PvDrawer,
 	PvEmpty,
@@ -31,6 +32,7 @@ import {
 	ALERT_OPTIONS,
 	channelLabel,
 	errorText,
+	initials,
 	POLICY_OPTIONS,
 	withInherit,
 } from "./inboxText";
@@ -133,6 +135,17 @@ function ContactDrawer({ id, people, onClose }) {
 				<PvSpin block />
 			) : (
 				<div className="inbox-contact">
+					{c.avatar ? (
+						<a
+							href={c.avatar_photo}
+							target="_blank"
+							rel="noreferrer"
+							className="inbox-contact-photo"
+							title="Their photo"
+						>
+							<PvAvatar size={96} src={c.avatar} className="inbox-avatar" />
+						</a>
+					) : null}
 					<div className="inbox-contact-handles">
 						{(c.handles ?? []).map((h) => (
 							<PvTag key={`${h.channel}:${h.handle}`}>
@@ -294,7 +307,14 @@ export default function InboxPeople() {
 			key: "name",
 			title: "Who",
 			render: (_v, p) => (
-				<span>
+				<span className="inbox-person-cell">
+					<PvAvatar
+						size={24}
+						src={p.avatar ?? undefined}
+						className="inbox-avatar"
+					>
+						{initials(p.name || p.slug)}
+					</PvAvatar>
 					{p.name || "—"}{" "}
 					{p.slug ? <span className="inbox-muted">{p.slug}</span> : null}
 				</span>

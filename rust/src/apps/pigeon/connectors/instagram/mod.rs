@@ -171,6 +171,21 @@ fn media_of(user: &str, attachments: &[Json], at: DateTime<Utc>) -> Json {
     )
 }
 
+/// A person's Instagram profile picture (a link for a while), from the user's account they wrote to.
+pub async fn picture_url(st: &State, user: &str, igsid: &str) -> Option<String> {
+    let connection: i32 = sqlx::query_scalar(
+        "SELECT id FROM db_pigeon_connections WHERE connector = $1 AND user_id = $2 AND status <> 'disconnected' ORDER BY updated_at DESC LIMIT 1",
+    )
+    .bind(ID)
+    .bind(user)
+    .fetch_optional(&st.pool)
+    .await
+    .ok()??;
+    let token = api::token(st, connection).await.ok()?;
+    let p = api::graph(&token, "GET", &format!("/{igsid}"), &[("fields", "profile_pic".to_string())], None).await.ok()?;
+    p["profile_pic"].as_str().filter(|u| !u.is_empty()).map(str::to_string)
+}
+
 /// The connection of a professional account, by its id (the webhook's entry id), and whose.
 async fn connection_of(st: &State, account_id: &str) -> anyhow::Result<Option<(i32, String)>> {
     Ok(sqlx::query_as(

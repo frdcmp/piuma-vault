@@ -171,7 +171,12 @@ export default function InboxRail({ activeKey, page }) {
 								c.unread ? " is-unread" : ""
 							}`}
 						>
-							<PvAvatar size={36} tone={channelTone(c.connector)}>
+							<PvAvatar
+								size={36}
+								tone={channelTone(c.connector)}
+								src={c.avatar ?? undefined}
+								className="inbox-avatar"
+							>
 								{initials(c.name || c.with)}
 							</PvAvatar>
 							<span className="inbox-row-main">

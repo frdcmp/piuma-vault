@@ -660,7 +660,7 @@ pub async fn view(st: &State, user: &str, id: Uuid) -> anyhow::Result<Json> {
         .bind(id)
         .fetch_optional(&st.pool)
         .await?;
-    Ok(json!({
+    let mut out = json!({
         "contact_id": c.id, "slug": slug.map(|s| format!("@{s}")), "name": c.name, "relationship": c.relationship, "language": c.language,
         "note_id": c.note_id, "note": c.note,
         "alerts": crate::apps::pigeon::alerts::resolve(&st.pool, user, Some(id), None).await?.as_str(),
@@ -669,7 +669,9 @@ pub async fn view(st: &State, user: &str, id: Uuid) -> anyhow::Result<Json> {
         "handles": handles.into_iter().map(|(ch, h, d)| json!({ "channel": ch, "handle": h, "shown_as": d })).collect::<Vec<_>>(),
         "memory": memory(st, id).await?.map(|m| m.memory),
         "styles": styles(st, id).await?.into_iter().map(|s| (s.connector, json!(s.profile))).collect::<serde_json::Map<_, _>>(),
-    }))
+    });
+    crate::apps::pigeon::avatars::Links::new(&st.pool).await.add(&st.pool, c.avatar_key.as_deref(), &mut out).await;
+    Ok(out)
 }
 
 /// The users a learning run is going for.

@@ -71,9 +71,11 @@ pub struct Contact {
     pub relationship: Option<String>,
     pub language: Option<String>,
     pub note_id: Option<Uuid>,
+    /// their profile picture in storage (avatars.rs), if one was found
+    pub avatar_key: Option<String>,
 }
 
-pub const CONTACT_COLS: &str = "id, user_id, name, slug, note, relationship, language, note_id";
+pub const CONTACT_COLS: &str = "id, user_id, name, slug, note, relationship, language, note_id, avatar_key";
 
 impl Contact {
     /// Who they are to the user (`me`) and the language to write to them in, as lines for a prompt.

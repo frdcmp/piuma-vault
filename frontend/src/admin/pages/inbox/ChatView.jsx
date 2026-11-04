@@ -385,9 +385,20 @@ export default function ChatView({ id, person }) {
 					label="Back to the chats"
 					className="inbox-back"
 				/>
-				<PvAvatar size={36} tone={channelTone(thread?.connector)}>
-					{initials(realName || data.with)}
-				</PvAvatar>
+				{data.avatar_photo ? (
+					<a
+						href={data.avatar_photo}
+						target="_blank"
+						rel="noreferrer"
+						title="Their photo"
+					>
+						<PvAvatar size={36} src={data.avatar} className="inbox-avatar" />
+					</a>
+				) : (
+					<PvAvatar size={36} tone={channelTone(thread?.connector)}>
+						{initials(realName || data.with)}
+					</PvAvatar>
+				)}
 				<div className="inbox-chat-who">
 					<div className="inbox-chat-name">{data.with}</div>
 					<div className="inbox-chat-sub">

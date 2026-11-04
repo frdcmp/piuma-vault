@@ -17,6 +17,7 @@
 //	POST /u/{user}/logout
 //	GET  /u/{user}/contacts the address book: {contacts: [{phone, name, push, business}]}
 //	POST /u/{user}/media    a file's download details (a message's `files` entry) → the file
+//	GET  /u/{user}/avatar?phone=+<number>  their profile picture's link {url, id}, 404 when none
 package main
 
 import (
@@ -159,6 +160,7 @@ func main() {
 	mux.HandleFunc("POST /u/{user}/logout", b.auth((*session).logout))
 	mux.HandleFunc("GET /u/{user}/contacts", b.auth((*session).contacts))
 	mux.HandleFunc("POST /u/{user}/media", b.auth((*session).media))
+	mux.HandleFunc("GET /u/{user}/avatar", b.auth((*session).avatar))
 	addr := env("WHATSAPP_BIND", ":8080")
 	log.Printf("listening on %s, events to %s", addr, b.webhook)
 	log.Fatal(http.ListenAndServe(addr, mux))
@@ -959,5 +961,31 @@ func (s *session) media(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", fmt.Sprint(info.Size()))
 	if _, err := io.Copy(w, tmp); err != nil {
 		log.Printf("%s: media: %v", s.user, err)
+	}
+}
+
+// avatar: a person's profile picture, as WhatsApp lets the user see it (their privacy settings
+// can hide it): a link to the full picture, for a while.
+func (s *session) avatar(w http.ResponseWriter, r *http.Request) {
+	number := strings.TrimPrefix(strings.TrimSpace(r.URL.Query().Get("phone")), "+")
+	if number == "" {
+		fail(w, http.StatusBadRequest, fmt.Errorf("phone needed"))
+		return
+	}
+	cli := s.client()
+	if cli.Store.ID == nil {
+		fail(w, http.StatusConflict, fmt.Errorf("not linked"))
+		return
+	}
+	info, err := cli.GetProfilePictureInfo(r.Context(), types.NewJID(number, types.DefaultUserServer), &whatsmeow.GetProfilePictureParams{})
+	switch {
+	case errors.Is(err, whatsmeow.ErrProfilePictureNotSet), errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized):
+		fail(w, http.StatusNotFound, err)
+	case err != nil:
+		fail(w, http.StatusBadGateway, err)
+	case info == nil || info.URL == "":
+		fail(w, http.StatusNotFound, fmt.Errorf("no picture"))
+	default:
+		reply(w, http.StatusOK, map[string]any{"url": info.URL, "id": info.ID})
 	}
 }
