@@ -179,7 +179,13 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
     let replies_off = policy::resolve(&st.pool, &conv.user_id, Kind::Reply, conv.contact_id, Some(conv.id)).await? == Policy::Off;
     let system = system_prompt(&me, &mode, asking, replies_off);
     let user = context(st, &me, &conv, contact.as_ref(), &mode, replies_off).await?;
-    let reply = llm::complete(&st.pool, &system, &user, &tools).await?;
+    // the drafter (the user asked for a reply) may read the vault first; the auto responder and
+    // the intaker never do: what they write can go out on its own
+    let reply = if drafting {
+        llm::complete_reading(&st.pool, &conv.user_id, &system, &user, &tools).await?
+    } else {
+        llm::complete(&st.pool, &system, &user, &tools).await?
+    };
 
     let (triage_id, hold_reply) = match &mode {
         Mode::AfterTriage { triage_id, sig, .. } => (Some(*triage_id), hold_for(sig)),
@@ -291,7 +297,15 @@ fn system_prompt(me: &Owner, mode: &Mode<'_>, asking: bool, replies_off: bool) -
     match mode {
         Mode::Draft { .. } => {
             s.push_str(&replying);
-            s.push_str(&format!("\n- {name} asked for a reply now: propose exactly one reply."));
+            s.push_str(&format!(
+                "\n- {name} asked for a reply now: propose exactly one reply.\n\
+                 - You are Pigeon's drafter: {name} reads your reply before it goes. When it needs facts from {name}'s vault \
+                 (a plan, a trip, a date, an address, what was agreed, their notes, tasks and calendar), look them up first \
+                 with the read tools ({reads}), then write; their instructions may say what to look for. Use only what this \
+                 person should know: never pass on other people's private matters, credentials, money or health details \
+                 unless {name}'s instructions ask for exactly that.",
+                reads = llm::VAULT_READS.join(", ")
+            ));
         }
         Mode::AfterTriage { role: Role::Responder, .. } => {
             s.push_str(&replying);

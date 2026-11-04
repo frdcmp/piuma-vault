@@ -97,6 +97,22 @@ pub async fn vault_write(pool: &DbPool, user_id: &str, name: &str, args: &Value)
     }
 }
 
+/// The vault reads Pigeon's drafter makes (notes, tasks, the calendar, the agenda), as the user:
+/// Piuma's read tools only, nothing that writes.
+pub async fn vault_read(pool: &DbPool, user_id: &str, name: &str, args: &Value) -> Result<Value, String> {
+    match name {
+        "search_notes" => notes::search_notes(pool, user_id, args).await,
+        "read_note" => notes::read_note(pool, user_id, args).await,
+        "browse_folder" => notes::browse_folder(pool, user_id, args).await,
+        "list_tasks" => tasks::list_tasks(pool, user_id, args).await,
+        "get_task" => tasks::get_task(pool, user_id, args).await,
+        "list_events" => calendar::list_events(pool, user_id, args).await,
+        "get_event" => calendar::get_event(pool, user_id, args).await,
+        "get_agenda" => agenda::get_agenda(pool, user_id, args).await,
+        other => Err(format!("not a vault read: {other}")),
+    }
+}
+
 /// Execute a tool, returning a JSON result (serialised into the tool message).
 /// `agent` is the active agent kind — used to scope the self-config tools to
 /// that agent's own rows.

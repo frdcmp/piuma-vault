@@ -63,15 +63,64 @@ async fn resolve(pool: &DbPool) -> anyhow::Result<Resolved> {
 pub async fn complete(pool: &DbPool, system: &str, user: &str, tools: &[Json]) -> anyhow::Result<Reply> {
     let r = resolve(pool).await?;
     let messages = [json!({ "role": "system", "content": system }), json!({ "role": "user", "content": user })];
+    let res = call(pool, &r, &messages, tools, "pigeon").await?;
+    Ok(reply_of(res))
+}
+
+/// The vault's tools the drafter may read with (Piuma's own, read-only: notes, tasks, the
+/// calendar, the agenda). Nothing that writes, and nothing the auto responder ever gets.
+pub const VAULT_READS: &[&str] = &["search_notes", "read_note", "browse_folder", "list_tasks", "get_task", "list_events", "get_event", "get_agenda"];
+/// Rounds of looking things up before the drafter must write.
+const READ_ROUNDS: usize = 6;
+
+/// The drafter's turn: like `complete`, and the model may first look things up in the user's vault
+/// (`VAULT_READS`, run as `user`), a few rounds, before it calls one of `tools`. Its reads are
+/// logged; any other tool it names that isn't in `tools` is refused.
+pub async fn complete_reading(pool: &DbPool, user_id: &str, system: &str, user: &str, tools: &[Json]) -> anyhow::Result<Reply> {
+    let r = resolve(pool).await?;
+    let reads: Vec<String> = VAULT_READS.iter().map(|s| s.to_string()).collect();
+    let mut all: Vec<Json> = tools.to_vec();
+    all.extend(crate::apps::agents::tools::schemas_for(&reads));
+    let mut messages = vec![json!({ "role": "system", "content": system }), json!({ "role": "user", "content": user })];
+    for round in 0..=READ_ROUNDS {
+        // the last round: only the actions, it writes now
+        let offered: &[Json] = if round == READ_ROUNDS { tools } else { &all };
+        let res = call(pool, &r, &messages, offered, "pigeon-draft").await?;
+        let reading: Vec<&providers::ToolCall> = res.tool_calls.iter().filter(|c| VAULT_READS.contains(&c.name.as_str())).collect();
+        if reading.is_empty() {
+            return Ok(reply_of(res));
+        }
+        messages.push(json!({
+            "role": "assistant",
+            "content": if res.text.is_empty() { Json::Null } else { Json::String(res.text.clone()) },
+            "tool_calls": res.tool_calls.iter().map(|t| json!({ "id": t.id, "type": "function", "function": { "name": t.name, "arguments": t.arguments }, "thought_signature": t.thought_signature })).collect::<Vec<_>>(),
+        }));
+        for c in &res.tool_calls {
+            let args: Json = serde_json::from_str(&c.arguments).unwrap_or_else(|_| json!({}));
+            let out = if VAULT_READS.contains(&c.name.as_str()) {
+                log::info!("pigeon draft: reads {} {}", c.name, crate::apps::pigeon::conversations::clip(&args.to_string(), 120));
+                crate::apps::agents::tools::vault_read(pool, user_id, &c.name, &args).await.unwrap_or_else(|e| json!({ "error": e }))
+            } else {
+                // an action alongside reads: not yet, it writes once it has read
+                json!({ "error": "not done: read first, then call it again" })
+            };
+            messages.push(json!({ "role": "tool", "tool_call_id": c.id, "content": serde_json::to_string(&out).unwrap_or_default() }));
+        }
+    }
+    anyhow::bail!("the drafter kept reading and wrote nothing")
+}
+
+/// One call to the model, its tokens to the usage ledger under `source`.
+async fn call(pool: &DbPool, r: &Resolved, messages: &[Json], tools: &[Json], source: &str) -> anyhow::Result<providers::CallResult> {
     // nobody streams it: the deltas go nowhere
     let (tx, _rx) = mpsc::unbounded();
-    let res = providers::call(&r.kind, &r.api_key, r.base_url.as_deref(), &r.model, &messages, tools, &tx)
+    let res = providers::call(&r.kind, &r.api_key, r.base_url.as_deref(), &r.model, messages, tools, &tx)
         .await
         .map_err(|e| anyhow::anyhow!("the model refused: {e}"))?;
     if res.tokens_in + res.tokens_out > 0 {
         let _ = sqlx::query(
             "INSERT INTO db_token_usage (kind, source, provider_kind, model, tokens_input, tokens_output, tokens_cached, tokens_cache_write)
-             VALUES ('chat', 'pigeon', $1, $2, $3, $4, $5, $6)",
+             VALUES ('chat', $7, $1, $2, $3, $4, $5, $6)",
         )
         .bind(&r.kind)
         .bind(&r.model)
@@ -79,15 +128,20 @@ pub async fn complete(pool: &DbPool, system: &str, user: &str, tools: &[Json]) -
         .bind(res.tokens_out)
         .bind(res.tokens_cached)
         .bind(res.tokens_cache_write)
+        .bind(source)
         .execute(pool)
         .await;
     }
+    Ok(res)
+}
+
+fn reply_of(res: providers::CallResult) -> Reply {
     let tool_calls = res
         .tool_calls
         .into_iter()
         .map(|c| ToolCall { args: serde_json::from_str(&c.arguments).unwrap_or_else(|_| json!({})), name: c.name })
         .collect();
-    Ok(Reply { text: res.text, tool_calls })
+    Reply { text: res.text, tool_calls }
 }
 
 /// Plain text, no tools.
