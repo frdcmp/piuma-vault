@@ -102,6 +102,9 @@ pub async fn before_send(st: &State, c: &dyn Connector, conversation: Uuid, text
         let elapsed = last_in.map_or(0.0, |t| (Utc::now() - t).num_milliseconds() as f64 / 1000.0);
         pause = pause.max(land - typing - elapsed);
     }
+    // the chat shows it typing, and when the reply lands
+    let lands = Utc::now() + chrono::Duration::milliseconds(((pause + plan.iter().map(|(on, off)| on + off).sum::<f64>()) * 1000.0) as i64);
+    crate::apps::pigeon::events::working(&st.pool, conversation, "typing", Some(lands), None).await;
     if let Some(why) = wait(st, conversation, since, pause).await? {
         return Ok(Some(why));
     }

@@ -245,9 +245,12 @@ pub async fn ingest(pool: &DbPool, inc: &Incoming, debounce: Duration) -> anyhow
         }
     }
     crate::apps::pigeon::events::publish(pool, &inc.user_id, "conversation", Some(conversation_id)).await;
-    // a new message from them: the worker pushes it to the phone, by their alert switch
+    // a new message from them: the worker pushes it to the phone, by their alert switch, and
+    // the chat shows Pigeon reading it (the triage comes after the debounce)
     if inc.direction == Direction::In && inc.triage {
         crate::apps::pigeon::events::publish(pool, &inc.user_id, events_kind::MESSAGE_IN, Some(item_id)).await;
+        let due = Utc::now() + chrono::Duration::from_std(debounce).unwrap_or_default();
+        crate::apps::pigeon::events::working(pool, conversation_id, "reading", Some(due), None).await;
     }
     Ok(Some(Ingested { conversation_id }))
 }

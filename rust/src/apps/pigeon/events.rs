@@ -23,6 +23,9 @@ const CHANNEL: &str = "pigeon_events";
 pub mod kinds {
     /// A message from someone came in (`id`: the item): the worker pushes it to the phone.
     pub const MESSAGE_IN: &str = "message_in";
+    /// Where Pigeon is with a conversation's newest messages (`id`; `data`: {stage, until?,
+    /// outcome?}): reading · analysing · deciding · typing · done. The chat shows it.
+    pub const WORKING: &str = "pigeon_working";
 }
 const HEARTBEAT_SECS: u64 = 20;
 
@@ -32,14 +35,43 @@ pub struct Event {
     /// conversation (its messages, cards or switches changed) · news · connections · message_in
     pub kind: String,
     pub id: Option<Uuid>,
+    /// what some kinds carry (`WORKING`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
 }
 
 /// Tell the user's open apps that something changed. Best effort.
 pub async fn publish(pool: &DbPool, user_id: &str, kind: &str, id: Option<Uuid>) {
-    let ev = Event { user_id: user_id.to_string(), kind: kind.to_string(), id };
+    publish_with(pool, user_id, kind, id, None).await
+}
+
+/// The same, with what the event carries.
+pub async fn publish_with(pool: &DbPool, user_id: &str, kind: &str, id: Option<Uuid>, data: Option<serde_json::Value>) {
+    let ev = Event { user_id: user_id.to_string(), kind: kind.to_string(), id, data };
     let payload = serde_json::to_string(&ev).unwrap_or_default();
     if let Err(e) = sqlx::query("SELECT pg_notify($1, $2)").bind(CHANNEL).bind(payload).execute(pool).await {
         log::debug!("pigeon events: {e}");
+    }
+}
+
+/// Where Pigeon is with a conversation's newest messages: the chat shows the step. `until`: when
+/// the step ends, where known (the reply lands); `outcome` with "done".
+pub async fn working(pool: &DbPool, conversation: Uuid, stage: &str, until: Option<chrono::DateTime<chrono::Utc>>, outcome: Option<&str>) {
+    let user: Option<String> = sqlx::query_scalar("SELECT user_id FROM db_pigeon_conversations WHERE id = $1")
+        .bind(conversation)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+    if let Some(u) = user {
+        let mut data = serde_json::json!({ "stage": stage });
+        if let Some(t) = until {
+            data["until"] = serde_json::json!(t);
+        }
+        if let Some(o) = outcome {
+            data["outcome"] = serde_json::json!(o);
+        }
+        publish_with(pool, &u, kinds::WORKING, Some(conversation), Some(data)).await;
     }
 }
 
@@ -114,7 +146,7 @@ pub async fn stream(req: HttpRequest, query: web::Query<SseAuth>, bus: web::Data
             tokio::select! {
                 ev = rx.recv() => match ev {
                     Ok(ev) if ev.user_id == user => {
-                        let data = serde_json::json!({ "kind": ev.kind, "id": ev.id });
+                        let data = serde_json::json!({ "kind": ev.kind, "id": ev.id, "data": ev.data });
                         let frame = format!("event: pigeon\ndata: {data}\n\n");
                         return Some((Ok::<_, actix_web::Error>(web::Bytes::from(frame)), (rx, tick, user)));
                     }

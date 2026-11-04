@@ -125,21 +125,33 @@ pub async fn run_due(st: &AppState) -> anyhow::Result<usize> {
 }
 
 pub async fn triage(st: &State, id: Uuid) -> anyhow::Result<()> {
+    let r = triage_inner(st, id).await;
+    // the chat shows where it ended: replied · asked · nothing · paused · stopped · failed
+    let outcome = match &r {
+        Ok(o) => *o,
+        Err(_) => "failed",
+    };
+    crate::apps::pigeon::events::working(&st.pool, id, "done", None, Some(outcome)).await;
+    r.map(|_| ())
+}
+
+async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
     let started = chrono::Utc::now();
-    let Some(conv) = conversations::get(&st.pool, id).await? else { return Ok(()) };
+    let Some(conv) = conversations::get(&st.pool, id).await? else { return Ok("stopped") };
     let items = conversations::recent_items(&st.pool, id, 30).await?;
     // what came in since the last triage started (all of it, the first time; history brought in
     // on connect counts as seen)
     let new: Vec<&conversations::Item> =
         items.iter().filter(|i| i.direction == "in" && conv.triaged_at.map_or(true, |t| i.created_at > t)).collect();
     if new.is_empty() {
-        return Ok(());
+        return Ok("stopped");
     }
+    crate::apps::pigeon::events::working(&st.pool, id, "analysing", None, None).await;
     // answered since (the user from their phone, while Pigeon held back): nothing left to do
     if items.last().is_some_and(|l| l.direction == "out") {
         sqlx::query("UPDATE db_pigeon_conversations SET triaged_at = $2 WHERE id = $1").bind(id).bind(started).execute(&st.pool).await?;
         log::info!("triage {id}: answered since, nothing to do");
-        return Ok(());
+        return Ok("stopped");
     }
     let Some(jev) = &st.jev else {
         // no AI: everything new is shown, nothing is judged
@@ -148,7 +160,7 @@ pub async fn triage(st: &State, id: Uuid) -> anyhow::Result<()> {
             .bind(started)
             .execute(&st.pool)
             .await?;
-        return Ok(());
+        return Ok("nothing");
     };
     let contact = conversations::contact(&st.pool, conv.contact_id).await?;
     let them = conversations::who(contact.as_ref(), &conv);
@@ -307,8 +319,9 @@ pub async fn triage(st: &State, id: Uuid) -> anyhow::Result<()> {
     let needs = matches!(attention, Some("reply" | "action")) && crate::apps::pigeon::ai::llm::available(&st.pool).await;
     if !needs {
         sqlx::query("UPDATE db_pigeon_conversations SET triaged_at = $2 WHERE id = $1").bind(id).bind(started).execute(&st.pool).await?;
-        return Ok(());
+        return Ok("nothing");
     }
+    crate::apps::pigeon::events::working(&st.pool, id, "deciding", None, None).await;
     // a new round: what was proposed, asked or told the user before these messages is stale
     if let Err(e) = cards::supersede(st, id).await {
         log::warn!("triage {id}: superseding: {e:#}");
@@ -334,7 +347,7 @@ pub async fn triage(st: &State, id: Uuid) -> anyhow::Result<()> {
             sqlx::query("UPDATE db_pigeon_conversations SET triaged_at = $2 WHERE id = $1").bind(id).bind(started).execute(&st.pool).await?;
         }
         log::info!("triage {id}: the auto reply stopped, {}", outcomes[0].detail.as_deref().unwrap_or_default());
-        return Ok(());
+        return Ok("stopped");
     }
     let answered = matches!(replied.as_deref(), Some("done" | "pending"));
     // with their replies off the user answers them: the intaker only for something to do
@@ -358,7 +371,7 @@ pub async fn triage(st: &State, id: Uuid) -> anyhow::Result<()> {
             .execute(&st.pool)
             .await?;
         log::info!("triage {id}: the user is writing there, back at {until}");
-        return Ok(());
+        return Ok("paused");
     }
     // triaged: what came in before `started` counts as seen from here (cut off before this line,
     // the triage runs again: `run_due`'s lease)
@@ -392,7 +405,13 @@ pub async fn triage(st: &State, id: Uuid) -> anyhow::Result<()> {
             log::warn!("triage {id}: cards: {e:#}");
         }
     }
-    Ok(())
+    Ok(if outcomes.iter().any(|o| o.status == "done") {
+        "replied"
+    } else if outcomes.iter().any(|o| matches!(o.status.as_str(), "pending" | "asked")) || note.is_some() {
+        "asked"
+    } else {
+        "nothing"
+    })
 }
 
 /// Everyone else the new messages went to or copied: not the user, not who sent them.
