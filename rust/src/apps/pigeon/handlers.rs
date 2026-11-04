@@ -273,7 +273,7 @@ pub async fn draft(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid
         tools::own_conversation(&st, user, id).await?;
         let out = agent::draft_reply(&st, id, body.instructions.as_deref()).await?;
         if !out.iter().any(|o| o.status == "pending") {
-            anyhow::bail!("Pigeon wrote nothing (replies may be off here)");
+            anyhow::bail!("Pigeon wrote no draft this time: try again, or tell it what to say");
         }
         Ok(json!({ "drafted": out.len() }))
     }

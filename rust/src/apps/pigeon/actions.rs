@@ -124,7 +124,8 @@ pub async fn propose(st: &State, p: Proposal) -> anyhow::Result<Outcome> {
         anyhow::bail!("{}.{} needs a conversation", p.connector, p.action);
     }
     let pol = policy::resolve(&st.pool, &p.user_id, def.kind, conv.as_ref().and_then(|c| c.contact_id), p.conversation_id).await?;
-    if pol == Policy::Off {
+    // off drops what Pigeon proposes on its own; a draft the user asked for still comes to them
+    if pol == Policy::Off && p.hold.as_deref() != Some(super::agent::ASKED_AS_DRAFT) {
         return Ok(Outcome { id: None, status: "off".into(), detail: Some(format!("{} actions are off here", def.kind.as_str())) });
     }
 

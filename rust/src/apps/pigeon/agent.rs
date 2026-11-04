@@ -175,7 +175,7 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
 
     let (triage_id, hold_reply) = match &mode {
         Mode::AfterTriage { triage_id, sig, .. } => (Some(*triage_id), hold_for(sig)),
-        Mode::Draft { .. } => (None, Some("asked for as a draft".to_string())),
+        Mode::Draft { .. } => (None, Some(ASKED_AS_DRAFT.to_string())),
         Mode::Answer { .. } => (None, None),
     };
     let mut out = Vec::new();
@@ -231,6 +231,10 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
     Ok(out)
 }
 
+
+/// The hold on what the user asked Pigeon to draft: it waits for their yes, and their Off doesn't
+/// drop it (they asked).
+pub const ASKED_AS_DRAFT: &str = "asked for as a draft";
 /// Why a reply after this triage must wait for the user even under auto.
 fn hold_for(sig: &Signals) -> Option<String> {
     if sig.sensitive >= HOLD_AT {
