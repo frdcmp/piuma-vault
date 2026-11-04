@@ -14,6 +14,10 @@
 //! is tried again by the worker's sweep (`retry`), a few times. The apps get each stored file
 //! with a signed link (`sign`), or the file itself to save (`download`).
 //!
+//! What the user sends from the Inbox (a photo, a video, a file) is stored the same way first
+//! (`put_outgoing`, already `stored`): the chat shows it from there, and its channel's connector
+//! takes it from there (`own_file`, `bytes`, `link`) to send it.
+//!
 //! Files are kept for the user's `media_days` (an Inbox setting, `KEEP_DAYS` by default) after
 //! their message: then they leave storage (`expire`) and the entry says `expired`. A message
 //! already older than that (history) never fetches its files.
@@ -140,6 +144,101 @@ pub fn entry(user: &str, connector: &str, at: DateTime<Utc>, kind: &str, label: 
         "status": "pending",
         "source": source,
     })
+}
+
+/// The largest file the user sends: under Cloudflare's 100 MB a request (WhatsApp takes a video
+/// up to 100 MB; Gmail and Instagram take less, and say so).
+pub const MAX_SEND_BYTES: i64 = 95 << 20;
+
+/// What a file the user sends is, by its type: image, video, audio, or document.
+pub fn kind_of(mime: &str) -> &'static str {
+    let base = mime.split(';').next().unwrap_or_default().trim();
+    match base {
+        "image/jpeg" | "image/png" | "image/webp" => "image",
+        b if b.starts_with("video/") => "video",
+        b if b.starts_with("audio/") => "audio",
+        _ => "document",
+    }
+}
+
+/// The words a message's body has for a file ("image", "document: Report.pdf").
+pub fn label_of(kind: &str, name: Option<&str>) -> String {
+    match kind {
+        "document" => format!("document: {}", name.unwrap_or("file")),
+        "voice" => "voice message".into(),
+        k => k.to_string(),
+    }
+}
+
+/// A sent file's message body: its caption, then the file in words.
+pub fn body_with(caption: &str, file: &Json) -> String {
+    let label = format!("[{}]", file["label"].as_str().unwrap_or("attachment"));
+    if caption.trim().is_empty() {
+        label
+    } else {
+        format!("{}\n{label}", caption.trim())
+    }
+}
+
+/// A file the user sends from the Inbox (at `path`, a temporary file), into storage: its entry,
+/// stored. `dims`: its width, height and seconds, where known.
+#[allow(clippy::too_many_arguments)]
+pub async fn put_outgoing(
+    pool: &DbPool,
+    user: &str,
+    connector: &str,
+    mime: &str,
+    name: Option<&str>,
+    path: &std::path::Path,
+    size: i64,
+    dims: &[(&str, u64)],
+) -> anyhow::Result<Json> {
+    let kind = kind_of(mime);
+    let mut e = entry(user, connector, Utc::now(), kind, &label_of(kind, name), Some(mime), name, Json::Null);
+    let key = e["key"].as_str().unwrap_or_default().to_string();
+    let (client, bucket) = s3_client(pool).await.map_err(|e| anyhow::anyhow!(e))?;
+    let body = ByteStream::from_path(path).await.map_err(|e| anyhow::anyhow!("reading the upload: {e}"))?;
+    client.put_object().bucket(&bucket).key(&key).body(body).content_type(mime).send().await.map_err(|e| anyhow::anyhow!("storing it: {e}"))?;
+    if let Some(o) = e.as_object_mut() {
+        o.remove("source");
+        o.insert("status".into(), json!("stored"));
+        o.insert("size".into(), json!(size));
+        for (k, n) in dims.iter().filter(|(_, n)| *n > 0) {
+            o.insert((*k).into(), json!(n));
+        }
+    }
+    Ok(e)
+}
+
+/// A stored file that turned out not to be sent: out of storage again (best effort).
+pub async fn remove(pool: &DbPool, key: &str) {
+    if let Ok((client, bucket)) = s3_client(pool).await {
+        let _ = client.delete_object().bucket(&bucket).key(key).send().await;
+    }
+}
+
+/// The file an action sends (`args.file`, from `put_outgoing`): only a stored one of this
+/// user's own, whoever asks.
+pub fn own_file<'a>(user: &str, args: &'a Json) -> anyhow::Result<&'a Json> {
+    let f = &args["file"];
+    let key = f["key"].as_str().unwrap_or_default();
+    if f["status"] != "stored" || !key.starts_with(&format!("pigeon/{user}/media/")) || key.contains("..") {
+        anyhow::bail!("file: one the user uploaded to send");
+    }
+    Ok(f)
+}
+
+/// A stored file's bytes.
+pub async fn bytes(pool: &DbPool, key: &str) -> anyhow::Result<Vec<u8>> {
+    let (client, bucket) = s3_client(pool).await.map_err(|e| anyhow::anyhow!(e))?;
+    let obj = client.get_object().bucket(&bucket).key(key).send().await.map_err(|e| anyhow::anyhow!("reading it: {e}"))?;
+    Ok(obj.body.collect().await.map_err(|e| anyhow::anyhow!("reading it: {e}"))?.into_bytes().to_vec())
+}
+
+/// A stored file at a link anyone can fetch for an hour (a channel that takes files by URL).
+pub async fn link(pool: &DbPool, key: &str) -> anyhow::Result<String> {
+    let (client, bucket) = s3_client(pool).await.map_err(|e| anyhow::anyhow!(e))?;
+    Ok(download_url(pool, &client, &bucket, key, 3600).await.map_err(|e| anyhow::anyhow!(e))?.0)
 }
 
 /// A file's extension: its name's, else its type's.
@@ -407,6 +506,28 @@ mod tests {
         assert!(key.starts_with("pigeon/u1/media/whatsapp/2026/11/"), "{key}");
         assert!(key.ends_with(&format!("{}.jpg", e["id"].as_str().unwrap())), "{key}");
         assert_eq!(thumb_key(key), key.replace(".jpg", ".thumb.jpg"));
+    }
+
+    #[test]
+    fn only_the_users_own_stored_files_are_sent() {
+        let f = |key: &str, status: &str| json!({ "file": { "key": key, "status": status } });
+        assert!(own_file("u1", &f("pigeon/u1/media/whatsapp/2026/11/a.jpg", "stored")).is_ok());
+        assert!(own_file("u1", &f("pigeon/u2/media/whatsapp/2026/11/a.jpg", "stored")).is_err(), "another user's");
+        assert!(own_file("u1", &f("pigeon/u1/media/../../u2/a.jpg", "stored")).is_err(), "out of the folder");
+        assert!(own_file("u1", &f("pigeon/u1/media/whatsapp/2026/11/a.jpg", "pending")).is_err(), "not stored");
+        assert!(own_file("u1", &json!({})).is_err());
+    }
+
+    #[test]
+    fn what_a_sent_file_is() {
+        assert_eq!(kind_of("image/jpeg"), "image");
+        assert_eq!(kind_of("image/gif"), "document");
+        assert_eq!(kind_of("video/mp4"), "video");
+        assert_eq!(kind_of("audio/mpeg"), "audio");
+        assert_eq!(kind_of("application/pdf"), "document");
+        let file = json!({ "label": "image" });
+        assert_eq!(body_with("", &file), "[image]");
+        assert_eq!(body_with(" look ", &file), "look\n[image]");
     }
 
     #[test]

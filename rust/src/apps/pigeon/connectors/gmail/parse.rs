@@ -269,8 +269,30 @@ fn encode_header(s: &str) -> String {
     }
 }
 
+/// A file attached to an email the user sends.
+pub struct OutFile {
+    pub name: String,
+    pub mime: String,
+    pub data: Vec<u8>,
+}
+
 /// A plain-text reply as `messages.send` wants it (`raw`: base64url of the whole message).
 pub fn reply_raw(from: &str, to: &str, cc: &[String], subject: &str, in_reply_to: Option<&str>, references: Option<&str>, text: &str) -> String {
+    URL_SAFE.encode(reply_message(from, to, cc, subject, in_reply_to, references, text, &[]))
+}
+
+/// A reply, with files attached, as the whole message (RFC 822).
+#[allow(clippy::too_many_arguments)]
+pub fn reply_message(
+    from: &str,
+    to: &str,
+    cc: &[String],
+    subject: &str,
+    in_reply_to: Option<&str>,
+    references: Option<&str>,
+    text: &str,
+    files: &[OutFile],
+) -> String {
     let subject = if subject.to_lowercase().starts_with("re:") { subject.to_string() } else { format!("Re: {subject}") };
     let mut extra = String::new();
     if !cc.is_empty() {
@@ -281,23 +303,47 @@ pub fn reply_raw(from: &str, to: &str, cc: &[String], subject: &str, in_reply_to
         let refs = references.map(|r| format!("{r} {id}")).unwrap_or_else(|| id.to_string());
         extra.push_str(&format!("References: {refs}\r\n"));
     }
-    raw_message(from, to, &subject, &extra, text)
+    message(from, to, &subject, &extra, text, files)
 }
 
 /// A new plain-text email, its own thread.
 pub fn new_raw(from: &str, to: &str, subject: &str, text: &str) -> String {
-    raw_message(from, to, subject, "", text)
+    URL_SAFE.encode(message(from, to, subject, "", text, &[]))
 }
 
-fn raw_message(from: &str, to: &str, subject: &str, extra_headers: &str, text: &str) -> String {
+/// The whole message: plain text, or (with files) the text and each file, multipart/mixed.
+fn message(from: &str, to: &str, subject: &str, extra_headers: &str, text: &str, files: &[OutFile]) -> String {
     let mut m = format!("From: {from}\r\nTo: {to}\r\nSubject: {}\r\nMIME-Version: 1.0\r\n{extra_headers}", encode_header(subject));
-    m.push_str("Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n");
-    let body = STANDARD.encode(text.replace("\r\n", "\n").replace('\n', "\r\n"));
+    let text_part = |m: &mut String| {
+        m.push_str("Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n");
+        push_base64(m, text.replace("\r\n", "\n").replace('\n', "\r\n").as_bytes());
+    };
+    if files.is_empty() {
+        text_part(&mut m);
+        return m;
+    }
+    let boundary = format!("pigeon-{}", uuid::Uuid::new_v4().simple());
+    m.push_str(&format!("Content-Type: multipart/mixed; boundary=\"{boundary}\"\r\n\r\n--{boundary}\r\n"));
+    text_part(&mut m);
+    for f in files {
+        let name = encode_header(&f.name.replace(['"', '\r', '\n'], "_"));
+        m.push_str(&format!(
+            "--{boundary}\r\nContent-Type: {}; name=\"{name}\"\r\nContent-Disposition: attachment; filename=\"{name}\"\r\nContent-Transfer-Encoding: base64\r\n\r\n",
+            f.mime
+        ));
+        push_base64(&mut m, &f.data);
+    }
+    m.push_str(&format!("--{boundary}--\r\n"));
+    m
+}
+
+/// Bytes as base64, in lines of 76.
+fn push_base64(m: &mut String, data: &[u8]) {
+    let body = STANDARD.encode(data);
     for chunk in body.as_bytes().chunks(76) {
         m.push_str(std::str::from_utf8(chunk).expect("base64 is ASCII"));
         m.push_str("\r\n");
     }
-    URL_SAFE.encode(m)
 }
 
 #[cfg(test)]
@@ -309,6 +355,17 @@ mod tests {
     fn a_quote_header_wrapped_onto_two_lines_is_cut() {
         let s = "Ciao come stai?\n\nOn Sun, 1 Nov 2026, 23:14 Alex Doe,\n<alex.doe@example.com> wrote:\n> Hi, could you reply";
         assert_eq!(strip_quoted(s), "Ciao come stai?");
+    }
+
+    #[test]
+    fn a_reply_with_a_file_is_multipart() {
+        let f = OutFile { name: "foto.jpg".into(), mime: "image/jpeg".into(), data: vec![0xff, 0xd8, 0xff] };
+        let m = reply_message("me@x.it", "a@b.it", &[], "Ciao", Some("<abc@mail>"), None, "eccola", &[f]);
+        assert!(m.contains("Content-Type: multipart/mixed; boundary=\"pigeon-"), "{m}");
+        assert!(m.contains("Content-Disposition: attachment; filename=\"foto.jpg\""), "{m}");
+        assert!(m.contains(&STANDARD.encode([0xff, 0xd8, 0xff])), "{m}");
+        assert!(m.contains("In-Reply-To: <abc@mail>"));
+        assert!(m.trim_end().ends_with("--"), "closed");
     }
 
     #[test]

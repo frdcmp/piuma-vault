@@ -32,6 +32,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/jpeg"
+	_ "image/png"
 	"io"
 	"log"
 	"net/http"
@@ -156,6 +159,7 @@ func main() {
 	mux.HandleFunc("GET /u/{user}/status", b.auth((*session).status))
 	mux.HandleFunc("GET /u/{user}/pair", b.auth((*session).pair))
 	mux.HandleFunc("POST /u/{user}/send", b.auth((*session).send))
+	mux.HandleFunc("POST /u/{user}/send-file", b.auth((*session).sendFile))
 	mux.HandleFunc("POST /u/{user}/typing", b.auth((*session).typing))
 	mux.HandleFunc("POST /u/{user}/logout", b.auth((*session).logout))
 	mux.HandleFunc("GET /u/{user}/contacts", b.auth((*session).contacts))
@@ -877,6 +881,145 @@ func (s *session) send(w http.ResponseWriter, r *http.Request) {
 	}
 	s.goOnline(r.Context(), cli)
 	reply(w, http.StatusOK, map[string]any{"id": jid.String() + "/" + resp.ID, "at": resp.Timestamp.UnixMilli()})
+}
+
+// The largest file sent (WhatsApp takes up to 100 MB for a video, more for a document).
+const maxSendFile = 100 << 20
+
+// sendFile: a photo, video, audio or document from the user (multipart: chat, kind, mime, name,
+// caption, width, height, seconds, file), uploaded to WhatsApp and sent as its own message.
+func (s *session) sendFile(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxSendFile+1<<20)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
+	jid, err := types.ParseJID(r.FormValue("chat"))
+	if err != nil || jid.User == "" {
+		fail(w, http.StatusBadRequest, fmt.Errorf("chat: a WhatsApp JID, not %q", r.FormValue("chat")))
+		return
+	}
+	f, _, err := r.FormFile("file")
+	if err != nil {
+		fail(w, http.StatusBadRequest, fmt.Errorf("file: %w", err))
+		return
+	}
+	data, err := io.ReadAll(f)
+	f.Close()
+	if err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	if len(data) == 0 {
+		fail(w, http.StatusBadRequest, errors.New("the file is empty"))
+		return
+	}
+	kind, mime, caption := r.FormValue("kind"), r.FormValue("mime"), r.FormValue("caption")
+	if mime == "" {
+		mime = http.DetectContentType(data)
+	}
+	num := func(k string) uint32 { n, _ := strconv.ParseUint(r.FormValue(k), 10, 32); return uint32(n) }
+	cli := s.loggedIn(w)
+	if cli == nil {
+		return
+	}
+	mediaType := map[string]whatsmeow.MediaType{"image": whatsmeow.MediaImage, "video": whatsmeow.MediaVideo, "audio": whatsmeow.MediaAudio}[kind]
+	if mediaType == "" {
+		kind, mediaType = "document", whatsmeow.MediaDocument
+	}
+	up, err := cli.Upload(r.Context(), data, mediaType)
+	if err != nil {
+		fail(w, http.StatusBadGateway, fmt.Errorf("uploading it to WhatsApp: %w", err))
+		return
+	}
+	var msg waE2E.Message
+	switch kind {
+	case "image":
+		width, height, thumb := imageInfo(data)
+		if width == 0 {
+			width, height = num("width"), num("height")
+		}
+		msg.ImageMessage = &waE2E.ImageMessage{
+			Caption: optional(caption), Mimetype: proto.String(mime), URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
+			MediaKey: up.MediaKey, FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256, FileLength: proto.Uint64(up.FileLength),
+			Width: optionalN(width), Height: optionalN(height), JPEGThumbnail: thumb,
+		}
+	case "video":
+		msg.VideoMessage = &waE2E.VideoMessage{
+			Caption: optional(caption), Mimetype: proto.String(mime), URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
+			MediaKey: up.MediaKey, FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256, FileLength: proto.Uint64(up.FileLength),
+			Width: optionalN(num("width")), Height: optionalN(num("height")), Seconds: optionalN(num("seconds")),
+		}
+	case "audio":
+		msg.AudioMessage = &waE2E.AudioMessage{
+			Mimetype: proto.String(mime), URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
+			MediaKey: up.MediaKey, FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256, FileLength: proto.Uint64(up.FileLength),
+			Seconds: optionalN(num("seconds")),
+		}
+	default:
+		name := r.FormValue("name")
+		if name == "" {
+			name = "file"
+		}
+		msg.DocumentMessage = &waE2E.DocumentMessage{
+			Caption: optional(caption), FileName: proto.String(name), Title: proto.String(name), Mimetype: proto.String(mime),
+			URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
+			MediaKey: up.MediaKey, FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256, FileLength: proto.Uint64(up.FileLength),
+		}
+	}
+	resp, err := cli.SendMessage(r.Context(), jid, &msg)
+	if err != nil {
+		fail(w, http.StatusBadGateway, err)
+		return
+	}
+	s.goOnline(r.Context(), cli)
+	reply(w, http.StatusOK, map[string]any{"id": jid.String() + "/" + resp.ID, "at": resp.Timestamp.UnixMilli(), "kind": kind})
+}
+
+func optional(s string) *string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	return proto.String(s)
+}
+
+func optionalN(n uint32) *uint32 {
+	if n == 0 {
+		return nil
+	}
+	return proto.Uint32(n)
+}
+
+// imageInfo: a JPEG or PNG's size and the small preview WhatsApp shows while it downloads
+// (zeros and nil for what Go can't read).
+func imageInfo(data []byte) (uint32, uint32, []byte) {
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return 0, 0, nil
+	}
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w == 0 || h == 0 {
+		return 0, 0, nil
+	}
+	// 72 px on its long side, nearest neighbour (it's shown blurred)
+	tw, th := 72, 72*h/w
+	if h > w {
+		tw, th = 72*w/h, 72
+	}
+	tw, th = max(tw, 1), max(th, 1)
+	thumb := image.NewRGBA(image.Rect(0, 0, tw, th))
+	for y := range th {
+		for x := range tw {
+			thumb.Set(x, y, img.At(b.Min.X+x*w/tw, b.Min.Y+y*h/th))
+		}
+	}
+	var out bytes.Buffer
+	if jpeg.Encode(&out, thumb, &jpeg.Options{Quality: 60}) != nil {
+		return uint32(w), uint32(h), nil
+	}
+	return uint32(w), uint32(h), out.Bytes()
 }
 
 func (s *session) typing(w http.ResponseWriter, r *http.Request) {

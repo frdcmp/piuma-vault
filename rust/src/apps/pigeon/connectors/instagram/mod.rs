@@ -249,6 +249,67 @@ async fn pigeon_sent(st: &State, user: &str, other: &str, body: &str) -> anyhow:
     .await?)
 }
 
+/// A file the user uploaded, sent to `other`: Instagram fetches it from a link (for an hour), and
+/// a caption follows as its own message, as Instagram shows them. Both stored as Pigeon's.
+async fn send_file(st: &State, user: &str, connection: i32, other: &str, args: &Json) -> anyhow::Result<Json> {
+    let f = media::own_file(user, args)?;
+    let caption = args["caption"].as_str().unwrap_or_default().trim();
+    if caption.len() > MAX_TEXT {
+        anyhow::bail!("the caption is {} bytes; Instagram takes {MAX_TEXT} at most", caption.len());
+    }
+    // Instagram's: images up to 8 MB, the rest up to 25 MB
+    let kind = match f["kind"].as_str() {
+        Some(k @ ("image" | "video" | "audio")) => k,
+        _ => "file",
+    };
+    let cap: i64 = if kind == "image" { 8 << 20 } else { 25 << 20 };
+    if f["size"].as_i64().unwrap_or(0) > cap {
+        anyhow::bail!("Instagram takes {kind}s up to {} MB", cap >> 20);
+    }
+    let url = media::link(&st.pool, f["key"].as_str().unwrap_or_default()).await?;
+    let token = api::token(st, connection).await?;
+    let my_id = ig_id(st, connection).await?;
+    let mut ids = Vec::new();
+    let mut parts = vec![(json!({ "attachment": { "type": kind, "payload": { "url": url } } }), format!("[{kind}]"), json!([f]))];
+    if !caption.is_empty() {
+        parts.push((json!({ "text": caption }), caption.to_string(), json!([])));
+    }
+    for (message, body, media) in parts {
+        let sent = match api::graph(&token, "POST", &format!("/{my_id}/messages"), &[], Some(&json!({ "recipient": { "id": other }, "message": message }))).await {
+            Ok(s) => s,
+            Err(e) => {
+                note_dead_token(st, connection, &e).await;
+                return Err(e);
+            }
+        };
+        let mid = sent["message_id"].as_str().unwrap_or_default().to_string();
+        let inc = Incoming {
+            user_id: user.to_string(),
+            connector: ID,
+            connection_id: Some(connection),
+            thread: other.to_string(),
+            thread_title: None,
+            external_id: mid.clone(),
+            direction: Direction::Out,
+            author: Author::Pigeon,
+            sender: Some(my_id.clone()),
+            sender_name: None,
+            subject: None,
+            body,
+            media,
+            raw: json!({ "mid": mid }),
+            at: Utc::now(),
+            counterpart: None,
+            window: None,
+            triage: false,
+        };
+        // its echo, if it came in first, is the same message (its mid): kept as it is
+        items::ingest(&st.pool, &inc, st.cfg.triage_debounce).await?;
+        ids.push(mid);
+    }
+    Ok(json!({ "sent": true, "to": other, "message_id": ids.first(), "message_ids": ids }))
+}
+
 /// One message as an item: its conversation, None when stored already.
 #[allow(clippy::too_many_arguments)]
 async fn store(
@@ -398,11 +459,11 @@ impl Connector for Instagram {
             }),
             on_conversation: true,
             agent: true,
-        }]
+        }, super::whatsapp::send_file_def()]
     }
 
     async fn run(&self, st: &State, user: &str, action: &str, args: &Json, conversation: Option<Uuid>) -> anyhow::Result<Json> {
-        if action != "send_reply" {
+        if action != "send_reply" && action != "send_file" {
             anyhow::bail!("instagram has no action '{action}'");
         }
         let conv = conversation.ok_or_else(|| anyhow::anyhow!("needs a conversation"))?;
@@ -418,6 +479,9 @@ impl Connector for Instagram {
         let connection = connection.ok_or_else(|| anyhow::anyhow!("the conversation has no Instagram account"))?;
         if window.is_none_or(|w| w < Utc::now()) {
             anyhow::bail!("Instagram's 24-hour reply window is closed: they have to write again first");
+        }
+        if action == "send_file" {
+            return send_file(st, user, connection, &other, args).await;
         }
         let text = need_str(args, "text")?;
         if text.len() > MAX_TEXT {

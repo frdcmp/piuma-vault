@@ -105,6 +105,8 @@ fn message_param() -> Json {
 
 pub const ID: &str = "gmail";
 /// Labels whose messages are never items.
+/// The largest file attached to a reply (Gmail's own limit for what it sends is 25 MB).
+const MAX_ATTACHMENT: i64 = 25 << 20;
 const SKIP_LABELS: &[&str] = &["DRAFT", "SPAM", "TRASH", "CHAT"];
 
 #[async_trait]
@@ -135,6 +137,7 @@ impl Connector for Gmail {
                 on_conversation: true,
                 agent: true,
             },
+            super::whatsapp::send_file_def(),
             ActionDef {
                 name: "send",
                 kind: Kind::Reply,
@@ -195,7 +198,24 @@ impl Connector for Gmail {
         let connection = connection.ok_or_else(|| anyhow::anyhow!("the conversation has no Gmail account"))?;
         let token = api::access_token(st, connection).await?;
         match action {
-            "send_reply" => send_reply(st, user, connection, &token, conv, &thread, need_str(args, "text")?).await,
+            "send_reply" => send_reply(st, user, connection, &token, conv, &thread, need_str(args, "text")?, None).await,
+            "send_file" => {
+                let f = media::own_file(user, args)?;
+                if f["size"].as_i64().unwrap_or(0) > MAX_ATTACHMENT {
+                    anyhow::bail!("Gmail takes files up to {} MB", MAX_ATTACHMENT >> 20);
+                }
+                let data = media::bytes(&st.pool, f["key"].as_str().unwrap_or_default()).await?;
+                let file = parse::OutFile {
+                    name: f["name"].as_str().map(str::to_string).unwrap_or_else(|| {
+                        let key = f["key"].as_str().unwrap_or_default();
+                        key.rsplit('/').next().unwrap_or("file").to_string()
+                    }),
+                    mime: f["mime"].as_str().unwrap_or("application/octet-stream").to_string(),
+                    data,
+                };
+                let caption = args["caption"].as_str().unwrap_or_default().trim();
+                send_reply(st, user, connection, &token, conv, &thread, caption, Some((file, f))).await
+            }
             "archive" | "mark_read" | "trash" => {
                 // one message of the thread, when named (and it is of this thread), or all of it
                 let target = match crate::apps::pigeon::connectors::arg_str(args, "message_id") {
@@ -586,7 +606,18 @@ async fn send_new(st: &State, user: &str, args: &Json) -> anyhow::Result<Json> {
 
 /// Reply to the last message from them in the thread, threaded (In-Reply-To, References,
 /// threadId); stored at once as sent by Pigeon, so the next poll finds it there.
-async fn send_reply(st: &State, user: &str, connection: i32, token: &str, conv: Uuid, thread: &str, text: &str) -> anyhow::Result<Json> {
+/// `file`: one the user uploaded (`media::put_outgoing`), attached, and its entry for the message.
+#[allow(clippy::too_many_arguments)]
+async fn send_reply(
+    st: &State,
+    user: &str,
+    connection: i32,
+    token: &str,
+    conv: Uuid,
+    thread: &str,
+    text: &str,
+    file: Option<(parse::OutFile, &Json)>,
+) -> anyhow::Result<Json> {
     let account: String = sqlx::query_scalar("SELECT account FROM db_pigeon_connections WHERE id = $1").bind(connection).fetch_one(&st.pool).await?;
     let last: Option<(Option<String>, Option<String>, Option<Json>)> = sqlx::query_as(
         "SELECT sender, subject, raw FROM db_pigeon_items WHERE conversation_id = $1 AND direction = 'in' ORDER BY at DESC LIMIT 1",
@@ -598,16 +629,29 @@ async fn send_reply(st: &State, user: &str, connection: i32, token: &str, conv: 
     let raw = raw.unwrap_or(Json::Null);
     let to = raw["reply_to"].as_str().map(str::to_string).or(sender).ok_or_else(|| anyhow::anyhow!("no address to reply to"))?;
     let cc = reply_all_cc(&raw, &account, &to);
-    let mime = parse::reply_raw(
-        &account,
-        &to,
-        &cc,
-        subject.as_deref().unwrap_or(""),
-        raw["message_id"].as_str(),
-        raw["references"].as_str(),
-        text,
-    );
-    let sent = api::gmail_ok(token, "POST", "/messages/send", &[], Some(&json!({ "raw": mime, "threadId": thread }))).await?;
+    let (body, media) = match &file {
+        Some((_, entry)) => (media::body_with(text, entry), json!([entry])),
+        None => (text.to_string(), json!([])),
+    };
+    let sent = match file {
+        None => {
+            let mime = parse::reply_raw(&account, &to, &cc, subject.as_deref().unwrap_or(""), raw["message_id"].as_str(), raw["references"].as_str(), text);
+            api::gmail_ok(token, "POST", "/messages/send", &[], Some(&json!({ "raw": mime, "threadId": thread }))).await?
+        }
+        Some((attachment, _)) => {
+            let message = parse::reply_message(
+                &account,
+                &to,
+                &cc,
+                subject.as_deref().unwrap_or(""),
+                raw["message_id"].as_str(),
+                raw["references"].as_str(),
+                text,
+                &[attachment],
+            );
+            api::send_upload(token, thread, message).await?
+        }
+    };
     let mid = sent["id"].as_str().unwrap_or_default().to_string();
     let inc = Incoming {
         user_id: user.to_string(),
@@ -621,8 +665,8 @@ async fn send_reply(st: &State, user: &str, connection: i32, token: &str, conv: 
         sender: Some(account.clone()),
         sender_name: None,
         subject: subject.map(|s| if s.to_lowercase().starts_with("re:") { s } else { format!("Re: {s}") }),
-        body: text.to_string(),
-        media: json!([]),
+        body,
+        media,
         raw: json!({ "labels": ["SENT"], "to": [to], "cc": cc }),
         at: Utc::now(),
         counterpart: None,

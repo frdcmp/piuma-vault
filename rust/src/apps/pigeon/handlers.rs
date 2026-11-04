@@ -257,6 +257,97 @@ pub async fn send(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>
     reply(r)
 }
 
+/// The user's photo, video, audio or file, from the Inbox (multipart: `file`, and `caption`,
+/// `width`, `height`, `seconds`): stored, then sent at once on the chat's channel, as theirs.
+pub async fn send_file(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>, mut form: actix_multipart::Multipart) -> HttpResponse {
+    use futures_util::TryStreamExt;
+    use tokio::io::AsyncWriteExt;
+    let user = &u.0.user_id;
+    let id = path.into_inner();
+    let tmp = std::env::temp_dir().join(format!("pigeon-send-{}", Uuid::new_v4()));
+    let r: anyhow::Result<Json> = async {
+        let conv = tools::own_conversation(&st, user, id).await?;
+        let (mut caption, mut file): (String, Option<(String, Option<String>, i64)>) = (String::new(), None);
+        let mut dims: Vec<(&str, u64)> = Vec::new();
+        while let Some(mut field) = form.try_next().await.map_err(|e| anyhow::anyhow!("the upload: {e}"))? {
+            let name = field.name().to_string();
+            if name == "file" {
+                let filename = field.content_disposition().get_filename().map(str::to_string).filter(|n| !n.trim().is_empty());
+                let mime = field.content_type().map(|m| m.essence_str().to_string());
+                let mut out = tokio::fs::File::create(&tmp).await?;
+                let mut size: i64 = 0;
+                while let Some(chunk) = field.try_next().await.map_err(|e| anyhow::anyhow!("the upload: {e}"))? {
+                    size += chunk.len() as i64;
+                    if size > media::MAX_SEND_BYTES {
+                        anyhow::bail!("the file is over {} MB", media::MAX_SEND_BYTES >> 20);
+                    }
+                    out.write_all(&chunk).await?;
+                }
+                out.flush().await?;
+                file = Some((mime.unwrap_or_else(|| "application/octet-stream".into()), filename, size));
+            } else {
+                let mut value = Vec::new();
+                while let Some(chunk) = field.try_next().await.map_err(|e| anyhow::anyhow!("the upload: {e}"))? {
+                    value.extend_from_slice(&chunk);
+                    if value.len() > 8192 {
+                        anyhow::bail!("{name} is too long");
+                    }
+                }
+                let value = String::from_utf8_lossy(&value).to_string();
+                let dim = match name.as_str() {
+                    "caption" => {
+                        caption = value;
+                        continue;
+                    }
+                    "width" => "width",
+                    "height" => "height",
+                    "seconds" => "seconds",
+                    _ => continue,
+                };
+                if let Ok(n) = value.trim().parse::<f64>() {
+                    dims.push((dim, n.round().max(0.0) as u64));
+                }
+            }
+        }
+        let (mime, filename, size) = file.ok_or_else(|| anyhow::anyhow!("no file to send"))?;
+        if size == 0 {
+            anyhow::bail!("the file is empty");
+        }
+        let entry = media::put_outgoing(&st.pool, user, &conv.connector, &mime, filename.as_deref(), &tmp, size, &dims).await?;
+        let key = entry["key"].as_str().unwrap_or_default().to_string();
+        let row = actions::direct(&st, user, &conv.connector, "send_file", json!({ "file": entry, "caption": caption.trim() }), Some(id), "user (Inbox)").await;
+        let row = match row {
+            Ok(r) if r.status == "done" => r,
+            Ok(r) => {
+                media::remove(&st.pool, &key).await;
+                anyhow::bail!("{}", r.error.unwrap_or_else(|| format!("not sent ({})", r.status)));
+            }
+            Err(e) => {
+                media::remove(&st.pool, &key).await;
+                return Err(e);
+            }
+        };
+        // the connector stored it as Pigeon's: it's the user's
+        let result = row.result.clone().unwrap_or(Json::Null);
+        let ids: Vec<String> = match result["message_ids"].as_array() {
+            Some(a) => a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect(),
+            None => result["message_id"].as_str().map(|s| vec![s.to_string()]).unwrap_or_default(),
+        };
+        let items: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM db_pigeon_items WHERE conversation_id = $1 AND external_id = ANY($2) AND author = 'pigeon'")
+            .bind(id)
+            .bind(&ids)
+            .fetch_all(&st.pool)
+            .await?;
+        for item in items {
+            items::mark_mine(&st.pool, item).await?;
+        }
+        Ok(actions::view(&row))
+    }
+    .await;
+    let _ = tokio::fs::remove_file(&tmp).await;
+    reply(r)
+}
+
 /// The user opened the chat: what's in is read.
 pub async fn mark_read(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>) -> HttpResponse {
     let user = &u.0.user_id;

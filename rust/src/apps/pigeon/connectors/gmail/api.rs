@@ -122,6 +122,31 @@ pub async fn gmail(token: &str, method: &str, path: &str, query: &[(&str, String
     Ok(Got::Ok(serde_json::from_str(&text).unwrap_or_else(|_| json!({}))))
 }
 
+/// Send a whole message (RFC 822, attachments and all) in `thread`, through the upload endpoint:
+/// a message with files is larger than a JSON body takes.
+pub async fn send_upload(token: &str, thread: &str, message: String) -> anyhow::Result<Json> {
+    let boundary = format!("pigeon-{}", uuid::Uuid::new_v4().simple());
+    let mut body = format!("--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{}\r\n", json!({ "threadId": thread }));
+    body.push_str(&format!("--{boundary}\r\nContent-Type: message/rfc822\r\n\r\n"));
+    body.push_str(&message);
+    body.push_str(&format!("\r\n--{boundary}--\r\n"));
+    let res = reqwest::Client::new()
+        .post("https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=multipart")
+        .bearer_auth(token)
+        .header(reqwest::header::CONTENT_TYPE, format!("multipart/related; boundary={boundary}"))
+        .body(body)
+        .timeout(Duration::from_secs(5 * 60))
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Gmail unreachable: {e}"))?;
+    let status = res.status();
+    let text = res.text().await.unwrap_or_default();
+    if !status.is_success() {
+        anyhow::bail!("Gmail upload send: {} {}", status.as_u16(), text.chars().take(300).collect::<String>());
+    }
+    Ok(serde_json::from_str(&text).unwrap_or_else(|_| json!({})))
+}
+
 /// The same, where a 404 is an error too.
 pub async fn gmail_ok(token: &str, method: &str, path: &str, query: &[(&str, String)], body: Option<&Json>) -> anyhow::Result<Json> {
     match gmail(token, method, path, query, body).await? {

@@ -79,6 +79,103 @@ async fn bridge(st: &State, user: &str, method: reqwest::Method, path: &str, bod
     Ok(v)
 }
 
+/// The action that sends a file the user uploaded in the Inbox (`media::put_outgoing`): the
+/// user's own, never the agent's.
+pub(crate) fn send_file_def() -> ActionDef {
+    ActionDef {
+        name: "send_file",
+        kind: Kind::Reply,
+        description: "Send a photo, video, audio or file the user uploaded in the Inbox, with an optional caption. The user's only.",
+        params: json!({
+            "type": "object",
+            "properties": {
+                "file": { "type": "object", "description": "The uploaded file's entry" },
+                "caption": { "type": "string" },
+            },
+            "required": ["file"],
+        }),
+        on_conversation: true,
+        agent: false,
+    }
+}
+
+/// A file the user uploaded, sent in `chat` through the bridge (its own message, the caption on
+/// it), and stored with it.
+async fn send_file(st: &State, user: &str, chat: &str, args: &Json) -> anyhow::Result<Json> {
+    let f = media::own_file(user, args)?;
+    let caption = args["caption"].as_str().unwrap_or_default().trim();
+    if caption.len() > MAX_TEXT {
+        anyhow::bail!("the caption is {} bytes; {MAX_TEXT} at most", caption.len());
+    }
+    let data = media::bytes(&st.pool, f["key"].as_str().unwrap_or_default()).await?;
+    let mime = f["mime"].as_str().unwrap_or("application/octet-stream").to_string();
+    let name = f["name"].as_str().unwrap_or("file").to_string();
+    let mut form = reqwest::multipart::Form::new()
+        .text("chat", chat.to_string())
+        .text("kind", f["kind"].as_str().unwrap_or("document").to_string())
+        .text("mime", mime.clone())
+        .text("name", name.clone())
+        .text("caption", caption.to_string());
+    for k in ["width", "height", "seconds"] {
+        if let Some(n) = f[k].as_u64() {
+            form = form.text(k, n.to_string());
+        }
+    }
+    form = form.part("file", reqwest::multipart::Part::bytes(data).file_name(name).mime_str(&mime)?);
+    let c = conf(st)?;
+    let url = format!("{}/u/{}/send-file", c.bridge_url, urlencoding::encode(user));
+    // a video takes a while to go up to WhatsApp
+    let resp = reqwest::Client::new()
+        .post(url)
+        .bearer_auth(&c.secret)
+        .multipart(form)
+        .timeout(std::time::Duration::from_secs(10 * 60))
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("pigeon-whatsapp unreachable: {e}"))?;
+    let status = resp.status();
+    let sent: Json = resp.json().await.unwrap_or(Json::Null);
+    if !status.is_success() {
+        anyhow::bail!("pigeon-whatsapp /send-file: {status} {}", sent["error"].as_str().unwrap_or_default());
+    }
+    let id = store_sent(st, user, chat, &sent, media::body_with(caption, f), json!([f])).await?;
+    Ok(json!({ "sent": true, "to": handle_of_chat(chat), "message_id": id }))
+}
+
+/// What the bridge sent (`sent`: its id and time) stored as Pigeon's, as a reply's is: the
+/// message's id.
+async fn store_sent(st: &State, user: &str, chat: &str, sent: &Json, body: String, media: Json) -> anyhow::Result<String> {
+    let id = sent["id"].as_str().unwrap_or_default().to_string();
+    let at = sent["at"].as_i64().and_then(|ms| Utc.timestamp_millis_opt(ms).single()).unwrap_or_else(Utc::now);
+    let me = sqlx::query_scalar::<_, String>("SELECT account FROM db_pigeon_connections WHERE connector = $1 AND user_id = $2 AND status = 'connected' LIMIT 1")
+        .bind(ID)
+        .bind(user)
+        .fetch_optional(&st.pool)
+        .await?;
+    let inc = Incoming {
+        user_id: user.to_string(),
+        connector: ID,
+        connection_id: connection(st, user).await?,
+        thread: chat.to_string(),
+        thread_title: None,
+        external_id: id.clone(),
+        direction: Direction::Out,
+        author: Author::Pigeon,
+        sender: me,
+        sender_name: None,
+        subject: None,
+        body,
+        media,
+        raw: json!({ "id": id }),
+        at,
+        counterpart: None,
+        window: None,
+        triage: false,
+    };
+    items::ingest(&st.pool, &inc, st.cfg.triage_debounce).await?;
+    Ok(id)
+}
+
 /// A message as pigeon-whatsapp passes it on.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Message {
@@ -343,11 +440,11 @@ impl Connector for Whatsapp {
             }),
             on_conversation: true,
             agent: true,
-        }]
+        }, send_file_def()]
     }
 
     async fn run(&self, st: &State, user: &str, action: &str, args: &Json, conversation: Option<Uuid>) -> anyhow::Result<Json> {
-        if action != "send_reply" {
+        if action != "send_reply" && action != "send_file" {
             anyhow::bail!("whatsapp has no action '{action}'");
         }
         let conv = conversation.ok_or_else(|| anyhow::anyhow!("needs a conversation"))?;
@@ -355,39 +452,15 @@ impl Connector for Whatsapp {
         if owner != user {
             anyhow::bail!("{conv} is not a WhatsApp conversation");
         }
+        if action == "send_file" {
+            return send_file(st, user, &chat, args).await;
+        }
         let text = need_str(args, "text")?;
         if text.len() > MAX_TEXT {
             anyhow::bail!("the reply is {} bytes; {MAX_TEXT} at most", text.len());
         }
         let sent = bridge(st, user, reqwest::Method::POST, "/send", Some(&json!({ "chat": chat, "text": text }))).await?;
-        let id = sent["id"].as_str().unwrap_or_default().to_string();
-        let at = sent["at"].as_i64().and_then(|ms| Utc.timestamp_millis_opt(ms).single()).unwrap_or_else(Utc::now);
-        let me = sqlx::query_scalar::<_, String>("SELECT account FROM db_pigeon_connections WHERE connector = $1 AND user_id = $2 AND status = 'connected' LIMIT 1")
-            .bind(ID)
-            .bind(user)
-            .fetch_optional(&st.pool)
-            .await?;
-        let inc = Incoming {
-            user_id: user.to_string(),
-            connector: ID,
-            connection_id: connection(st, user).await?,
-            thread: chat.clone(),
-            thread_title: None,
-            external_id: id.clone(),
-            direction: Direction::Out,
-            author: Author::Pigeon,
-            sender: me,
-            sender_name: None,
-            subject: None,
-            body: text.to_string(),
-            media: json!([]),
-            raw: json!({ "id": id }),
-            at,
-            counterpart: None,
-            window: None,
-            triage: false,
-        };
-        items::ingest(&st.pool, &inc, st.cfg.triage_debounce).await?;
+        let id = store_sent(st, user, &chat, &sent, text.to_string(), json!([])).await?;
         Ok(json!({ "sent": true, "to": handle_of_chat(&chat), "message_id": id }))
     }
 
