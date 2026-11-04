@@ -233,6 +233,8 @@ pub async fn ingest(pool: &DbPool, inc: &Incoming, debounce: Duration) -> anyhow
     }
     tx.commit().await?;
     log::debug!("pigeon item {item_id} in {conversation_id}");
+    // its photos, videos and files, into storage
+    crate::apps::pigeon::media::fetch_soon(pool, item_id, &inc.media);
     crate::apps::pigeon::events::publish(pool, &inc.user_id, "conversation", Some(conversation_id)).await;
     // a new message from them: the worker pushes it to the phone, by their alert switch
     if inc.direction == Direction::In && inc.triage {

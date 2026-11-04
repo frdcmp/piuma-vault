@@ -1,0 +1,318 @@
+//! Media: the photos, videos, voice notes and files that come with messages, kept in the vault's
+//! storage (S3), each under its own UUID:
+//!
+//!   pigeon/<user>/media/<channel>/<yyyy>/<mm>/<uuid>.<ext>     the file
+//!   pigeon/<user>/media/<channel>/<yyyy>/<mm>/<uuid>.thumb.jpg  its preview (WhatsApp's)
+//!
+//! A message's `media` lists them: `{id, kind, label, mime, name, size, seconds, width, height,
+//! key, thumb, status}` each (`status`: pending, stored, gone (the channel no longer has it),
+//! failed), and while pending, `source`: where to fetch it (`wa`: the WhatsApp bridge's details,
+//! `url`, `gmail`: {message, attachment}). A string in the list is something that isn't a file
+//! (a location, a contact, a poll), or a message from before files were kept.
+//!
+//! Every file is fetched right after its message is stored (`fetch_soon`); what didn't make it
+//! is tried again by the worker's sweep (`retry`), a few times. The apps get each stored file
+//! with a signed link (`sign`).
+
+use std::path::PathBuf;
+use std::sync::LazyLock;
+use std::time::Duration;
+
+use aws_sdk_s3::primitives::ByteStream;
+use base64::Engine;
+use chrono::{DateTime, Datelike, Utc};
+use futures_util::StreamExt;
+use serde_json::{json, Value as Json};
+use tokio::io::AsyncWriteExt;
+use uuid::Uuid;
+
+use crate::apps::pigeon::connectors::{gmail, whatsapp};
+use crate::apps::pigeon::state::{self, State};
+use crate::apps::storage::handlers::{download_url, s3_client};
+use crate::db::db::DbPool;
+
+/// How many files are fetched at once (a history brings many).
+static FETCHING: LazyLock<tokio::sync::Semaphore> = LazyLock::new(|| tokio::sync::Semaphore::new(3));
+/// Tries before a file is given up as failed.
+const TRIES: i64 = 5;
+/// How long a signed link lasts.
+const LINK_SECS: i64 = 24 * 3600;
+
+/// A new file of a message, to fetch: its entry in the message's `media`.
+#[allow(clippy::too_many_arguments)]
+pub fn entry(user: &str, connector: &str, at: DateTime<Utc>, kind: &str, label: &str, mime: Option<&str>, name: Option<&str>, source: Json) -> Json {
+    let id = Uuid::new_v4();
+    let ext = extension(mime, name);
+    let dir = format!("pigeon/{user}/media/{connector}/{:04}/{:02}", at.year(), at.month());
+    json!({
+        "id": id,
+        "kind": kind,
+        "label": label,
+        "mime": mime,
+        "name": name.filter(|n| !n.trim().is_empty()),
+        "key": format!("{dir}/{id}.{ext}"),
+        "status": "pending",
+        "source": source,
+    })
+}
+
+/// A file's extension: its name's, else its type's.
+fn extension(mime: Option<&str>, name: Option<&str>) -> String {
+    if let Some(e) = name.and_then(|n| n.rsplit_once('.')).map(|(_, e)| e.to_lowercase()).filter(|e| !e.is_empty() && e.len() <= 8 && e.chars().all(|c| c.is_ascii_alphanumeric())) {
+        return e;
+    }
+    let base = mime.unwrap_or_default().split(';').next().unwrap_or_default().trim();
+    match base {
+        "image/jpeg" => "jpg",
+        "image/png" => "png",
+        "image/webp" => "webp",
+        "image/gif" => "gif",
+        "image/heic" => "heic",
+        "video/mp4" => "mp4",
+        "video/3gpp" => "3gp",
+        "video/quicktime" => "mov",
+        "audio/ogg" => "ogg",
+        "audio/mpeg" => "mp3",
+        "audio/mp4" | "audio/aac" => "m4a",
+        "audio/amr" => "amr",
+        "application/pdf" => "pdf",
+        _ => "bin",
+    }
+    .to_string()
+}
+
+/// The pending files of a message: fetch them now, in the background.
+pub fn fetch_soon(pool: &DbPool, item: Uuid, media: &Json) {
+    if !has_pending(media) {
+        return;
+    }
+    let st = state::shared(pool);
+    tokio::spawn(async move {
+        if let Err(e) = fetch(&st, item).await {
+            log::warn!("pigeon media of {item}: {e:#}");
+        }
+    });
+}
+
+fn has_pending(media: &Json) -> bool {
+    media.as_array().is_some_and(|a| a.iter().any(|m| m["status"] == "pending"))
+}
+
+/// Messages whose files are still pending (their fetch failed, or the process stopped): tried again.
+pub async fn retry(st: &State) -> anyhow::Result<usize> {
+    let items: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM db_pigeon_items WHERE media @> '[{\"status\": \"pending\"}]'::jsonb AND created_at < NOW() - INTERVAL '2 minutes'
+          ORDER BY created_at DESC LIMIT 20",
+    )
+    .fetch_all(&st.pool)
+    .await?;
+    for &item in &items {
+        if let Err(e) = fetch(st, item).await {
+            log::warn!("pigeon media of {item}: {e:#}");
+        }
+    }
+    Ok(items.len())
+}
+
+/// Why a file couldn't be had.
+pub(crate) enum Miss {
+    /// the channel no longer has it (for good)
+    Gone(String),
+    /// worth another try
+    Failed(String),
+}
+
+
+/// Fetch a message's pending files into storage, one by one, each entry updated as it goes.
+async fn fetch(st: &State, item: Uuid) -> anyhow::Result<()> {
+    let row: Option<(String, Uuid, Json)> = sqlx::query_as(
+        "SELECT c.user_id, c.id, i.media FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id WHERE i.id = $1",
+    )
+    .bind(item)
+    .fetch_optional(&st.pool)
+    .await?;
+    let Some((user, conversation, media)) = row else { return Ok(()) };
+    for m in media.as_array().into_iter().flatten().filter(|m| m["status"] == "pending") {
+        let Some(id) = m["id"].as_str() else { continue };
+        let _turn = FETCHING.acquire().await?;
+        let patch = match keep(st, &user, item, m).await {
+            Ok(size) => json!({ "status": "stored", "size": size, "source": null, "error": null }),
+            Err(Miss::Gone(why)) => json!({ "status": "gone", "source": null, "error": why }),
+            Err(Miss::Failed(why)) => {
+                let tries = m["tries"].as_i64().unwrap_or(0) + 1;
+                log::info!("pigeon media {id} of {item}: try {tries}: {why}");
+                if tries >= TRIES {
+                    json!({ "status": "failed", "tries": tries, "source": null, "error": why })
+                } else {
+                    json!({ "tries": tries, "error": why })
+                }
+            }
+        };
+        update(&st.pool, item, id, &patch).await?;
+    }
+    // the chat shows them
+    crate::apps::pigeon::events::publish(&st.pool, &user, "conversation", Some(conversation)).await;
+    Ok(())
+}
+
+/// One entry of a message's media changed (`patch`'s nulls remove).
+async fn update(pool: &DbPool, item: Uuid, id: &str, patch: &Json) -> anyhow::Result<()> {
+    sqlx::query(
+        "UPDATE db_pigeon_items SET media = (
+            SELECT jsonb_agg(CASE WHEN jsonb_typeof(e) = 'object' AND e->>'id' = $2 THEN jsonb_strip_nulls(e || $3) ELSE e END ORDER BY n)
+              FROM jsonb_array_elements(media) WITH ORDINALITY AS x(e, n))
+          WHERE id = $1",
+    )
+    .bind(item)
+    .bind(id)
+    .bind(patch)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// A file from its channel into storage (its preview too): its size.
+async fn keep(st: &State, user: &str, item: Uuid, m: &Json) -> Result<i64, Miss> {
+    let key = m["key"].as_str().ok_or_else(|| Miss::Gone("no key".into()))?;
+    let mime = m["mime"].as_str().unwrap_or("application/octet-stream");
+    let source = &m["source"];
+    let (client, bucket) = s3_client(&st.pool).await.map_err(Miss::Failed)?;
+
+    // the preview first: small, and the chat shows it while the file comes
+    if let Some(t) = source["wa"]["thumb"].as_str().filter(|t| !t.is_empty()) {
+        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(t) {
+            let thumb = thumb_key(key);
+            if client.put_object().bucket(&bucket).key(&thumb).body(ByteStream::from(bytes)).content_type("image/jpeg").send().await.is_ok() {
+                if let Some(id) = m["id"].as_str() {
+                    let _ = update(&st.pool, item, id, &json!({ "thumb": thumb })).await;
+                }
+            }
+        }
+    }
+
+    let tmp = std::env::temp_dir().join(format!("pigeon-media-{}", Uuid::new_v4()));
+    let got = if source["wa"].is_object() {
+        let mut wa = source["wa"].clone();
+        if let Some(o) = wa.as_object_mut() {
+            o.remove("thumb");
+        }
+        match whatsapp::media(st, user, &wa).await {
+            Ok(resp) => save(resp, &tmp).await,
+            Err(e) => Err(e),
+        }
+    } else if let Some(url) = source["url"].as_str() {
+        match http().get(url).send().await {
+            Ok(r) if r.status().as_u16() == 404 || r.status().as_u16() == 410 || r.status().as_u16() == 403 => {
+                Err(Miss::Gone(format!("{}", r.status())))
+            }
+            Ok(r) if r.status().is_success() => save(r, &tmp).await,
+            Ok(r) => Err(Miss::Failed(format!("{}", r.status()))),
+            Err(e) => Err(Miss::Failed(e.to_string())),
+        }
+    } else if source["gmail"].is_object() {
+        let (mid, aid) = (source["gmail"]["message"].as_str().unwrap_or_default(), source["gmail"]["attachment"].as_str().unwrap_or_default());
+        match gmail::attachment(st, user, item, mid, aid).await {
+            Ok(bytes) => tokio::fs::write(&tmp, &bytes).await.map(|_| bytes.len() as i64).map_err(|e| Miss::Failed(e.to_string())),
+            Err(e) => Err(Miss::Failed(format!("{e:#}"))),
+        }
+    } else {
+        Err(Miss::Gone("nowhere to fetch it from".into()))
+    };
+    let size = match got {
+        Ok(n) => n,
+        Err(e) => {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(e);
+        }
+    };
+    let up = match ByteStream::from_path(&tmp).await {
+        Ok(body) => client.put_object().bucket(&bucket).key(key).body(body).content_type(mime).send().await.map(|_| ()).map_err(|e| Miss::Failed(format!("storing it: {e}"))),
+        Err(e) => Err(Miss::Failed(format!("reading it back: {e}"))),
+    };
+    let _ = tokio::fs::remove_file(&tmp).await;
+    up.map(|_| size)
+}
+
+/// A response's body to a file, as it comes (a video can be large): its size.
+async fn save(resp: reqwest::Response, to: &PathBuf) -> Result<i64, Miss> {
+    let mut file = tokio::fs::File::create(to).await.map_err(|e| Miss::Failed(e.to_string()))?;
+    let mut stream = resp.bytes_stream();
+    let mut n: i64 = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| Miss::Failed(format!("downloading: {e}")))?;
+        n += chunk.len() as i64;
+        file.write_all(&chunk).await.map_err(|e| Miss::Failed(e.to_string()))?;
+    }
+    file.flush().await.map_err(|e| Miss::Failed(e.to_string()))?;
+    Ok(n)
+}
+
+/// The bridge's answer for a file: the file, or why not.
+pub(crate) fn bridge_miss(status: reqwest::StatusCode, why: String) -> Miss {
+    if status == reqwest::StatusCode::GONE {
+        Miss::Gone(why)
+    } else {
+        Miss::Failed(format!("{status} {why}"))
+    }
+}
+
+fn thumb_key(key: &str) -> String {
+    match key.rsplit_once('.') {
+        Some((base, _)) => format!("{base}.thumb.jpg"),
+        None => format!("{key}.thumb.jpg"),
+    }
+}
+
+fn http() -> &'static reqwest::Client {
+    static C: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    C.get_or_init(|| reqwest::Client::builder().timeout(Duration::from_secs(30 * 60)).build().expect("http client"))
+}
+
+/// Messages (JSON, each with `media`) as the apps get them: every stored file with a signed link
+/// (`url`, and `thumb_url` for its preview), the fetch details left out.
+pub async fn sign(pool: &DbPool, items: &mut [Json]) {
+    let any = items.iter().any(|i| i["media"].as_array().is_some_and(|a| a.iter().any(|m| m.is_object())));
+    if !any {
+        return;
+    }
+    let s3 = s3_client(pool).await.ok();
+    for i in items.iter_mut() {
+        let Some(list) = i["media"].as_array_mut() else { continue };
+        for m in list.iter_mut().filter(|m| m.is_object()) {
+            if let Some(o) = m.as_object_mut() {
+                o.remove("source");
+            }
+            let Some((client, bucket)) = &s3 else { continue };
+            for (field, link) in [("key", "url"), ("thumb", "thumb_url")] {
+                let stored = field == "thumb" || m["status"] == "stored";
+                if let (true, Some(key)) = (stored, m[field].as_str().map(str::to_string)) {
+                    if let Ok((url, _)) = download_url(pool, client, bucket, &key, LINK_SECS).await {
+                        m[link] = json!(url);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_by_channel_and_month() {
+        let at = DateTime::parse_from_rfc3339("2026-11-04T01:00:00Z").unwrap().with_timezone(&Utc);
+        let e = entry("u1", "whatsapp", at, "image", "image", Some("image/jpeg"), None, json!({}));
+        let key = e["key"].as_str().unwrap();
+        assert!(key.starts_with("pigeon/u1/media/whatsapp/2026/11/"), "{key}");
+        assert!(key.ends_with(&format!("{}.jpg", e["id"].as_str().unwrap())), "{key}");
+        assert_eq!(thumb_key(key), key.replace(".jpg", ".thumb.jpg"));
+    }
+
+    #[test]
+    fn extension_from_the_name_first() {
+        assert_eq!(extension(Some("application/octet-stream"), Some("Report.PDF")), "pdf");
+        assert_eq!(extension(Some("audio/ogg; codecs=opus"), None), "ogg");
+        assert_eq!(extension(None, Some("no extension")), "bin");
+    }
+}

@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 use crate::apps::pigeon::connectors::{need_str, ActionDef, Connector, Kind};
 use crate::apps::pigeon::items::{self, Author, Direction, Incoming};
+use crate::apps::pigeon::media;
 use crate::apps::shares::crypto;
 use crate::apps::pigeon::state::{AppState, State};
 use api::Got;
@@ -40,6 +41,47 @@ pub async fn html_of(st: &State, user: &str, item: Uuid) -> anyhow::Result<Optio
     let token = api::access_token(st, connection).await?;
     let msg = api::gmail_ok(&token, "GET", &format!("/messages/{mid}"), &[("format", "full".to_string())], None).await?;
     Ok(parse::html(&msg["payload"]))
+}
+
+/// An email's attached file, from Gmail (`mid`: its message, `aid`: the attachment).
+pub async fn attachment(st: &State, user: &str, item: Uuid, mid: &str, aid: &str) -> anyhow::Result<Vec<u8>> {
+    let connection: Option<Option<i32>> = sqlx::query_scalar(
+        "SELECT c.connection_id FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id WHERE i.id = $1 AND c.user_id = $2",
+    )
+    .bind(item)
+    .bind(user)
+    .fetch_optional(&st.pool)
+    .await?;
+    let connection = connection.flatten().ok_or_else(|| anyhow::anyhow!("no Gmail connection for this message"))?;
+    let token = api::access_token(st, connection).await?;
+    let v = api::gmail_ok(&token, "GET", &format!("/messages/{mid}/attachments/{aid}"), &[], None).await?;
+    let data = v["data"].as_str().ok_or_else(|| anyhow::anyhow!("Gmail sent no data"))?;
+    use base64::Engine;
+    Ok(base64::engine::general_purpose::URL_SAFE
+        .decode(data)
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(data))?)
+}
+
+/// An email's attachments as its `media`, to fetch into storage.
+fn media_of(user: &str, p: &parse::Parsed, at: chrono::DateTime<Utc>) -> Json {
+    Json::Array(
+        p.attachments
+            .iter()
+            .map(|a| {
+                let kind = match a.mime.split('/').next().unwrap_or_default() {
+                    "image" => "image",
+                    "video" => "video",
+                    "audio" => "audio",
+                    _ => "document",
+                };
+                let mut e = media::entry(user, ID, at, kind, &a.name, Some(&a.mime), Some(&a.name), json!({ "gmail": { "message": p.id, "attachment": a.id } }));
+                if a.size > 0 {
+                    e["size"] = json!(a.size);
+                }
+                e
+            })
+            .collect(),
+    )
 }
 
 /// archive, mark_read and trash: the whole thread, or one message of it.
@@ -445,6 +487,7 @@ async fn store(st: &State, c: &Conn<'_>, msg: &Json, triage: bool) -> anyhow::Re
     }
     let sent = p.labels.iter().any(|l| l == "SENT") || p.from.as_ref().is_some_and(|(a, _)| a == account);
     let counterpart = if sent { p.to.first().cloned() } else { p.reply_to.clone().or_else(|| p.from.clone()) };
+    let at = Utc.timestamp_millis_opt(p.internal_date).single().unwrap_or_else(Utc::now);
     let inc = Incoming {
         user_id: c.user.to_string(),
         connector: ID,
@@ -458,7 +501,7 @@ async fn store(st: &State, c: &Conn<'_>, msg: &Json, triage: bool) -> anyhow::Re
         sender_name: p.from.as_ref().and_then(|(_, n)| n.clone()),
         subject: p.subject.clone(),
         body: p.body.clone(),
-        media: json!([]),
+        media: media_of(c.user, &p, at),
         raw: json!({
             "labels": p.labels,
             "message_id": p.message_id,
@@ -467,7 +510,7 @@ async fn store(st: &State, c: &Conn<'_>, msg: &Json, triage: bool) -> anyhow::Re
             "to": p.to.iter().map(|(a, _)| a).collect::<Vec<_>>(),
             "cc": p.cc.iter().map(|(a, _)| a).collect::<Vec<_>>(),
         }),
-        at: Utc.timestamp_millis_opt(p.internal_date).single().unwrap_or_else(Utc::now),
+        at,
         counterpart,
         window: None,
         triage,

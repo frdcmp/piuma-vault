@@ -24,6 +24,7 @@ use uuid::Uuid;
 
 use crate::apps::pigeon::connectors::{need_str, ActionDef, Connector, Kind};
 use crate::apps::pigeon::items::{self, Author, Direction, Incoming};
+use crate::apps::pigeon::media;
 use crate::apps::pigeon::sign;
 use crate::apps::shares::crypto;
 use crate::apps::pigeon::state::{AppState, State};
@@ -98,13 +99,35 @@ fn body_of(text: &str, attachments: &[Json]) -> String {
         parts.push(text.to_string());
     }
     for a in attachments {
-        let kind = a["type"].as_str().unwrap_or("attachment");
-        match a["payload"]["url"].as_str() {
-            Some(u) => parts.push(format!("[{kind}: {u}]")),
-            None => parts.push(format!("[{kind}]")),
-        }
+        parts.push(format!("[{}]", a["type"].as_str().unwrap_or("attachment")));
     }
     parts.join("\n")
+}
+
+/// A message's attachments as its `media`: a photo, video, audio or file is fetched into storage
+/// (Instagram's links don't last); a share or a story mention stays as it came.
+fn media_of(user: &str, attachments: &[Json], at: DateTime<Utc>) -> Json {
+    Json::Array(
+        attachments
+            .iter()
+            .map(|a| {
+                let kind = a["type"].as_str().unwrap_or("attachment");
+                match (kind, a["payload"]["url"].as_str()) {
+                    ("image" | "video" | "audio" | "file", Some(url)) => {
+                        // Instagram doesn't say the type: its usual one
+                        let (k, mime) = match kind {
+                            "image" => ("image", Some("image/jpeg")),
+                            "video" => ("video", Some("video/mp4")),
+                            "audio" => ("audio", Some("audio/mp4")),
+                            _ => ("document", None),
+                        };
+                        media::entry(user, ID, at, k, kind, mime, None, json!({ "url": url }))
+                    }
+                    _ => a.clone(),
+                }
+            })
+            .collect(),
+    )
 }
 
 /// The connection of a professional account, by its id (the webhook's entry id), and whose.
@@ -201,7 +224,7 @@ async fn store(
         sender_name: if mine { None } else { name.clone() },
         subject: None,
         body,
-        media: Json::Array(attachments),
+        media: media_of(user, &attachments, at),
         raw: json!({ "mid": mid }),
         at,
         counterpart: Some((other.to_string(), name)),
@@ -619,7 +642,7 @@ mod tests {
         assert_eq!((evs[0].other.as_str(), evs[0].mine, evs[0].text.as_str()), ("900", false, "Ciao! come stai?"));
         assert_eq!(evs[0].account, "17841400000000001");
         assert_eq!((evs[1].other.as_str(), evs[1].mine), ("900", true), "an echo is the user's, with them");
-        assert_eq!(body_of(&evs[2].text, &evs[2].attachments), "[image: https://x/y.jpg]");
+        assert_eq!(body_of(&evs[2].text, &evs[2].attachments), "[image]");
         assert!(events(&json!({ "object": "page", "entry": [] })).0.is_empty(), "not Instagram's");
     }
 }

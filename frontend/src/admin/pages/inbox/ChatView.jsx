@@ -42,6 +42,7 @@ import {
 } from "../../../queries";
 import useChatDockStore from "../../../store/chatDockStore";
 import { formatDate, formatTime } from "../../../utils/dateTime";
+import InboxMedia from "./InboxMedia";
 import {
 	ALERT_HINT,
 	ALERT_OPTIONS,
@@ -50,7 +51,8 @@ import {
 	channelTone,
 	errorText,
 	initials,
-	mediaLabels,
+	mediaFiles,
+	mediaWords,
 	POLICY_OPTIONS,
 	senderLabel,
 	withInherit,
@@ -126,7 +128,8 @@ const EMAIL_CLIP = 700;
 // `channel`: where it came, when a person's chat mixes channels.
 function Message({ item, group, senders, onOpen, channel }) {
 	const out = item.direction === "out";
-	const media = mediaLabels(item.media);
+	const media = mediaWords(item.media);
+	const files = mediaFiles(item.media);
 	const full = bodyText(item.body, item.media);
 	const body =
 		onOpen && full && full.length > EMAIL_CLIP
@@ -150,6 +153,7 @@ function Message({ item, group, senders, onOpen, channel }) {
 						))}
 					</div>
 				) : null}
+				<InboxMedia files={files} />
 				{body ? <div className="inbox-msg-body">{body}</div> : null}
 				<div className="inbox-msg-meta">
 					{onOpen ? (

@@ -15,6 +15,8 @@
 //	POST /u/{user}/send     {chat, text} → {id, at}
 //	POST /u/{user}/typing   {chat, on}
 //	POST /u/{user}/logout
+//	GET  /u/{user}/contacts the address book: {contacts: [{phone, name, push, business}]}
+//	POST /u/{user}/media    a file's download details (a message's `files` entry) → the file
 package main
 
 import (
@@ -29,6 +31,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -155,6 +158,7 @@ func main() {
 	mux.HandleFunc("POST /u/{user}/typing", b.auth((*session).typing))
 	mux.HandleFunc("POST /u/{user}/logout", b.auth((*session).logout))
 	mux.HandleFunc("GET /u/{user}/contacts", b.auth((*session).contacts))
+	mux.HandleFunc("POST /u/{user}/media", b.auth((*session).media))
 	addr := env("WHATSAPP_BIND", ":8080")
 	log.Printf("listening on %s, events to %s", addr, b.webhook)
 	log.Fatal(http.ListenAndServe(addr, mux))
@@ -301,6 +305,35 @@ type message struct {
 	Text       string   `json:"text"`
 	At         int64    `json:"at"`
 	Kinds      []string `json:"kinds,omitempty"`
+	Files      []file   `json:"files,omitempty"`
+}
+
+// file: a photo, video, voice note, document or sticker on a message: what it is, the tiny
+// preview WhatsApp sends with it, and what POST /u/{user}/media needs to fetch it (WhatsApp keeps
+// it for some weeks).
+type file struct {
+	Kind      string `json:"kind"` // image, video, voice, audio, document, sticker
+	Mime      string `json:"mime,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Size      uint64 `json:"size,omitempty"`
+	Seconds   uint32 `json:"seconds,omitempty"`
+	Width     uint32 `json:"width,omitempty"`
+	Height    uint32 `json:"height,omitempty"`
+	Thumb     []byte `json:"thumb,omitempty"` // a small JPEG
+	Path      string `json:"direct_path"`
+	MediaKey  []byte `json:"media_key"`
+	EncSHA256 []byte `json:"enc_sha256"`
+	SHA256    []byte `json:"sha256"`
+	MediaType string `json:"media_type"`
+}
+
+// fileOf: a downloadable part of a message as a file.
+func fileOf(kind string, m whatsmeow.DownloadableMessage, mime, name string, size uint64) file {
+	return file{
+		Kind: kind, Mime: mime, Name: name, Size: size,
+		Path: m.GetDirectPath(), MediaKey: m.GetMediaKey(), EncSHA256: m.GetFileEncSHA256(), SHA256: m.GetFileSHA256(),
+		MediaType: string(whatsmeow.GetMediaType(m)),
+	}
 }
 
 // pn: a hidden user id (LID) as the phone number's JID when WhatsApp has told which.
@@ -381,7 +414,7 @@ func (s *session) message(ctx context.Context, e *events.Message) *message {
 	if skipped(e.Info.Chat) {
 		return nil
 	}
-	text, kinds := content(e.Message)
+	text, kinds, files := content(e.Message)
 	if text == "" && len(kinds) == 0 {
 		return nil // reactions, edits, deletions, receipts of polls: not messages
 	}
@@ -396,6 +429,7 @@ func (s *session) message(ctx context.Context, e *events.Message) *message {
 		Text:   text,
 		At:     e.Info.Timestamp.UnixMilli(),
 		Kinds:  kinds,
+		Files:  files,
 	}
 	if !e.Info.IsFromMe {
 		m.SenderName = s.name(ctx, sender, e.Info.PushName)
@@ -411,30 +445,46 @@ func (s *session) message(ctx context.Context, e *events.Message) *message {
 	return m
 }
 
-// content: a message's text and what's attached to it.
-func content(msg *waE2E.Message) (string, []string) {
+// content: a message's text, what's attached to it (in words), and its files.
+func content(msg *waE2E.Message) (string, []string, []file) {
 	if msg == nil {
-		return "", nil
+		return "", nil, nil
 	}
 	var kinds []string
+	var files []file
 	text := msg.GetConversation()
 	if t := msg.GetExtendedTextMessage().GetText(); t != "" {
 		text = t
 	}
 	if m := msg.GetImageMessage(); m != nil {
 		kinds, text = append(kinds, "image"), m.GetCaption()
+		f := fileOf("image", m, m.GetMimetype(), "", m.GetFileLength())
+		f.Width, f.Height, f.Thumb = m.GetWidth(), m.GetHeight(), m.GetJPEGThumbnail()
+		files = append(files, f)
 	}
 	if m := msg.GetVideoMessage(); m != nil {
 		kinds, text = append(kinds, "video"), m.GetCaption()
+		f := fileOf("video", m, m.GetMimetype(), "", m.GetFileLength())
+		f.Width, f.Height, f.Seconds, f.Thumb = m.GetWidth(), m.GetHeight(), m.GetSeconds(), m.GetJPEGThumbnail()
+		files = append(files, f)
 	}
 	if m := msg.GetAudioMessage(); m != nil {
 		kinds = append(kinds, map[bool]string{true: "voice message", false: "audio"}[m.GetPTT()])
+		f := fileOf(map[bool]string{true: "voice", false: "audio"}[m.GetPTT()], m, m.GetMimetype(), "", m.GetFileLength())
+		f.Seconds = m.GetSeconds()
+		files = append(files, f)
 	}
 	if m := msg.GetDocumentMessage(); m != nil {
 		kinds, text = append(kinds, "document: "+m.GetFileName()), m.GetCaption()
+		f := fileOf("document", m, m.GetMimetype(), m.GetFileName(), m.GetFileLength())
+		f.Thumb = m.GetJPEGThumbnail()
+		files = append(files, f)
 	}
-	if msg.GetStickerMessage() != nil {
+	if m := msg.GetStickerMessage(); m != nil {
 		kinds = append(kinds, "sticker")
+		f := fileOf("sticker", m, m.GetMimetype(), "", m.GetFileLength())
+		f.Width, f.Height = m.GetWidth(), m.GetHeight()
+		files = append(files, f)
 	}
 	if m := msg.GetLocationMessage(); m != nil {
 		kinds = append(kinds, fmt.Sprintf("location: %s %.5f,%.5f", m.GetName(), m.GetDegreesLatitude(), m.GetDegreesLongitude()))
@@ -447,7 +497,7 @@ func content(msg *waE2E.Message) (string, []string) {
 			kinds = append(kinds, "poll: "+p.GetName())
 		}
 	}
-	return strings.TrimSpace(text), kinds
+	return strings.TrimSpace(text), kinds, files
 }
 
 // history: what WhatsApp sends after pairing, in chunks over minutes (a full sync can be a year of
@@ -485,6 +535,9 @@ func (s *session) history(ctx context.Context, e *events.HistorySync) {
 				}
 				batch, n = append(batch, m), n+1
 				size += len(m.Text) + len(m.ChatName) + len(m.SenderName) + 300
+				for _, f := range m.Files {
+					size += len(f.Thumb)*4/3 + 400
+				}
 				if len(batch) >= 500 || size >= 600_000 {
 					flush()
 				}
@@ -819,4 +872,52 @@ func (s *session) logout(w http.ResponseWriter, r *http.Request) {
 	s.b.forget(s.user)
 	s.setDevice(s.b.store.NewDevice())
 	reply(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// media: a file of a message, fetched from WhatsApp and decrypted, by the details its `files`
+// entry carried: written to a temporary file (a video can be large), then streamed back.
+func (s *session) media(w http.ResponseWriter, r *http.Request) {
+	var f file
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&f); err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	cli := s.client()
+	if cli.Store.ID == nil {
+		fail(w, http.StatusConflict, fmt.Errorf("not linked"))
+		return
+	}
+	tmp, err := os.CreateTemp("", "media-*")
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	err = cli.DownloadMediaWithPathToFile(r.Context(), f.Path, f.EncSHA256, f.SHA256, f.MediaKey, whatsmeow.MediaType(f.MediaType), "", false, tmp)
+	if err != nil {
+		// gone from WhatsApp's servers (too old) is for good; the rest may pass on a retry
+		status := http.StatusBadGateway
+		if errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith404) || errors.Is(err, whatsmeow.ErrMediaDownloadFailedWith410) {
+			status = http.StatusGone
+		}
+		fail(w, status, err)
+		return
+	}
+	info, err := tmp.Stat()
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	if f.Mime != "" {
+		w.Header().Set("Content-Type", f.Mime)
+	}
+	w.Header().Set("Content-Length", fmt.Sprint(info.Size()))
+	if _, err := io.Copy(w, tmp); err != nil {
+		log.Printf("%s: media: %v", s.user, err)
+	}
 }

@@ -54,6 +54,7 @@ spec:
             failureThreshold: 4
           volumeMounts:
             - {name: sessions, mountPath: /data}
+            - {name: tmp, mountPath: /tmp}         # a file on its way to the vault (POST /u/{user}/media)
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -62,6 +63,8 @@ spec:
       volumes:
         - name: sessions
           persistentVolumeClaim: {claimName: pv-whatsapp-sessions}
+        - name: tmp
+          emptyDir: {sizeLimit: 4Gi}
 ---
 apiVersion: v1
 kind: Service

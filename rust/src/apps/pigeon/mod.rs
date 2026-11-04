@@ -31,6 +31,7 @@ pub mod events;
 pub mod handlers;
 pub mod health;
 pub mod items;
+pub mod media;
 pub mod owner;
 pub mod pace;
 pub mod people;

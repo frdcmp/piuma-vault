@@ -10,7 +10,7 @@ use tokio::task::spawn_local;
 
 use crate::apps::pigeon::events::{kinds, Bus};
 use crate::apps::pigeon::state::{self, AppState};
-use crate::apps::pigeon::{actions, cards, health, rules, slugs, summary, triage};
+use crate::apps::pigeon::{actions, cards, health, media, rules, slugs, summary, triage};
 use crate::db::db::DbPool;
 
 /// Run until the process ends. Call inside a `LocalSet`.
@@ -56,7 +56,8 @@ async fn pushes(st: AppState) {
     }
 }
 
-/// Every minute: what nobody decided in time expires; hourly, slugs for the newly named.
+/// Every minute: what nobody decided in time expires, files not stored yet are tried again;
+/// hourly, slugs for the newly named.
 async fn sweeps(st: AppState) {
     let mut slugs_at: Option<Instant> = None;
     loop {
@@ -72,6 +73,10 @@ async fn sweeps(st: AppState) {
         }
         if let Err(e) = cards::sweep(&st).await {
             log::warn!("pigeon: expiring questions: {e:#}");
+        }
+        // files that didn't make it into storage yet
+        if let Err(e) = media::retry(&st).await {
+            log::warn!("pigeon media: {e:#}");
         }
         if slugs_at.is_none_or(|t| t.elapsed() >= Duration::from_secs(3600)) {
             match slugs::backfill(&st).await {

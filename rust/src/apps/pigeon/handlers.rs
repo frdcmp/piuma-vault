@@ -14,7 +14,7 @@ use crate::apps::pigeon::ai::llm;
 use crate::apps::pigeon::connectors::{console, Kind};
 use crate::apps::pigeon::policy::{self, Policy};
 use crate::apps::pigeon::state::AppState;
-use crate::apps::pigeon::{actions, agent, alerts, cards, connect, conversations, events, people, rules, tools, triage};
+use crate::apps::pigeon::{actions, agent, alerts, cards, connect, conversations, events, media, people, rules, tools, triage};
 use crate::apps::settings::store;
 
 pub struct InboxReader(pub AuthenticatedUser);
@@ -199,6 +199,9 @@ pub async fn conversation_items(st: web::Data<AppState>, u: InboxReader, path: w
         .await?;
         let senders: serde_json::Map<String, Json> =
             people.into_iter().map(|(handle, name, slug)| (handle, json!({ "name": name, "slug": slug }))).collect();
+        // their files, each with a link
+        let mut items: Vec<Json> = items.iter().map(serde_json::to_value).collect::<Result<_, _>>()?;
+        media::sign(&st.pool, &mut items).await;
         Ok(json!({
             "items": items,
             "senders": senders,
@@ -866,6 +869,7 @@ pub async fn person_items(st: web::Data<AppState>, u: InboxReader, path: web::Pa
         .await?;
         let senders: serde_json::Map<String, Json> =
             people_rows.into_iter().map(|(handle, name, slug)| (handle, json!({ "name": name, "slug": slug }))).collect();
+        media::sign(&st.pool, &mut items).await;
         Ok(json!({
             "items": items,
             "senders": senders,

@@ -24,6 +24,7 @@ use uuid::Uuid;
 use crate::apps::pigeon::config::WhatsappConf;
 use crate::apps::pigeon::connectors::{need_str, ActionDef, Connector, Kind, Pairing};
 use crate::apps::pigeon::items::{self, Author, Direction, Incoming};
+use crate::apps::pigeon::media;
 use crate::apps::pigeon::sign;
 use crate::apps::pigeon::state::{AppState, State};
 
@@ -91,6 +92,53 @@ pub struct Message {
     /// what's attached ("image", "voice message", "location: …")
     #[serde(default)]
     pub kinds: Vec<String>,
+    /// its files, with what the bridge needs to fetch each (`POST /u/{user}/media`)
+    #[serde(default)]
+    pub files: Vec<Json>,
+}
+
+/// A message's `media`: its files (fetched into storage), then what isn't a file (a location, a
+/// contact, a poll) in words.
+fn media_of(user: &str, m: &Message, at: chrono::DateTime<Utc>) -> Json {
+    let mut out: Vec<Json> = Vec::new();
+    let mut labels: Vec<&str> = m.kinds.iter().map(String::as_str).collect();
+    for f in &m.files {
+        let kind = f["kind"].as_str().unwrap_or("document");
+        // the words the body has for it
+        let label = match kind {
+            "voice" => "voice message".to_string(),
+            "document" => format!("document: {}", f["name"].as_str().unwrap_or_default()),
+            k => k.to_string(),
+        };
+        if let Some(i) = labels.iter().position(|l| *l == label) {
+            labels.remove(i);
+        }
+        let mut e = media::entry(user, ID, at, kind, &label, f["mime"].as_str(), f["name"].as_str(), json!({ "wa": f }));
+        for k in ["size", "seconds", "width", "height"] {
+            if let Some(n) = f[k].as_u64().filter(|n| *n > 0) {
+                e[k] = json!(n);
+            }
+        }
+        out.push(e);
+    }
+    out.extend(labels.into_iter().map(|l| json!(l)));
+    Json::Array(out)
+}
+
+/// A file from the user's WhatsApp, by the details its message carried: the bridge's response,
+/// the file as its body.
+pub(crate) async fn media(st: &State, user: &str, details: &Json) -> Result<reqwest::Response, media::Miss> {
+    let c = conf(st).map_err(|e| media::Miss::Failed(e.to_string()))?;
+    let url = format!("{}/u/{}/media", c.bridge_url, urlencoding::encode(user));
+    static LONG: OnceLock<reqwest::Client> = OnceLock::new();
+    let http = LONG.get_or_init(|| reqwest::Client::builder().timeout(Duration::from_secs(30 * 60)).build().expect("http client"));
+    let resp = http.post(url).bearer_auth(&c.secret).json(details).send().await.map_err(|e| media::Miss::Failed(format!("pigeon-whatsapp unreachable: {e}")))?;
+    let status = resp.status();
+    if status.is_success() {
+        return Ok(resp);
+    }
+    let v: Json = resp.json().await.unwrap_or(Json::Null);
+    Err(media::bridge_miss(status, v["error"].as_str().unwrap_or_default().to_string()))
 }
 
 /// A message's text as an item's body: the text, and what's attached.
@@ -165,6 +213,7 @@ async fn note_error(st: &State, user: &str, error: &str) -> anyhow::Result<()> {
 /// One message as an item: its conversation, None when stored already.
 async fn store(st: &State, user: &str, connection: Option<i32>, m: &Message, triage: bool) -> anyhow::Result<Option<Uuid>> {
     let name = some(&m.chat_name);
+    let at = Utc.timestamp_millis_opt(m.at).single().unwrap_or_else(Utc::now);
     let inc = Incoming {
         user_id: user.to_string(),
         connector: ID,
@@ -178,9 +227,9 @@ async fn store(st: &State, user: &str, connection: Option<i32>, m: &Message, tri
         sender_name: if m.from_me { None } else { some(&m.sender_name) },
         subject: None,
         body: body_of(m),
-        media: json!(m.kinds),
+        media: media_of(user, m, at),
         raw: json!({ "id": m.id }),
-        at: Utc.timestamp_millis_opt(m.at).single().unwrap_or_else(Utc::now),
+        at,
         // a group isn't a person: its conversation has no contact
         counterpart: (!m.group).then(|| (handle_of_chat(&m.chat), name)),
         window: None,

@@ -48,12 +48,37 @@ export const initials = (name) =>
 		.map((w) => w[0]?.toUpperCase())
 		.join("") || "?";
 
-// A message's attachments, as labels: WhatsApp gives kinds ("image"),
-// Instagram objects ({ type }).
+// A message's attachments, as labels: a file's own ("image", "voice message"),
+// what isn't a file in words ("location: …"), an old Instagram one's type.
 export const mediaLabels = (media) =>
 	(Array.isArray(media) ? media : [])
+		.map((m) => (typeof m === "string" ? m : (m?.label ?? m?.type)))
+		.filter(Boolean);
+
+// A message's files (kept in the vault's storage): { id, kind, mime, name,
+// size, seconds, status, url, thumb_url }.
+export const mediaFiles = (media) =>
+	(Array.isArray(media) ? media : []).filter((m) => m?.id && m?.kind);
+
+// What isn't a file, in words (a location, a contact, a poll, an old message's
+// "image" from before files were kept).
+export const mediaWords = (media) =>
+	(Array.isArray(media) ? media : [])
+		.filter((m) => !(m?.id && m?.kind))
 		.map((m) => (typeof m === "string" ? m : m?.type))
 		.filter(Boolean);
+
+export const fileSize = (n) =>
+	!n
+		? ""
+		: n < 1024 * 1024
+			? `${Math.max(1, Math.round(n / 1024))} KB`
+			: `${(n / 1024 / 1024).toFixed(1)} MB`;
+
+export const duration = (s) =>
+	s
+		? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`
+		: "";
 
 // A message's words without the "[image]" lines that stand in for its media
 // (the media's own tags say it already).

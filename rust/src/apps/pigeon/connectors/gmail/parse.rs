@@ -20,6 +20,34 @@ pub struct Parsed {
     /// milliseconds since the epoch (Gmail's internalDate)
     pub internal_date: i64,
     pub body: String,
+    pub attachments: Vec<Attachment>,
+}
+
+/// A file attached to an email (its bytes are fetched apart, by `id`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Attachment {
+    pub id: String,
+    pub name: String,
+    pub mime: String,
+    pub size: u64,
+}
+
+/// An email's attached files: every part with a file name whose data Gmail keeps apart.
+pub fn attachments(p: &Json) -> Vec<Attachment> {
+    let mut out = Vec::new();
+    let name = p["filename"].as_str().unwrap_or_default().trim();
+    if let (false, Some(id)) = (name.is_empty(), p["body"]["attachmentId"].as_str()) {
+        out.push(Attachment {
+            id: id.to_string(),
+            name: name.to_string(),
+            mime: p["mimeType"].as_str().unwrap_or("application/octet-stream").to_string(),
+            size: p["body"]["size"].as_u64().unwrap_or(0),
+        });
+    }
+    for part in p["parts"].as_array().into_iter().flatten() {
+        out.extend(attachments(part));
+    }
+    out
 }
 
 pub fn parse(msg: &Json) -> Parsed {
@@ -40,6 +68,7 @@ pub fn parse(msg: &Json) -> Parsed {
         // a forward is the message it carries: kept whole (Outlook puts it under the same line
         // as a quoted reply)
         body: if is_forward(h("Subject").as_deref()) { body(payload).trim().to_string() } else { strip_quoted(&body(payload)) },
+        attachments: attachments(payload),
     }
 }
 
@@ -318,5 +347,18 @@ mod tests {
         assert!(m.contains("Cc: luca@example.com\r\nIn-Reply-To: <abc@mail>\r\nReferences: <abc@mail>\r\n"));
         let body = m.split("\r\n\r\n").nth(1).unwrap().replace("\r\n", "");
         assert_eq!(String::from_utf8(STANDARD.decode(body).unwrap()).unwrap(), "Ciao,\r\nfatto.");
+    }
+
+    #[test]
+    fn attachments_found_in_parts() {
+        let payload = serde_json::json!({ "mimeType": "multipart/mixed", "parts": [
+            { "mimeType": "text/plain", "filename": "", "body": { "data": "aGk" } },
+            { "mimeType": "application/pdf", "filename": "Invoice.pdf", "body": { "attachmentId": "A1", "size": 1234 } },
+            { "mimeType": "multipart/related", "parts": [
+                { "mimeType": "image/png", "filename": "logo.png", "body": { "attachmentId": "A2", "size": 10 } } ] } ] });
+        let a = attachments(&payload);
+        assert_eq!(a.len(), 2);
+        assert_eq!((a[0].id.as_str(), a[0].name.as_str(), a[0].size), ("A1", "Invoice.pdf", 1234));
+        assert_eq!(a[1].mime, "image/png");
     }
 }
