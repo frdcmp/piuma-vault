@@ -305,7 +305,9 @@ async fn send(st: &State, user: &str, conversation: Option<Uuid>, extra: Json, t
         Some(c) => format!("/inbox/{c}"),
         None => "/inbox".into(),
     };
-    let mut metadata = json!({ "conversation_id": conversation, "ring": ring });
+    // the badge: the phone puts the number on the app's icon
+    let badge = conversations::unread_count(&st.pool, user).await.unwrap_or(0);
+    let mut metadata = json!({ "conversation_id": conversation, "ring": ring, "badge": badge });
     if let (Some(m), Json::Object(extra)) = (metadata.as_object_mut(), extra) {
         m.extend(extra);
     }

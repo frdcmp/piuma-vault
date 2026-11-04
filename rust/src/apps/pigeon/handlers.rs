@@ -486,7 +486,7 @@ pub async fn general(st: web::Data<AppState>, u: InboxReader, q: web::Query<Page
         .await?;
         let mut news: Vec<Json> = news.into_iter().map(|(id, text, url, at)| json!({ "id": id, "text": text, "url": url, "at": at })).collect();
         news.reverse();
-        Ok(json!({ "cards": cards::list(&st, user, None).await?, "news": news }))
+        Ok(json!({ "cards": cards::list(&st, user, None).await?, "news": news, "unread": conversations::unread_count(&st.pool, user).await? }))
     }
     .await;
     reply(r)

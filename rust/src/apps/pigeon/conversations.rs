@@ -33,6 +33,17 @@ pub struct Conversation {
     pub summary_at: Option<DateTime<Utc>>,
 }
 
+/// How many of the user's chats have something unread (a message in since they last read them):
+/// the number on the phone's icon.
+pub async fn unread_count(pool: &DbPool, user: &str) -> anyhow::Result<i64> {
+    Ok(sqlx::query_scalar(
+        "SELECT COUNT(*) FROM db_pigeon_conversations WHERE user_id = $1 AND last_in_at IS NOT NULL AND (read_at IS NULL OR last_in_at > read_at)",
+    )
+    .bind(user)
+    .fetch_one(pool)
+    .await?)
+}
+
 pub const CONVERSATION_COLS: &str = "id, user_id, connection_id, connector, external_id, contact_id, title, last_in_at, last_out_at, last_item_at, \
      window_until, attention, needs_note, importance, kind, triaged_at, handled_at, read_at, summary, summary_at";
 
