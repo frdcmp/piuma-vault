@@ -68,6 +68,26 @@ export const mediaWords = (media) =>
 		.map((m) => (typeof m === "string" ? m : m?.type))
 		.filter(Boolean);
 
+// A message's reactions grouped by emoji: [{ emoji, count, who: [names] }],
+// "You" for the user's own. `senders`: handle → { name, slug }.
+export const reactionGroups = (reactions, senders) => {
+	const groups = new Map();
+	for (const [who, r] of Object.entries(reactions ?? {})) {
+		if (!r?.emoji) continue;
+		const name = r.me
+			? "You"
+			: senders?.[who]?.name ||
+				(senders?.[who]?.slug && `@${senders[who].slug}`) ||
+				r.name ||
+				who;
+		const g = groups.get(r.emoji) ?? { emoji: r.emoji, count: 0, who: [] };
+		g.count += 1;
+		g.who.push(name);
+		groups.set(r.emoji, g);
+	}
+	return [...groups.values()];
+};
+
 export const fileSize = (n) =>
 	!n
 		? ""

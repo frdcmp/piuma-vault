@@ -279,6 +279,10 @@ func (s *session) onEvent(evt any) {
 		log.Printf("%s: WhatsApp banned this number for a while: %v", s.user, e)
 		s.emit(map[string]any{"type": "temporary_ban", "reason": e.String()})
 	case *events.Message:
+		if r := s.reaction(ctx, e); r != nil {
+			s.emit(map[string]any{"type": "reaction", "reaction": r})
+			return
+		}
 		if m := s.message(ctx, e); m != nil {
 			s.emit(map[string]any{"type": "message", "message": m})
 		}
@@ -334,6 +338,42 @@ func fileOf(kind string, m whatsmeow.DownloadableMessage, mime, name string, siz
 		Path: m.GetDirectPath(), MediaKey: m.GetMediaKey(), EncSHA256: m.GetFileEncSHA256(), SHA256: m.GetFileSHA256(),
 		MediaType: string(whatsmeow.GetMediaType(m)),
 	}
+}
+
+// reaction: an emoji put on a message, or taken off (Emoji ""). Target is the message's id as
+// `message` gives it ("<chat>/<WhatsApp's id>").
+type reaction struct {
+	Target string `json:"target"`
+	Chat   string `json:"chat"`
+	FromMe bool   `json:"from_me"`
+	Sender string `json:"sender"`
+	Name   string `json:"sender_name,omitempty"`
+	Emoji  string `json:"emoji"`
+	At     int64  `json:"at"`
+}
+
+func (s *session) reaction(ctx context.Context, e *events.Message) *reaction {
+	r := e.Message.GetReactionMessage()
+	if r == nil || skipped(e.Info.Chat) || r.GetKey().GetID() == "" {
+		return nil
+	}
+	chat := s.chatOf(ctx, &e.Info.MessageSource)
+	at := r.GetSenderTimestampMS()
+	if at == 0 {
+		at = e.Info.Timestamp.UnixMilli()
+	}
+	out := &reaction{
+		Target: chat.String() + "/" + r.GetKey().GetID(),
+		Chat:   chat.String(),
+		FromMe: e.Info.IsFromMe,
+		Sender: phone(s.senderOf(ctx, &e.Info.MessageSource)),
+		Emoji:  r.GetText(),
+		At:     at,
+	}
+	if !e.Info.IsFromMe {
+		out.Name = s.name(ctx, s.senderOf(ctx, &e.Info.MessageSource), e.Info.PushName)
+	}
+	return out
 }
 
 // pn: a hidden user id (LID) as the phone number's JID when WhatsApp has told which.

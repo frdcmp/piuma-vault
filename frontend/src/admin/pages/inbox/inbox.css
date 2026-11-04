@@ -267,9 +267,11 @@
 }
 .inbox-msg {
 	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
 }
 .inbox-msg.is-out {
-	justify-content: flex-end;
+	align-items: flex-end;
 }
 .inbox-bubble {
 	max-width: min(72%, 560px);
@@ -667,4 +669,26 @@
 }
 .inbox-media-save:hover {
 	opacity: 1;
+}
+
+/* a message's reactions, under its bubble like WhatsApp's */
+.inbox-reactions {
+	display: flex;
+	gap: 4px;
+	margin: -6px 8px 4px;
+	position: relative;
+}
+.inbox-reaction {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 1px 6px;
+	border: 1px solid var(--vp-border);
+	background: var(--vp-surface, var(--vp-bg));
+	font-size: 10pt;
+	cursor: default;
+}
+.inbox-reaction small {
+	color: var(--vp-muted);
+	font-size: 8pt;
 }

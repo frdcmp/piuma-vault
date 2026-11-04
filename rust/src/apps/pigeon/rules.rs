@@ -615,6 +615,7 @@ mod tests {
             created_at: Utc::now(),
             to_addrs: json!([]),
             cc_addrs: json!([]),
+            reactions: serde_json::json!({}),
         }
     }
 

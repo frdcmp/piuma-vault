@@ -301,3 +301,32 @@ mod tests {
         assert_eq!(username(None), None);
     }
 }
+
+/// An emoji someone put on a message, or took off (`emoji` None): kept on the message, one per
+/// person (`who`: their handle; "me" for the user, from any of their devices). False: no such
+/// message here (one from before Pigeon, or not kept).
+#[allow(clippy::too_many_arguments)]
+pub async fn react(pool: &DbPool, user: &str, connector: &str, target: &str, who: &str, me: bool, name: Option<&str>, emoji: Option<&str>, at: DateTime<Utc>) -> anyhow::Result<bool> {
+    let key = if me { "me" } else { who };
+    let set = emoji.filter(|e| !e.trim().is_empty()).map(|e| serde_json::json!({ "emoji": e, "at": at, "me": me, "name": name }));
+    let found: Option<Uuid> = sqlx::query_scalar(
+        "UPDATE db_pigeon_items i
+            SET raw = jsonb_set(COALESCE(i.raw, '{}'::jsonb), '{reactions}',
+                  CASE WHEN $5::jsonb IS NULL THEN COALESCE(i.raw->'reactions', '{}'::jsonb) - $4
+                       ELSE COALESCE(i.raw->'reactions', '{}'::jsonb) || jsonb_build_object($4, $5::jsonb) END)
+           FROM db_pigeon_conversations c
+          WHERE c.id = i.conversation_id AND c.user_id = $1 AND i.connector = $2 AND i.external_id = $3
+          RETURNING i.conversation_id",
+    )
+    .bind(user)
+    .bind(connector)
+    .bind(target)
+    .bind(key)
+    .bind(set)
+    .fetch_optional(pool)
+    .await?;
+    if let Some(conversation) = found {
+        crate::apps::pigeon::events::publish(pool, user, "conversation", Some(conversation)).await;
+    }
+    Ok(found.is_some())
+}

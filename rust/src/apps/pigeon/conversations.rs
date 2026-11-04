@@ -53,10 +53,13 @@ pub struct Item {
     /// who it was sent to, and copied (email; empty elsewhere): addresses
     pub to_addrs: Json,
     pub cc_addrs: Json,
+    /// emoji on it, one per person: `{who: {emoji, at, me, name}}` (who: their handle, or "me")
+    pub reactions: Json,
 }
 
 pub const ITEM_COLS: &str = "id, direction, author, sender, sender_name, subject, body, media, at, created_at, \
-     COALESCE(raw->'to', '[]'::jsonb) AS to_addrs, COALESCE(raw->'cc', '[]'::jsonb) AS cc_addrs";
+     COALESCE(raw->'to', '[]'::jsonb) AS to_addrs, COALESCE(raw->'cc', '[]'::jsonb) AS cc_addrs, \
+     COALESCE(raw->'reactions', '{}'::jsonb) AS reactions";
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Contact {
@@ -183,9 +186,27 @@ pub fn transcript(items: &[Item], them: &str, me: (&str, &[String]), max_body: u
                 subject = Some(s);
             }
         }
-        out.push_str(&format!("[{}] {who}{}: {}\n", it.at.format("%Y-%m-%d %H:%M UTC"), recipients(it, me), clip(&it.body, max_body)));
+        out.push_str(&format!("[{}] {who}{}: {}{}\n", it.at.format("%Y-%m-%d %H:%M UTC"), recipients(it, me), clip(&it.body, max_body), reacted(it, me.0)));
     }
     out
+}
+
+/// A message's reactions, as the transcript shows them: " (reactions: ❤️ Anna, 👍 Marco)".
+fn reacted(it: &Item, me: &str) -> String {
+    let Some(r) = it.reactions.as_object().filter(|r| !r.is_empty()) else { return String::new() };
+    let each: Vec<String> = r
+        .iter()
+        .filter_map(|(who, v)| {
+            let emoji = v["emoji"].as_str().filter(|e| !e.is_empty())?;
+            let by = if v["me"].as_bool() == Some(true) { me.to_string() } else { v["name"].as_str().unwrap_or(who).to_string() };
+            Some(format!("{emoji} {by}"))
+        })
+        .collect();
+    if each.is_empty() {
+        String::new()
+    } else {
+        format!(" (reactions: {})", each.join(", "))
+    }
 }
 
 #[cfg(test)]
@@ -206,6 +227,7 @@ mod tests {
             created_at: Utc::now(),
             to_addrs: serde_json::json!(["me@example.com"]),
             cc_addrs: serde_json::json!([]),
+            reactions: serde_json::json!({}),
         }
     }
 

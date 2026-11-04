@@ -54,6 +54,7 @@ import {
 	mediaFiles,
 	mediaWords,
 	POLICY_OPTIONS,
+	reactionGroups,
 	senderLabel,
 	withInherit,
 } from "./inboxText";
@@ -136,6 +137,7 @@ function Message({ item, group, senders, onOpen, channel }) {
 			? `${full.slice(0, EMAIL_CLIP).trimEnd()}…`
 			: full;
 	const sender = group && !out ? senderLabel(item, senders) : null;
+	const reactions = reactionGroups(item.reactions, senders);
 	return (
 		<div
 			className={`inbox-msg ${out ? "is-out" : "is-in"}${item.author === "pigeon" ? " is-pigeon" : ""}`}
@@ -172,6 +174,20 @@ function Message({ item, group, senders, onOpen, channel }) {
 					{formatTime(item.at)}
 				</div>
 			</div>
+			{reactions.length ? (
+				<div className="inbox-reactions">
+					{reactions.map((r) => (
+						<span
+							key={r.emoji}
+							className="inbox-reaction"
+							title={r.who.join(", ")}
+						>
+							{r.emoji}
+							{r.count > 1 ? <small>{r.count}</small> : null}
+						</span>
+					))}
+				</div>
+			) : null}
 		</div>
 	);
 }

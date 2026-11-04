@@ -92,6 +92,47 @@ pub fn events(body: &Json) -> (Vec<Event>, usize) {
     (out, other_events)
 }
 
+/// An emoji put on a message, or taken off (`emoji` None).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Reaction {
+    pub account: String,
+    /// the message's mid
+    pub mid: String,
+    /// who: their IGSID
+    pub sender: String,
+    /// the user's own (from their account)
+    pub mine: bool,
+    pub emoji: Option<String>,
+    pub at_ms: i64,
+}
+
+/// The reactions of a webhook delivery.
+pub fn reactions(body: &Json) -> Vec<Reaction> {
+    let mut out = Vec::new();
+    if body["object"].as_str() != Some("instagram") {
+        return out;
+    }
+    for entry in body["entry"].as_array().into_iter().flatten() {
+        let account = entry["id"].as_str().map(str::to_string).or_else(|| entry["id"].as_u64().map(|n| n.to_string())).unwrap_or_default();
+        for m in entry["messaging"].as_array().into_iter().flatten() {
+            let r = &m["reaction"];
+            let (Some(mid), Some(sender)) = (r["mid"].as_str(), m["sender"]["id"].as_str()) else { continue };
+            let emoji = (r["action"].as_str() != Some("unreact"))
+                .then(|| r["emoji"].as_str().map(str::to_string).or_else(|| r["reaction"].as_str().map(|n| if n == "love" { "❤️".to_string() } else { n.to_string() })))
+                .flatten();
+            out.push(Reaction {
+                account: account.clone(),
+                mid: mid.to_string(),
+                sender: sender.to_string(),
+                mine: sender == account,
+                emoji,
+                at_ms: m["timestamp"].as_i64().unwrap_or_else(|| Utc::now().timestamp_millis()),
+            });
+        }
+    }
+    out
+}
+
 /// A message's text as an item's body: the text, and what's attached.
 fn body_of(text: &str, attachments: &[Json]) -> String {
     let mut parts: Vec<String> = Vec::new();
@@ -550,6 +591,11 @@ impl Connector for Instagram {
         }
         let payload: Json = serde_json::from_slice(body)?;
         let (evs, other_events) = events(&payload);
+        for r in reactions(&payload) {
+            let Some((_, user)) = connection_of(st, &r.account).await? else { continue };
+            let at = Utc.timestamp_millis_opt(r.at_ms).single().unwrap_or_else(Utc::now);
+            items::react(&st.pool, &user, ID, &r.mid, &r.sender, r.mine, None, r.emoji.as_deref(), at).await?;
+        }
         if other_events > 0 {
             log::debug!("instagram: {other_events} event(s) that aren't messages, left");
         }
@@ -644,5 +690,11 @@ mod tests {
         assert_eq!((evs[1].other.as_str(), evs[1].mine), ("900", true), "an echo is the user's, with them");
         assert_eq!(body_of(&evs[2].text, &evs[2].attachments), "[image]");
         assert!(events(&json!({ "object": "page", "entry": [] })).0.is_empty(), "not Instagram's");
+        let rs = reactions(&json!({ "object": "instagram", "entry": [{ "id": "acc", "messaging": [
+            { "sender": { "id": "u1" }, "recipient": { "id": "acc" }, "timestamp": 5, "reaction": { "mid": "m1", "action": "react", "reaction": "love", "emoji": "❤️" } },
+            { "sender": { "id": "acc" }, "recipient": { "id": "u1" }, "timestamp": 6, "reaction": { "mid": "m2", "action": "unreact" } } ] }] }));
+        assert_eq!(rs.len(), 2);
+        assert_eq!((rs[0].mid.as_str(), rs[0].emoji.as_deref(), rs[0].mine), ("m1", Some("❤️"), false));
+        assert_eq!((rs[1].emoji.as_deref(), rs[1].mine), (None, true));
     }
 }

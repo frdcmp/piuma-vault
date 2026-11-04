@@ -250,6 +250,14 @@ async fn take_in(st: &State, event: Json) -> anyhow::Result<()> {
             let m: Message = serde_json::from_value(event["message"].clone())?;
             store(st, user, connection(st, user).await?, &m, true).await?;
         }
+        "reaction" => {
+            let r = &event["reaction"];
+            let text = |k: &str| r[k].as_str().map(str::trim).filter(|s| !s.is_empty());
+            let target = text("target").ok_or_else(|| anyhow::anyhow!("a reaction to nothing"))?;
+            let at = r["at"].as_i64().and_then(|ms| Utc.timestamp_millis_opt(ms).single()).unwrap_or_else(Utc::now);
+            let me = r["from_me"].as_bool().unwrap_or(false);
+            items::react(&st.pool, user, ID, target, text("sender").unwrap_or("someone"), me, text("sender_name"), text("emoji"), at).await?;
+        }
         "history" => {
             let msgs: Vec<Message> = serde_json::from_value(event["messages"].clone())?;
             let connection = connection(st, user).await?;
