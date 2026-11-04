@@ -1,10 +1,13 @@
 import {
 	AudioOutlined,
+	DownloadOutlined,
 	FileOutlined,
 	PictureOutlined,
 	VideoCameraOutlined,
 } from "@ant-design/icons";
-import { duration, fileSize } from "./inboxText";
+import { PvIconButton, pvMessage } from "@/ui";
+import { useDownloadPigeonMedia } from "../../../queries";
+import { duration, errorText, fileSize } from "./inboxText";
 
 const WHAT = {
 	image: "Photo",
@@ -31,8 +34,10 @@ function Missing({ file }) {
 		file.status === "pending"
 			? `${what} on its way…`
 			: file.status === "gone"
-				? `${what}: no longer on ${file.connector ?? "the channel"}`
-				: `${what}: couldn't be fetched`;
+				? `${what}: no longer on the channel`
+				: file.status === "expired"
+					? `${what}: no longer kept (Inbox settings → Keep photos, videos and files)`
+					: `${what}: couldn't be fetched`;
 	return (
 		<div className="inbox-media-missing">
 			{file.thumb_url ? (
@@ -42,6 +47,34 @@ function Missing({ file }) {
 				{ICON[file.kind]} {why}
 			</span>
 		</div>
+	);
+}
+
+// A file's own name to save it as: its name, else what it is and its type.
+const saveName = (file) => {
+	if (file.name) return file.name;
+	const ext = file.mime?.split("/")[1]?.split(";")[0] ?? "bin";
+	return `${file.kind}-${file.id.slice(0, 8)}.${ext === "jpeg" ? "jpg" : ext}`;
+};
+
+// The download button beside a kept file: saves it on this computer.
+function Save({ item, file }) {
+	const save = useDownloadPigeonMedia();
+	return (
+		<PvIconButton
+			size="sm"
+			variant="ghost"
+			icon={<DownloadOutlined />}
+			label="Download"
+			className="inbox-media-save"
+			disabled={save.isPending}
+			onClick={() =>
+				save.mutate(
+					{ item, file: file.id, name: saveName(file) },
+					{ onError: (e) => pvMessage.error(errorText(e)) },
+				)
+			}
+		/>
 	);
 }
 
@@ -99,13 +132,16 @@ function File({ file }) {
 	}
 }
 
-// A message's files.
-export default function InboxMedia({ files }) {
+// A message's files, each kept one with its download button.
+export default function InboxMedia({ item, files }) {
 	if (!files.length) return null;
 	return (
 		<div className="inbox-media">
 			{files.map((f) => (
-				<File key={f.id} file={f} />
+				<div key={f.id} className="inbox-media-one">
+					<File file={f} />
+					{f.status === "stored" ? <Save item={item} file={f} /> : null}
+				</div>
 			))}
 		</div>
 	);

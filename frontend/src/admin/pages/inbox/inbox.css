@@ -655,3 +655,16 @@
 	object-fit: cover;
 	filter: blur(1px);
 }
+
+.inbox-media-one {
+	display: flex;
+	align-items: flex-end;
+	gap: 4px;
+}
+.inbox-media-save {
+	flex: none;
+	opacity: 0.7;
+}
+.inbox-media-save:hover {
+	opacity: 1;
+}

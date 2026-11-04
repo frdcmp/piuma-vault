@@ -8,6 +8,7 @@ import {
 	composePigeonReply,
 	deletePigeonRule,
 	disconnectPigeon,
+	downloadPigeonMedia,
 	draftPigeonReply,
 	fetchPigeonChats,
 	fetchPigeonConnections,
@@ -231,6 +232,10 @@ const useChatMutation = (fn) => {
 export const useSendPigeonMessage = () => useChatMutation(sendPigeonMessage);
 export const useMarkPigeonHandled = () => useChatMutation(markPigeonHandled);
 export const useDraftPigeonReply = () => useChatMutation(draftPigeonReply);
+// A message's file saved on this computer.
+export const useDownloadPigeonMedia = () =>
+	useMutation({ mutationFn: downloadPigeonMedia });
+
 // Pigeon's words for your box; nothing changes on the vault.
 export const useComposePigeonReply = () =>
 	useMutation({ mutationFn: composePigeonReply });

@@ -199,6 +199,22 @@ export const fetchPigeonItemHtml = async (id) => {
 	return data;
 };
 
+// A message's file, to save on this computer (the browser's download).
+export const downloadPigeonMedia = async ({ item, file, name }) => {
+	const { data } = await axiosInstance.get(
+		`${BASE}/items/${item}/media/${file}`,
+		{ responseType: "blob" },
+	);
+	const url = URL.createObjectURL(data);
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = name || "file";
+	document.body.appendChild(a);
+	a.click();
+	a.remove();
+	setTimeout(() => URL.revokeObjectURL(url), 10_000);
+};
+
 // Names from the WhatsApp address book: { address_book, named, added, … }.
 export const importPigeonWhatsappNames = async () => {
 	const { data } = await axiosInstance.post(`${BASE}/contacts/whatsapp`);

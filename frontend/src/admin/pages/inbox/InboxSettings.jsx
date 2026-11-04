@@ -42,6 +42,14 @@ import {
 } from "./inboxText";
 import SwitchInfo from "./SwitchInfo";
 
+// How long a message's files are kept in storage.
+const MEDIA_DAYS = [
+	{ value: 30, label: "30 days" },
+	{ value: 90, label: "90 days" },
+	{ value: 180, label: "6 months" },
+	{ value: 365, label: "A year" },
+];
+
 // WhatsApp pairs as a linked device: the QR the bridge shows, scanned from the
 // phone (WhatsApp → Linked devices). The code turns over, so it's polled.
 function PairingModal({ connector, onClose }) {
@@ -298,6 +306,18 @@ export default function InboxSettings() {
 						options={ALERT_OPTIONS}
 						value={s.alerts}
 						onChange={(v) => set({ alerts: v })}
+					/>
+				</PvField>
+				<PvField
+					label="Keep photos, videos and files"
+					as="div"
+					hint="After this long from their message they leave the vault's storage; the message stays. Save what you want to keep with the download button."
+				>
+					<PvSegmented
+						size="sm"
+						options={MEDIA_DAYS}
+						value={s.media_days}
+						onChange={(v) => set({ media_days: v })}
 					/>
 				</PvField>
 			</PvPanel>

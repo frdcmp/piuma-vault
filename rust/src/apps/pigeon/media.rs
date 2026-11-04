@@ -12,7 +12,11 @@
 //!
 //! Every file is fetched right after its message is stored (`fetch_soon`); what didn't make it
 //! is tried again by the worker's sweep (`retry`), a few times. The apps get each stored file
-//! with a signed link (`sign`).
+//! with a signed link (`sign`), or the file itself to save (`download`).
+//!
+//! Files are kept for the user's `media_days` (an Inbox setting, `KEEP_DAYS` by default) after
+//! their message: then they leave storage (`expire`) and the entry says `expired`. A message
+//! already older than that (history) never fetches its files.
 
 use std::path::PathBuf;
 use std::sync::LazyLock;
@@ -37,6 +41,88 @@ static FETCHING: LazyLock<tokio::sync::Semaphore> = LazyLock::new(|| tokio::sync
 const TRIES: i64 = 5;
 /// How long a signed link lasts.
 const LINK_SECS: i64 = 24 * 3600;
+/// How long files are kept after their message, unless the user chose (`media_days`).
+pub const KEEP_DAYS: i64 = 90;
+/// The lengths the user can choose.
+pub const KEEP_CHOICES: [i64; 4] = [30, 90, 180, 365];
+
+/// How many days the user's files are kept.
+pub async fn keep_days(pool: &DbPool, user: &str) -> anyhow::Result<i64> {
+    let v: Option<Json> = sqlx::query_scalar("SELECT value FROM db_pigeon_settings WHERE user_id = $1 AND key = 'media_days'")
+        .bind(user)
+        .fetch_optional(pool)
+        .await?;
+    Ok(v.and_then(|v| v.as_i64()).filter(|d| *d > 0).unwrap_or(KEEP_DAYS))
+}
+
+pub async fn set_keep_days(pool: &DbPool, user: &str, days: i64) -> anyhow::Result<()> {
+    if !KEEP_CHOICES.contains(&days) {
+        anyhow::bail!("media is kept 30, 90, 180 or 365 days");
+    }
+    sqlx::query(
+        "INSERT INTO db_pigeon_settings (user_id, key, value, updated_at) VALUES ($1, 'media_days', $2, NOW())
+         ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()",
+    )
+    .bind(user)
+    .bind(json!(days))
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Files past their user's keeping time: out of storage (file and preview), their entries
+/// `expired`; pending ones that late are dropped unfetched. How many messages.
+pub async fn expire(st: &State) -> anyhow::Result<usize> {
+    let due: Vec<(Uuid, Json)> = sqlx::query_as(
+        "SELECT i.id, i.media FROM db_pigeon_items i
+           JOIN db_pigeon_conversations c ON c.id = i.conversation_id
+           LEFT JOIN db_pigeon_settings s ON s.user_id = c.user_id AND s.key = 'media_days'
+          WHERE (i.media @> '[{\"status\": \"stored\"}]'::jsonb OR i.media @> '[{\"status\": \"pending\"}]'::jsonb)
+            AND i.at < NOW() - make_interval(days => COALESCE((s.value #>> '{}')::int, $1::int))
+          LIMIT 200",
+    )
+    .bind(KEEP_DAYS as i32)
+    .fetch_all(&st.pool)
+    .await?;
+    if due.is_empty() {
+        return Ok(0);
+    }
+    let (client, bucket) = s3_client(&st.pool).await.map_err(|e| anyhow::anyhow!(e))?;
+    for (item, media) in &due {
+        for m in media.as_array().into_iter().flatten().filter(|m| m["status"] == "stored" || m["status"] == "pending") {
+            let Some(id) = m["id"].as_str() else { continue };
+            for key in [m["key"].as_str(), m["thumb"].as_str()].into_iter().flatten() {
+                if let Err(e) = client.delete_object().bucket(&bucket).key(key).send().await {
+                    anyhow::bail!("deleting {key}: {e}");
+                }
+            }
+            update(&st.pool, *item, id, &json!({ "status": "expired", "key": null, "thumb": null, "source": null, "error": null })).await?;
+        }
+    }
+    Ok(due.len())
+}
+
+/// A stored file, to save: its type, name and bytes as they come from storage.
+pub async fn download(pool: &DbPool, user: &str, item: Uuid, id: &str) -> anyhow::Result<(String, String, ByteStream)> {
+    let media: Option<Json> = sqlx::query_scalar(
+        "SELECT i.media FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id WHERE i.id = $1 AND c.user_id = $2",
+    )
+    .bind(item)
+    .bind(user)
+    .fetch_optional(pool)
+    .await?;
+    let m = media
+        .as_ref()
+        .and_then(|m| m.as_array())
+        .and_then(|a| a.iter().find(|m| m["id"] == id))
+        .ok_or_else(|| anyhow::anyhow!("no such file"))?;
+    let key = m["key"].as_str().filter(|_| m["status"] == "stored").ok_or_else(|| anyhow::anyhow!("this file isn't kept any more"))?;
+    let (client, bucket) = s3_client(pool).await.map_err(|e| anyhow::anyhow!(e))?;
+    let obj = client.get_object().bucket(&bucket).key(key).send().await.map_err(|e| anyhow::anyhow!("reading it: {e}"))?;
+    let name = m["name"].as_str().map(str::to_string).unwrap_or_else(|| key.rsplit('/').next().unwrap_or("file").to_string());
+    let mime = m["mime"].as_str().unwrap_or("application/octet-stream").to_string();
+    Ok((mime, name, obj.body))
+}
 
 /// A new file of a message, to fetch: its entry in the message's `media`.
 #[allow(clippy::too_many_arguments)]
@@ -132,6 +218,20 @@ async fn fetch(st: &State, item: Uuid) -> anyhow::Result<()> {
     .fetch_optional(&st.pool)
     .await?;
     let Some((user, conversation, media)) = row else { return Ok(()) };
+    // a message older than the user keeps files for: nothing to fetch
+    let old: bool = sqlx::query_scalar("SELECT at < NOW() - make_interval(days => $2::int) FROM db_pigeon_items WHERE id = $1")
+        .bind(item)
+        .bind(keep_days(&st.pool, &user).await? as i32)
+        .fetch_one(&st.pool)
+        .await?;
+    if old {
+        for m in media.as_array().into_iter().flatten().filter(|m| m["status"] == "pending") {
+            if let Some(id) = m["id"].as_str() {
+                update(&st.pool, item, id, &json!({ "status": "expired", "key": null, "source": null })).await?;
+            }
+        }
+        return Ok(());
+    }
     for m in media.as_array().into_iter().flatten().filter(|m| m["status"] == "pending") {
         let Some(id) = m["id"].as_str() else { continue };
         let _turn = FETCHING.acquire().await?;

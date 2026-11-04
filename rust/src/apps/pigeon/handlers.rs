@@ -528,6 +528,7 @@ pub async fn get_settings(st: web::Data<AppState>, u: InboxReader) -> HttpRespon
             "auto_enabled": policy::auto_enabled(&st.pool, user).await?,
             "defaults": defaults,
             "alerts": alerts::resolve(&st.pool, user, None, None).await?.as_str(),
+            "media_days": media::keep_days(&st.pool, user).await?,
             "model_id": store::get(&st.pool, llm::MODEL_SETTING).await,
             "writer_available": llm::available(&st.pool).await,
             "jev_available": st.jev.is_some(),
@@ -546,6 +547,8 @@ pub struct SettingsBody {
     record: Option<String>,
     organize: Option<String>,
     alerts: Option<String>,
+    /// how long files are kept: 30, 90, 180 or 365 days
+    media_days: Option<i64>,
     /// the model Pigeon writes with (a vault model's id; "" for the default): admins only
     model_id: Option<String>,
 }
@@ -565,6 +568,9 @@ pub async fn set_settings(st: web::Data<AppState>, u: InboxWriter, body: web::Js
         if let Some(l) = body.alerts.as_deref() {
             let level = alerts::Level::parse(l).ok_or_else(|| anyhow::anyhow!("alerts: all, smart, quiet or off"))?;
             alerts::set(&st.pool, user, None, None, Some(level)).await?;
+        }
+        if let Some(d) = body.media_days {
+            media::set_keep_days(&st.pool, user, d).await?;
         }
         if let Some(m) = body.model_id.as_deref() {
             if !crate::apps::auth::middleware::check_permission(&u.0, "admin_access") {
@@ -909,4 +915,25 @@ pub async fn person_handled(st: web::Data<AppState>, u: InboxWriter, path: web::
     }
     .await;
     reply(r)
+}
+
+/// A message's file to save (as an attachment, by its name), streamed from storage.
+pub async fn item_media(st: web::Data<AppState>, u: InboxReader, path: web::Path<(Uuid, String)>) -> HttpResponse {
+    let (item, id) = path.into_inner();
+    match media::download(&st.pool, &u.0.user_id, item, &id).await {
+        Ok((mime, name, body)) => {
+            let stream = futures_util::stream::unfold(body, |mut b| async move {
+                b.next().await.map(|chunk| (chunk.map_err(|e| std::io::Error::other(e.to_string())), b))
+            });
+            let safe: String = name.chars().map(|c| if c == '"' || c.is_control() { '_' } else { c }).collect();
+            HttpResponse::Ok()
+                .content_type(mime)
+                .insert_header((
+                    "Content-Disposition",
+                    format!("attachment; filename=\"{safe}\"; filename*=UTF-8''{}", urlencoding::encode(&name)),
+                ))
+                .streaming(stream)
+        }
+        Err(e) => HttpResponse::NotFound().json(json!({ "error": format!("{e:#}") })),
+    }
 }

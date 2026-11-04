@@ -153,7 +153,7 @@ function Message({ item, group, senders, onOpen, channel }) {
 						))}
 					</div>
 				) : null}
-				<InboxMedia files={files} />
+				<InboxMedia item={item.id} files={files} />
 				{body ? <div className="inbox-msg-body">{body}</div> : null}
 				<div className="inbox-msg-meta">
 					{onOpen ? (

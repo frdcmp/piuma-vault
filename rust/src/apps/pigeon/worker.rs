@@ -57,9 +57,11 @@ async fn pushes(st: AppState) {
 }
 
 /// Every minute: what nobody decided in time expires, files not stored yet are tried again;
-/// hourly, slugs for the newly named.
+/// hourly, files past their keeping time leave storage (every minute while there are more), slugs
+/// for the newly named.
 async fn sweeps(st: AppState) {
     let mut slugs_at: Option<Instant> = None;
+    let mut media_at: Option<Instant> = None;
     loop {
         match actions::expire_due(&st).await {
             Ok(n) if n > 0 => log::info!("pigeon: {n} pending action(s) expired"),
@@ -77,6 +79,14 @@ async fn sweeps(st: AppState) {
         // files that didn't make it into storage yet
         if let Err(e) = media::retry(&st).await {
             log::warn!("pigeon media: {e:#}");
+        }
+        // files past their keeping time leave storage
+        if media_at.is_none_or(|t| t.elapsed() >= Duration::from_secs(3600)) {
+            match media::expire(&st).await {
+                Ok(n) if n > 0 => log::info!("pigeon: the files of {n} message(s) expired"),
+                Ok(_) => media_at = Some(Instant::now()),
+                Err(e) => log::warn!("pigeon media expiry: {e:#}"),
+            }
         }
         if slugs_at.is_none_or(|t| t.elapsed() >= Duration::from_secs(3600)) {
             match slugs::backfill(&st).await {
