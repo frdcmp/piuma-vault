@@ -233,6 +233,10 @@ pub async fn ingest(pool: &DbPool, inc: &Incoming, debounce: Duration) -> anyhow
     }
     tx.commit().await?;
     log::debug!("pigeon item {item_id} in {conversation_id}");
+    // the user answered themselves: no triage comes now, so the chat stops showing Pigeon reading
+    if inc.direction == Direction::Out && inc.author == Author::Me && inc.triage {
+        crate::apps::pigeon::events::working(pool, conversation_id, "done", None, Some("stopped")).await;
+    }
     // its photos, videos and files, into storage
     crate::apps::pigeon::media::fetch_soon(pool, item_id, &inc.media);
     // someone known only by number whose message carries their name takes it
@@ -271,6 +275,8 @@ pub async fn mark_mine(pool: &DbPool, item: Uuid) -> anyhow::Result<()> {
     .await?;
     sqlx::query("UPDATE db_pigeon_questions SET status = 'expired' WHERE conversation_id = $1 AND status = 'open'").bind(conversation).execute(&mut *tx).await?;
     tx.commit().await?;
+    // its triage is off: the chat stops showing Pigeon reading
+    crate::apps::pigeon::events::working(pool, conversation, "done", None, Some("stopped")).await;
     Ok(())
 }
 
