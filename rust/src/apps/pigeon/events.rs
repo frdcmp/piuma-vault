@@ -55,7 +55,8 @@ pub async fn publish_with(pool: &DbPool, user_id: &str, kind: &str, id: Option<U
 }
 
 /// Where Pigeon is with a conversation's newest messages: the chat shows the step. `until`: when
-/// the step ends, where known (the reply lands); `outcome` with "done".
+/// the step ends, where known (the reply lands); `outcome` with "done". Kept (`db_pigeon_working`)
+/// for a chat opened mid-way (`working_of`).
 pub async fn working(pool: &DbPool, conversation: Uuid, stage: &str, until: Option<chrono::DateTime<chrono::Utc>>, outcome: Option<&str>) {
     let user: Option<String> = sqlx::query_scalar("SELECT user_id FROM db_pigeon_conversations WHERE id = $1")
         .bind(conversation)
@@ -63,16 +64,49 @@ pub async fn working(pool: &DbPool, conversation: Uuid, stage: &str, until: Opti
         .await
         .ok()
         .flatten();
-    if let Some(u) = user {
-        let mut data = serde_json::json!({ "stage": stage });
+    let Some(u) = user else { return };
+    let at = chrono::Utc::now();
+    let _ = sqlx::query(
+        "INSERT INTO db_pigeon_working (conversation_id, stage, until_at, outcome, at) VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (conversation_id) DO UPDATE SET stage = $2, until_at = $3, outcome = $4, at = $5",
+    )
+    .bind(conversation)
+    .bind(stage)
+    .bind(until)
+    .bind(outcome)
+    .bind(at)
+    .execute(pool)
+    .await;
+    let mut data = serde_json::json!({ "stage": stage, "at": at });
+    if let Some(t) = until {
+        data["until"] = serde_json::json!(t);
+    }
+    if let Some(o) = outcome {
+        data["outcome"] = serde_json::json!(o);
+    }
+    publish_with(pool, &u, kinds::WORKING, Some(conversation), Some(data)).await;
+}
+
+/// The last step told for each of these conversations (as the event's data), by conversation.
+pub async fn working_of(pool: &DbPool, conversations: &[Uuid]) -> serde_json::Value {
+    let rows: Vec<(Uuid, String, Option<chrono::DateTime<chrono::Utc>>, Option<String>, chrono::DateTime<chrono::Utc>)> =
+        sqlx::query_as("SELECT conversation_id, stage, until_at, outcome, at FROM db_pigeon_working WHERE conversation_id = ANY($1)")
+            .bind(conversations)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+    let mut out = serde_json::Map::new();
+    for (id, stage, until, outcome, at) in rows {
+        let mut data = serde_json::json!({ "stage": stage, "at": at });
         if let Some(t) = until {
             data["until"] = serde_json::json!(t);
         }
         if let Some(o) = outcome {
             data["outcome"] = serde_json::json!(o);
         }
-        publish_with(pool, &u, kinds::WORKING, Some(conversation), Some(data)).await;
+        out.insert(id.to_string(), data);
     }
+    serde_json::Value::Object(out)
 }
 
 /// A conversation changed: its chat, and the list it's in.

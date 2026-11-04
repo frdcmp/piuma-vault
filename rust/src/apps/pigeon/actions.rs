@@ -194,6 +194,17 @@ pub async fn propose(st: &State, p: Proposal) -> anyhow::Result<Outcome> {
             .await?;
             let text = p.args["text"].as_str().unwrap_or_default();
             if let Some(why) = pace::before_send(st, connector.as_ref(), c.id, text, since.unwrap_or_else(Utc::now)).await? {
+                if why == pace::PAUSED {
+                    // the reply, written, waits for the user as a card instead of going out
+                    sqlx::query("UPDATE db_pigeon_actions SET policy = 'ask', reason = $2, updated_at = NOW() WHERE id = $1")
+                        .bind(id)
+                        .bind(format!("{why} while it was typing: yours to send"))
+                        .execute(&st.pool)
+                        .await?;
+                    crate::apps::pigeon::events::conversation(&st.pool, c.id).await;
+                    log::info!("pigeon action {id}: auto reply kept for the user, {why}");
+                    return Ok(Outcome { id: Some(id), status: "pending".into(), detail: Some(why.into()) });
+                }
                 sqlx::query("UPDATE db_pigeon_actions SET status = 'dropped', error = $2, decided_by = 'pigeon (auto)', decided_at = NOW(), updated_at = NOW() WHERE id = $1")
                     .bind(id)
                     .bind(format!("not sent: {why}"))

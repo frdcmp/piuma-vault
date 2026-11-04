@@ -146,6 +146,7 @@ pub async fn get_conversation(st: web::Data<AppState>, u: InboxReader, path: web
                 "auto_paused_until": actions::quiet_until(&st, id).await?,
             },
             "cards": cards::list(&st, user, Some(id)).await?,
+            "working": events::working_of(&st.pool, &[id]).await,
         }))
     }
     .await;
@@ -945,6 +946,7 @@ pub async fn get_person_chat(st: web::Data<AppState>, u: InboxReader, path: web:
             "threads": threads,
             "unread": unread,
             "cards": cards_out,
+            "working": events::working_of(&st.pool, &threads.iter().map(|t| t.id).collect::<Vec<_>>()).await,
             "switches": {
                 "reply": policy::resolve(&st.pool, user, Kind::Reply, None, None).await?.as_str(),
                 "reply_own": reply_own,

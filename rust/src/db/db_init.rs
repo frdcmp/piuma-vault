@@ -1453,6 +1453,22 @@ const TABLES: &[TableDefinition] = &[
         "#,
         indices: &[],
     },
+    // Where Pigeon is with a conversation's newest messages, the last step told
+    // (reading · analysing · deciding · typing · done, with the outcome): a chat
+    // opened mid-way shows it.
+    TableDefinition {
+        name: "db_pigeon_working",
+        sql: r#"
+            CREATE TABLE db_pigeon_working (
+                conversation_id UUID PRIMARY KEY REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                stage TEXT NOT NULL,
+                until_at TIMESTAMPTZ,
+                outcome TEXT,
+                at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[],
+    },
     // How loud a person is on the user's phone: a contact's, a conversation's (a
     // WhatsApp group's) or the user's default (neither); none: smart.
     TableDefinition {

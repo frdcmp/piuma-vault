@@ -62,8 +62,21 @@ async fn interrupted(st: &State, conversation: Uuid, since: DateTime<Utc>) -> an
     .bind(since)
     .fetch_optional(&st.pool)
     .await?;
-    Ok(who.map(|w| if w == "me" { "you wrote there" } else { "they wrote again" }))
+    if let Some(w) = who {
+        return Ok(Some(if w == "me" { "you wrote there" } else { "they wrote again" }));
+    }
+    // the user paused auto replies here meanwhile (the pill): the reply waits for them instead
+    if let Some(c) = crate::apps::pigeon::conversations::get(&st.pool, conversation).await? {
+        let pol = crate::apps::pigeon::policy::resolve(&st.pool, &c.user_id, crate::apps::pigeon::connectors::Kind::Reply, c.contact_id, Some(c.id)).await?;
+        if pol != crate::apps::pigeon::policy::Policy::Auto {
+            return Ok(Some(PAUSED));
+        }
+    }
+    Ok(None)
 }
+
+/// Why the pacing stopped when the user paused auto replies: the reply becomes theirs to send.
+pub const PAUSED: &str = "you paused auto replies";
 
 /// Waits `secs`, looking for a new message every second.
 async fn wait(st: &State, conversation: Uuid, since: DateTime<Utc>, secs: f64) -> anyhow::Result<Option<&'static str>> {
