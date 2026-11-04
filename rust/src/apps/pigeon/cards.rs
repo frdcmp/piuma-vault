@@ -273,7 +273,30 @@ pub async fn list(st: &State, user: &str, conversation: Option<Uuid>) -> anyhow:
 
 /// The push for a card or news: who it's about as the title, the text as the body; ringing or
 /// silent (the app's two notification channels), with the card's buttons.
+/// The phone's Android channels (the app makes them; the user tunes each in Android's settings):
+/// a person's messages, a group's, Pigeon's cards (it needs them), its news, and the quiet ones.
+const CH_MESSAGES: &str = "pigeon-messages";
+const CH_GROUPS: &str = "pigeon-groups";
+const CH_CARDS: &str = "pigeon-ring";
+const CH_NEWS: &str = "pigeon-news";
+const CH_QUIET: &str = "pigeon-silent";
+
+/// A card, or news (no card), on the phone: rings on its channel, or arrives quietly.
 async fn push(st: &State, user: &str, conversation: Option<Uuid>, card: Option<&Card>, text: &str, ring: bool) {
+    let channel = match (ring, card) {
+        (false, _) => CH_QUIET,
+        (true, Some(_)) => CH_CARDS,
+        (true, None) => CH_NEWS,
+    };
+    let category = card.map(|c| format!("pigeon-{}", c.kind));
+    let card = card.map(|c| json!({ "kind": c.kind, "id": c.id, "buttons": c.buttons, "free_text": c.free_text }));
+    send(st, user, conversation, json!({ "card": card }), text, ring, channel, category).await;
+}
+
+/// The push itself: titled by who the conversation is with, opening it; `extra` joins the
+/// metadata (with `conversation_id` and `ring`).
+#[allow(clippy::too_many_arguments)]
+async fn send(st: &State, user: &str, conversation: Option<Uuid>, extra: Json, text: &str, ring: bool, channel: &str, category: Option<String>) {
     let title = match conversation {
         Some(c) => heading(st, c).await.unwrap_or_else(|_| "Pigeon".into()),
         None => "Pigeon".into(),
@@ -282,16 +305,15 @@ async fn push(st: &State, user: &str, conversation: Option<Uuid>, card: Option<&
         Some(c) => format!("/inbox/{c}"),
         None => "/inbox".into(),
     };
-    let metadata = json!({
-        "conversation_id": conversation,
-        "ring": ring,
-        "card": card.map(|c| json!({ "kind": c.kind, "id": c.id, "buttons": c.buttons, "free_text": c.free_text })),
-    });
+    let mut metadata = json!({ "conversation_id": conversation, "ring": ring });
+    if let (Some(m), Json::Object(extra)) = (metadata.as_object_mut(), extra) {
+        m.extend(extra);
+    }
     let mut n = NewNotification::new(user, "pigeon", title).body(text).action_url(url).metadata(metadata);
     // to the Pigeon app (the Piuma app has no Inbox)
-    n = n.phone_app(crate::apps::notifications::expo::PIGEON).push_channel(if ring { "pigeon-ring" } else { "pigeon-silent" }).silent(!ring);
-    if let Some(c) = card {
-        n = n.push_category(format!("pigeon-{}", c.kind));
+    n = n.phone_app(crate::apps::notifications::expo::PIGEON).push_channel(channel).silent(!ring);
+    if let Some(c) = category {
+        n = n.push_category(c);
     }
     // the Inbox is where cards and news live: no bell row of their own
     notify(&st.pool, None, n, Channels { inbox: false, web_push: true, expo: true }).await;
@@ -329,7 +351,8 @@ pub async fn news(st: &State, user: &str, conversation: Option<Uuid>, text: &str
 }
 
 /// A message from someone came in: on the phone by their alert switch (all rings; smart and
-/// quiet arrive silently; off: nothing). In a group, who wrote it heads the text.
+/// quiet arrive silently; off: nothing), with Reply and Mark as read. In a group, who wrote it
+/// heads the text.
 pub async fn message_in(st: &State, user: &str, item: Uuid) -> anyhow::Result<()> {
     let row: Option<(Uuid, Option<String>, Option<String>, String)> =
         sqlx::query_as("SELECT conversation_id, sender_name, sender, body FROM db_pigeon_items WHERE id = $1").bind(item).fetch_optional(&st.pool).await?;
@@ -342,11 +365,17 @@ pub async fn message_in(st: &State, user: &str, item: Uuid) -> anyhow::Result<()
     let conv = conversations::get(&st.pool, conversation).await?.ok_or_else(|| anyhow::anyhow!("no conversation"))?;
     let text = conversations::clip(&body, 300);
     // a group (no contact): who wrote it
-    let text = match (conv.contact_id, name.or(sender)) {
-        (None, Some(who)) => format!("{who}: {text}"),
+    let group = conv.contact_id.is_none();
+    let text = match (group, name.or(sender)) {
+        (true, Some(who)) => format!("{who}: {text}"),
         _ => text,
     };
-    push(st, user, Some(conversation), None, &text, ring).await;
+    let channel = match (ring, group) {
+        (false, _) => CH_QUIET,
+        (true, true) => CH_GROUPS,
+        (true, false) => CH_MESSAGES,
+    };
+    send(st, user, Some(conversation), json!({ "message": item }), &text, ring, channel, Some("pigeon-message".into())).await;
     Ok(())
 }
 

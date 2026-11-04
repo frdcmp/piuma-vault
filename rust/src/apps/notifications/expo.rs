@@ -56,7 +56,9 @@ pub async fn dispatch_expo_with(
     send_messages(pool, user_id, opts.app.as_deref().unwrap_or(PIUMA), |t| {
         let mut m = json!({ "to": t, "title": title, "body": body, "data": data });
         if !opts.silent {
+            // high: delivered at once, also when the phone dozes (a normal one can wait)
             m["sound"] = json!("default");
+            m["priority"] = json!("high");
         }
         if let Some(c) = &opts.channel {
             m["channelId"] = json!(c);
