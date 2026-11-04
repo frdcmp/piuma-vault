@@ -14,6 +14,17 @@ use crate::db::db::DbPool;
 
 /// The `app_settings` key naming the model Pigeon uses (a `db_llm_models` id).
 pub const MODEL_SETTING: &str = "pigeon_model_id";
+/// The model replies are written with, drafts and auto replies (they speak as the user); unset:
+/// `MODEL_SETTING`'s.
+pub const REPLY_MODEL_SETTING: &str = "pigeon_reply_model_id";
+
+/// What a model call writes: a reply as the user, or the rest (tasks, summaries, what Pigeon
+/// learns about people).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Writer {
+    Reply,
+    Other,
+}
 
 /// A tool call the model made: its name and parsed arguments.
 #[derive(Debug, Clone)]
@@ -35,7 +46,18 @@ struct Resolved {
 }
 
 async fn resolve(pool: &DbPool) -> anyhow::Result<Resolved> {
-    let picked: Option<Uuid> = store::get(pool, MODEL_SETTING).await.and_then(|v| v.parse().ok());
+    resolve_for(pool, Writer::Other).await
+}
+
+async fn resolve_for(pool: &DbPool, writer: Writer) -> anyhow::Result<Resolved> {
+    let reply_model: Option<Uuid> = match writer {
+        Writer::Reply => store::get(pool, REPLY_MODEL_SETTING).await.and_then(|v| v.parse().ok()),
+        Writer::Other => None,
+    };
+    let picked: Option<Uuid> = match reply_model {
+        Some(m) => Some(m),
+        None => store::get(pool, MODEL_SETTING).await.and_then(|v| v.parse().ok()),
+    };
     let model: Option<ModelRow> = match picked {
         Some(id) => sqlx::query_as("SELECT * FROM db_llm_models WHERE id = $1 AND enabled").bind(id).fetch_optional(pool).await?,
         None => None,
@@ -61,7 +83,12 @@ async fn resolve(pool: &DbPool) -> anyhow::Result<Resolved> {
 /// One turn: a system prompt, the user's message, the tools (OpenAI function tools: `{type:
 /// function, function: {name, description, parameters}}`).
 pub async fn complete(pool: &DbPool, system: &str, user: &str, tools: &[Json]) -> anyhow::Result<Reply> {
-    let r = resolve(pool).await?;
+    complete_as(pool, Writer::Other, system, user, tools).await
+}
+
+/// The same, with the model for what it writes (`Writer::Reply`: the replies model).
+pub async fn complete_as(pool: &DbPool, writer: Writer, system: &str, user: &str, tools: &[Json]) -> anyhow::Result<Reply> {
+    let r = resolve_for(pool, writer).await?;
     let messages = [json!({ "role": "system", "content": system }), json!({ "role": "user", "content": user })];
     let res = call(pool, &r, &messages, tools, "pigeon").await?;
     Ok(reply_of(res))
@@ -77,7 +104,7 @@ const READ_ROUNDS: usize = 6;
 /// (`VAULT_READS`, run as `user`), a few rounds, before it calls one of `tools`. Its reads are
 /// logged; any other tool it names that isn't in `tools` is refused.
 pub async fn complete_reading(pool: &DbPool, user_id: &str, system: &str, user: &str, tools: &[Json]) -> anyhow::Result<Reply> {
-    let r = resolve(pool).await?;
+    let r = resolve_for(pool, Writer::Reply).await?;
     let reads: Vec<String> = VAULT_READS.iter().map(|s| s.to_string()).collect();
     let mut all: Vec<Json> = tools.to_vec();
     all.extend(crate::apps::agents::tools::schemas_for(&reads));

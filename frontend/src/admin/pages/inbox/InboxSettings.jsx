@@ -336,13 +336,31 @@ export default function InboxSettings() {
 				{isAdmin ? (
 					<PvField
 						label="The model Pigeon writes with"
-						hint="For everyone on this vault."
+						hint="Tasks, events, summaries, what it learns about people. For everyone on this vault."
 					>
 						<PvSelect
 							value={s.model_id ?? ""}
 							onChange={(v) => set({ model_id: v ?? "" })}
 							options={[
 								{ value: "", label: "The default model" },
+								...models.map((m) => ({
+									value: m.id,
+									label: `${m.display_name || m.model_id} · ${m.provider}`,
+								})),
+							]}
+						/>
+					</PvField>
+				) : null}
+				{isAdmin ? (
+					<PvField
+						label="The model replies are written with"
+						hint="Drafts and auto replies: they speak as you. For everyone on this vault."
+					>
+						<PvSelect
+							value={s.reply_model_id ?? ""}
+							onChange={(v) => set({ reply_model_id: v ?? "" })}
+							options={[
+								{ value: "", label: "The same as above" },
 								...models.map((m) => ({
 									value: m.id,
 									label: `${m.display_name || m.model_id} · ${m.provider}`,

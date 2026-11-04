@@ -1160,6 +1160,20 @@ const TABLES: &[TableDefinition] = &[
         "#,
         indices: &[],
     },
+    // How the user writes in a chat that is no one person's (a group), from their own
+    // messages there; `messages`: how many there were when it was written.
+    TableDefinition {
+        name: "db_pigeon_conversation_styles",
+        sql: r#"
+            CREATE TABLE db_pigeon_conversation_styles (
+                conversation_id UUID PRIMARY KEY REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                profile TEXT NOT NULL,
+                messages INTEGER NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[],
+    },
     // How the user writes to a person on one channel, from their own messages there.
     TableDefinition {
         name: "db_pigeon_contact_styles",

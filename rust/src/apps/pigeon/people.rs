@@ -3,7 +3,8 @@
 //!   memory  who they are to the user and what's going on between them: written by the LLM from
 //!           their conversations on every channel, rewritten as more comes in
 //!   styles  per channel, how the user writes to them there (an email to someone is not a
-//!           WhatsApp to them): from their own messages on that channel
+//!           WhatsApp to them): from their own messages on that channel; a group, no one
+//!           person's, has its own (`group_style`), from the user's messages in it
 //!
 //! Both are written when a reply needs them and are due, or now by `learn`. Learning first
 //! gathers: each connector brings past conversations in as history (stored, never triaged or
@@ -78,6 +79,98 @@ pub async fn style(st: &State, contact: Uuid, connector: &str) -> anyhow::Result
         .bind(connector)
         .fetch_optional(&st.pool)
         .await?)
+}
+
+/// A message that is only an attachment's stand-in ("[image]") or a link says nothing of how
+/// the user writes.
+const WORDS_ONLY: &str = r"length(trim(i.body)) > 0 AND i.body !~ '^\s*\[[a-z_ ]+\]\s*$' AND i.body !~ '^\s*https?://\S+\s*$'";
+
+/// How the user writes in a group (a chat that is no one person's), when written.
+pub async fn group_style(st: &State, conversation: Uuid) -> anyhow::Result<Option<Style>> {
+    Ok(sqlx::query_as(
+        "SELECT c.connector, s.profile, s.messages, s.updated_at FROM db_pigeon_conversation_styles s
+           JOIN db_pigeon_conversations c ON c.id = s.conversation_id WHERE s.conversation_id = $1",
+    )
+    .bind(conversation)
+    .fetch_optional(&st.pool)
+    .await?)
+}
+
+/// The user's own latest messages in a conversation, newest first (words, not attachments).
+pub async fn chat_voice(st: &State, conversation: Uuid, n: i64) -> anyhow::Result<Vec<String>> {
+    Ok(sqlx::query_scalar(&format!(
+        "SELECT i.body FROM db_pigeon_items i WHERE i.conversation_id = $1 AND i.author = 'me' AND {WORDS_ONLY}
+          ORDER BY i.at DESC LIMIT $2"
+    ))
+    .bind(conversation)
+    .bind(n)
+    .fetch_all(&st.pool)
+    .await?)
+}
+
+/// How long the user's messages usually are, in characters: the median of their latest ones to
+/// this person on the channel (`contact`), else in this conversation. None under
+/// STYLE_MIN_MESSAGES.
+pub async fn usual_length(st: &State, contact: Option<Uuid>, conversation: Uuid, connector: &str) -> anyhow::Result<Option<i64>> {
+    let (n, median): (i64, Option<f64>) = sqlx::query_as(&format!(
+        "SELECT COUNT(*), percentile_cont(0.5) WITHIN GROUP (ORDER BY len) FROM (
+           SELECT length(trim(i.body)) AS len FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
+            WHERE i.author = 'me' AND {WORDS_ONLY}
+              AND (($1::uuid IS NOT NULL AND c.contact_id = $1 AND i.connector = $3) OR ($1::uuid IS NULL AND c.id = $2))
+            ORDER BY i.at DESC LIMIT 40) mine"
+    ))
+    .bind(contact)
+    .bind(conversation)
+    .bind(connector)
+    .fetch_one(&st.pool)
+    .await?;
+    Ok(median.filter(|_| n >= STYLE_MIN_MESSAGES).map(|m| m.round() as i64))
+}
+
+/// Write how the user writes in a group, when due (or `force`). True when written.
+pub async fn ensure_group_style(st: &State, conv: &conversations::Conversation, force: bool) -> anyhow::Result<bool> {
+    let n: i64 = sqlx::query_scalar(&format!(
+        "SELECT COUNT(*) FROM db_pigeon_items i WHERE i.conversation_id = $1 AND i.author = 'me' AND {WORDS_ONLY}"
+    ))
+    .bind(conv.id)
+    .fetch_one(&st.pool)
+    .await?;
+    if n < STYLE_MIN_MESSAGES {
+        return Ok(false);
+    }
+    if !force {
+        if let Some(s) = group_style(st, conv.id).await? {
+            if !due(n, s.messages, s.updated_at, STYLE_EVERY) {
+                return Ok(false);
+            }
+        }
+    }
+    if !llm::available(&st.pool).await {
+        return Ok(false);
+    }
+    let me = owner::get(&st.pool, &conv.user_id).await.name;
+    let mine = chat_voice(st, conv.id, 40).await?;
+    let examples: String = mine.iter().map(|m| format!("- {}\n", conversations::clip(m, 500))).collect();
+    let group = conv.title.as_deref().filter(|t| !t.is_empty()).unwrap_or("a group");
+    let profile = llm::text(
+        &st.pool,
+        "You describe how a person writes in one group chat (WhatsApp, …), so someone else can write there exactly like \
+         them. Answer with 3 to 6 short bullet points in English: language(s) and dialect, length, formality, emoji and \
+         punctuation habits, how they address the others, nicknames, slang or recurring phrases, what they leave out. \
+         Describe; don't quote whole messages.",
+        &format!("Messages {me} wrote in the group \"{group}\" on {} (newest first):\n{examples}", conv.connector),
+    )
+    .await?;
+    sqlx::query(
+        "INSERT INTO db_pigeon_conversation_styles (conversation_id, profile, messages) VALUES ($1, $2, $3)
+         ON CONFLICT (conversation_id) DO UPDATE SET profile = EXCLUDED.profile, messages = EXCLUDED.messages, updated_at = NOW()",
+    )
+    .bind(conv.id)
+    .bind(&profile)
+    .bind(n as i32)
+    .execute(&st.pool)
+    .await?;
+    Ok(true)
 }
 
 /// The user's own latest messages to this person (on `connector` when given), newest first,

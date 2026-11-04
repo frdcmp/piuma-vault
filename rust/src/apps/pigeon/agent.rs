@@ -140,15 +140,21 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
     if offered.is_empty() && !asking {
         return Ok(Vec::new());
     }
+    let writes_reply = offered.iter().any(|(_, d)| d.kind == Kind::Reply);
     if let Some(c) = &contact {
         // what Pigeon knows about them, and how the user writes to them here, brought up to date
         if let Err(e) = people::ensure_memory(st, c, false).await {
             log::warn!("memory of {}: {e:#}", c.id);
         }
-        if offered.iter().any(|(_, d)| d.kind == Kind::Reply) {
+        if writes_reply {
             if let Err(e) = people::ensure_style(st, c, &conv.connector, false).await {
                 log::warn!("{} style of {}: {e:#}", conv.connector, c.id);
             }
+        }
+    } else if writes_reply {
+        // a group: how the user writes in it
+        if let Err(e) = people::ensure_group_style(st, &conv, false).await {
+            log::warn!("style of group {}: {e:#}", conv.id);
         }
     }
     let why = format!("Why, in one short sentence {} will read", me.name);
@@ -184,7 +190,9 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
     let reply = if drafting {
         llm::complete_reading(&st.pool, &conv.user_id, &system, &user, &tools).await?
     } else {
-        llm::complete(&st.pool, &system, &user, &tools).await?
+        // a reply speaks as the user: the replies model
+        let writer = if writes_reply { llm::Writer::Reply } else { llm::Writer::Other };
+        llm::complete_as(&st.pool, writer, &system, &user, &tools).await?
     };
 
     let (triage_id, hold_reply) = match &mode {
@@ -286,9 +294,13 @@ fn system_prompt(me: &Owner, mode: &Mode<'_>, asking: bool, replies_off: bool) -
         now.format("%:z"),
     );
     let replying = format!(
-        "\n- A reply is written as {name}, in the first person, to this person: match the language, length, tone, \
-         greetings and emoji use of {name}'s own messages to them (the examples), and follow {name}'s note on them above all. \
-         One reply at most.\n\
+        "\n- A reply is written as {name}, in the first person, to this person (or this group): match the language, \
+         dialect, length, tone, greetings and emoji use of {name}'s own messages there (the style and the examples), and \
+         follow {name}'s note on them above all. One reply at most.\n\
+         - Write it the way {name} would, not better: as long as {name}'s messages there usually are (the length given \
+         below; never twice it), one thing only, the answer to the newest messages. No joke, pun or callback added on top, \
+         no 'Ahah'/'Haha' opener, no exclamation runs, no summary or restating of the plan, no facts nobody asked about. \
+         Emoji only as {name} uses them there (none if they don't). Plain and a little dry beats clever.\n\
          - A reply may acknowledge, thank, chat or ask, but accepting a request, a date, a price or a commitment is {name}'s \
          decision unless their own messages here already did, or their instructions say so: then propose no reply.\n\
          - Never claim to be {name} or a person, and never deny being Pigeon: when they ask or doubt whether it's really \
@@ -299,11 +311,12 @@ fn system_prompt(me: &Owner, mode: &Mode<'_>, asking: bool, replies_off: bool) -
             s.push_str(&replying);
             s.push_str(&format!(
                 "\n- {name} asked for a reply now: propose exactly one reply.\n\
-                 - You are Pigeon's drafter: {name} reads your reply before it goes. When it needs facts from {name}'s vault \
-                 (a plan, a trip, a date, an address, what was agreed, their notes, tasks and calendar), look them up first \
-                 with the read tools ({reads}), then write; their instructions may say what to look for. Use only what this \
-                 person should know: never pass on other people's private matters, credentials, money or health details \
-                 unless {name}'s instructions ask for exactly that.",
+                 - You are Pigeon's drafter: {name} reads your reply before it goes. Look things up in {name}'s vault (their \
+                 notes, tasks and calendar, with the read tools: {reads}) only when the newest messages ask for a fact (when, \
+                 where, what was agreed, an address) or {name}'s instructions ask you to; otherwise write straight away. Put in \
+                 the reply only the fact that was asked, never the rest of what you found. Use only what this person should \
+                 know: never pass on other people's private matters, credentials, money or health details unless {name}'s \
+                 instructions ask for exactly that.",
                 reads = llm::VAULT_READS.join(", ")
             ));
         }
@@ -389,6 +402,26 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
                 }
             }
         }
+    }
+    if contact.is_none() {
+        // a group: how the user writes in it, and their latest messages there
+        if let Some(p) = people::group_style(st, conv.id).await? {
+            s.push_str(&format!("\nHow {name} writes in this group:\n{}\n", p.profile));
+        }
+        let here = people::chat_voice(st, conv.id, VOICE_EXAMPLES).await?;
+        if !here.is_empty() {
+            s.push_str(&format!("\n{name}'s own recent messages in this group (their voice):\n"));
+            for e in here {
+                s.push_str(&format!("- {}\n", conversations::clip(&e, 400)));
+            }
+        }
+    }
+    if let Some(n) = people::usual_length(st, conv.contact_id, conv.id, &conv.connector).await? {
+        s.push_str(&format!(
+            "\n{name}'s messages here are usually about {n} characters long (half of them shorter): a reply stays near that, \
+             never over {}.\n",
+            (n * 2).max(40)
+        ));
     }
     if let Some(w) = conv.window_until {
         s.push_str(&format!("\nThe channel accepts replies until {}.\n", me.local(w).format("%Y-%m-%d %H:%M")));
