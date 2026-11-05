@@ -37,7 +37,7 @@ spec:
         fsGroup: 65532
       containers:
         - name: whatsapp-bridge
-          image: __REGISTRY__/piuma-vault-whatsapp-bridge:c74b33abc322
+          image: __REGISTRY__/piuma-vault-whatsapp-bridge:b8dc73c42161
           imagePullPolicy: IfNotPresent      # built locally, imported into containerd
           env:
             - name: PIGEON_WHATSAPP_BRIDGE_SECRET
