@@ -255,15 +255,6 @@ pub async fn user_writing(st: &State, conversation: Uuid) -> anyhow::Result<bool
     .await?)
 }
 
-/// Whether the user wrote in this conversation themselves in the last `minutes`.
-pub async fn wrote_within(st: &State, conversation: Uuid, minutes: i32) -> anyhow::Result<bool> {
-    Ok(sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM db_pigeon_items WHERE conversation_id = $1 AND author = 'me' AND at > NOW() - make_interval(mins => $2))")
-        .bind(conversation)
-        .bind(minutes)
-        .fetch_one(&st.pool)
-        .await?)
-}
-
 /// When Pigeon may answer again in a conversation the user is writing in: 10 minutes after their
 /// last message there. None when they aren't.
 pub async fn quiet_until(st: &State, conversation: Uuid) -> anyhow::Result<Option<DateTime<Utc>>> {

@@ -13,8 +13,8 @@ use crate::apps::pigeon::state::{AppState, State};
 
 pub const REPLY_AT: f64 = 0.6;
 pub const ACTION_AT: f64 = 0.6;
-/// In a chat winding down after the user wrote ("ok, a domani"), only something surely to do is.
-const WINDING_ACTION_AT: f64 = 0.8;
+/// Where only something surely to do is (Jev sure it's of low importance).
+const SURE_ACTION_AT: f64 = 0.8;
 pub const FYI_AT: f64 = 0.5;
 pub const HOLD_AT: f64 = 0.5;
 /// Urgent from here: its cards ring whatever the person's alert switch (`alerts`).
@@ -22,8 +22,6 @@ pub const URGENT_AT: f64 = 0.7;
 /// Below this the new messages are written to someone else (the user only copied, or not the one
 /// asked): nothing to reply to, at most worth knowing.
 pub const ADDRESSED_AT: f64 = 0.5;
-/// The user wrote in the conversation this recently: only what waits for an answer is answered.
-const RECENT_MINUTES: i32 = 60;
 /// Below this importance (Jev sure it's low: a hotel's "we miss you"), only something surely to do
 /// is something to do.
 const LOW_IMPORTANCE: f64 = 0.2;
@@ -62,8 +60,6 @@ pub struct Signals {
     pub users_call: f64,
     /// they ask or doubt whether it's really the user writing
     pub doubts_user: f64,
-    /// they wait for the user's answer, rather than chatting on to an end
-    pub awaits_user: f64,
     /// it can't wait: someone in trouble, something happening now
     pub urgent: f64,
 }
@@ -220,13 +216,6 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
         jev::noul("Do the new messages ask, or doubt, whether it's really {me} writing, or whether it's a bot, an AI, an assistant or an automatic reply?"),
     );
     q.insert(
-        "awaits_user".into(),
-        jev::noul(
-            "Do the new messages wait for an answer from {me} (a question, a request, news it would be rude to leave \
-             unanswered), rather than chat that can end here (an 'ok', a goodbye, a remark about the weather)?",
-        ),
-    );
-    q.insert(
         "urgent".into(),
         jev::noul(
             "Is it urgent for {me}, something that can't wait an hour or two: an emergency, someone hurt, ill or in \
@@ -262,7 +251,6 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
         others: others_on(&new_owned, &handles),
         users_call: answers.yes("users_call").unwrap_or(0.0),
         doubts_user: answers.yes("doubts_user").unwrap_or(0.0),
-        awaits_user: answers.yes("awaits_user").unwrap_or(1.0),
         urgent: answers.yes("urgent").unwrap_or(0.0),
     };
     // items a rule took (done, or waiting for the user) need nothing else; when it took them all,
@@ -277,14 +265,7 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
         }
     }
     let all_taken = !taken.is_empty() && new_owned.iter().all(|i| taken.contains(&i.id));
-    let mut attention = if all_taken { None } else { attention(&sig, answers.choice("kind").map(|(_, p)| p).unwrap_or(0.0)) };
-    // the user was in this chat within the hour: chat winding down needs neither Pigeon nor them
-    // (what's still to do there the intaker proposes; nothing to tell them otherwise)
-    let winding = attention.is_some() && sig.awaits_user < HOLD_AT && actions::wrote_within(st, id, RECENT_MINUTES).await?;
-    if winding && attention == Some("reply") {
-        attention = if sig.actionable >= ACTION_AT { Some("action") } else { None };
-        log::info!("triage {id}: chat winding down after the user wrote ({:.2}), nothing to answer", sig.awaits_user);
-    }
+    let attention = if all_taken { None } else { attention(&sig, answers.choice("kind").map(|(_, p)| p).unwrap_or(0.0)) };
     let item_ids = new_ids;
     let triage_id: i64 = sqlx::query_scalar(
         "INSERT INTO db_pigeon_triage (conversation_id, item_ids, model, answers, needs_reply, actionable, sensitive, mood_changed, importance, kind)
@@ -365,9 +346,7 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
     let answered = matches!(replied.as_deref(), Some("done" | "pending"));
     // with their replies off the user answers them: the intaker only for something to do
     let replies_off = policy::resolve(&st.pool, &conv.user_id, crate::apps::pigeon::connectors::Kind::Reply, conv.contact_id, Some(id)).await? == policy::Policy::Off;
-    let intake = if winding {
-        sig.actionable >= WINDING_ACTION_AT
-    } else if paused.is_some() || replies_off {
+    let intake = if paused.is_some() || replies_off {
         sig.actionable >= ACTION_AT
     } else {
         !answered || attention == Some("action") || sig.actionable >= ACTION_AT
@@ -400,7 +379,6 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
     let note = match (held, nothing, replies_off) {
         (_, _, true) => None,
         (Some(why), _, _) => Some(format!("not answered: {why}")),
-        (None, true, _) if winding => None,
         (None, true, _) => Some(if attention == Some("reply") { "needs your answer".to_string() } else { "needs you".to_string() }),
         _ => None,
     };
@@ -452,7 +430,7 @@ pub fn attention(sig: &Signals, kind_p: f64) -> Option<&'static str> {
     // written to someone else: theirs to answer
     if sig.needs_reply >= REPLY_AT && sig.addressed >= ADDRESSED_AT {
         Some("reply")
-    } else if sig.actionable >= if sig.importance < LOW_IMPORTANCE { WINDING_ACTION_AT } else { ACTION_AT } {
+    } else if sig.actionable >= if sig.importance < LOW_IMPORTANCE { SURE_ACTION_AT } else { ACTION_AT } {
         Some("action")
     } else if sig.importance >= FYI_AT {
         Some("fyi")
