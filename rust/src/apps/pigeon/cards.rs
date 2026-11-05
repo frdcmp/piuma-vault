@@ -506,14 +506,25 @@ fn act_on(st: &AppState, conversation: Uuid, asked: String, answer: String) {
     tokio::task::spawn_local(async move {
         let Ok(Some(conv)) = conversations::get(&st.pool, conversation).await else { return };
         let user = conv.user_id;
+        // the chat shows Pigeon at it (then typing, when a reply goes out), and where it ended
+        events::working(&st.pool, conversation, "deciding", None, None).await;
         let outcomes = match agent::after_answer(&st, conversation, &asked, &answer).await {
             Ok(o) => o,
             Err(e) => {
+                events::working(&st.pool, conversation, "done", None, Some("stopped")).await;
                 log::warn!("pigeon answer on {conversation}: {e:#}");
                 news(&st, &user, Some(conversation), &format!("⚠ Pigeon couldn't act on your answer: {e:#}"), None, false).await;
                 return;
             }
         };
+        let ended = if outcomes.iter().any(|o| o.status == "done") {
+            "replied"
+        } else if outcomes.iter().any(|o| o.status == "pending") {
+            "asked"
+        } else {
+            "stopped"
+        };
+        events::working(&st.pool, conversation, "done", None, Some(ended)).await;
         if outcomes.is_empty() {
             news(&st, &user, Some(conversation), "Pigeon found nothing to do with your answer.", None, false).await;
         }

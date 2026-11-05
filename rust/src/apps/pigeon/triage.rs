@@ -125,12 +125,21 @@ pub async fn run_due(st: &AppState) -> anyhow::Result<usize> {
 
 pub async fn triage(st: &State, id: Uuid) -> anyhow::Result<()> {
     let r = triage_inner(st, id).await;
-    // the chat shows where it ended: replied · asked · nothing · paused · stopped · failed
+    // the chat shows where it ended: replied · asked · nothing · stopped · failed; or, while the
+    // user writes there, it waiting for them (until the round runs again)
     let outcome = match &r {
         Ok(o) => *o,
         Err(_) => "failed",
     };
-    crate::apps::pigeon::events::working(&st.pool, id, "done", None, Some(outcome)).await;
+    let again: Option<chrono::DateTime<chrono::Utc>> = if outcome == "paused" {
+        sqlx::query_scalar("SELECT triage_due_at FROM db_pigeon_conversations WHERE id = $1").bind(id).fetch_one(&st.pool).await.ok().flatten()
+    } else {
+        None
+    };
+    match again {
+        Some(at) => crate::apps::pigeon::events::working(&st.pool, id, "waiting", Some(at), None).await,
+        None => crate::apps::pigeon::events::working(&st.pool, id, "done", None, Some(outcome)).await,
+    }
     r.map(|_| ())
 }
 
