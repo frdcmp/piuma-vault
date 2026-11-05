@@ -14,6 +14,7 @@
 //	GET  /u/{user}/pair     the QR code to scan (pairing starts if it isn't), or connected
 //	POST /u/{user}/send     {chat, text} → {id, at}
 //	POST /u/{user}/typing   {chat, on}
+//	POST /u/{user}/read     {chat, messages: [{id, sender}]}: read receipts (Pigeon's ids, "+<number>")
 //	POST /u/{user}/logout
 //	GET  /u/{user}/contacts the address book: {contacts: [{phone, name, push, business}]}
 //	POST /u/{user}/media    a file's download details (a message's `files` entry) → the file
@@ -89,6 +90,8 @@ type session struct {
 	qr      string
 	online  *time.Timer
 	groups  map[types.JID]string
+	// where each message they sent came from, as WhatsApp addresses it: its read receipt goes there
+	origins map[types.MessageID]origin
 	// the history so far, for the log
 	historyChats, historyMessages int
 }
@@ -161,6 +164,7 @@ func main() {
 	mux.HandleFunc("POST /u/{user}/send", b.auth((*session).send))
 	mux.HandleFunc("POST /u/{user}/send-file", b.auth((*session).sendFile))
 	mux.HandleFunc("POST /u/{user}/typing", b.auth((*session).typing))
+	mux.HandleFunc("POST /u/{user}/read", b.auth((*session).read))
 	mux.HandleFunc("POST /u/{user}/logout", b.auth((*session).logout))
 	mux.HandleFunc("GET /u/{user}/contacts", b.auth((*session).contacts))
 	mux.HandleFunc("POST /u/{user}/media", b.auth((*session).media))
@@ -222,7 +226,7 @@ func (b *bridge) session(user string) *session {
 }
 
 func (b *bridge) newSession(user string, device *store.Device) *session {
-	s := &session{b: b, user: user, groups: map[types.JID]string{}}
+	s := &session{b: b, user: user, groups: map[types.JID]string{}, origins: map[types.MessageID]origin{}}
 	s.setDevice(device)
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -290,6 +294,9 @@ func (s *session) onEvent(evt any) {
 			return
 		}
 		if m := s.message(ctx, e); m != nil {
+			if !e.Info.IsFromMe {
+				s.received(e)
+			}
 			s.emit(map[string]any{"type": "message", "message": m})
 		}
 	case *events.HistorySync:
@@ -1043,6 +1050,96 @@ func (s *session) typing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// origin: the chat and the sender of a message as WhatsApp gave them (a hidden user id, LID,
+// where Pigeon knows the phone number).
+type origin struct {
+	chat, sender types.JID
+	at           time.Time
+}
+
+// The most messages remembered for their read receipts: past it, those of more than a week go.
+const maxOrigins = 20000
+
+func (s *session) received(e *events.Message) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.origins) >= maxOrigins {
+		for id, o := range s.origins {
+			if time.Since(o.at) > 7*24*time.Hour {
+				delete(s.origins, id)
+			}
+		}
+		if len(s.origins) >= maxOrigins {
+			s.origins = map[types.MessageID]origin{}
+		}
+	}
+	s.origins[e.Info.ID] = origin{chat: e.Info.Chat.ToNonAD(), sender: e.Info.Sender.ToNonAD(), at: time.Now()}
+}
+
+type readReqMessage struct {
+	ID     string `json:"id"`     // as Pigeon has it: "<chat>/<id>"
+	Sender string `json:"sender"` // "+<number>" (or a JID)
+}
+
+// read: the messages are read: blue ticks for whoever sent them (unless the user turned read
+// receipts off), and read on the user's phone. Each goes where it came from; one sent before this
+// server last started, to the chat as Pigeon knows it.
+func (s *session) read(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Chat     string           `json:"chat"`
+		Messages []readReqMessage `json:"messages"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	chat, err := types.ParseJID(req.Chat)
+	if err != nil || chat.User == "" {
+		fail(w, http.StatusBadRequest, fmt.Errorf("chat: a WhatsApp JID, not %q", req.Chat))
+		return
+	}
+	cli := s.loggedIn(w)
+	if cli == nil {
+		return
+	}
+	// one receipt per chat and sender (WhatsApp's rule)
+	type to struct{ chat, sender types.JID }
+	ids := map[to][]types.MessageID{}
+	s.mu.Lock()
+	for _, m := range req.Messages {
+		id := types.MessageID(m.ID[strings.LastIndex(m.ID, "/")+1:])
+		if id == "" {
+			continue
+		}
+		t := to{chat: chat}
+		if o, ok := s.origins[id]; ok {
+			t = to{o.chat, o.sender}
+		} else if chat.Server == types.GroupServer {
+			t.sender = jidOf(m.Sender)
+		}
+		ids[t] = append(ids[t], id)
+	}
+	s.mu.Unlock()
+	n := 0
+	for t, list := range ids {
+		if err := cli.MarkRead(r.Context(), list, time.Now(), t.chat, t.sender); err != nil {
+			fail(w, http.StatusBadGateway, err)
+			return
+		}
+		n += len(list)
+	}
+	reply(w, http.StatusOK, map[string]any{"read": n})
+}
+
+// jidOf: "+<number>" as its JID, else the JID it is.
+func jidOf(p string) types.JID {
+	if n, ok := strings.CutPrefix(p, "+"); ok {
+		return types.NewJID(n, types.DefaultUserServer)
+	}
+	j, _ := types.ParseJID(p)
+	return j
 }
 
 func (s *session) logout(w http.ResponseWriter, r *http.Request) {

@@ -8,7 +8,8 @@
 //! the shared secret and tagged with the user: theirs as items to triage, the user's own from the
 //! phone as theirs (the conversation handled), on pairing the latest of each chat as history; and
 //! that they're typing, so the triage waits. Out: a reply (no reply window: WhatsApp has none for
-//! a person's own account), "typing…". Connected in the Inbox's settings: the server's QR code,
+//! a person's own account), "typing…", and read receipts once the user (or Pigeon, before an
+//! auto reply) read it. Connected in the Inbox's settings: the server's QR code,
 //! scanned from the phone (Linked devices). A chat is keyed by its JID; a person's handle is their
 //! phone number (+<country><number>).
 
@@ -471,6 +472,26 @@ impl Connector for Whatsapp {
     async fn typing(&self, st: &State, conversation: Uuid, on: bool) -> anyhow::Result<()> {
         let (chat, user) = chat_of(st, conversation).await?;
         bridge(st, &user, reqwest::Method::POST, "/typing", Some(&json!({ "chat": chat, "on": on }))).await?;
+        Ok(())
+    }
+
+    async fn seen(&self, st: &State, conversation: Uuid) -> anyhow::Result<()> {
+        let (chat, user) = chat_of(st, conversation).await?;
+        // theirs since someone on the user's side last wrote: the earlier ones were read then
+        let unanswered: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT external_id, sender FROM db_pigeon_items
+              WHERE conversation_id = $1 AND author = 'them'
+                AND at > COALESCE((SELECT MAX(at) FROM db_pigeon_items WHERE conversation_id = $1 AND author <> 'them'), '-infinity')
+              ORDER BY at DESC LIMIT 50",
+        )
+        .bind(conversation)
+        .fetch_all(&st.pool)
+        .await?;
+        if unanswered.is_empty() {
+            return Ok(());
+        }
+        let messages: Vec<Json> = unanswered.into_iter().map(|(id, sender)| json!({ "id": id, "sender": sender })).collect();
+        bridge(st, &user, reqwest::Method::POST, "/read", Some(&json!({ "chat": chat, "messages": messages }))).await?;
         Ok(())
     }
 

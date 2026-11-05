@@ -2,7 +2,8 @@
 //! (WhatsApp, Instagram). The reply is written first, unseen (the user reading their message); then:
 //!
 //!   - a pause before "typing…", 3–8 s (reading it); in a new chat (nobody on the user's side wrote
-//!     there in the last 15 minutes) longer, so the reply lands 35–70 s after their last message
+//!     there in the last 15 minutes) longer, so the reply lands 35–70 s after their last message.
+//!     What they sent shows read (blue ticks, "Seen") those 3–8 s before "typing…"
 //!   - "typing…" in bursts, with short breaks where it goes off, for about as long as a person
 //!     takes to type the reply on a phone (3–15 s); it ends with the reply sent
 //!
@@ -118,7 +119,15 @@ pub async fn before_send(st: &State, c: &dyn Connector, conversation: Uuid, text
     // the chat shows it typing, and when the reply lands
     let lands = Utc::now() + chrono::Duration::milliseconds(((pause + plan.iter().map(|(on, off)| on + off).sum::<f64>()) * 1000.0) as i64);
     crate::apps::pigeon::events::working(&st.pool, conversation, "typing", Some(lands), None).await;
-    if let Some(why) = wait(st, conversation, since, pause).await? {
+    // it opens the chat `read` before typing: what they sent shows read from then
+    let opens = (pause - read).max(0.0);
+    if let Some(why) = wait(st, conversation, since, opens).await? {
+        return Ok(Some(why));
+    }
+    if let Err(e) = c.seen(st, conversation).await {
+        log::debug!("seen on {conversation}: {e:#}");
+    }
+    if let Some(why) = wait(st, conversation, since, pause - opens).await? {
         return Ok(Some(why));
     }
     for (on, off) in plan {

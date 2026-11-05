@@ -8,8 +8,9 @@
 //! graph.facebook.com/<the account's id>. In: Meta pushes each message to
 //! `/pigeon/webhooks/instagram` (signed with the app secret): theirs as items to triage, the
 //! user's own from the phone (echoes) as theirs.
-//! Out: a reply, within Instagram's 24-hour window after their last message. The API can't
-//! archive, delete or mark a DM read. `gather` brings recent conversations in as history (Meta
+//! Out: a reply, within Instagram's 24-hour window after their last message; "typing…", and
+//! "Seen" once the user (or Pigeon, before an auto reply) read it. The API can't archive or
+//! delete a DM. `gather` brings recent conversations in as history (Meta
 //! gives the 20 latest messages of each).
 
 pub mod api;
@@ -384,6 +385,23 @@ async fn ig_id(st: &State, connection: i32) -> anyhow::Result<String> {
         .ok_or_else(|| anyhow::anyhow!("the Instagram account has no id: connect it again"))
 }
 
+/// What the other person sees the user doing in a conversation (typing_on, typing_off, mark_seen).
+async fn sender_action(st: &State, conversation: Uuid, action: &str) -> anyhow::Result<()> {
+    let (other, connection): (String, Option<i32>) =
+        sqlx::query_as("SELECT external_id, connection_id FROM db_pigeon_conversations WHERE id = $1 AND connector = $2")
+            .bind(conversation)
+            .bind(ID)
+            .fetch_optional(&st.pool)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("{conversation} is not an Instagram conversation"))?;
+    let connection = connection.ok_or_else(|| anyhow::anyhow!("the conversation has no Instagram account"))?;
+    let token = api::token(st, connection).await?;
+    let my_id = ig_id(st, connection).await?;
+    let body = json!({ "recipient": { "id": other }, "sender_action": action });
+    api::graph(&token, "POST", &format!("/{my_id}/messages"), &[], Some(&body)).await?;
+    Ok(())
+}
+
 /// Meta refused the account's token: mark the account to be connected again.
 async fn note_dead_token(st: &State, connection: i32, e: &anyhow::Error) {
     if !api::token_dead(e) {
@@ -542,20 +560,12 @@ impl Connector for Instagram {
     }
 
     async fn typing(&self, st: &State, conversation: Uuid, on: bool) -> anyhow::Result<()> {
-        let (other, connection): (String, Option<i32>) =
-            sqlx::query_as("SELECT external_id, connection_id FROM db_pigeon_conversations WHERE id = $1 AND connector = $2")
-                .bind(conversation)
-                .bind(ID)
-                .fetch_optional(&st.pool)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("{conversation} is not an Instagram conversation"))?;
-        let connection = connection.ok_or_else(|| anyhow::anyhow!("the conversation has no Instagram account"))?;
-        let token = api::token(st, connection).await?;
-        let my_id = ig_id(st, connection).await?;
         // Instagram takes the indicator off by itself after about 20 s, or when the message goes
-        let action = json!({ "recipient": { "id": other }, "sender_action": if on { "typing_on" } else { "typing_off" } });
-        api::graph(&token, "POST", &format!("/{my_id}/messages"), &[], Some(&action)).await?;
-        Ok(())
+        sender_action(st, conversation, if on { "typing_on" } else { "typing_off" }).await
+    }
+
+    async fn seen(&self, st: &State, conversation: Uuid) -> anyhow::Result<()> {
+        sender_action(st, conversation, "mark_seen").await
     }
 
     async fn health(&self, st: &State, user: &str) -> Json {

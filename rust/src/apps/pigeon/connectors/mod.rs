@@ -101,6 +101,12 @@ pub trait Connector: Send + Sync {
     async fn typing(&self, _st: &State, _conversation: Uuid, _on: bool) -> anyhow::Result<()> {
         Ok(())
     }
+    /// Tell the other person what they sent here is read (WhatsApp's blue ticks, Instagram's
+    /// "Seen"), on channels that have it: the user opened the chat in the Inbox, or Pigeon read it
+    /// before typing an auto reply.
+    async fn seen(&self, _st: &State, _conversation: Uuid) -> anyhow::Result<()> {
+        Ok(())
+    }
     /// Background work (polling a mailbox), started once in the pigeon-worker when available.
     fn start(&self, _st: AppState) {}
     /// Its accounts and how they're doing.
@@ -156,6 +162,28 @@ pub fn all() -> Vec<Arc<dyn Connector>> {
 
 pub fn find(st: &State, id: &str) -> Option<Arc<dyn Connector>> {
     st.connectors.iter().find(|c| c.id() == id).cloned()
+}
+
+/// The user read these conversations in the Inbox: their channels are told (`Connector::seen`),
+/// from a task of its own; a channel refusing is only logged.
+pub fn seen(st: &AppState, conversations: Vec<Uuid>) {
+    let st = st.clone();
+    actix_web::rt::spawn(async move {
+        for conversation in conversations {
+            let connector: Option<String> = sqlx::query_scalar("SELECT connector FROM db_pigeon_conversations WHERE id = $1")
+                .bind(conversation)
+                .fetch_optional(&st.pool)
+                .await
+                .ok()
+                .flatten();
+            let Some(c) = connector.and_then(|id| find(&st, &id)).filter(|c| c.available(&st).is_ok()) else {
+                continue;
+            };
+            if let Err(e) = c.seen(&st, conversation).await {
+                log::debug!("seen on {conversation}: {e:#}");
+            }
+        }
+    });
 }
 
 /// The actions of every available connector.

@@ -12,7 +12,7 @@ use crate::apps::auth::access::{gated, GateFuture};
 use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::pigeon::ai::llm;
-use crate::apps::pigeon::connectors::{console, Kind};
+use crate::apps::pigeon::connectors::{self, console, Kind};
 use crate::apps::pigeon::policy::{self, Policy};
 use crate::apps::pigeon::state::AppState;
 use crate::apps::pigeon::{actions, agent, alerts, avatars, cards, composing, connect, conversations, events, items, media, people, rules, tools, triage};
@@ -354,7 +354,10 @@ pub async fn mark_read(st: web::Data<AppState>, u: InboxWriter, path: web::Path<
     let user = &u.0.user_id;
     let id = path.into_inner();
     let r: anyhow::Result<Json> = async {
-        sqlx::query("UPDATE db_pigeon_conversations SET read_at = NOW() WHERE id = $1 AND user_id = $2").bind(id).bind(user).execute(&st.pool).await?;
+        let r = sqlx::query("UPDATE db_pigeon_conversations SET read_at = NOW() WHERE id = $1 AND user_id = $2").bind(id).bind(user).execute(&st.pool).await?;
+        if r.rows_affected() > 0 {
+            connectors::seen(&st, vec![id]);
+        }
         events::publish(&st.pool, user, "conversations", Some(id)).await;
         Ok(json!({ "read": id }))
     }
@@ -1056,7 +1059,15 @@ pub async fn person_read(st: web::Data<AppState>, u: InboxWriter, path: web::Pat
     let id = path.into_inner();
     let r: anyhow::Result<Json> = async {
         people::mine(&st, user, id).await?;
+        let unread: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM db_pigeon_conversations WHERE user_id = $1 AND contact_id = $2 AND last_in_at > COALESCE(read_at, '-infinity')",
+        )
+        .bind(user)
+        .bind(id)
+        .fetch_all(&st.pool)
+        .await?;
         sqlx::query("UPDATE db_pigeon_conversations SET read_at = NOW() WHERE user_id = $1 AND contact_id = $2").bind(user).bind(id).execute(&st.pool).await?;
+        connectors::seen(&st, unread);
         events::publish(&st.pool, user, "conversations", None).await;
         Ok(json!({ "read": id }))
     }
