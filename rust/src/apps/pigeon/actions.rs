@@ -184,7 +184,10 @@ pub async fn propose(st: &State, p: Proposal) -> anyhow::Result<Outcome> {
     }
 
     if label == "auto" {
+        // the chat showed it typing: the send (or not) ends that, whoever asked for the reply
+        let mut typed = None;
         if let (Kind::Reply, Some(c), true) = (def.kind, &conv, connector.shows_typing()) {
+            typed = Some(c.id);
             // what came in after the messages this reply answers is new to it
             let since: Option<DateTime<Utc>> = sqlx::query_scalar(
                 "SELECT MAX(i.created_at) FROM db_pigeon_triage t JOIN db_pigeon_items i ON i.id = ANY(t.item_ids) WHERE t.id = $1",
@@ -194,6 +197,8 @@ pub async fn propose(st: &State, p: Proposal) -> anyhow::Result<Outcome> {
             .await?;
             let text = p.args["text"].as_str().unwrap_or_default();
             if let Some(why) = pace::before_send(st, connector.as_ref(), c.id, text, since.unwrap_or_else(Utc::now)).await? {
+                let outcome = if why == pace::PAUSED { "paused" } else { "stopped" };
+                crate::apps::pigeon::events::working(&st.pool, c.id, "done", None, Some(outcome)).await;
                 if why == pace::PAUSED {
                     // the reply, written, waits for the user as a card instead of going out
                     sqlx::query("UPDATE db_pigeon_actions SET policy = 'ask', reason = $2, updated_at = NOW() WHERE id = $1")
@@ -219,9 +224,19 @@ pub async fn propose(st: &State, p: Proposal) -> anyhow::Result<Outcome> {
             // the user approved it while Pigeon was typing it: it went, theirs
             Err(e) => match get(st, id).await? {
                 Some(row) if row.status != "pending" => row,
-                _ => return Err(e),
+                _ => {
+                    if let Some(c) = typed {
+                        crate::apps::pigeon::events::working(&st.pool, c, "done", None, Some("stopped")).await;
+                    }
+                    return Err(e);
+                }
             },
         };
+        if let Some(c) = typed {
+            // a send that failed shows as its card, not as a reading problem
+            let outcome = if row.status == "done" { "replied" } else { "stopped" };
+            crate::apps::pigeon::events::working(&st.pool, c, "done", None, Some(outcome)).await;
+        }
         return Ok(Outcome { id: Some(id), status: row.status, detail: row.error });
     }
     Ok(Outcome { id: Some(id), status: "pending".into(), detail: hold })
