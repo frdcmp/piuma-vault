@@ -368,9 +368,10 @@ pub async fn learn(st: &State, user: &str, contact: Uuid, days: i64) -> anyhow::
 
 /// Two contacts that are one person (their email and their Instagram): `other` folds into `keep`,
 /// whose handles, conversations and rules it takes. What both have: `keep`'s name, slug and
-/// per-kind policies win, the notes are joined, a channel's style stays `keep`'s; the memory is
-/// written again from everything (best effort: the merge stands without it).
-pub async fn merge(st: &State, user: &str, keep: Uuid, other: Uuid) -> anyhow::Result<Json> {
+/// per-kind policies win (a name that's only a number or a handle doesn't: the other's real one
+/// does), the notes are joined, a channel's style stays `keep`'s; the memory is written again from
+/// everything, after the answer (best effort: the merge stands without it).
+pub async fn merge(st: &AppState, user: &str, keep: Uuid, other: Uuid) -> anyhow::Result<Json> {
     if keep == other {
         anyhow::bail!("that's the same contact");
     }
@@ -379,6 +380,12 @@ pub async fn merge(st: &State, user: &str, keep: Uuid, other: Uuid) -> anyhow::R
     let note = match (a.note.as_deref().map(str::trim).filter(|n| !n.is_empty()), b.note.as_deref().map(str::trim).filter(|n| !n.is_empty())) {
         (Some(x), Some(y)) if x != y => Some(format!("{x}\n{y}")),
         (x, y) => x.or(y).map(str::to_string),
+    };
+    let keep_handles: Vec<String> =
+        sqlx::query_scalar("SELECT handle FROM db_pigeon_contact_handles WHERE contact_id = $1").bind(keep).fetch_all(&st.pool).await?;
+    let name = match (&a.name, &b.name) {
+        (Some(x), Some(y)) if stand_in(x, &keep_handles) && !stand_in(y, &[]) => Some(y.clone()),
+        (x, y) => x.clone().or_else(|| y.clone()),
     };
     let (keep_s, other_s) = (keep.to_string(), other.to_string());
     let mut tx = st.pool.begin().await?;
@@ -417,12 +424,12 @@ pub async fn merge(st: &State, user: &str, keep: Uuid, other: Uuid) -> anyhow::R
     .await?;
     sqlx::query("DELETE FROM db_pigeon_contacts WHERE id = $1").bind(other).execute(&mut *tx).await?;
     sqlx::query(
-        "UPDATE db_pigeon_contacts SET name = COALESCE(name, $2), note = $3, relationship = COALESCE(relationship, $4),
+        "UPDATE db_pigeon_contacts SET name = $2, note = $3, relationship = COALESCE(relationship, $4),
                 language = COALESCE(language, $5), note_id = COALESCE(note_id, $6), slug = COALESCE(slug, $7), updated_at = NOW()
           WHERE id = $1",
     )
     .bind(keep)
-    .bind(&b.name)
+    .bind(&name)
     .bind(&note)
     .bind(&b.relationship)
     .bind(&b.language)
@@ -433,9 +440,12 @@ pub async fn merge(st: &State, user: &str, keep: Uuid, other: Uuid) -> anyhow::R
     tx.commit().await?;
 
     let c = mine(st, user, keep).await?;
-    if let Err(e) = ensure_memory(st, &c, true).await {
-        log::warn!("merge: the memory of {keep}: {e:#}");
-    }
+    let (st2, c2) = (st.clone(), c.clone());
+    actix_web::rt::spawn(async move {
+        if let Err(e) = ensure_memory(&st2, &c2, true).await {
+            log::warn!("merge: the memory of {}: {e:#}", c2.id);
+        }
+    });
     Ok(json!({
         "contact_id": keep,
         "merged": other,
@@ -444,6 +454,12 @@ pub async fn merge(st: &State, user: &str, keep: Uuid, other: Uuid) -> anyhow::R
         "moved": { "handles": handles, "conversations": convs, "rules": rules },
         "memory": memory(st, keep).await?.map(|m| m.memory),
     }))
+}
+
+/// A name that only stands in for one: a number (no letters), or one of the contact's own handles.
+fn stand_in(name: &str, handles: &[String]) -> bool {
+    let n = name.trim().trim_start_matches('@');
+    !n.chars().any(char::is_alphabetic) || handles.iter().any(|h| h.trim_start_matches('@').eq_ignore_ascii_case(n))
 }
 
 /// A contact's fields to set: a field given is set ("" clears it), one left out stays.
@@ -826,7 +842,7 @@ async fn learn_all_now(st: &State, user: &str, days: i64) -> anyhow::Result<()> 
 
 #[cfg(test)]
 mod tests {
-    use super::phone_handle;
+    use super::{phone_handle, stand_in};
 
     #[test]
     fn a_phone_number_as_a_handle() {
@@ -836,5 +852,14 @@ mod tests {
         assert_eq!(phone_handle("333 1234567"), None, "no country code");
         assert_eq!(phone_handle("+39 abc"), None);
         assert_eq!(phone_handle("+1 2"), None, "too short");
+    }
+
+    #[test]
+    fn a_name_that_only_stands_in() {
+        assert!(stand_in("+393896033144", &[]));
+        assert!(stand_in("@valeriomorini", &["@valeriomorini".into()]));
+        assert!(stand_in("Valeriomorini", &["valeriomorini".into()]));
+        assert!(!stand_in("Valerio De Campo", &["+393896033144".into()]));
+        assert!(!stand_in("@papa", &["+393896033144".into()]));
     }
 }

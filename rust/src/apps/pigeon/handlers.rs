@@ -566,7 +566,7 @@ pub struct MergeBody {
 
 /// The user's own merge (in the Inbox: their tap is the yes).
 pub async fn merge_contacts(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>, body: web::Json<MergeBody>) -> HttpResponse {
-    let r = people::merge(&st, &u.0.user_id, path.into_inner(), body.merge_id).await;
+    let r = people::merge(st.get_ref(), &u.0.user_id, path.into_inner(), body.merge_id).await;
     if r.is_ok() {
         events::publish(&st.pool, &u.0.user_id, "conversations", None).await;
     }
