@@ -238,7 +238,7 @@ fn message_text(me: &owner::Owner, it: &Item) -> String {
         me.local(it.at).format("%Y-%m-%d %H:%M"),
         me.name,
         me.tz,
-        conversations::clip(&it.body, 8000)
+        conversations::clip(&conversations::said(it), 8000)
     )
 }
 

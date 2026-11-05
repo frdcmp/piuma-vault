@@ -144,6 +144,8 @@ pub async fn triage(st: &State, id: Uuid) -> anyhow::Result<()> {
 }
 
 async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
+    // a voice note that just came in: its words first
+    crate::apps::pigeon::listen::wait(st, id).await?;
     let started = chrono::Utc::now();
     let Some(conv) = conversations::get(&st.pool, id).await? else { return Ok("stopped") };
     let items = conversations::recent_items(&st.pool, id, 30).await?;

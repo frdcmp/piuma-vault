@@ -10,7 +10,7 @@ use tokio::task::spawn_local;
 
 use crate::apps::pigeon::events::{kinds, Bus};
 use crate::apps::pigeon::state::{self, AppState};
-use crate::apps::pigeon::{actions, avatars, cards, health, media, rules, slugs, summary, triage};
+use crate::apps::pigeon::{actions, avatars, cards, health, listen, media, rules, slugs, summary, triage};
 use crate::db::db::DbPool;
 
 /// Run until the process ends. Call inside a `LocalSet`.
@@ -85,6 +85,12 @@ async fn sweeps(st: AppState) {
         // files that didn't make it into storage yet
         if let Err(e) = media::retry(&st).await {
             log::warn!("pigeon media: {e:#}");
+        }
+        // voice notes not heard yet (a failed try, a restart)
+        match listen::retry(&st).await {
+            Ok(n) if n > 0 => log::info!("pigeon: {n} voice note(s) heard again"),
+            Ok(_) => {}
+            Err(e) => log::warn!("pigeon listen: {e:#}"),
         }
         // files past their keeping time leave storage
         if media_at.is_none_or(|t| t.elapsed() >= Duration::from_secs(3600)) {

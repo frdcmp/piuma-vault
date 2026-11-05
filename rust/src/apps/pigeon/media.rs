@@ -11,7 +11,8 @@
 //! (a location, a contact, a poll), or a message from before files were kept.
 //!
 //! Every file is fetched right after its message is stored (`fetch_soon`); what didn't make it
-//! is tried again by the worker's sweep (`retry`), a few times. The apps get each stored file
+//! is tried again by the worker's sweep (`retry`), a few times. A voice note, once stored, is
+//! heard (`listen`: its words on its entry). The apps get each stored file
 //! with a signed link (`sign`), or the file itself to save (`download`).
 //!
 //! What the user sends from the Inbox (a photo, a video, a file) is stored the same way first
@@ -349,13 +350,17 @@ async fn fetch(st: &State, item: Uuid) -> anyhow::Result<()> {
         };
         update(&st.pool, item, id, &patch).await?;
     }
+    // a voice note's words
+    if media.as_array().into_iter().flatten().any(crate::apps::pigeon::listen::hearable) {
+        crate::apps::pigeon::listen::soon(&st.pool, item);
+    }
     // the chat shows them
     crate::apps::pigeon::events::publish(&st.pool, &user, "conversation", Some(conversation)).await;
     Ok(())
 }
 
 /// One entry of a message's media changed (`patch`'s nulls remove).
-async fn update(pool: &DbPool, item: Uuid, id: &str, patch: &Json) -> anyhow::Result<()> {
+pub(crate) async fn update(pool: &DbPool, item: Uuid, id: &str, patch: &Json) -> anyhow::Result<()> {
     sqlx::query(
         "UPDATE db_pigeon_items SET media = (
             SELECT jsonb_agg(CASE WHEN jsonb_typeof(e) = 'object' AND e->>'id' = $2 THEN jsonb_strip_nulls(e || $3) ELSE e END ORDER BY n)

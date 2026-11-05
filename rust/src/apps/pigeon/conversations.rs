@@ -206,9 +206,22 @@ pub fn transcript(items: &[Item], them: &str, me: (&str, &[String]), max_body: u
                 subject = Some(s);
             }
         }
-        out.push_str(&format!("[{}] {who}{}: {}{}\n", it.at.format("%Y-%m-%d %H:%M UTC"), recipients(it, me), clip(&it.body, max_body), reacted(it, me.0)));
+        out.push_str(&format!("[{}] {who}{}: {}{}\n", it.at.format("%Y-%m-%d %H:%M UTC"), recipients(it, me), clip(&said(it), max_body), reacted(it, me.0)));
     }
     out
+}
+
+/// A message's words as a model reads them: a voice note's words in place of "[voice message]".
+pub fn said(it: &Item) -> String {
+    let mut body = it.body.clone();
+    for m in it.media.as_array().into_iter().flatten() {
+        let Some(words) = m["transcript"].as_str().map(str::trim).filter(|w| !w.is_empty()) else { continue };
+        let label = m["label"].as_str().unwrap_or("voice message");
+        let heard = format!("[{label}: \"{words}\"]");
+        let tag = format!("[{label}]");
+        body = if body.contains(&tag) { body.replacen(&tag, &heard, 1) } else { format!("{body}\n{heard}").trim().to_string() };
+    }
+    body
 }
 
 /// A message's reactions, as the transcript shows them: " (reactions: ❤️ Anna, 👍 Marco)".

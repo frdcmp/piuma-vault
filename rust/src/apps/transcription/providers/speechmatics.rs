@@ -181,3 +181,109 @@ pub fn parse(raw: &str) -> Option<Vec<TranscriptSegment>> {
         Some(segments)
     }
 }
+
+// ── batch: one recorded file ──────────────────────────────────────────────
+
+/// Batch jobs (a whole file at once).
+const BATCH_URL: &str = "https://asr.api.speechmatics.com/v2/jobs";
+
+/// What a file said: its words, and the language they were heard in.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Heard {
+    pub text: String,
+    pub language: String,
+}
+
+/// Why a file wasn't heard.
+#[derive(Debug)]
+pub enum Unheard {
+    /// Speechmatics turned the job down (with `auto`: it couldn't tell the language)
+    Rejected(String),
+    /// the call itself failed: worth another try
+    Failed(String),
+}
+
+/// Transcribe one recorded file (a voice note): `language` an ISO code, or None to detect it.
+/// Waits for the job, up to `wait`.
+pub async fn transcribe_file(api_key: &str, file: Vec<u8>, mime: &str, language: Option<&str>, wait: std::time::Duration) -> Result<Heard, Unheard> {
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(60)).build().map_err(|e| Unheard::Failed(e.to_string()))?;
+    let config = json!({
+        "type": "transcription",
+        "transcription_config": { "language": language.unwrap_or("auto"), "operating_point": "enhanced" },
+    });
+    let part = reqwest::multipart::Part::bytes(file).file_name("audio").mime_str(mime.split(';').next().unwrap_or("audio/ogg").trim()).map_err(|e| Unheard::Failed(e.to_string()))?;
+    let form = reqwest::multipart::Form::new().part("data_file", part).text("config", config.to_string());
+    let resp = client.post(BATCH_URL).bearer_auth(api_key).multipart(form).send().await.map_err(|e| Unheard::Failed(format!("speechmatics: {e}")))?;
+    let status = resp.status();
+    let v: Value = resp.json().await.unwrap_or(Value::Null);
+    let Some(id) = v["id"].as_str().map(str::to_string) else {
+        return Err(Unheard::Failed(format!("speechmatics job HTTP {status}: {v}")));
+    };
+    let started = std::time::Instant::now();
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let job: Value = client
+            .get(format!("{BATCH_URL}/{id}"))
+            .bearer_auth(api_key)
+            .send()
+            .await
+            .map_err(|e| Unheard::Failed(format!("speechmatics: {e}")))?
+            .json()
+            .await
+            .unwrap_or(Value::Null);
+        match job["job"]["status"].as_str() {
+            Some("done") => break,
+            Some("rejected") => return Err(Unheard::Rejected(job["job"]["errors"].to_string())),
+            Some("running") | None if started.elapsed() < wait => continue,
+            Some(other) => return Err(Unheard::Failed(format!("speechmatics job {id}: {other}"))),
+            None => return Err(Unheard::Failed(format!("speechmatics job {id}: no answer"))),
+        }
+    }
+    let t: Value = client
+        .get(format!("{BATCH_URL}/{id}/transcript?format=json-v2"))
+        .bearer_auth(api_key)
+        .send()
+        .await
+        .map_err(|e| Unheard::Failed(format!("speechmatics: {e}")))?
+        .json()
+        .await
+        .map_err(|e| Unheard::Failed(format!("speechmatics transcript: {e}")))?;
+    let language = t["metadata"]["language_identification"]["predicted_language"]
+        .as_str()
+        .or(language)
+        .or(t["metadata"]["transcription_config"]["language"].as_str())
+        .unwrap_or("auto")
+        .to_string();
+    Ok(Heard { text: words(&t), language })
+}
+
+/// The words of a json-v2 transcript, punctuation attached.
+fn words(t: &Value) -> String {
+    let mut out = String::new();
+    for r in t["results"].as_array().into_iter().flatten() {
+        let Some(w) = r["alternatives"][0]["content"].as_str() else { continue };
+        let attaches = r["type"] == "punctuation" || r["attaches_to"] == "previous";
+        if !out.is_empty() && !attaches {
+            out.push(' ');
+        }
+        out.push_str(w);
+    }
+    out
+}
+
+#[cfg(test)]
+mod batch_tests {
+    use super::*;
+
+    #[test]
+    fn punctuation_attaches() {
+        let t = json!({ "results": [
+            { "type": "word", "alternatives": [{ "content": "Aspetta" }] },
+            { "type": "punctuation", "attaches_to": "previous", "alternatives": [{ "content": "," }] },
+            { "type": "word", "alternatives": [{ "content": "ci" }] },
+            { "type": "word", "alternatives": [{ "content": "provo" }] },
+            { "type": "punctuation", "attaches_to": "previous", "alternatives": [{ "content": "." }] },
+        ]});
+        assert_eq!(words(&t), "Aspetta, ci provo.");
+    }
+}
