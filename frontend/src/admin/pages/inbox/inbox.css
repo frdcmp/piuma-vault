@@ -910,3 +910,30 @@
 	margin: 0 auto;
 	object-fit: contain;
 }
+
+/* ── Pigeon's chat: its news as its messages, its cards on its side ─────── */
+.inbox-pigeon .pigeon-cards {
+	margin-top: 4px;
+}
+.inbox-pigeon .pigeon-card {
+	align-self: flex-start;
+}
+.inbox-pigeon .pv-avatar .inbox-sent-by {
+	color: var(--vp-accent);
+	opacity: 1;
+}
+.inbox-pigeon a.inbox-msg-sender {
+	display: block;
+	text-decoration: none;
+}
+.inbox-pigeon a.inbox-msg-sender:hover {
+	text-decoration: underline;
+}
+
+/* the chat's bar: its buttons all as tall as the icon ones (30px) */
+.inbox-chat-tools .vp-btn {
+	height: 30px;
+	box-sizing: border-box;
+	padding-top: 0;
+	padding-bottom: 0;
+}
