@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { PvIconButton } from "@/ui";
 import useChatDockStore, {
 	CHAT_MAX,
@@ -21,6 +22,7 @@ import "./ChatDock.css";
 
 export default function ChatDock({ onOpenNote }) {
 	const { isMobile, viewportWidth } = useUiStore();
+	const { pathname } = useLocation();
 	const open = useChatDockStore((s) => s.open);
 	const width = useChatDockStore((s) => s.width);
 	const isResizing = useChatDockStore((s) => s.isResizing);
@@ -57,6 +59,8 @@ export default function ChatDock({ onOpenNote }) {
 	}, [isResizing, setWidth, setResizing]);
 
 	if (!open) {
+		// the Inbox has Ask Piuma in each chat's bar: no floating button over its composer
+		if (pathname.startsWith("/inbox")) return null;
 		return (
 			<PvIconButton
 				className="chat-dock-fab"

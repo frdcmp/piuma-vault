@@ -5,7 +5,8 @@ import {
 	PictureOutlined,
 	VideoCameraOutlined,
 } from "@ant-design/icons";
-import { PvIconButton, pvMessage } from "@/ui";
+import { useState } from "react";
+import { PvIconButton, PvModal, pvMessage } from "@/ui";
 import { useDownloadPigeonMedia } from "../../../queries";
 import { duration, errorText, fileSize } from "./inboxText";
 
@@ -89,6 +90,41 @@ function Words({ file }) {
 	return <div className="inbox-media-words">{file.transcript}</div>;
 }
 
+// A photo in its bubble; a click shows it full size (Escape or a click outside
+// closes it).
+function Photo({ file }) {
+	const [open, setOpen] = useState(false);
+	const what = file.name ?? WHAT[file.kind];
+	return (
+		<>
+			<button
+				type="button"
+				className="inbox-media-open"
+				title="See it full size"
+				onClick={() => setOpen(true)}
+			>
+				<img
+					src={file.url}
+					alt={what}
+					className={`inbox-media-img${file.kind === "sticker" ? " is-sticker" : ""}`}
+					loading="lazy"
+				/>
+			</button>
+			<PvModal
+				open={open}
+				title={what}
+				onCancel={() => setOpen(false)}
+				footer={null}
+				width="min(94vw, 1200px)"
+				showClose
+				dismissOnOverlay
+			>
+				<img src={file.url} alt={what} className="inbox-media-full" />
+			</PvModal>
+		</>
+	);
+}
+
 // One file of a message, as WhatsApp shows it: a photo, a video to play, a
 // voice message to listen to, a file to open.
 function File({ file }) {
@@ -96,16 +132,7 @@ function File({ file }) {
 	switch (file.kind) {
 		case "image":
 		case "sticker":
-			return (
-				<a href={file.url} target="_blank" rel="noreferrer">
-					<img
-						src={file.url}
-						alt={file.name ?? WHAT[file.kind]}
-						className={`inbox-media-img${file.kind === "sticker" ? " is-sticker" : ""}`}
-						loading="lazy"
-					/>
-				</a>
-			);
+			return <Photo file={file} />;
 		case "video":
 			return (
 				// biome-ignore lint/a11y/useMediaCaption: their video, as it came: no captions to give

@@ -65,6 +65,7 @@ import {
 	senderLabel,
 	withInherit,
 } from "./inboxText";
+import { arrived, localItem, outboxEntry } from "./outbox";
 import PigeonCards from "./PigeonCards";
 import SentBy from "./SentBy";
 import SwitchInfo from "./SwitchInfo";
@@ -127,36 +128,91 @@ function AutoPill({ until, off, onPause, onPlay, onResume, busy }) {
 }
 
 // A chat's messages and Pigeon's news, oldest first, with a day line whenever
-// the day changes.
-function useTimeline(data) {
+// the day changes; the first message of a run has the tail. `outbox`: what's
+// being sent (./outbox), in the chat at once, each until its message comes
+// from the vault.
+function useTimeline(data, outbox) {
 	return useMemo(() => {
+		const items = [
+			...(data?.items ?? []),
+			...outbox.filter((e) => !arrived(e, data?.items)).map(localItem),
+		];
 		const rows = [
-			...(data?.items ?? []).map((i) => ({ type: "item", at: i.at, item: i })),
+			...items.map((i) => ({ type: "item", at: i.at, item: i })),
 			...(data?.news ?? []).map((n) => ({ type: "news", at: n.at, news: n })),
 		].sort((a, b) => new Date(a.at) - new Date(b.at));
 		const out = [];
 		let day = null;
+		let prev = null;
 		for (const r of rows) {
 			const d = formatDate(r.at);
 			if (d !== day) {
 				out.push({ type: "day", key: `day-${d}`, label: d });
 				day = d;
+				prev = null;
 			}
+			const tail =
+				r.type === "item" &&
+				(prev?.type !== "item" ||
+					prev.item.direction !== r.item.direction ||
+					prev.item.sender !== r.item.sender);
 			out.push({
 				...r,
+				tail,
 				key: r.type === "item" ? r.item.id : `news-${r.news.id}`,
 			});
+			prev = r;
 		}
 		return out;
-	}, [data]);
+	}, [data, outbox]);
+}
+
+// A file on its way, in its bubble: a photo or video's picture, a file's
+// name, and how much of it has gone up.
+function Outgoing({ entry }) {
+	const { file, preview, progress } = entry;
+	return (
+		<div className="inbox-outgoing">
+			{preview ? (
+				file.type.startsWith("video/") ? (
+					<video src={preview} className="inbox-media-video" muted />
+				) : (
+					<img src={preview} alt={file.name} className="inbox-media-img" />
+				)
+			) : (
+				<span className="inbox-media-file">
+					<PaperClipOutlined /> {file.name}
+				</span>
+			)}
+			{progress != null && progress < 1 ? (
+				<div className="inbox-progress">
+					<div style={{ width: `${Math.round(progress * 100)}%` }} />
+				</div>
+			) : null}
+		</div>
+	);
 }
 
 // `group`: more than one person writes here, so each message says who.
 // `email`: it's an email, shown as it was sent.
 // `channel`: where it came, when a person's chat mixes channels.
 // `connector`: its channel's id.
-function Message({ item, group, senders, email, channel, connector }) {
+// `tail`: the first of a run. `item.local`: it's on its way (./outbox): faded
+// with one tick (two once the vault has it: SentBy); not sent, framed red,
+// `onRetry` on a click.
+function Message({
+	item,
+	group,
+	senders,
+	email,
+	channel,
+	connector,
+	tail,
+	onRetry,
+}) {
 	const out = item.direction === "out";
+	const local = item.local;
+	const failed = local?.status === "failed";
 	const media = mediaWords(item.media);
 	const files = mediaFiles(item.media);
 	const links = mediaLinks(item.media);
@@ -165,7 +221,16 @@ function Message({ item, group, senders, email, channel, connector }) {
 	const reactions = reactionGroups(item.reactions, senders);
 	return (
 		<div
-			className={`inbox-msg ${out ? "is-out" : "is-in"}${item.author === "pigeon" ? " is-pigeon" : ""}`}
+			className={[
+				"inbox-msg",
+				out ? "is-out" : "is-in",
+				item.author === "pigeon" && "is-pigeon",
+				tail && "has-tail",
+				local && !failed && "is-sending",
+				failed && "is-failed",
+			]
+				.filter(Boolean)
+				.join(" ")}
 		>
 			<div className={`inbox-bubble${email ? " is-email" : ""}`}>
 				{sender ? <div className="inbox-msg-sender">{sender}</div> : null}
@@ -194,8 +259,12 @@ function Message({ item, group, senders, email, channel, connector }) {
 						) : null}
 					</a>
 				))}
-				<InboxMedia item={item.id} files={files} />
-				{email ? (
+				{local?.file ? (
+					<Outgoing entry={local} />
+				) : (
+					<InboxMedia item={item.id} files={files} />
+				)}
+				{email && !local ? (
 					<EmailFrame
 						id={item.id}
 						fallback={
@@ -210,9 +279,29 @@ function Message({ item, group, senders, email, channel, connector }) {
 					{channel ? (
 						<span className="inbox-msg-channel">{channel} · </span>
 					) : null}
-					<SentBy item={item} connector={connector} />
+					{local ? (
+						failed ? null : (
+							<CheckOutlined
+								className="inbox-sent-by"
+								aria-label="On its way"
+							/>
+						)
+					) : (
+						<SentBy item={item} connector={connector} />
+					)}
 					{formatTime(item.at)}
 				</div>
+				{failed ? (
+					<PvButton
+						size="sm"
+						variant="text"
+						className="inbox-retry"
+						title={local.error ?? undefined}
+						onClick={onRetry}
+					>
+						Not sent · send it again
+					</PvButton>
+				) : null}
 			</div>
 			{reactions.length ? (
 				<div className="inbox-reactions">
@@ -295,7 +384,10 @@ export default function ChatView({ id, person }) {
 	const threadItems = usePigeonItems(person ? null : id);
 	const personItems = usePigeonPersonItems(person, channel);
 	const items = person ? personItems : threadItems;
-	const timeline = useTimeline(items.data);
+	// what's being sent (./outbox), and the files picked for the next send
+	const [outbox, setOutbox] = useState([]);
+	const [toSend, setToSend] = useState([]);
+	const timeline = useTimeline(items.data, outbox);
 	const senders = items.data?.senders;
 	const group = useMemo(
 		() =>
@@ -317,8 +409,6 @@ export default function ChatView({ id, person }) {
 	const sendFile = useSendPigeonFile();
 	const resume = useResumePigeonAuto();
 	const personResume = useResumePigeonPersonAuto();
-	// the file going up now: { name, pct, left (files after it) }
-	const [upload, setUpload] = useState(null);
 	const draft = useComposePigeonReply();
 	const askPiuma = useChatDockStore((s) => s.askPiuma);
 
@@ -368,6 +458,8 @@ export default function ChatView({ id, person }) {
 		setText("");
 		setShowSummary(false);
 		setChannel("");
+		setToSend([]);
+		setOutbox([]);
 		stickRef.current = true;
 	}, [id, person]);
 
@@ -394,14 +486,53 @@ export default function ChatView({ id, person }) {
 		);
 
 	const fail = (e) => pvMessage.error(errorText(e));
+	const patchOut = (key, p) =>
+		setOutbox((o) => o.map((e) => (e.key === key ? { ...e, ...p } : e)));
+	// one entry goes: its text, or its file with the text as the caption; it
+	// stays in the chat until its message comes from the vault
+	const deliver = async (entry) => {
+		patchOut(entry.key, { status: "sending", progress: 0, error: null });
+		try {
+			if (entry.file)
+				await sendFile.mutateAsync({
+					id: entry.thread,
+					file: entry.file,
+					caption: entry.text,
+					onProgress: (p) => patchOut(entry.key, { progress: p }),
+				});
+			else await send.mutateAsync({ id: entry.thread, text: entry.text });
+			// it shows until its message comes (above); a message the vault words
+			// differently isn't kept doubled past a while
+			setTimeout(
+				() => setOutbox((o) => o.filter((e) => e.key !== entry.key)),
+				20 * 1000,
+			);
+		} catch (e) {
+			patchOut(entry.key, { status: "failed", error: errorText(e) });
+		}
+	};
+	// the box empties at once; files go one after the other (a video takes a
+	// while), the text as the first one's caption
 	const onSend = () => {
 		const t = text.trim();
-		if (!t || !tid) return;
+		if ((!t && !toSend.length) || !tid) return;
 		stickRef.current = true;
-		send.mutate(
-			{ id: tid, text: t },
-			{ onSuccess: () => setText(""), onError: fail },
-		);
+		const entries = toSend.length
+			? toSend.map((file, i) =>
+					outboxEntry({
+						thread: tid,
+						connector: replyOn,
+						file,
+						text: i === 0 ? t : "",
+					}),
+				)
+			: [outboxEntry({ thread: tid, connector: replyOn, text: t })];
+		setText("");
+		setToSend([]);
+		setOutbox((o) => [...o, ...entries]);
+		(async () => {
+			for (const e of entries) await deliver(e);
+		})();
 	};
 
 	const onDraft = () => {
@@ -415,36 +546,15 @@ export default function ChatView({ id, person }) {
 		);
 	};
 
-	// Photos, videos and files, one by one; what's typed is the first one's caption.
-	const onFiles = async (files) => {
-		if (!tid || upload) return;
+	// Photos, videos and files picked: over the box until Send (a click there
+	// takes one off).
+	const onFiles = (files) => {
 		const big = files.filter((f) => f.size > MAX_SEND_BYTES);
 		if (big.length)
 			pvMessage.error(
 				`${big.map((f) => f.name).join(", ")}: over ${MAX_SEND_BYTES >> 20} MB`,
 			);
-		const ok = files.filter((f) => !big.includes(f));
-		let caption = text.trim();
-		stickRef.current = true;
-		for (const [i, file] of ok.entries()) {
-			setUpload({ name: file.name, pct: 0, left: ok.length - i - 1 });
-			try {
-				await sendFile.mutateAsync({
-					id: tid,
-					file,
-					caption,
-					onProgress: (pct) => setUpload((u) => (u ? { ...u, pct } : u)),
-				});
-				if (caption) {
-					caption = "";
-					setText("");
-				}
-			} catch (e) {
-				fail(e);
-				break;
-			}
-		}
-		setUpload(null);
+		setToSend((p) => [...p, ...files.filter((f) => !big.includes(f))]);
 	};
 
 	const sw = data.switches ?? {};
@@ -646,6 +756,8 @@ export default function ChatView({ id, person }) {
 							}
 							connector={r.item.connector ?? conv.connector}
 							email={(r.item.connector ?? conv.connector) === "gmail"}
+							tail={r.tail}
+							onRetry={r.item.local ? () => deliver(r.item.local) : undefined}
 						/>
 					),
 				)}
@@ -664,11 +776,25 @@ export default function ChatView({ id, person }) {
 				</PvAlert>
 			) : null}
 
+			{toSend.length ? (
+				<div className="inbox-picked">
+					{toSend.map((f, i) => (
+						<PvTag
+							// biome-ignore lint/suspicious/noArrayIndexKey: the picked list only grows or loses one
+							key={`${f.name}-${i}`}
+							onRemove={() => setToSend((p) => p.filter((_, j) => j !== i))}
+						>
+							<PaperClipOutlined /> {f.name}
+						</PvTag>
+					))}
+				</div>
+			) : null}
 			<footer className="inbox-composer">
 				<PvTextarea
 					autoSize
 					maxHeight={200}
 					rows={1}
+					className="inbox-composer-text"
 					value={text}
 					onChange={(e) => setText(e.target.value)}
 					onKeyDown={(e) => {
@@ -680,11 +806,10 @@ export default function ChatView({ id, person }) {
 					placeholder={`Write to ${data.with}${mixed ? ` on ${channelLabel(replyOn)}` : ""}… (or tell Pigeon what to say, then ✍)`}
 					aria-label="Your message"
 				/>
-				<PvUpload multiple disabled={!!upload} onFiles={onFiles}>
+				<PvUpload multiple onFiles={onFiles}>
 					<PvIconButton
 						icon={<PaperClipOutlined />}
-						label="Send photos, videos or files (what you typed is the caption)"
-						disabled={!!upload}
+						label="Photos, videos or files (what you type is the caption)"
 					/>
 				</PvUpload>
 				<PvIconButton
@@ -701,18 +826,12 @@ export default function ChatView({ id, person }) {
 					variant="accent"
 					icon={<SendOutlined />}
 					label="Send, as you"
-					disabled={!text.trim() || send.isPending}
+					disabled={!text.trim() && !toSend.length}
 					onClick={onSend}
 				/>
 			</footer>
 			{draft.isPending ? (
 				<div className="inbox-writing">🕊 Pigeon is writing…</div>
-			) : null}
-			{upload ? (
-				<div className="inbox-writing">
-					Sending {upload.name}… {Math.round(upload.pct * 100)}%
-					{upload.left ? ` (${upload.left} more after it)` : ""}
-				</div>
 			) : null}
 		</section>
 	);

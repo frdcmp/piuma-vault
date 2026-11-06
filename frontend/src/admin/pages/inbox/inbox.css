@@ -424,13 +424,16 @@
 	display: flex;
 	align-items: flex-end;
 	gap: 6px;
-	/* the right clear of the floating Piuma button (46px, 18px from the corner) */
-	padding: 8px 76px 8px 12px;
+	padding: 8px 12px;
 	border-top: 2px dashed var(--vp-border);
 	background: var(--vp-panel);
 }
 .inbox-composer > :first-child {
 	flex: 1;
+}
+/* one line until there's more to say (the kit's textarea starts at 96px) */
+.vp-textarea.inbox-composer-text {
+	min-height: 0;
 }
 .inbox-writing {
 	padding: 0 14px 6px;
@@ -825,4 +828,78 @@
 	-webkit-box-orient: vertical;
 	overflow: hidden;
 	white-space: pre-line;
+}
+
+/* ── Sending, as on the phone ──────────────────────────────────────────── */
+/* the first message of a run has the tail (a pixel step at its top corner) */
+.inbox-msg.has-tail {
+	margin-top: 6px;
+}
+.inbox-msg.has-tail .inbox-bubble {
+	position: relative;
+}
+/* the tail: a pixel triangle in the bubble's border colour */
+.inbox-msg.has-tail .inbox-bubble::before {
+	content: "";
+	position: absolute;
+	top: -1px;
+	width: 7px;
+	height: 7px;
+	background: var(--vp-border);
+}
+.inbox-msg.is-in.has-tail .inbox-bubble::before {
+	left: -7px;
+	clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+.inbox-msg.is-out.has-tail .inbox-bubble::before {
+	right: -7px;
+	background: color-mix(in srgb, var(--vp-success) 50%, var(--vp-border));
+	clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+/* on its way: faded, one tick; not sent: framed red, a click sends it again */
+.inbox-msg.is-sending .inbox-bubble {
+	opacity: 0.6;
+}
+.inbox-msg.is-failed .inbox-bubble {
+	border-color: var(--vp-danger);
+}
+.inbox-retry {
+	color: var(--vp-danger);
+}
+.inbox-outgoing {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-bottom: 2px;
+}
+.inbox-progress {
+	height: 3px;
+	background: color-mix(in srgb, var(--vp-text) 15%, transparent);
+}
+.inbox-progress > div {
+	height: 100%;
+	background: var(--vp-accent);
+}
+/* the files picked, over the box until Send */
+.inbox-picked {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 6px 12px 0;
+	background: var(--vp-panel);
+}
+/* a photo: a click shows it full size */
+.inbox-media-open {
+	display: block;
+	padding: 0;
+	border: 0;
+	background: none;
+	cursor: zoom-in;
+}
+.inbox-media-full {
+	display: block;
+	max-width: 100%;
+	max-height: 80vh;
+	margin: 0 auto;
+	object-fit: contain;
 }
