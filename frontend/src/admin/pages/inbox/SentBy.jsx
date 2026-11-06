@@ -1,8 +1,8 @@
 // Who sent a message of the user's side, next to its time: Pigeon (an auto
 // reply, or a draft of its they approved) gets its sprite; the user from the
 // channel's own app gets that app's mark (WhatsApp, Instagram, an envelope for
-// their mail app), all in the time's grey, faded; the user
-// from the Inbox, nothing.
+// their mail app), all in the time's grey, faded; the user from the Inbox,
+// two ticks: the vault and the channel confirmed it went.
 
 // Pigeon's sprite (sprites/seed.rs PIGEON), standing: its shape, in the mark's grey.
 const PIGEON = {
@@ -25,7 +25,7 @@ const cells = PIGEON.rows.flatMap((row, y) =>
 	[...row].flatMap((ch, x) => (ch === "." ? [] : [{ x, y }])),
 );
 
-function PigeonMark() {
+export function PigeonMark() {
 	return (
 		<svg
 			className="inbox-sent-by"
@@ -113,10 +113,32 @@ function MailMark() {
 	);
 }
 
+function Ticks() {
+	return (
+		<svg
+			className="inbox-sent-by"
+			viewBox="0 0 16 11"
+			width={16}
+			height={11}
+			role="img"
+			aria-label="Sent from the Inbox"
+		>
+			<title>Sent from the Inbox</title>
+			<path
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="1.8"
+				d="M1 6l3 3 6-7 M7 8l1 1 6-7"
+			/>
+		</svg>
+	);
+}
+
 export default function SentBy({ item, connector }) {
 	if (item.direction !== "out") return null;
 	if (item.author === "pigeon") return <PigeonMark />;
-	if (item.author !== "me" || item.via) return null;
+	if (item.author !== "me") return null;
+	if (item.via) return <Ticks />;
 	if (connector === "whatsapp") return <WhatsAppMark />;
 	if (connector === "instagram") return <InstagramMark />;
 	if (connector === "gmail") return <MailMark />;

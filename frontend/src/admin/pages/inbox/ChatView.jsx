@@ -5,6 +5,9 @@ import {
 	EditOutlined,
 	FileTextOutlined,
 	MessageOutlined,
+	PaperClipOutlined,
+	PauseOutlined,
+	PlayCircleOutlined,
 	SendOutlined,
 } from "@ant-design/icons";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -21,6 +24,7 @@ import {
 	PvSpin,
 	PvTag,
 	PvTextarea,
+	PvUpload,
 	pvMessage,
 } from "@/ui";
 import {
@@ -34,6 +38,9 @@ import {
 	usePigeonPersonChat,
 	usePigeonPersonItems,
 	usePigeonSummary,
+	useResumePigeonAuto,
+	useResumePigeonPersonAuto,
+	useSendPigeonFile,
 	useSendPigeonMessage,
 	useSetPigeonContactSwitches,
 	useSetPigeonConversationSwitches,
@@ -61,6 +68,63 @@ import {
 import PigeonCards from "./PigeonCards";
 import SentBy from "./SentBy";
 import SwitchInfo from "./SwitchInfo";
+import Working from "./Working";
+
+// What the channels take in one file (the vault's limit too).
+const MAX_SEND_BYTES = 95 * 1024 * 1024;
+
+// Auto replies in a chat's bar, as on the phone: the word is their state, the
+// icon what a click does.
+//   AUTO ⏸   they answer here; pauses them (the chat's replies to ask)
+//   PAUSED ▶ you paused them; puts auto back
+//   11:25 ▶  paused a while because you wrote here (`until`); back now
+function AutoPill({ until, off, onPause, onPlay, onResume, busy }) {
+	const [, tick] = useState(0);
+	// the timed pause ends without a refetch
+	useEffect(() => {
+		const left = until ? new Date(until) - Date.now() : 0;
+		if (left <= 0) return;
+		const t = setTimeout(() => tick((n) => n + 1), left + 500);
+		return () => clearTimeout(t);
+	}, [until]);
+	const timed = !off && !!until && new Date(until) > Date.now();
+	const view = off
+		? {
+				tone: "is-paused",
+				icon: <PlayCircleOutlined />,
+				word: "PAUSED",
+				label: "Auto replies paused by you: turn them back on",
+				onClick: onPlay,
+			}
+		: timed
+			? {
+					tone: "is-timed",
+					icon: <PlayCircleOutlined />,
+					word: formatTime(until),
+					label: `Auto replies paused until ${formatTime(until)} because you wrote here: resume them now`,
+					onClick: onResume,
+				}
+			: {
+					tone: "is-auto",
+					icon: <PauseOutlined />,
+					word: "AUTO",
+					label: "Auto replies on: pause them",
+					onClick: onPause,
+				};
+	return (
+		<PvButton
+			size="sm"
+			className={`inbox-auto ${view.tone}`}
+			icon={view.icon}
+			loading={busy}
+			title={view.label}
+			aria-label={view.label}
+			onClick={view.onClick}
+		>
+			{view.word}
+		</PvButton>
+	);
+}
 
 // A chat's messages and Pigeon's news, oldest first, with a day line whenever
 // the day changes.
@@ -250,6 +314,11 @@ export default function ChatView({ id, person }) {
 	const setThreadSwitches = useSetPigeonConversationSwitches();
 	const setPersonSwitches = useSetPigeonContactSwitches();
 	const send = useSendPigeonMessage();
+	const sendFile = useSendPigeonFile();
+	const resume = useResumePigeonAuto();
+	const personResume = useResumePigeonPersonAuto();
+	// the file going up now: { name, pct, left (files after it) }
+	const [upload, setUpload] = useState(null);
 	const draft = useComposePigeonReply();
 	const askPiuma = useChatDockStore((s) => s.askPiuma);
 
@@ -346,6 +415,53 @@ export default function ChatView({ id, person }) {
 		);
 	};
 
+	// Photos, videos and files, one by one; what's typed is the first one's caption.
+	const onFiles = async (files) => {
+		if (!tid || upload) return;
+		const big = files.filter((f) => f.size > MAX_SEND_BYTES);
+		if (big.length)
+			pvMessage.error(
+				`${big.map((f) => f.name).join(", ")}: over ${MAX_SEND_BYTES >> 20} MB`,
+			);
+		const ok = files.filter((f) => !big.includes(f));
+		let caption = text.trim();
+		stickRef.current = true;
+		for (const [i, file] of ok.entries()) {
+			setUpload({ name: file.name, pct: 0, left: ok.length - i - 1 });
+			try {
+				await sendFile.mutateAsync({
+					id: tid,
+					file,
+					caption,
+					onProgress: (pct) => setUpload((u) => (u ? { ...u, pct } : u)),
+				});
+				if (caption) {
+					caption = "";
+					setText("");
+				}
+			} catch (e) {
+				fail(e);
+				break;
+			}
+		}
+		setUpload(null);
+	};
+
+	const sw = data.switches ?? {};
+	// auto replies answer this chat (the pill shows them, paused or on)
+	const autoOn = (sw.reply_own ?? sw.reply) === "auto" && sw.auto_enabled;
+	// paused from the pill: this chat's replies set to ask
+	const pausedByMe = sw.reply_own === "ask" && sw.auto_enabled;
+	const setSwitch = (patch) =>
+		person
+			? setPersonSwitches.mutate({ id: person, ...patch }, { onError: fail })
+			: setThreadSwitches.mutate({ id, ...patch }, { onError: fail });
+	const onResume = () =>
+		(person ? personResume : resume).mutate(person ?? id, {
+			onSuccess: () => pvMessage.success("Auto replies are back"),
+			onError: fail,
+		});
+
 	const needsYou = threads.some((t) => t.attention || t.needs_note);
 	const mixed = person && channels.length > 1;
 	const contact = data.contact;
@@ -415,6 +531,21 @@ export default function ChatView({ id, person }) {
 							onClick={() => setSwitchesOpen((o) => !o)}
 						/>
 					</span>
+					{autoOn || pausedByMe ? (
+						<AutoPill
+							until={sw.auto_paused_until}
+							off={pausedByMe}
+							onPause={() => setSwitch({ reply: "ask" })}
+							onPlay={() => setSwitch({ reply: "auto" })}
+							onResume={onResume}
+							busy={
+								resume.isPending ||
+								personResume.isPending ||
+								setThreadSwitches.isPending ||
+								setPersonSwitches.isPending
+							}
+						/>
+					) : null}
 					<PvButton
 						size="sm"
 						variant="accent"
@@ -436,14 +567,7 @@ export default function ChatView({ id, person }) {
 					<Switches
 						switches={data.switches}
 						scope={person ? "to them" : "here"}
-						onSave={(patch) =>
-							person
-								? setPersonSwitches.mutate(
-										{ id: person, ...patch },
-										{ onError: fail },
-									)
-								: setThreadSwitches.mutate({ id, ...patch }, { onError: fail })
-						}
+						onSave={setSwitch}
 					/>
 				</PvPopover>
 			</header>
@@ -526,6 +650,11 @@ export default function ChatView({ id, person }) {
 					),
 				)}
 				<PigeonCards cards={data.cards} conversationId={tid} />
+				<Working
+					threads={threads.map((t) => t.id)}
+					seed={data.working}
+					on={autoOn}
+				/>
 			</div>
 
 			{thread?.window_until && new Date(thread.window_until) < new Date() ? (
@@ -551,6 +680,13 @@ export default function ChatView({ id, person }) {
 					placeholder={`Write to ${data.with}${mixed ? ` on ${channelLabel(replyOn)}` : ""}… (or tell Pigeon what to say, then ✍)`}
 					aria-label="Your message"
 				/>
+				<PvUpload multiple disabled={!!upload} onFiles={onFiles}>
+					<PvIconButton
+						icon={<PaperClipOutlined />}
+						label="Send photos, videos or files (what you typed is the caption)"
+						disabled={!!upload}
+					/>
+				</PvUpload>
 				<PvIconButton
 					icon={<EditOutlined />}
 					label={
@@ -571,6 +707,12 @@ export default function ChatView({ id, person }) {
 			</footer>
 			{draft.isPending ? (
 				<div className="inbox-writing">🕊 Pigeon is writing…</div>
+			) : null}
+			{upload ? (
+				<div className="inbox-writing">
+					Sending {upload.name}… {Math.round(upload.pct * 100)}%
+					{upload.left ? ` (${upload.left} more after it)` : ""}
+				</div>
 			) : null}
 		</section>
 	);

@@ -78,6 +78,17 @@ function Save({ item, file }) {
 	);
 }
 
+// What a voice note says, once Pigeon heard it (Speechmatics); "listening"
+// while it's at it.
+function Words({ file }) {
+	if (file.transcript_status === "listening")
+		return (
+			<div className="inbox-media-words is-listening">Pigeon is listening…</div>
+		);
+	if (!file.transcript) return null;
+	return <div className="inbox-media-words">{file.transcript}</div>;
+}
+
 // One file of a message, as WhatsApp shows it: a photo, a video to play, a
 // voice message to listen to, a file to open.
 function File({ file }) {
@@ -109,10 +120,13 @@ function File({ file }) {
 		case "voice":
 		case "audio":
 			return (
-				<div className="inbox-media-audio">
-					{/* biome-ignore lint/a11y/useMediaCaption: a voice message, as it came */}
-					<audio src={file.url} controls preload="metadata" />
-					{file.seconds ? <span>{duration(file.seconds)}</span> : null}
+				<div className="inbox-media-voice">
+					<div className="inbox-media-audio">
+						{/* biome-ignore lint/a11y/useMediaCaption: a voice message, as it came; its words are below */}
+						<audio src={file.url} controls preload="metadata" />
+						{file.seconds ? <span>{duration(file.seconds)}</span> : null}
+					</div>
+					<Words file={file} />
 				</div>
 			);
 		default:

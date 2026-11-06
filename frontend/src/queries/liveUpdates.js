@@ -92,7 +92,12 @@ export function useResourceLiveUpdates({ path, event, queryKey, onEvent }) {
 				// {action, id}, or Pigeon's {kind, id} (id may be null)
 				if (payload?.id || payload?.kind) {
 					Promise.resolve(
-						onEvent(qc, payload.action ?? payload.kind, payload.id),
+						onEvent(
+							qc,
+							payload.action ?? payload.kind,
+							payload.id,
+							payload.data,
+						),
 					).catch(invalidate);
 					return;
 				}

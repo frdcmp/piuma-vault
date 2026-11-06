@@ -250,6 +250,33 @@
 	color: var(--vp-muted);
 	border: 1px dashed var(--vp-border);
 }
+/* where Pigeon is with the newest messages (reading, typing…) */
+.inbox-working {
+	align-self: center;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 10px;
+	font-size: 9pt;
+	color: var(--vp-text);
+	border: 2px solid var(--vp-accent);
+	background: color-mix(in srgb, var(--vp-accent) 8%, transparent);
+}
+
+/* the auto replies pill: AUTO ⏸, PAUSED ▶, 11:25 ▶ */
+.inbox-auto.is-auto {
+	color: var(--vp-success);
+	background: color-mix(in srgb, var(--vp-success) 16%, transparent);
+}
+.inbox-auto.is-paused {
+	color: var(--vp-muted);
+	background: color-mix(in srgb, var(--vp-muted) 16%, transparent);
+}
+.inbox-auto.is-timed {
+	color: var(--vp-warning);
+	background: color-mix(in srgb, var(--vp-warning) 16%, transparent);
+}
+
 .inbox-news {
 	align-self: center;
 	max-width: 80%;
@@ -322,6 +349,11 @@
 	color: var(--vp-faint);
 	opacity: 0.7;
 }
+/* Pigeon's sprite on its step line, in the line's colour */
+.inbox-working .inbox-sent-by {
+	color: var(--vp-accent);
+	opacity: 1;
+}
 
 /* ── Pigeon's cards ────────────────────────────────────────────────────── */
 .pigeon-cards {
@@ -392,7 +424,8 @@
 	display: flex;
 	align-items: flex-end;
 	gap: 6px;
-	padding: 8px 12px;
+	/* the right clear of the floating Piuma button (46px, 18px from the corner) */
+	padding: 8px 76px 8px 12px;
 	border-top: 2px dashed var(--vp-border);
 	background: var(--vp-panel);
 }
@@ -633,6 +666,22 @@
 	display: flex;
 	align-items: center;
 	gap: 8px;
+}
+.inbox-media-voice {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+/* what a voice note says, once Pigeon heard it */
+.inbox-media-words {
+	max-width: 320px;
+	font-style: italic;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	user-select: text;
+}
+.inbox-media-words.is-listening {
+	color: var(--vp-muted);
 }
 .inbox-media-audio audio {
 	height: 32px;

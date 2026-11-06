@@ -38,6 +38,39 @@ export const sendPigeonMessage = async ({ id, text }) => {
 	return data;
 };
 
+// A photo, video or file sent as the user's, the caption on it (`onProgress`:
+// 0–1 as it goes up).
+export const sendPigeonFile = async ({ id, file, caption, onProgress }) => {
+	const form = new FormData();
+	form.append("file", file, file.name);
+	if (caption) form.append("caption", caption);
+	const { data } = await axiosInstance.post(
+		`${BASE}/conversations/${id}/send-file`,
+		form,
+		{
+			timeout: 10 * 60 * 1000,
+			onUploadProgress: (e) =>
+				onProgress?.(e.total ? Math.min(e.loaded / e.total, 1) : 0),
+		},
+	);
+	return data;
+};
+
+// Auto replies back now, in a chat the user wrote in (they'd wait 10 minutes).
+export const resumePigeonAuto = async (id) => {
+	const { data } = await axiosInstance.post(
+		`${BASE}/conversations/${id}/resume`,
+	);
+	return data;
+};
+
+export const resumePigeonPersonAuto = async (id) => {
+	const { data } = await axiosInstance.post(
+		`${BASE}/chats/person/${id}/resume`,
+	);
+	return data;
+};
+
 export const markPigeonRead = async (id) => {
 	const { data } = await axiosInstance.post(`${BASE}/conversations/${id}/read`);
 	return data;

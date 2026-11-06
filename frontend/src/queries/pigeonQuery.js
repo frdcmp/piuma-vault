@@ -36,6 +36,9 @@ import {
 	markPigeonRead,
 	mergePigeonContacts,
 	pressPigeonCard,
+	resumePigeonAuto,
+	resumePigeonPersonAuto,
+	sendPigeonFile,
 	sendPigeonMessage,
 	setPigeonContact,
 	setPigeonContactNote,
@@ -45,6 +48,7 @@ import {
 	setPigeonSettings,
 	tryPigeonRule,
 } from "../api/pigeon";
+import usePigeonWorkingStore from "../store/pigeonWorkingStore";
 import { useResourceLiveUpdates } from "./liveUpdates";
 
 // The chat list and a chat's messages come a page at a time.
@@ -87,9 +91,16 @@ const invalidateChats = (qc) => {
 //
 // The backend streams `{kind, id}`; everything is re-fetched through the
 // normal routes. A conversation event refreshes that chat and the list.
-const applyPigeonEvent = (qc, kind, id) => {
+const applyPigeonEvent = (qc, kind, id, data) => {
 	const inv = (queryKey) => qc.invalidateQueries({ queryKey });
-	if (kind !== "message_in" && kind !== "connections") invalidateChats(qc);
+	// a step of Pigeon's, a push: nothing in a chat changed
+	const quiet = [
+		"message_in",
+		"connections",
+		"pigeon_working",
+		"pigeon_composed",
+	];
+	if (!quiet.includes(kind)) invalidateChats(qc);
 	switch (kind) {
 		case "conversation":
 			inv(pigeonKeys.lists());
@@ -120,7 +131,8 @@ const applyPigeonEvent = (qc, kind, id) => {
 			// the phone's push; the conversation event refreshes the chat
 			return;
 		case "pigeon_working":
-			// where Pigeon is with a chat's newest messages: the phone shows it
+			// where Pigeon is with a chat's newest messages: the chat's line
+			if (id) usePigeonWorkingStore.getState().note(id, data);
 			return;
 		case "pigeon_composed":
 			// the words Pigeon wrote for the phone's message box: the phone takes them
@@ -236,6 +248,8 @@ const useChatMutation = (fn) => {
 };
 
 export const useSendPigeonMessage = () => useChatMutation(sendPigeonMessage);
+export const useSendPigeonFile = () => useChatMutation(sendPigeonFile);
+export const useResumePigeonAuto = () => useChatMutation(resumePigeonAuto);
 export const useMarkPigeonHandled = () => useChatMutation(markPigeonHandled);
 export const useDraftPigeonReply = () => useChatMutation(draftPigeonReply);
 // A message's file saved on this computer.
@@ -345,6 +359,8 @@ export const useMarkPigeonPersonRead = () =>
 	usePersonMutation(markPigeonPersonRead);
 export const useMarkPigeonPersonHandled = () =>
 	usePersonMutation(markPigeonPersonHandled);
+export const useResumePigeonPersonAuto = () =>
+	usePersonMutation(resumePigeonPersonAuto);
 
 // ── People ──────────────────────────────────────────────────────────────────
 
