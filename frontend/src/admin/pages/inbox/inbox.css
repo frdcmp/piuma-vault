@@ -435,6 +435,13 @@
 .vp-textarea.inbox-composer-text {
 	min-height: 0;
 }
+/* its buttons as tall as that one line (13px × 1.6, its padding and border),
+   staying at the bottom as it grows */
+.inbox-composer .pv-icon-btn {
+	width: calc(13px * 1.6 + 20px);
+	height: calc(13px * 1.6 + 20px);
+	font-size: 16px;
+}
 .inbox-writing {
 	padding: 0 14px 6px;
 	color: var(--vp-muted);
