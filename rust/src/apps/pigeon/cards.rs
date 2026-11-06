@@ -322,7 +322,7 @@ async fn send(st: &State, user: &str, conversation: Option<Uuid>, extra: Json, t
 }
 
 /// "@marco · WhatsApp": who a conversation is with, as a push's title.
-async fn heading(st: &State, conversation: Uuid) -> anyhow::Result<String> {
+pub async fn heading(st: &State, conversation: Uuid) -> anyhow::Result<String> {
     let conv = conversations::get(&st.pool, conversation).await?.ok_or_else(|| anyhow::anyhow!("no conversation"))?;
     let contact = conversations::contact(&st.pool, conv.contact_id).await?;
     let who = conversations::who(contact.as_ref(), &conv);

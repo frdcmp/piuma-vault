@@ -29,7 +29,7 @@ export const chatPath = (c) =>
 		? `/inbox/p/${c.contact_id}`
 		: `/inbox/${c.conversation_id ?? c.latest}`;
 
-// The chat list: General (what isn't about one chat) on top, then a chat per
+// The chat list: Pigeon's own (what waits for you, its news) on top, then a chat per
 // person (all their channels in one) and per group, latest first, more loading
 // as it scrolls. Search by @slug, name or title; narrow to a channel.
 export default function InboxRail({ activeKey, page }) {
@@ -141,10 +141,10 @@ export default function InboxRail({ activeKey, page }) {
 					</PvAvatar>
 					<span className="inbox-row-main">
 						<span className="inbox-row-top">
-							<span className="inbox-row-name">General</span>
+							<span className="inbox-row-name">Pigeon</span>
 						</span>
 						<span className="inbox-row-preview">
-							New emails, confirmations, Pigeon's news
+							What waits for you, and Pigeon's news
 						</span>
 					</span>
 					{generalCards ? (

@@ -355,6 +355,10 @@
 	font-size: 9pt;
 	color: var(--vp-muted);
 }
+.pigeon-card-about {
+	font-size: 9pt;
+	font-weight: 600;
+}
 .pigeon-card-text {
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;

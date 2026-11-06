@@ -487,12 +487,14 @@ pub async fn conversation_switches(st: web::Data<AppState>, u: InboxWriter, path
     reply(r)
 }
 
-/// General: what isn't about one chat (drafts of new emails, confirmations), and Pigeon's news.
+/// General, Pigeon's own chat with the user: everything that waits for them (the cards of every
+/// chat, and those not about one: drafts of new emails, confirmations) and all of Pigeon's news,
+/// each with who it's about (`about`, `conversation_id`) to open that chat.
 pub async fn general(st: web::Data<AppState>, u: InboxReader, q: web::Query<PageQuery>) -> HttpResponse {
     let user = &u.0.user_id;
     let r: anyhow::Result<Json> = async {
-        let news: Vec<(i64, String, Option<String>, DateTime<Utc>)> = sqlx::query_as(
-            "SELECT id, text, url, created_at FROM db_pigeon_news WHERE user_id = $1 AND conversation_id IS NULL
+        let news: Vec<(i64, Option<Uuid>, String, Option<String>, DateTime<Utc>)> = sqlx::query_as(
+            "SELECT id, conversation_id, text, url, created_at FROM db_pigeon_news WHERE user_id = $1
                AND ($2::timestamptz IS NULL OR created_at < $2) ORDER BY created_at DESC LIMIT $3",
         )
         .bind(user)
@@ -500,9 +502,47 @@ pub async fn general(st: web::Data<AppState>, u: InboxReader, q: web::Query<Page
         .bind(q.limit.unwrap_or(50).clamp(1, 200))
         .fetch_all(&st.pool)
         .await?;
-        let mut news: Vec<Json> = news.into_iter().map(|(id, text, url, at)| json!({ "id": id, "text": text, "url": url, "at": at })).collect();
+        // the chats something waits on, the latest first
+        let open: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM (
+               SELECT q.conversation_id AS id, q.created_at AS at FROM db_pigeon_questions q
+                 JOIN db_pigeon_conversations c ON c.id = q.conversation_id WHERE c.user_id = $1 AND q.status = 'open'
+               UNION ALL SELECT conversation_id, created_at FROM db_pigeon_actions
+                WHERE user_id = $1 AND status = 'pending' AND policy <> 'auto' AND conversation_id IS NOT NULL
+               UNION ALL SELECT r.conversation_id, r.created_at FROM db_pigeon_rule_runs r
+                 JOIN db_pigeon_conversations c ON c.id = r.conversation_id WHERE c.user_id = $1 AND r.status = 'pending'
+               UNION ALL SELECT conversation_id, created_at FROM db_pigeon_confirmations
+                WHERE user_id = $1 AND status = 'pending' AND conversation_id IS NOT NULL
+               UNION ALL SELECT id, COALESCE(triaged_at, updated_at) FROM db_pigeon_conversations WHERE user_id = $1 AND needs_note IS NOT NULL
+             ) w GROUP BY id ORDER BY max(at) DESC LIMIT 50",
+        )
+        .bind(user)
+        .fetch_all(&st.pool)
+        .await?;
+        let mut abouts: std::collections::HashMap<Uuid, String> = std::collections::HashMap::new();
+        for c in open.iter().copied().chain(news.iter().filter_map(|n| n.1)) {
+            if !abouts.contains_key(&c) {
+                abouts.insert(c, cards::heading(&st, c).await.unwrap_or_else(|_| "?".into()));
+            }
+        }
+        let mut out: Vec<Json> = cards::list(&st, user, None).await?.into_iter().map(serde_json::to_value).collect::<Result<_, _>>()?;
+        for c in open {
+            for card in cards::list(&st, user, Some(c)).await? {
+                let mut v = serde_json::to_value(card)?;
+                v["conversation_id"] = json!(c);
+                v["about"] = json!(abouts.get(&c));
+                out.push(v);
+            }
+        }
+        out.sort_by(|a, b| a["created_at"].as_str().cmp(&b["created_at"].as_str()));
+        let mut news: Vec<Json> = news
+            .into_iter()
+            .map(|(id, c, text, url, at)| {
+                json!({ "id": id, "text": text, "url": url, "at": at, "conversation_id": c, "about": c.and_then(|c| abouts.get(&c)) })
+            })
+            .collect();
         news.reverse();
-        Ok(json!({ "cards": cards::list(&st, user, None).await?, "news": news, "unread": conversations::unread_count(&st.pool, user).await? }))
+        Ok(json!({ "cards": out, "news": news, "unread": conversations::unread_count(&st.pool, user).await? }))
     }
     .await;
     reply(r)

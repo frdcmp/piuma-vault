@@ -1,5 +1,6 @@
 import { SendOutlined } from "@ant-design/icons";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { PvButton, PvIconButton, PvInput, PvTextarea, pvMessage } from "@/ui";
 import { usePressPigeonCard } from "../../../queries";
 import { timeAgo } from "../../../utils/dateTime";
@@ -40,6 +41,14 @@ function PigeonCard({ card, conversationId }) {
 
 	return (
 		<div className={`pigeon-card pigeon-card--${card.kind}`}>
+			{card.about ? (
+				<Link
+					to={`/inbox/${card.conversation_id}`}
+					className="pigeon-card-about"
+				>
+					{card.about}
+				</Link>
+			) : null}
 			{card.kind === "draft" ? (
 				<>
 					<div className="pigeon-card-label">✍ Pigeon's draft</div>
@@ -114,7 +123,7 @@ export default function PigeonCards({ cards, conversationId = null }) {
 					// a draft re-written by Pigeon is a new card: reset its words
 					key={`${c.kind}-${c.id}-${c.draft ?? ""}`}
 					card={c}
-					conversationId={conversationId}
+					conversationId={c.conversation_id ?? conversationId}
 				/>
 			))}
 		</div>

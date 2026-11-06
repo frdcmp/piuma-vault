@@ -1,12 +1,14 @@
 import { ArrowLeftOutlined } from "@ant-design/icons";
+import { Link } from "react-router-dom";
 import { PvEmpty, PvIconButton, PvSpin } from "@/ui";
 import { usePigeonGeneral } from "../../../queries";
 import { formatDate, formatTime } from "../../../utils/dateTime";
 import { errorText } from "./inboxText";
 import PigeonCards from "./PigeonCards";
 
-// General: what isn't about one chat (a new email Piuma drafted, a change that
-// waits for a yes) and Pigeon's news.
+// Pigeon's own chat: everything that waits for a decision (every chat's cards,
+// a new email Piuma drafted, a change that waits for a yes) and Pigeon's news,
+// each with who it's about, a link to that chat.
 export default function GeneralView() {
 	const { data, isLoading, error } = usePigeonGeneral();
 	if (isLoading) return <PvSpin block label="loading…" />;
@@ -23,9 +25,9 @@ export default function GeneralView() {
 					className="inbox-back"
 				/>
 				<div className="inbox-chat-who">
-					<div className="inbox-chat-name">🕊 General</div>
+					<div className="inbox-chat-name">🕊 Pigeon</div>
 					<div className="inbox-chat-sub">
-						New emails, confirmations and Pigeon's news
+						What waits for you, and Pigeon's news
 					</div>
 				</div>
 			</header>
@@ -36,6 +38,11 @@ export default function GeneralView() {
 						<span className="inbox-news-when">
 							{formatDate(n.at)} {formatTime(n.at)}
 						</span>{" "}
+						{n.about ? (
+							<>
+								<Link to={`/inbox/${n.conversation_id}`}>{n.about}</Link> ·{" "}
+							</>
+						) : null}
 						{n.url ? (
 							<a href={n.url} target="_blank" rel="noreferrer">
 								{n.text}
