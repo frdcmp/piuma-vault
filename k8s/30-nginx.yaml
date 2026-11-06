@@ -27,7 +27,7 @@ spec:
         - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 60}
       containers:
         - name: nginx
-          image: __REGISTRY__/piuma-vault-nginx-k8s:0538bdb5fd01
+          image: __REGISTRY__/piuma-vault-nginx-k8s:4a3251051272
           imagePullPolicy: IfNotPresent
           env:
             - {name: COMPOSE_NAME, value: "piuma-vault"}
