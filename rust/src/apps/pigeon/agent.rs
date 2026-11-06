@@ -427,6 +427,24 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
         s.push_str(&format!("\nThe channel accepts replies until {}.\n", me.local(w).format("%Y-%m-%d %H:%M")));
     }
     s.push_str(&format!("\nThe conversation (oldest first):\n{}", conversations::transcript(&items, &them, (name, &handles), 2000)));
+    // what the user told Pigeon here lately: decided, never asked again
+    let answers: Vec<(String, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
+        "SELECT question, answer, answered_at FROM db_pigeon_questions
+          WHERE conversation_id = $1 AND status = 'answered' AND answer IS NOT NULL AND answered_at > NOW() - INTERVAL '2 days'
+          ORDER BY answered_at DESC LIMIT 5",
+    )
+    .bind(conv.id)
+    .fetch_all(&st.pool)
+    .await?;
+    if !answers.is_empty() {
+        s.push_str(&format!(
+            "\n{name} already answered Pigeon here (their decisions: follow them, and never ask {name} the same again; \
+             what {them} wrote since, like \"so?\", is waiting for that answer):\n"
+        ));
+        for (q, a, at) in answers.iter().rev() {
+            s.push_str(&format!("- {}: Pigeon asked \"{q}\", {name} answered \"{a}\"\n", me.local(*at).format("%Y-%m-%d %H:%M")));
+        }
+    }
     match mode {
         Mode::AfterTriage { sig, role, held, replied, .. } => {
             if *role == Role::Intaker {

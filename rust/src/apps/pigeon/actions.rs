@@ -196,7 +196,9 @@ pub async fn propose(st: &State, p: Proposal) -> anyhow::Result<Outcome> {
             .fetch_one(&st.pool)
             .await?;
             let text = p.args["text"].as_str().unwrap_or_default();
-            if let Some(why) = pace::before_send(st, connector.as_ref(), c.id, text, since.unwrap_or_else(Utc::now)).await? {
+            // one written on the user's answer (no triage) is their decision: it goes whatever they write meanwhile
+            let theirs = p.triage_id.is_some();
+            if let Some(why) = pace::before_send(st, connector.as_ref(), c.id, text, since.unwrap_or_else(Utc::now), theirs).await? {
                 let outcome = if why == pace::PAUSED { "paused" } else { "stopped" };
                 crate::apps::pigeon::events::working(&st.pool, c.id, "done", None, Some(outcome)).await;
                 if why == pace::PAUSED {
@@ -271,11 +273,13 @@ pub async fn quiet_until(st: &State, conversation: Uuid) -> anyhow::Result<Optio
 }
 
 /// New messages came in: what Pigeon proposed before them, still waiting (replies, tasks,
-/// events), is stale; the round that reads them proposes again what's still needed.
+/// events), is stale; the round that reads them proposes again what's still needed. What it
+/// proposed on the user's answer (an event they said yes to) isn't: it was their decision.
 pub async fn supersede_proposals(st: &State, conversation: Uuid) -> anyhow::Result<Vec<Uuid>> {
     Ok(sqlx::query_scalar(
         "UPDATE db_pigeon_actions SET status = 'expired', error = 'replaced: new messages came in', updated_at = NOW()
-          WHERE conversation_id = $1 AND status = 'pending' AND source = 'agent' RETURNING id",
+          WHERE conversation_id = $1 AND status = 'pending' AND source = 'agent'
+            AND NOT (triage_id IS NULL AND kind <> 'reply') RETURNING id",
     )
     .bind(conversation)
     .fetch_all(&st.pool)
