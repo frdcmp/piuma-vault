@@ -1,9 +1,12 @@
 import { ExportOutlined } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
+import { PvSpin } from "@/ui";
 import { usePigeonItemHtml } from "../../../queries";
 
 // How tall an email shows before "Show all".
 const FOLD = 420;
+// How long a page may take to load before its text shows instead.
+const LOAD_MS = 15 * 1000;
 
 // Whether an element is on screen (or about to be): an email is fetched when it is.
 function useSeen(ref) {
@@ -22,44 +25,61 @@ function useSeen(ref) {
 }
 
 // An email in its bubble, as it was sent: its page (made safe by the vault) in a
-// frame where nothing runs, as tall as it is, folded past FOLD. Until it's
-// fetched, or when it has no HTML, its text (`fallback`).
+// frame where nothing runs, as tall as it is, folded past FOLD. It shows once,
+// whole: a spinner holds its place until the page and its images have loaded
+// and it's measured (no text first, no growing as images come in). With no
+// HTML, or a page that never loads, its text (`fallback`).
 export default function EmailFrame({ id, fallback }) {
 	const box = useRef(null);
 	const frame = useRef(null);
 	const seen = useSeen(box);
-	const { data, isLoading } = usePigeonItemHtml(seen ? id : null);
+	const { data, isLoading, isError } = usePigeonItemHtml(seen ? id : null);
 	const [height, setHeight] = useState(0);
+	const [ready, setReady] = useState(false);
+	const [late, setLate] = useState(false);
 	const [open, setOpen] = useState(false);
+	const page = data?.html;
 
-	// the frame's own height: once loaded, and again as its images come in
-	const measure = () => {
+	// a page that doesn't finish loading: its text after a while
+	useEffect(() => {
+		if (!page || ready) return;
+		const t = setTimeout(() => setLate(true), LOAD_MS);
+		return () => clearTimeout(t);
+	}, [page, ready]);
+
+	// loaded (the frame's load waits for its images): measured, then shown; its
+	// height follows it after that (a late image, a font)
+	const watch = useRef(null);
+	const onLoad = () => {
 		const doc = frame.current?.contentDocument;
 		if (!doc?.body) return;
 		const fit = () => setHeight(doc.documentElement.scrollHeight);
 		fit();
-		const ro = new ResizeObserver(fit);
-		ro.observe(doc.body);
-		frame.current.addEventListener("load", () => ro.disconnect(), {
-			once: true,
-		});
+		setReady(true);
+		watch.current?.disconnect();
+		watch.current = new ResizeObserver(fit);
+		watch.current.observe(doc.body);
 	};
+	useEffect(() => () => watch.current?.disconnect(), []);
 
-	const page = data?.html;
-	if (!page)
+	if (!seen || isLoading)
 		return (
-			<div ref={box}>
-				{fallback}
-				{seen && isLoading ? (
-					<div className="inbox-email-loading">Loading the email…</div>
-				) : null}
+			<div ref={box} className="inbox-email-wait">
+				<PvSpin label="Loading the email…" />
 			</div>
 		);
-	const folded = !open && height > FOLD;
+	if (!page || isError || (late && !ready))
+		return <div ref={box}>{fallback}</div>;
+	const folded = ready && !open && height > FOLD;
 	return (
 		<div ref={box} className="inbox-email">
+			{ready ? null : (
+				<div className="inbox-email-wait">
+					<PvSpin label="Loading the email…" />
+				</div>
+			)}
 			<div
-				className={`inbox-email-view${folded ? " is-folded" : ""}`}
+				className={`inbox-email-view${folded ? " is-folded" : ""}${ready ? "" : " is-loading"}`}
 				style={{ maxHeight: folded ? FOLD : undefined }}
 			>
 				<iframe
@@ -68,11 +88,11 @@ export default function EmailFrame({ id, fallback }) {
 					// no scripts; same origin only so its height can be read; links open apart
 					sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
 					srcDoc={page}
-					onLoad={measure}
+					onLoad={onLoad}
 					style={{ height: height || 200 }}
 				/>
 			</div>
-			{height > FOLD ? (
+			{ready && height > FOLD ? (
 				<button
 					type="button"
 					className="inbox-msg-open"
