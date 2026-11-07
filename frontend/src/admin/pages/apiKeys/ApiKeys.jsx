@@ -114,10 +114,13 @@ const SCOPE_TAG_CLASSES = {
 	"notes.read": "vp-tag--green",
 	"notes.write": "vp-tag--blue",
 	"storage.access": "vp-tag--accent",
+	"tasks.read": "vp-tag--blue",
 	"tasks.manage": "vp-tag--blue",
+	"calendar.read": "vp-tag--green",
 	"calendar.manage": "vp-tag--green",
 	"agents.chat": "vp-tag--accent",
 	"sprites.manage": "vp-tag--green",
+	"inbox.read": "vp-tag--accent",
 	"inbox.write": "vp-tag--accent",
 	notifications: "vp-tag--blue",
 };
@@ -242,7 +245,7 @@ const ApiKeysPage = () => {
 			is_active: editForm.is_active,
 		};
 		updateMutation.mutate(
-			{ id: editingKey.id, body: payload },
+			{ id: editingKey.id, ...payload },
 			{
 				onSuccess: () => {
 					pvMessage.success("API key updated successfully");
@@ -321,8 +324,9 @@ const ApiKeysPage = () => {
 			title: "Permissions",
 			dataIndex: "permissions",
 			key: "permissions",
+			width: 360,
 			render: (permissions) => (
-				<div className="vp-row vp-row--wrap">
+				<div className="vp-keys-scope-tags">
 					{(permissions || []).map((p) => (
 						<ScopeTag key={p} scope={p} />
 					))}
@@ -350,14 +354,19 @@ const ApiKeysPage = () => {
 			title: "Last Used",
 			dataIndex: "last_used_at",
 			key: "last_used_at",
-			render: (date) =>
-				date ? timeAgo(date) : <span className="vp-muted">Never</span>,
+			render: (date) => (
+				<span className="vp-keys-nowrap">
+					{date ? timeAgo(date) : <span className="vp-muted">Never</span>}
+				</span>
+			),
 		},
 		{
 			title: "Created",
 			dataIndex: "created_at",
 			key: "created_at",
-			render: (date) => formatDate(date),
+			render: (date) => (
+				<span className="vp-keys-nowrap">{formatDate(date)}</span>
+			),
 			sorter: (a, b) => dayjs(a.created_at).unix() - dayjs(b.created_at).unix(),
 		},
 		{
@@ -469,6 +478,7 @@ const ApiKeysPage = () => {
 				<PvTable
 					columns={columns}
 					data={tableData}
+					minWidth={1040}
 					rowKey="id"
 					loading={isLoading}
 					defaultSort={{ key: "created_at", dir: "desc" }}

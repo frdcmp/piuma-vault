@@ -40,6 +40,7 @@
 /* ---- Table cells ----------------------------------------------------------- */
 .vp-keys-name {
 	font-weight: 800;
+	white-space: nowrap;
 	color: var(--vp-text);
 }
 .vp-keys-code {
@@ -49,6 +50,15 @@
 	background: var(--vp-bg-soft);
 	border: 1px solid var(--vp-border);
 	padding: 1px 6px;
+	white-space: nowrap;
+}
+.vp-keys-nowrap {
+	white-space: nowrap;
+}
+.vp-keys-scope-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
 }
 
 .vp-keys-table-panel {
