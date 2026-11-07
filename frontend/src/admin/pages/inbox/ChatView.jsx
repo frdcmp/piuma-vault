@@ -47,7 +47,8 @@ import {
 } from "../../../queries";
 import useChatDockStore from "../../../store/chatDockStore";
 import { formatDate, formatTime } from "../../../utils/dateTime";
-import EmailFrame, { OpenEmail } from "./EmailFrame";
+import EmailActions from "./EmailActions";
+import EmailFrame from "./EmailFrame";
 import InboxMedia from "./InboxMedia";
 import {
 	ALERT_HINT,
@@ -282,8 +283,8 @@ function Message({
 				) : body ? (
 					<div className="inbox-msg-body">{body}</div>
 				) : null}
+				{email && !local ? <EmailActions item={item} /> : null}
 				<div className="inbox-msg-meta">
-					<OpenEmail url={item.open_url} />
 					{channel ? (
 						<span className="inbox-msg-channel">{channel} · </span>
 					) : null}

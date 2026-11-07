@@ -1,4 +1,4 @@
-import { ExportOutlined } from "@ant-design/icons";
+import { DownOutlined, UpOutlined } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
 import { PvSpin } from "@/ui";
 import { usePigeonItemHtml } from "../../../queries";
@@ -95,22 +95,13 @@ export default function EmailFrame({ id, fallback }) {
 			{ready && height > FOLD ? (
 				<button
 					type="button"
-					className="inbox-msg-open"
+					className="inbox-email-more"
 					onClick={() => setOpen((o) => !o)}
 				>
+					{open ? <UpOutlined /> : <DownOutlined />}
 					{open ? "Show less" : "Show all"}
 				</button>
 			) : null}
 		</div>
-	);
-}
-
-// The link that opens an email where it lives (its mailbox, on the web).
-export function OpenEmail({ url }) {
-	if (!url) return null;
-	return (
-		<a className="inbox-msg-open" href={url} target="_blank" rel="noreferrer">
-			Open email <ExportOutlined />
-		</a>
 	);
 }

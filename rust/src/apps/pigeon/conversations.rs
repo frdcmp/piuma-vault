@@ -70,6 +70,8 @@ pub struct Item {
     pub open_url: Option<String>,
     /// the user's sent from the Inbox: "inbox" (None: from the channel's own app)
     pub via: Option<String>,
+    /// an email that came in, out of its inbox (archived, in Gmail or from the Inbox)
+    pub archived: bool,
 }
 
 pub const ITEM_COLS: &str = "id, direction, author, sender, sender_name, subject, body, media, at, created_at, \
@@ -77,7 +79,8 @@ pub const ITEM_COLS: &str = "id, direction, author, sender, sender_name, subject
      COALESCE(raw->'reactions', '{}'::jsonb) AS reactions, raw->>'via' AS via, \
      (SELECT 'https://mail.google.com/mail/?authuser=' || k.account || '#all/' || db_pigeon_items.external_id \
         FROM db_pigeon_conversations v JOIN db_pigeon_connections k ON k.id = v.connection_id \
-       WHERE v.id = db_pigeon_items.conversation_id AND db_pigeon_items.connector = 'gmail') AS open_url";
+       WHERE v.id = db_pigeon_items.conversation_id AND db_pigeon_items.connector = 'gmail') AS open_url, \
+     (connector = 'gmail' AND direction = 'in' AND jsonb_typeof(raw->'labels') = 'array' AND NOT (raw->'labels') ? 'INBOX') AS archived";
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Contact {

@@ -76,6 +76,15 @@ export const markPigeonRead = async (id) => {
 	return data;
 };
 
+// One email of a chat: "archive" (out of Gmail's inbox, kept, marked here) or
+// "trash" (to Gmail's Trash, gone from the chat).
+export const pigeonEmailAction = async ({ item, action }) => {
+	const { data } = await axiosInstance.post(
+		`${BASE}/items/${item}/email/${action}`,
+	);
+	return data;
+};
+
 export const markPigeonHandled = async (id) => {
 	const { data } = await axiosInstance.post(
 		`${BASE}/conversations/${id}/handled`,

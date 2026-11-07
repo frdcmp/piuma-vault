@@ -35,6 +35,7 @@ import {
 	markPigeonPersonRead,
 	markPigeonRead,
 	mergePigeonContacts,
+	pigeonEmailAction,
 	pressPigeonCard,
 	resumePigeonAuto,
 	resumePigeonPersonAuto,
@@ -261,6 +262,23 @@ export const useComposePigeonReply = () =>
 	useMutation({ mutationFn: composePigeonReply });
 export const useSetPigeonConversationSwitches = () =>
 	useChatMutation(setPigeonConversationSwitches);
+
+// Archive or trash an email: the chats' messages and the lists again.
+export function usePigeonEmailAction() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: pigeonEmailAction,
+		onSuccess: () =>
+			Promise.all(
+				[
+					["pigeon", "items"],
+					["pigeon", "person-items"],
+					pigeonKeys.lists(),
+					["pigeon", "chats"],
+				].map((queryKey) => qc.invalidateQueries({ queryKey })),
+			),
+	});
+}
 
 export function useMarkPigeonRead() {
 	const qc = useQueryClient();

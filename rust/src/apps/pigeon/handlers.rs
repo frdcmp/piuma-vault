@@ -650,6 +650,46 @@ pub async fn item_html(st: web::Data<AppState>, u: InboxReader, path: web::Path<
     reply(r.map(|html| json!({ "html": html })))
 }
 
+/// One email of a chat, from the Inbox: `archive` (out of Gmail's inbox, kept in All Mail; it
+/// stays in the chat, marked) or `trash` (to Gmail's Trash, where Gmail deletes it after 30 days;
+/// gone from the chat, and never taken in again: Pigeon skips what's in the Trash).
+pub async fn email_action(st: web::Data<AppState>, u: InboxWriter, path: web::Path<(Uuid, String)>) -> HttpResponse {
+    let user = &u.0.user_id;
+    let (id, action) = path.into_inner();
+    let r: anyhow::Result<Json> = async {
+        if !["archive", "trash"].contains(&action.as_str()) {
+            anyhow::bail!("an email is archived or trashed, not '{action}'");
+        }
+        let (conv, mid): (Uuid, String) = sqlx::query_as(
+            "SELECT i.conversation_id, i.external_id FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
+              WHERE i.id = $1 AND c.user_id = $2 AND i.connector = 'gmail'",
+        )
+        .bind(id)
+        .bind(user)
+        .fetch_optional(&st.pool)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("no such email"))?;
+        let row = actions::direct(&st, user, "gmail", &action, json!({ "message_id": mid }), Some(conv), "user (Inbox)").await?;
+        if row.status != "done" {
+            anyhow::bail!("{}", row.error.unwrap_or_else(|| format!("not done ({})", row.status)));
+        }
+        if action == "trash" {
+            sqlx::query("DELETE FROM db_pigeon_items WHERE id = $1").bind(id).execute(&st.pool).await?;
+        } else {
+            sqlx::query(
+                "UPDATE db_pigeon_items SET raw = jsonb_set(raw, '{labels}', COALESCE(raw->'labels', '[]'::jsonb) - 'INBOX') WHERE id = $1 AND raw IS NOT NULL",
+            )
+            .bind(id)
+            .execute(&st.pool)
+            .await?;
+        }
+        events::conversation(&st.pool, conv).await;
+        Ok(json!({ "done": action, "item": id }))
+    }
+    .await;
+    reply(r)
+}
+
 #[derive(Deserialize)]
 pub struct OnlyQuery {
     /// just this person

@@ -599,17 +599,6 @@
 	background: #fff;
 }
 
-.inbox-msg-open {
-	background: none;
-	border: 0;
-	padding: 0;
-	margin-right: 8px;
-	color: var(--vp-accent);
-	font: inherit;
-	text-decoration: underline;
-	cursor: pointer;
-}
-
 /* a chat row's real name, beside the @slug it's titled by */
 .inbox-row-realname {
 	color: var(--vp-muted);
@@ -949,4 +938,44 @@
 	box-sizing: border-box;
 	padding-top: 0;
 	padding-bottom: 0;
+}
+
+/* under an email: the bar that unfolds it, then its buttons (open, archive, delete) */
+.inbox-email-more {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	width: 100%;
+	padding: 6px 0;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border-soft);
+	border-top: 0;
+	color: var(--vp-accent);
+	font-family: var(--vp-font);
+	font-size: 8.5pt;
+	font-weight: 700;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	cursor: pointer;
+}
+.inbox-email-more:hover {
+	background: var(--vp-panel-alt);
+}
+.inbox-email-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-top: 8px;
+}
+.inbox-email-archived {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	color: var(--vp-faint);
+	font-family: var(--vp-font);
+	font-size: 8pt;
+	letter-spacing: 1px;
+	text-transform: uppercase;
 }
