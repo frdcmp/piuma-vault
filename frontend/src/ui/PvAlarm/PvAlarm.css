@@ -1,5 +1,5 @@
-/* PvAlarm — pixel-style must-dismiss alarm dialog.
-   Primitives mirror PvModal.css; colours come from the --vp-* tokens. */
+/* PvAlarm — the ringing alarm, the twin of the phone's alarm screen (Px look:
+   2px borders, a hard shadow, monospace labels). Colours from the --vp-* tokens. */
 .pv-alarm-overlay {
 	position: fixed;
 	inset: 0;
@@ -7,18 +7,20 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: color-mix(in srgb, var(--vp-shadow-color) 60%, transparent);
+	padding: 16px;
+	background: color-mix(in srgb, var(--vp-bg) 88%, transparent);
 	background-image:
 		linear-gradient(
-			color-mix(in srgb, var(--vp-highlight) 1.5%, transparent) 1px,
+			color-mix(in srgb, var(--vp-highlight) 2%, transparent) 1px,
 			transparent 1px
 		),
 		linear-gradient(
 			90deg,
-			color-mix(in srgb, var(--vp-highlight) 1.5%, transparent) 1px,
+			color-mix(in srgb, var(--vp-highlight) 2%, transparent) 1px,
 			transparent 1px
 		);
 	background-size: 8px 8px;
+	backdrop-filter: blur(3px);
 	animation: pv-alarm-fade 90ms steps(3, end);
 }
 
@@ -33,56 +35,105 @@
 
 @keyframes pv-alarm-pop {
 	0% {
-		transform: translateY(-4px) scale(0.96);
+		transform: translateY(6px) scale(0.97);
 	}
 	100% {
 		transform: translateY(0) scale(1);
 	}
 }
 
-/* The whole dialog throbs subtly to read as "urgent" without being noisy. */
+/* the card throbs in the accent: urgent, not noisy */
 @keyframes pv-alarm-throb {
 	0%,
 	100% {
 		box-shadow:
-			var(--vp-shadow-lg),
+			6px 6px 0 0 var(--vp-shadow-color),
 			0 0 0 0 color-mix(in srgb, var(--vp-accent) 0%, transparent);
 	}
 	50% {
 		box-shadow:
-			var(--vp-shadow-lg),
-			0 0 0 3px color-mix(in srgb, var(--vp-accent) 35%, transparent);
+			6px 6px 0 0 var(--vp-shadow-color),
+			0 0 0 4px color-mix(in srgb, var(--vp-accent) 30%, transparent);
 	}
 }
 
 .pv-alarm {
-	width: min(92vw, 420px);
+	width: min(100%, 400px);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 18px 22px 22px;
 	background: var(--vp-panel);
 	border: 2px solid var(--vp-border);
 	color: var(--vp-text);
 	font-family: var(--vp-font);
-	image-rendering: pixelated;
-	box-shadow: var(--vp-shadow-lg);
+	text-align: center;
 	animation:
-		pv-alarm-pop 90ms steps(3, end),
-		pv-alarm-throb 1.2s steps(2, end) 90ms infinite;
+		pv-alarm-pop 120ms steps(3, end),
+		pv-alarm-throb 1.4s steps(2, end) 120ms infinite;
 }
 
-/* ---- Title bar ------------------------------------------------------------- */
-.pv-alarm-bar {
+/* ---- Top: the app and the kind -------------------------------------------- */
+.pv-alarm-top {
+	align-self: stretch;
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 7px 10px 7px 12px;
-	background: var(--vp-bg-soft);
-	border-bottom: 2px solid var(--vp-border);
+	justify-content: space-between;
+	margin-bottom: 18px;
+}
+
+.pv-alarm-app {
+	font-size: 9pt;
+	font-weight: 700;
+	letter-spacing: 3px;
+	text-transform: uppercase;
+	color: var(--vp-faint);
+}
+
+.pv-alarm-kind {
+	padding: 3px 9px;
+	border: 2px solid var(--vp-accent);
+	font-size: 8.5pt;
+	font-weight: 700;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: var(--vp-accent);
+}
+
+/* ---- The clock and the bell ------------------------------------------------ */
+.pv-alarm-clock {
+	font-size: 52px;
+	font-weight: 800;
+	line-height: 1;
+	letter-spacing: 1px;
+	font-variant-numeric: tabular-nums;
+}
+
+.pv-alarm-date {
+	margin-top: 6px;
+	font-size: 9pt;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: var(--vp-muted);
 }
 
 .pv-alarm-bell {
-	font-size: 14px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 64px;
+	height: 64px;
+	margin: 22px 0 18px;
+	background: var(--vp-bg-soft);
+	border: 2px solid var(--vp-border);
+	box-shadow: var(--vp-shadow);
+	font-size: 28px;
 	line-height: 1;
+}
+
+.pv-alarm-bell span {
 	transform-origin: 50% 0;
-	animation: pv-alarm-ring 0.9s steps(4, end) infinite;
+	animation: pv-alarm-ring 1.4s steps(8, end) infinite;
 }
 
 @keyframes pv-alarm-ring {
@@ -91,106 +142,69 @@
 	100% {
 		transform: rotate(0deg);
 	}
-	15% {
-		transform: rotate(-18deg);
+	12% {
+		transform: rotate(-16deg);
 	}
-	30% {
-		transform: rotate(14deg);
+	24% {
+		transform: rotate(13deg);
 	}
-	45% {
+	36% {
 		transform: rotate(-8deg);
 	}
-}
-
-.pv-alarm-bar-title {
-	flex: 1;
-	font-size: 10pt;
-	font-weight: 700;
-	letter-spacing: 1px;
-	text-transform: uppercase;
-	color: var(--vp-accent);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.pv-alarm-badge {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 16px;
-	height: 16px;
-	font-size: 11px;
-	font-weight: 800;
-	color: var(--vp-bg-soft);
-	background: var(--vp-danger);
-	box-shadow: var(--vp-shadow);
-	animation: pv-alarm-blink 0.8s steps(1, end) infinite;
-}
-
-@keyframes pv-alarm-blink {
-	0%,
-	50% {
-		opacity: 1;
-	}
-	51%,
-	100% {
-		opacity: 0.25;
+	48% {
+		transform: rotate(4deg);
 	}
 }
 
-/* ---- Body ------------------------------------------------------------------ */
-.pv-alarm-body {
-	padding: 16px 16px 14px;
-}
-
+/* ---- What it's about ------------------------------------------------------- */
 .pv-alarm-title {
 	margin: 0;
-	font-size: 13pt;
-	font-weight: 800;
-	line-height: 1.35;
+	font-family: var(--vp-font-sans);
+	font-size: 17pt;
+	font-weight: 700;
+	line-height: 1.3;
 	color: var(--vp-text);
-	letter-spacing: 0.3px;
+	overflow-wrap: anywhere;
 }
 
 .pv-alarm-time {
-	margin: 8px 0 0;
-	font-size: 10pt;
+	margin: 10px 0 0;
+	font-size: 10.5pt;
 	color: var(--vp-accent);
 	letter-spacing: 0.5px;
 }
 
 .pv-alarm-text {
-	margin: 10px 0 0;
+	margin: 8px 0 0;
 	font-size: 10pt;
 	line-height: 1.5;
 	color: var(--vp-muted);
 	white-space: pre-wrap;
 }
 
-/* ---- Actions --------------------------------------------------------------- */
+/* ---- The buttons ----------------------------------------------------------- */
 .pv-alarm-actions {
+	align-self: stretch;
 	display: flex;
-	justify-content: flex-end;
-	gap: 8px;
-	padding: 10px 12px;
-	background: var(--vp-bg-soft);
-	border-top: 2px dashed var(--vp-border);
+	flex-direction: column;
+	gap: 14px;
+	margin-top: 24px;
 }
 
 .pv-alarm-btn {
+	flex: 1;
+	min-height: 40px;
 	background: var(--vp-bg-soft);
 	border: 2px solid var(--vp-border);
 	box-shadow: var(--vp-shadow);
 	color: var(--vp-text);
-	padding: 5px 14px;
+	padding: 6px 10px;
 	font-family: inherit;
 	font-size: 10pt;
 	font-weight: 700;
-	letter-spacing: 0.5px;
+	letter-spacing: 1px;
 	text-transform: uppercase;
 	cursor: pointer;
-	min-width: 84px;
 }
 
 .pv-alarm-btn:hover {
@@ -200,55 +214,44 @@
 
 .pv-alarm-btn:active {
 	transform: translate(2px, 2px);
-	box-shadow: 0 0 0 0 var(--vp-shadow-color);
+	box-shadow: none;
 }
 
-.pv-alarm-btn.danger {
-	color: var(--vp-danger);
-	border-color: var(--vp-danger);
+.pv-alarm-btn:focus-visible {
+	outline: 2px dashed var(--vp-accent);
+	outline-offset: 3px;
 }
 
-.pv-alarm-btn.danger:hover {
-	background: var(--vp-danger);
-	color: var(--vp-panel);
+/* Dismiss: the one that stops it */
+.pv-alarm-btn.is-main {
+	min-height: 54px;
+	background: var(--vp-accent);
+	border-color: var(--vp-accent);
+	color: var(--vp-on-accent);
+	font-size: 12pt;
+	letter-spacing: 2px;
+	box-shadow: 4px 4px 0 0 var(--vp-shadow-color);
 }
 
-/* ---- Snooze inline menu ---------------------------------------------------- */
-.pv-alarm-snooze-wrap {
-	position: relative;
+.pv-alarm-btn.is-main:hover {
+	background: color-mix(in srgb, var(--vp-accent) 88%, var(--vp-highlight));
+	color: var(--vp-on-accent);
 }
 
-.pv-alarm-snooze-menu {
-	position: absolute;
-	bottom: calc(100% + 6px);
-	left: 0;
-	min-width: 100%;
+.pv-alarm-btn.is-main:active {
+	transform: translate(4px, 4px);
+}
+
+.pv-alarm-snooze {
 	display: flex;
-	flex-direction: column;
-	background: var(--vp-panel);
-	border: 2px solid var(--vp-border);
-	box-shadow: var(--vp-shadow);
-	animation: pv-alarm-pop 90ms steps(3, end);
+	align-items: center;
+	gap: 8px;
 }
 
-.pv-alarm-snooze-item {
-	background: none;
-	border: none;
-	border-bottom: 1px solid var(--vp-border);
-	color: var(--vp-text);
-	font-family: inherit;
-	font-size: 10pt;
-	letter-spacing: 0.5px;
-	text-align: left;
-	padding: 6px 14px;
-	cursor: pointer;
-}
-
-.pv-alarm-snooze-item:last-child {
-	border-bottom: none;
-}
-
-.pv-alarm-snooze-item:hover {
-	background: var(--vp-success);
-	color: var(--vp-panel);
+.pv-alarm-snooze-label {
+	font-size: 8.5pt;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: var(--vp-faint);
+	margin-right: 2px;
 }

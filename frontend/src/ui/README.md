@@ -44,7 +44,7 @@ import { PvButton, PvField, PvInput, PvModal, pvMessage } from "@/ui";
 | `PvPopover` | Anchored floating panel | `open`, `anchorRef`, `onClose`, `width` |
 | `PvMenu` | Context menu | `open`, `x`, `y`, `items`, `onClose` |
 | `PvDrawer` | Side panel | `open`, `onClose`, `placement` left·right, `width`, `title` |
-| `PvAlarm` | Ringing alarm card | `open`, `kind`, `title`, `timeText`, `body`, `snoozeOptions`, `onSnooze(min)`, `onDismiss` |
+| `PvAlarm` | Ringing alarm (clock, Dismiss, snooze buttons; Escape dismisses) | `open`, `kind`, `title`, `timeText`, `body`, `snoozeOptions`, `onSnooze(min)`, `onDismiss` |
 | `LockGlyph` | Pixel padlock icon | `open`, `size` |
 | `pvMessage` | Toast line | `.success/.error/.info/.warning(text, ms)` → id, `.dismiss(id)` |
 | `pvConfirm` | Imperative confirm dialog (replaces window.confirm / Modal.confirm) | `await pvConfirm({ title, content, okText, cancelText, danger })` → boolean |
