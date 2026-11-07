@@ -26,6 +26,7 @@ const ALLOW = [
 	"admin/pages/recorder/PixelWaveform.jsx", // 3-step meter colour ramps (art)
 	"admin/components/notes/Starfield.jsx", // nebula/galaxy tints (art); stars use tokens
 	"utils/tagColor.js", // hash → hsl tag colours, mirrors mobile (data)
+	"admin/pages/inbox/senderColor.js", // a group member's colour, mirrors Pigeon's app (data)
 ];
 
 // Custom properties set by libraries at runtime, not by our CSS.

@@ -314,8 +314,10 @@
 .inbox-msg.is-pigeon .inbox-bubble {
 	border-style: dashed;
 }
+/* in a group, each person's own colour (--sender, senderColor.js), toned to
+   read on the theme's bubbles */
 .inbox-msg-sender {
-	color: var(--vp-info);
+	color: color-mix(in srgb, var(--sender, var(--vp-info)) 78%, var(--vp-text));
 	font-size: 9pt;
 	font-weight: 700;
 }

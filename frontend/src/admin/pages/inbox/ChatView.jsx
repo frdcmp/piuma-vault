@@ -69,6 +69,7 @@ import { arrived, localItem, outboxEntry } from "./outbox";
 import PigeonCards from "./PigeonCards";
 import SentBy from "./SentBy";
 import SwitchInfo from "./SwitchInfo";
+import { senderColor } from "./senderColor";
 import Working from "./Working";
 
 // What the channels take in one file (the vault's limit too).
@@ -233,7 +234,14 @@ function Message({
 				.join(" ")}
 		>
 			<div className={`inbox-bubble${email ? " is-email" : ""}`}>
-				{sender ? <div className="inbox-msg-sender">{sender}</div> : null}
+				{sender ? (
+					<div
+						className="inbox-msg-sender"
+						style={{ "--sender": senderColor(item.sender || sender) }}
+					>
+						{sender}
+					</div>
+				) : null}
 				{item.subject ? (
 					<div className="inbox-msg-subject">{item.subject}</div>
 				) : null}
