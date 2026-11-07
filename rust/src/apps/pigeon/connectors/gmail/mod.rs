@@ -575,7 +575,8 @@ async fn send_new(st: &State, user: &str, args: &Json) -> anyhow::Result<Json> {
         },
     };
     let token = api::access_token(st, connection).await?;
-    let mime = parse::new_raw(&account, &to, subject, text);
+    let sig = signature(&token, &account).await;
+    let mime = parse::new_raw(&account, &to, subject, &parse::compose(text, sig.as_deref(), None));
     let sent = api::gmail_ok(&token, "POST", "/messages/send", &[], Some(&json!({ "raw": mime }))).await?;
     let mid = sent["id"].as_str().unwrap_or_default().to_string();
     let thread = sent["threadId"].as_str().unwrap_or(&mid).to_string();
@@ -604,6 +605,36 @@ async fn send_new(st: &State, user: &str, args: &Json) -> anyhow::Result<Json> {
                "conversation_id": stored.map(|s| s.conversation_id) }))
 }
 
+/// Each account's Gmail signature (HTML; None: it has none), read again after SIGNATURE_TTL so a
+/// change made in Gmail comes through.
+static SIGNATURES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, Option<String>)>>> =
+    std::sync::LazyLock::new(Default::default);
+const SIGNATURE_TTL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// The signature the user set in Gmail for `account` (Gmail adds it only to what's written in
+/// Gmail itself: Pigeon adds it to what it sends). None when there's none or it can't be read.
+async fn signature(token: &str, account: &str) -> Option<String> {
+    if let Some((at, sig)) = SIGNATURES.lock().ok()?.get(account) {
+        if at.elapsed() < SIGNATURE_TTL {
+            return sig.clone();
+        }
+    }
+    let got = api::gmail_ok(token, "GET", &format!("/settings/sendAs/{account}"), &[], None).await;
+    match got {
+        Ok(v) => {
+            let sig = v["signature"].as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+            if let Ok(mut m) = SIGNATURES.lock() {
+                m.insert(account.to_string(), (std::time::Instant::now(), sig.clone()));
+            }
+            sig
+        }
+        Err(e) => {
+            log::warn!("gmail {account}: signature not read: {e:#}");
+            None
+        }
+    }
+}
+
 /// Reply to the last message from them in the thread, threaded (In-Reply-To, References,
 /// threadId); stored at once as sent by Pigeon, so the next poll finds it there.
 /// `file`: one the user uploaded (`media::put_outgoing`), attached, and its entry for the message.
@@ -619,23 +650,42 @@ async fn send_reply(
     file: Option<(parse::OutFile, &Json)>,
 ) -> anyhow::Result<Json> {
     let account: String = sqlx::query_scalar("SELECT account FROM db_pigeon_connections WHERE id = $1").bind(connection).fetch_one(&st.pool).await?;
-    let last: Option<(Option<String>, Option<String>, Option<Json>)> = sqlx::query_as(
-        "SELECT sender, subject, raw FROM db_pigeon_items WHERE conversation_id = $1 AND direction = 'in' ORDER BY at DESC LIMIT 1",
+    #[allow(clippy::type_complexity)]
+    let last: Option<(Option<String>, Option<String>, Option<String>, Option<Json>, String, String, chrono::DateTime<Utc>)> = sqlx::query_as(
+        "SELECT sender, sender_name, subject, raw, external_id, body, at FROM db_pigeon_items
+          WHERE conversation_id = $1 AND direction = 'in' ORDER BY at DESC LIMIT 1",
     )
     .bind(conv)
     .fetch_optional(&st.pool)
     .await?;
-    let (sender, subject, raw) = last.ok_or_else(|| anyhow::anyhow!("nobody wrote in this thread to reply to"))?;
+    let (sender, sender_name, subject, raw, their_id, their_text, their_at) =
+        last.ok_or_else(|| anyhow::anyhow!("nobody wrote in this thread to reply to"))?;
     let raw = raw.unwrap_or(Json::Null);
-    let to = raw["reply_to"].as_str().map(str::to_string).or(sender).ok_or_else(|| anyhow::anyhow!("no address to reply to"))?;
+    let to = raw["reply_to"].as_str().map(str::to_string).or(sender.clone()).ok_or_else(|| anyhow::anyhow!("no address to reply to"))?;
     let cc = reply_all_cc(&raw, &account, &to);
+    // as Gmail writes a reply: the text, the signature, their email quoted (its own page, else
+    // its text)
+    let their_page = match api::gmail(token, "GET", &format!("/messages/{their_id}"), &[("format", "full".to_string())], None).await {
+        Ok(Got::Ok(msg)) => parse::html(&msg["payload"]),
+        _ => None,
+    };
+    let who = match (sender_name.as_deref().filter(|n| !n.trim().is_empty()), sender.as_deref()) {
+        (Some(n), Some(a)) => format!("{n} <{a}>"),
+        (Some(n), None) => n.to_string(),
+        (None, Some(a)) => format!("<{a}>"),
+        (None, None) => "they".to_string(),
+    };
+    let when = crate::apps::pigeon::owner::get(&st.pool, user).await.local(their_at).format("%a, %-d %b %Y at %H:%M");
+    let quote = parse::Quote { said: format!("On {when}, {who} wrote:"), html: their_page.as_deref(), text: &their_text };
+    let sig = signature(token, &account).await;
+    let out = parse::compose(text, sig.as_deref(), Some(&quote));
     let (body, media) = match &file {
         Some((_, entry)) => (media::body_with(text, entry), json!([entry])),
         None => (text.to_string(), json!([])),
     };
     let sent = match file {
         None => {
-            let mime = parse::reply_raw(&account, &to, &cc, subject.as_deref().unwrap_or(""), raw["message_id"].as_str(), raw["references"].as_str(), text);
+            let mime = parse::reply_raw(&account, &to, &cc, subject.as_deref().unwrap_or(""), raw["message_id"].as_str(), raw["references"].as_str(), &out);
             api::gmail_ok(token, "POST", "/messages/send", &[], Some(&json!({ "raw": mime, "threadId": thread }))).await?
         }
         Some((attachment, _)) => {
@@ -646,7 +696,7 @@ async fn send_reply(
                 subject.as_deref().unwrap_or(""),
                 raw["message_id"].as_str(),
                 raw["references"].as_str(),
-                text,
+                &out,
                 &[attachment],
             );
             api::send_upload(token, thread, message).await?

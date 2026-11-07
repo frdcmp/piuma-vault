@@ -266,6 +266,7 @@ mod tests {
             reactions: serde_json::json!({}),
             open_url: None,
             via: None,
+            archived: false,
         }
     }
 

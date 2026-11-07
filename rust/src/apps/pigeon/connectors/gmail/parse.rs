@@ -166,13 +166,28 @@ pub fn email_page(html: &str) -> String {
         .url_schemes(["http", "https", "mailto", "tel", "data", "cid"].into_iter().collect())
         .clean(html)
         .to_string();
+    let body = fold_quote(&body);
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><base target=\"_blank\">\
          <style>html,body{{margin:0;background:#fff;color:#1a1a1a}}body{{padding:10px;font:14px/1.45 -apple-system,Roboto,Segoe UI,sans-serif;\
-         overflow-wrap:anywhere}}img{{max-width:100%!important;height:auto!important}}table{{max-width:100%!important}}</style></head>\
+         overflow-wrap:anywhere}}img{{max-width:100%!important;height:auto!important}}table{{max-width:100%!important}}\
+         details.pigeon-quote>summary{{display:inline-block;list-style:none;cursor:pointer;margin:8px 0;padding:0 8px;border-radius:4px;\
+         background:#e8eaed;color:#5f6368;font-weight:700;letter-spacing:1px}}details.pigeon-quote>summary::-webkit-details-marker{{display:none}}</style></head>\
          <body>{body}</body></html>"
     )
+}
+
+/// The quoted email under a reply (Gmail's `gmail_quote`, to the end), folded behind "•••" as
+/// Gmail shows it: a tap opens it (a `<details>`, no script needed).
+fn fold_quote(body: &str) -> String {
+    let lower = body.to_ascii_lowercase();
+    let Some(class) = lower.find("class=\"gmail_quote") else { return body.to_string() };
+    let Some(open) = lower[..class].rfind("<div") else { return body.to_string() };
+    if lower[open..class].contains('>') {
+        return body.to_string();
+    }
+    format!("{}<details class=\"pigeon-quote\"><summary>•••</summary>{}</details>", &body[..open], &body[open..])
 }
 
 /// A message's own HTML, as it was sent (None: plain text only).
@@ -276,9 +291,78 @@ pub struct OutFile {
     pub data: Vec<u8>,
 }
 
-/// A plain-text reply as `messages.send` wants it (`raw`: base64url of the whole message).
-pub fn reply_raw(from: &str, to: &str, cc: &[String], subject: &str, in_reply_to: Option<&str>, references: Option<&str>, text: &str) -> String {
-    URL_SAFE.encode(reply_message(from, to, cc, subject, in_reply_to, references, text, &[]))
+/// An email's words as they go out: its text, and its HTML (what mail apps show; the text is
+/// for the ones that can't).
+pub struct Body {
+    pub text: String,
+    pub html: Option<String>,
+}
+
+impl Body {
+    pub fn plain(text: &str) -> Body {
+        Body { text: text.to_string(), html: None }
+    }
+}
+
+/// The email being answered, quoted under a reply as Gmail does: `said` is its line ("On Sat,
+/// 7 Nov 2026 at 10:25, Marco <marco@x.it> wrote:"), `html` its own page when it had one.
+pub struct Quote<'a> {
+    pub said: String,
+    pub html: Option<&'a str>,
+    pub text: &'a str,
+}
+
+/// What the user wrote, as an email: their text, their Gmail signature under it (HTML, as Gmail
+/// keeps it), the email they answer quoted under that; as HTML laid out the way Gmail writes it
+/// (so Gmail folds the quote), and as text.
+pub fn compose(text: &str, signature: Option<&str>, quote: Option<&Quote>) -> Body {
+    let signature = signature.map(str::trim).filter(|s| !s.is_empty());
+    let mut plain = text.trim_end().to_string();
+    let mut html = format!("<div dir=\"ltr\">{}</div>", lines_html(text.trim_end()));
+    if let Some(sig) = signature {
+        plain.push_str(&format!("\n\n-- \n{}", strip_html(sig).trim()));
+        html.push_str(&format!(
+            "<br><span class=\"gmail_signature_prefix\">-- </span><br><div dir=\"ltr\" class=\"gmail_signature\">{sig}</div>"
+        ));
+    }
+    if let Some(q) = quote {
+        let quoted: String = q.text.trim().lines().map(|l| format!("> {l}\n")).collect();
+        plain.push_str(&format!("\n\n{}\n{}", q.said, quoted.trim_end()));
+        let inner = q.html.map(inner_body).unwrap_or_else(|| lines_html(q.text.trim()));
+        html.push_str(&format!(
+            "<br><div class=\"gmail_quote gmail_quote_container\"><div dir=\"ltr\" class=\"gmail_attr\">{}<br></div>\
+             <blockquote class=\"gmail_quote\" style=\"margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex\">{inner}</blockquote></div>",
+            escape_html(&q.said)
+        ));
+    }
+    Body { text: plain, html: Some(html) }
+}
+
+/// Text made safe for HTML.
+pub fn escape_html(t: &str) -> String {
+    t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+}
+
+/// Text as HTML lines.
+fn lines_html(t: &str) -> String {
+    escape_html(t).replace("\r\n", "\n").replace('\n', "<br>")
+}
+
+/// A page's body, without its head (styles, title): what goes inside a quote.
+fn inner_body(html: &str) -> String {
+    let lower = html.to_ascii_lowercase();
+    let start = lower.find("<body").and_then(|b| lower[b..].find('>').map(|e| b + e + 1));
+    let end = lower.rfind("</body>");
+    match (start, end) {
+        (Some(s), Some(e)) if e > s => html[s..e].to_string(),
+        (Some(s), _) => html[s..].to_string(),
+        _ => html.to_string(),
+    }
+}
+
+/// A reply as `messages.send` wants it (`raw`: base64url of the whole message).
+pub fn reply_raw(from: &str, to: &str, cc: &[String], subject: &str, in_reply_to: Option<&str>, references: Option<&str>, body: &Body) -> String {
+    URL_SAFE.encode(reply_message(from, to, cc, subject, in_reply_to, references, body, &[]))
 }
 
 /// A reply, with files attached, as the whole message (RFC 822).
@@ -290,7 +374,7 @@ pub fn reply_message(
     subject: &str,
     in_reply_to: Option<&str>,
     references: Option<&str>,
-    text: &str,
+    body: &Body,
     files: &[OutFile],
 ) -> String {
     let subject = if subject.to_lowercase().starts_with("re:") { subject.to_string() } else { format!("Re: {subject}") };
@@ -303,20 +387,32 @@ pub fn reply_message(
         let refs = references.map(|r| format!("{r} {id}")).unwrap_or_else(|| id.to_string());
         extra.push_str(&format!("References: {refs}\r\n"));
     }
-    message(from, to, &subject, &extra, text, files)
+    message(from, to, &subject, &extra, body, files)
 }
 
-/// A new plain-text email, its own thread.
-pub fn new_raw(from: &str, to: &str, subject: &str, text: &str) -> String {
-    URL_SAFE.encode(message(from, to, subject, "", text, &[]))
+/// A new email, its own thread.
+pub fn new_raw(from: &str, to: &str, subject: &str, body: &Body) -> String {
+    URL_SAFE.encode(message(from, to, subject, "", body, &[]))
 }
 
-/// The whole message: plain text, or (with files) the text and each file, multipart/mixed.
-fn message(from: &str, to: &str, subject: &str, extra_headers: &str, text: &str, files: &[OutFile]) -> String {
+/// The whole message: its text, or its text and HTML (multipart/alternative); with files, that
+/// and each file, multipart/mixed.
+fn message(from: &str, to: &str, subject: &str, extra_headers: &str, body: &Body, files: &[OutFile]) -> String {
     let mut m = format!("From: {from}\r\nTo: {to}\r\nSubject: {}\r\nMIME-Version: 1.0\r\n{extra_headers}", encode_header(subject));
-    let text_part = |m: &mut String| {
-        m.push_str("Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n");
-        push_base64(m, text.replace("\r\n", "\n").replace('\n', "\r\n").as_bytes());
+    let one = |m: &mut String, kind: &str, data: &str| {
+        m.push_str(&format!("Content-Type: {kind}; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n"));
+        push_base64(m, data.replace("\r\n", "\n").replace('\n', "\r\n").as_bytes());
+    };
+    let text_part = |m: &mut String| match &body.html {
+        None => one(m, "text/plain", &body.text),
+        Some(html) => {
+            let alt = format!("pigeon-alt-{}", uuid::Uuid::new_v4().simple());
+            m.push_str(&format!("Content-Type: multipart/alternative; boundary=\"{alt}\"\r\n\r\n--{alt}\r\n"));
+            one(m, "text/plain", &body.text);
+            m.push_str(&format!("--{alt}\r\n"));
+            one(m, "text/html", html);
+            m.push_str(&format!("--{alt}--\r\n"));
+        }
     };
     if files.is_empty() {
         text_part(&mut m);
@@ -360,7 +456,7 @@ mod tests {
     #[test]
     fn a_reply_with_a_file_is_multipart() {
         let f = OutFile { name: "foto.jpg".into(), mime: "image/jpeg".into(), data: vec![0xff, 0xd8, 0xff] };
-        let m = reply_message("me@x.it", "a@b.it", &[], "Ciao", Some("<abc@mail>"), None, "eccola", &[f]);
+        let m = reply_message("me@x.it", "a@b.it", &[], "Ciao", Some("<abc@mail>"), None, &Body::plain("eccola"), &[f]);
         assert!(m.contains("Content-Type: multipart/mixed; boundary=\"pigeon-"), "{m}");
         assert!(m.contains("Content-Disposition: attachment; filename=\"foto.jpg\""), "{m}");
         assert!(m.contains(&STANDARD.encode([0xff, 0xd8, 0xff])), "{m}");
@@ -427,8 +523,30 @@ mod tests {
     }
 
     #[test]
+    fn an_email_has_its_html_signature_and_quote() {
+        let q = Quote { said: "On Sat, 7 Nov 2026 at 10:25, Marco <m@x.it> wrote:".into(), html: Some("<html><head><style>p{}</style></head><body><p>Ci sei?</p></body></html>"), text: "Ci sei?" };
+        let b = compose("Sì <arrivo>\nciao", Some("<b>Francesco</b>"), Some(&q));
+        assert_eq!(b.text, "Sì <arrivo>\nciao\n\n-- \nFrancesco\n\nOn Sat, 7 Nov 2026 at 10:25, Marco <m@x.it> wrote:\n> Ci sei?");
+        let h = b.html.clone().unwrap();
+        assert!(h.starts_with("<div dir=\"ltr\">Sì &lt;arrivo&gt;<br>ciao</div>"), "{h}");
+        assert!(h.contains("class=\"gmail_signature\"><b>Francesco</b></div>"), "{h}");
+        assert!(h.contains("Marco &lt;m@x.it&gt; wrote:"), "{h}");
+        assert!(h.contains("<p>Ci sei?</p></blockquote>") && !h.contains("<style>"), "{h}");
+        let m = String::from_utf8(URL_SAFE.decode(new_raw("me@x.it", "m@x.it", "Ciao", &b)).unwrap()).unwrap();
+        assert!(m.contains("Content-Type: multipart/alternative; boundary=\"pigeon-alt-"), "{m}");
+        assert!(m.contains("Content-Type: text/plain; charset=UTF-8") && m.contains("Content-Type: text/html; charset=UTF-8"), "{m}");
+    }
+
+    #[test]
+    fn a_quote_is_folded_on_the_page() {
+        let page = email_page("<div>Ok</div><div class=\"gmail_quote\"><blockquote>old</blockquote></div>");
+        assert!(page.contains("<div>Ok</div><details class=\"pigeon-quote\"><summary>•••</summary><div class=\"gmail_quote\">"), "{page}");
+        assert!(!email_page("<div>Ok</div>").contains("<details"));
+    }
+
+    #[test]
     fn a_reply_threads_and_encodes() {
-        let raw = reply_raw("me@x.it", "marco@example.com", &["luca@example.com".to_string()], "Fattura €", Some("<abc@mail>"), None, "Ciao,\nfatto.");
+        let raw = reply_raw("me@x.it", "marco@example.com", &["luca@example.com".to_string()], "Fattura €", Some("<abc@mail>"), None, &Body::plain("Ciao,\nfatto."));
         let m = String::from_utf8(URL_SAFE.decode(raw).unwrap()).unwrap();
         assert!(m.contains("Subject: =?UTF-8?B?"));
         assert!(m.contains("Cc: luca@example.com\r\nIn-Reply-To: <abc@mail>\r\nReferences: <abc@mail>\r\n"));
