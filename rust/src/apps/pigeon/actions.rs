@@ -330,12 +330,16 @@ async fn reply_guard(st: &State, c: &conversations::Conversation) -> anyhow::Res
     Ok(None)
 }
 
-/// Run a pending action through its connector; it ends done or failed. Its row stays locked while
-/// it runs: a second run of it (an auto reply the user approved while it was typing) waits, then
-/// finds it done and runs nothing.
+/// Run a pending action through its connector; it ends done or failed. An advisory lock on its id
+/// is held while it runs: a second run of it (an auto reply the user approved while it was
+/// typing) waits, then finds it done and runs nothing. Not its row: what the connector sends comes
+/// back in (the sent message, its echo), and that ingest expires the conversation's pending
+/// replies, this one too; with the row locked here, the ingest would wait on this run while this
+/// run waits on the ingest, every later message of the chat behind them, until the pool ran dry.
 pub async fn execute(st: &State, id: Uuid, by: &str) -> anyhow::Result<ActionRow> {
     let mut tx = st.pool.begin().await?;
-    let status: Option<String> = sqlx::query_scalar("SELECT status FROM db_pigeon_actions WHERE id = $1 FOR UPDATE").bind(id).fetch_optional(&mut *tx).await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))").bind(id).execute(&mut *tx).await?;
+    let status: Option<String> = sqlx::query_scalar("SELECT status FROM db_pigeon_actions WHERE id = $1").bind(id).fetch_optional(&mut *tx).await?;
     match status.as_deref() {
         None => anyhow::bail!("no action {id}"),
         Some("pending") => {}
