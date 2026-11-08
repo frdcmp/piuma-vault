@@ -21,6 +21,7 @@ pub mod agent;
 pub mod ai;
 pub mod alerts;
 pub mod avatars;
+pub mod away;
 pub mod cards;
 pub mod composing;
 pub mod config;

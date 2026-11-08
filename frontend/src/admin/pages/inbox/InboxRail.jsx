@@ -9,6 +9,7 @@ import { Link } from "react-router-dom";
 import { PvAvatar, PvIconButton, PvInput, PvSegmented, PvSpin } from "@/ui";
 import { usePigeonChats, usePigeonGeneral } from "../../../queries";
 import { timeAgo } from "../../../utils/dateTime";
+import { AwayButton, AwayStrip } from "./InboxAway";
 import { channelLabel, channelTone, initials } from "./inboxText";
 
 const FILTERS = [
@@ -75,6 +76,7 @@ export default function InboxRail({ activeKey, page }) {
 					<span className="inbox-brand-dot" />
 					inbox
 				</Link>
+				<AwayButton />
 				<PvIconButton
 					to="/inbox/people"
 					icon={<TeamOutlined />}
@@ -94,6 +96,7 @@ export default function InboxRail({ activeKey, page }) {
 					active={page === "settings"}
 				/>
 			</div>
+			<AwayStrip />
 
 			<div className="inbox-side-tools">
 				<PvInput

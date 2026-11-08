@@ -85,6 +85,21 @@ export const pigeonEmailAction = async ({ item, action }) => {
 	return data;
 };
 
+// Away mode: { away: { reason, since, until } | null }; set from now (until:
+// ISO, none: until you end it), or ended (Pigeon's chat then says what happened).
+export const fetchPigeonAway = async () => {
+	const { data } = await axiosInstance.get(`${BASE}/away`);
+	return data;
+};
+export const setPigeonAway = async ({ reason, until }) => {
+	const { data } = await axiosInstance.put(`${BASE}/away`, { reason, until });
+	return data;
+};
+export const endPigeonAway = async () => {
+	const { data } = await axiosInstance.delete(`${BASE}/away`);
+	return data;
+};
+
 export const markPigeonHandled = async (id) => {
 	const { data } = await axiosInstance.post(
 		`${BASE}/conversations/${id}/handled`,

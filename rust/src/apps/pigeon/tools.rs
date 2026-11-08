@@ -16,7 +16,7 @@ use crate::apps::pigeon::connectors::Kind;
 use crate::apps::pigeon::conversations::{self, Conversation};
 use crate::apps::pigeon::policy::Policy;
 use crate::apps::pigeon::state::{AppState, State};
-use crate::apps::pigeon::{actions, agent, alerts, cards, confirm, people, policy, rules, summary};
+use crate::apps::pigeon::{actions, agent, alerts, away, cards, confirm, people, policy, rules, summary};
 
 /// Who Piuma's decisions are logged as.
 const BY: &str = "piuma";
@@ -253,6 +253,20 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
             "pigeon_set_auto",
             "The Inbox's one switch: enabled=false stops every auto action at once (they wait for the user instead); true lets the auto policies act again (needs the user's tap in the Inbox).",
             json!({ "type": "object", "properties": { "enabled": { "type": "boolean" } }, "required": ["enabled"] }),
+        ),
+        (
+            "pigeon_away",
+            "Away mode, like an away status: while the user is away (asleep, on a plane, in a meeting) Pigeon answers people on WhatsApp \
+             and Instagram itself, as Pigeon (each message marked), says the user is away, takes messages and notes what they want for \
+             the user; it never agrees to anything for them. Set it when the user says they're going away (reason in a few words, \
+             and when they're back if they said: `until` or `minutes`); `end: true` when they're back (Pigeon's chat then says what \
+             happened); no arguments: whether they're away.",
+            json!({ "type": "object", "properties": {
+                "reason": { "type": "string", "description": "Why, in a few words, as people may read it: \"sleeping\", \"on a plane\", \"in a meeting\"" },
+                "until": { "type": "string", "description": "When they're back, ISO 8601 with the offset" },
+                "minutes": { "type": "integer", "description": "Or: back in this many minutes" },
+                "end": { "type": "boolean", "description": "true: they're back" },
+            } }),
         ),
         (
             "pigeon_summary",
@@ -539,6 +553,21 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
             policy::set_auto_enabled(&st.pool, user, on).await?;
             crate::apps::pigeon::events::publish(&st.pool, user, "settings", None).await;
             Ok(json!({ "auto_enabled": on }))
+        }
+        "pigeon_away" => {
+            if args.get("end").and_then(Json::as_bool) == Some(true) {
+                let was = away::end(st, user).await?;
+                return Ok(json!({ "away": null, "ended": was }));
+            }
+            let Some(reason) = args.get("reason").and_then(Json::as_str) else {
+                return Ok(json!({ "away": away::get(&st.pool, user).await? }));
+            };
+            let until = match (args.get("until").and_then(Json::as_str), args.get("minutes").and_then(Json::as_i64)) {
+                (Some(u), _) => Some(chrono::DateTime::parse_from_rfc3339(u).map_err(|_| anyhow::anyhow!("`until`: ISO 8601 with the offset, not {u}"))?.to_utc()),
+                (None, Some(m)) if m > 0 => Some(chrono::Utc::now() + chrono::Duration::minutes(m)),
+                _ => None,
+            };
+            Ok(json!({ "away": away::set(st, user, reason, until).await? }))
         }
         "pigeon_summary" => Ok(json!({ "text": summary::render(st, user).await? })),
         "pigeon_connectors" => connectors_view(st, user).await,

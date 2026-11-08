@@ -21,6 +21,7 @@ use serde_json::{json, Value as Json};
 use uuid::Uuid;
 
 use crate::apps::pigeon::actions::{self, Outcome, Proposal, Source};
+use crate::apps::pigeon::away::{self, Away};
 use crate::apps::pigeon::ai::llm;
 use crate::apps::pigeon::cards::{self, ASK_TOOL};
 use crate::apps::pigeon::connectors::{self, ActionDef, Connector, Kind};
@@ -46,6 +47,9 @@ enum Mode<'a> {
     /// The user answered what Pigeon asked them: act on it (the reply, and an event or task it
     /// settles), under the policies.
     Answer { asked: &'a str, answer: &'a str },
+    /// The user is away (`away`): Pigeon answers them itself, as Pigeon. `first`: its first
+    /// message in this chat this away; `known`: someone the user writes to (they hear why).
+    Away { triage_id: i64, sig: &'a Signals, away: &'a Away, first: bool, known: bool },
 }
 
 /// Who acts in an agent round.
@@ -67,6 +71,14 @@ pub async fn respond(st: &State, conversation: Uuid, triage_id: i64, sig: &Signa
 /// `replied` what became of the responder's reply.
 pub async fn intake(st: &State, conversation: Uuid, triage_id: i64, sig: &Signals, held: Option<&str>, replied: Option<&str>) -> anyhow::Result<Vec<Outcome>> {
     run(st, conversation, Mode::AfterTriage { triage_id, sig, role: Role::Intaker, held, replied }).await
+}
+
+/// The away responder after a triage: Pigeon answers them as itself while the user is away.
+pub async fn away_reply(st: &State, conversation: Uuid, triage_id: i64, sig: &Signals, away: &Away) -> anyhow::Result<Vec<Outcome>> {
+    let contact: Option<Uuid> = sqlx::query_scalar("SELECT contact_id FROM db_pigeon_conversations WHERE id = $1").bind(conversation).fetch_one(&st.pool).await?;
+    let first = !away::answered_here(&st.pool, conversation, away).await?;
+    let known = away::known(&st.pool, contact).await?;
+    run(st, conversation, Mode::Away { triage_id, sig, away, first, known }).await
 }
 
 pub async fn draft_reply(st: &State, conversation: Uuid, instructions: Option<&str>) -> anyhow::Result<Vec<Outcome>> {
@@ -109,6 +121,7 @@ fn offers(mode: &Mode<'_>, kind: Kind) -> bool {
         Mode::AfterTriage { role: Role::Responder, .. } => kind == Kind::Reply,
         Mode::AfterTriage { role: Role::Intaker, .. } => kind != Kind::Reply,
         Mode::Answer { .. } => true,
+        Mode::Away { .. } => kind == Kind::Reply,
     }
 }
 
@@ -141,17 +154,20 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
         return Ok(Vec::new());
     }
     let writes_reply = offered.iter().any(|(_, d)| d.kind == Kind::Reply);
+    // away, Pigeon writes as itself: the user's voice isn't needed
+    let away_mode = matches!(mode, Mode::Away { .. });
+    let writes_reply_as_user = writes_reply && !away_mode;
     if let Some(c) = &contact {
         // what Pigeon knows about them, and how the user writes to them here, brought up to date
         if let Err(e) = people::ensure_memory(st, c, false).await {
             log::warn!("memory of {}: {e:#}", c.id);
         }
-        if writes_reply {
+        if writes_reply_as_user {
             if let Err(e) = people::ensure_style(st, c, &conv.connector, false).await {
                 log::warn!("{} style of {}: {e:#}", conv.connector, c.id);
             }
         }
-    } else if writes_reply {
+    } else if writes_reply_as_user {
         // a group: how the user writes in it
         if let Err(e) = people::ensure_group_style(st, &conv, false).await {
             log::warn!("style of group {}: {e:#}", conv.id);
@@ -191,7 +207,7 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
         llm::complete_reading(&st.pool, &conv.user_id, &system, &user, &tools).await?
     } else {
         // a reply speaks as the user: the replies model
-        let writer = if writes_reply { llm::Writer::Reply } else { llm::Writer::Other };
+        let writer = if writes_reply_as_user { llm::Writer::Reply } else { llm::Writer::Other };
         llm::complete_as(&st.pool, writer, &system, &user, &tools).await?
     };
 
@@ -199,6 +215,7 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
         Mode::AfterTriage { triage_id, sig, .. } => (Some(*triage_id), hold_for(sig)),
         Mode::Draft { .. } => (None, Some(ASKED_AS_DRAFT.to_string())),
         Mode::Answer { .. } => (None, None),
+        Mode::Away { triage_id, .. } => (Some(*triage_id), None),
     };
     let mut out = Vec::new();
     // one reply a round: a second is the same answer again
@@ -240,6 +257,16 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
         let reason = args.as_object_mut().and_then(|o| o.remove("reason")).and_then(|r| r.as_str().map(str::to_string));
         if let Some(o) = args.as_object_mut() {
             o.remove("conversation_id");
+        }
+        // away: Pigeon's mark before its words, and the reply known as an away one (it goes on its
+        // own, and leaves the chat needing the user)
+        if let (Mode::Away { first, .. }, Kind::Reply) = (&mode, def.kind) {
+            let text = args["text"].as_str().map(str::trim).unwrap_or_default().to_string();
+            if text.is_empty() {
+                continue;
+            }
+            args["text"] = json!(format!("{}{text}", away::mark(&conv.connector, &me.name, *first)));
+            args["away"] = json!(true);
         }
         let p = Proposal {
             user_id: conv.user_id.clone(),
@@ -307,6 +334,45 @@ fn system_prompt(me: &Owner, mode: &Mode<'_>, asking: bool, replies_off: bool) -
          {name}, propose no reply; that answer is {name}'s."
     );
     match mode {
+        Mode::Away { away, first, known, .. } => {
+            let why = if *known { format!(" ({})", away.reason) } else { String::new() };
+            let back = match away.until {
+                Some(u) => format!(", back around {} ({name}'s time)", me.local(u).format("%A %H:%M")),
+                None => String::new(),
+            };
+            s.push_str(&format!(
+                "\n\n{name} is away right now{why}{back}. While {name} is away you answer the people who write yourself, \
+                 as Pigeon, {name}'s assistant: never as {name} and never in {name}'s name; you speak of {name} by name, in \
+                 the third person.\n\
+                 - Propose one reply at most, or none when the newest messages need no answer (an ok, a thank-you, an \
+                 emoji, a goodbye).\n"
+            ));
+            if *first {
+                let told = if *known {
+                    format!("that {name} is away and why ({}), when {name} is back if it's known", away.reason)
+                } else {
+                    format!("that {name} isn't available right now (not why: they don't know them), when {name} is back if it's known")
+                };
+                s.push_str(&format!(
+                    "- It's your first message to them while {name} is away: say {told}, and that you can take a message or \
+                     note something for {name}; and answer what they wrote, if you can.\n"
+                ));
+            } else {
+                s.push_str(&format!(
+                    "- You already told them {name} is away (your messages above): don't say it again; answer what they write now.\n"
+                ));
+            }
+            s.push_str(&format!(
+                "- You may: take a message and say {name} will get it; say when {name} is back; ask one short question when \
+                 you need a detail to note what they want (what, when, where).\n\
+                 - Never agree, promise, accept or decline anything for {name} (a meeting, a date or time, a price, a favour, \
+                 a plan): say {name} will see it when back. Never invent facts. Tell nothing about {name} beyond the above: \
+                 not where {name} is, who with, plans, other people, or anything from past conversations.\n\
+                 - Only when the context below says {name} is being alerted now, tell them it's been flagged to {name}.\n\
+                 - Write in the language they write in: short (one to three sentences), warm and plain. No greeting \
+                 signature and no name before your text: Pigeon's mark is added in front of it."
+            ));
+        }
         Mode::Draft { .. } => {
             s.push_str(&replying);
             s.push_str(&format!(
@@ -371,6 +437,7 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
     if let Some(t) = conv.title.as_deref().filter(|t| !t.is_empty()) {
         s.push_str(&format!("Subject/title: {t}\n"));
     }
+    let away_mode = matches!(mode, Mode::Away { .. });
     if let Some(c) = contact {
         s.push_str(&c.facts(name));
         if let Some(note) = c.note.as_deref().filter(|n| !n.trim().is_empty()) {
@@ -379,31 +446,34 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
         if let Some(m) = people::memory(st, c.id).await? {
             s.push_str(&format!("\nWhat Pigeon knows about {them}, from their past conversations:\n{}\n", m.memory));
         }
-        if let Some(p) = people::style(st, c.id, &conv.connector).await? {
-            s.push_str(&format!("\nHow {name} writes to {them} on {}:\n{}\n", conv.connector, p.profile));
-        }
-        let here = people::voice_examples(st, c.id, Some(&conv.connector), VOICE_EXAMPLES).await?;
-        if !here.is_empty() {
-            s.push_str(&format!("\n{name}'s own recent messages to {them} on {} (their voice):\n", conv.connector));
-            for (_, e) in here {
-                s.push_str(&format!("- {}\n", conversations::clip(&e, 400)));
+        // the user's voice: not when Pigeon writes as itself (away)
+        if !away_mode {
+            if let Some(p) = people::style(st, c.id, &conv.connector).await? {
+                s.push_str(&format!("\nHow {name} writes to {them} on {}:\n{}\n", conv.connector, p.profile));
             }
-        } else {
-            // none on this channel yet: their messages elsewhere, for language and warmth, not form
-            let elsewhere = people::voice_examples(st, c.id, None, VOICE_EXAMPLES).await?;
-            if !elsewhere.is_empty() {
-                s.push_str(&format!(
-                    "\n{name} hasn't written to {them} on {} yet. {name}'s messages to them elsewhere (match the language and \
-                     warmth; the form on {} may differ):\n",
-                    conv.connector, conv.connector
-                ));
-                for (ch, e) in elsewhere {
-                    s.push_str(&format!("- [{ch}] {}\n", conversations::clip(&e, 400)));
+            let here = people::voice_examples(st, c.id, Some(&conv.connector), VOICE_EXAMPLES).await?;
+            if !here.is_empty() {
+                s.push_str(&format!("\n{name}'s own recent messages to {them} on {} (their voice):\n", conv.connector));
+                for (_, e) in here {
+                    s.push_str(&format!("- {}\n", conversations::clip(&e, 400)));
+                }
+            } else {
+                // none on this channel yet: their messages elsewhere, for language and warmth, not form
+                let elsewhere = people::voice_examples(st, c.id, None, VOICE_EXAMPLES).await?;
+                if !elsewhere.is_empty() {
+                    s.push_str(&format!(
+                        "\n{name} hasn't written to {them} on {} yet. {name}'s messages to them elsewhere (match the language and \
+                         warmth; the form on {} may differ):\n",
+                        conv.connector, conv.connector
+                    ));
+                    for (ch, e) in elsewhere {
+                        s.push_str(&format!("- [{ch}] {}\n", conversations::clip(&e, 400)));
+                    }
                 }
             }
         }
     }
-    if contact.is_none() {
+    if contact.is_none() && !away_mode {
         // a group: how the user writes in it, and their latest messages there
         if let Some(p) = people::group_style(st, conv.id).await? {
             s.push_str(&format!("\nHow {name} writes in this group:\n{}\n", p.profile));
@@ -416,7 +486,7 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
             }
         }
     }
-    if let Some(n) = people::usual_length(st, conv.contact_id, conv.id, &conv.connector).await? {
+    if let Some(n) = people::usual_length(st, conv.contact_id, conv.id, &conv.connector).await?.filter(|_| !away_mode) {
         s.push_str(&format!(
             "\n{name}'s messages here are usually about {n} characters long (half of them shorter): a reply stays near that, \
              never over {}.\n",
@@ -502,6 +572,14 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
         }
         Mode::Answer { asked, answer } => {
             s.push_str(&format!("\nPigeon asked {name}: {asked}\n{name}'s answer: {answer}\n"));
+        }
+        Mode::Away { sig, .. } => {
+            if sig.urgent >= crate::apps::pigeon::triage::URGENT_AT {
+                s.push_str(&format!("\nThis is urgent: {name} is being alerted now.\n"));
+            }
+            if !sig.others.is_empty() {
+                s.push_str(&format!("Also on the newest messages: {}.\n", sig.others.join(", ")));
+            }
         }
         Mode::Draft { instructions, .. } => {
             s.push_str(&format!("\n{name} asks for a reply to this conversation now."));

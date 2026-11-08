@@ -137,6 +137,7 @@ pub static DEF: AgentDef = AgentDef {
         "pigeon_set_alerts",
         "pigeon_resume_auto",
         "pigeon_set_auto",
+        "pigeon_away",
         "pigeon_summary",
         "pigeon_connectors",
     ],

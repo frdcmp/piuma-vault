@@ -979,3 +979,41 @@
 	letter-spacing: 1px;
 	text-transform: uppercase;
 }
+
+/* Away mode: the strip under the rail's head, and the dialog */
+.inbox-away {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px 6px 12px;
+	background: var(--vp-warning);
+	color: var(--vp-bg);
+	font-size: 12px;
+	text-transform: uppercase;
+}
+
+.inbox-away-text {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.inbox-away-form {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.inbox-away-help {
+	margin: 0;
+	color: var(--vp-muted);
+	font-size: 13px;
+}
+
+.inbox-away-reasons {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}

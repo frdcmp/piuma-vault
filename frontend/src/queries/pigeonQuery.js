@@ -10,6 +10,8 @@ import {
 	disconnectPigeon,
 	downloadPigeonMedia,
 	draftPigeonReply,
+	endPigeonAway,
+	fetchPigeonAway,
 	fetchPigeonChats,
 	fetchPigeonConnections,
 	fetchPigeonConnectLink,
@@ -41,6 +43,7 @@ import {
 	resumePigeonPersonAuto,
 	sendPigeonFile,
 	sendPigeonMessage,
+	setPigeonAway,
 	setPigeonContact,
 	setPigeonContactNote,
 	setPigeonContactSwitches,
@@ -69,6 +72,7 @@ export const pigeonKeys = {
 	rules: () => ["pigeon", "rules"],
 	ruleRuns: (id) => ["pigeon", "rule-runs", id],
 	settings: () => ["pigeon", "settings"],
+	away: () => ["pigeon", "away"],
 	connections: () => ["pigeon", "connections"],
 	pairing: (connector) => ["pigeon", "pairing", connector],
 	chats: (params) => ["pigeon", "chats", params ?? {}],
@@ -121,6 +125,7 @@ const applyPigeonEvent = (qc, kind, id, data) => {
 			return;
 		case "settings":
 			inv(pigeonKeys.settings());
+			inv(pigeonKeys.away());
 			inv(["pigeon", "conversation"]);
 			inv(["pigeon", "contacts"]);
 			return;
@@ -262,6 +267,22 @@ export const useComposePigeonReply = () =>
 	useMutation({ mutationFn: composePigeonReply });
 export const useSetPigeonConversationSwitches = () =>
 	useChatMutation(setPigeonConversationSwitches);
+
+// Away mode: whether you're away; going away, or back.
+export const usePigeonAway = () =>
+	useQuery({ queryKey: pigeonKeys.away(), queryFn: fetchPigeonAway });
+const useAwayMutation = (fn) => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: fn,
+		onSuccess: (data) => {
+			qc.setQueryData(pigeonKeys.away(), { away: data?.away ?? null });
+			return qc.invalidateQueries({ queryKey: pigeonKeys.general() });
+		},
+	});
+};
+export const useSetPigeonAway = () => useAwayMutation(setPigeonAway);
+export const useEndPigeonAway = () => useAwayMutation(endPigeonAway);
 
 // Archive or trash an email: the chats' messages and the lists again.
 export function usePigeonEmailAction() {

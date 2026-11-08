@@ -690,6 +690,28 @@ pub async fn email_action(st: web::Data<AppState>, u: InboxWriter, path: web::Pa
     reply(r)
 }
 
+/// Away mode (`away`): whether the user is away, and why.
+pub async fn get_away(st: web::Data<AppState>, u: InboxReader) -> HttpResponse {
+    reply(tools::run(&st, &u.0.user_id, "pigeon_away", &json!({})).await)
+}
+
+/// Away from now: {reason, until?} (until: ISO 8601; none: until they end it).
+pub async fn set_away(st: web::Data<AppState>, u: InboxWriter, body: web::Json<Json>) -> HttpResponse {
+    let mut args = body.into_inner();
+    if let Some(o) = args.as_object_mut() {
+        o.remove("end");
+    }
+    if args.get("reason").and_then(Json::as_str).is_none() {
+        return reply(Err(anyhow::anyhow!("say why you're away")));
+    }
+    reply(tools::run(&st, &u.0.user_id, "pigeon_away", &args).await)
+}
+
+/// Back: away ends, and Pigeon's chat says what happened meanwhile.
+pub async fn end_away(st: web::Data<AppState>, u: InboxWriter) -> HttpResponse {
+    reply(tools::run(&st, &u.0.user_id, "pigeon_away", &json!({ "end": true })).await)
+}
+
 #[derive(Deserialize)]
 pub struct ReactBody {
     /// the emoji; none or "": the user's taken off

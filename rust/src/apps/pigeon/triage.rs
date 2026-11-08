@@ -8,7 +8,7 @@ use serde_json::{json, Map};
 use uuid::Uuid;
 
 use crate::apps::pigeon::ai::jev;
-use crate::apps::pigeon::{actions, agent, cards, conversations, owner, people, policy, rules};
+use crate::apps::pigeon::{actions, agent, away, cards, conversations, owner, people, policy, rules};
 use crate::apps::pigeon::state::{AppState, State};
 
 pub const REPLY_AT: f64 = 0.6;
@@ -333,12 +333,22 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
     }
     // the round's start, in the database's clock (what it proposes is stamped by it)
     let round: chrono::DateTime<chrono::Utc> = sqlx::query_scalar("SELECT NOW()").fetch_one(&st.pool).await?;
-    // the responder: the reply to them, unless Jev's gate keeps it for the user
-    let held = if attention == Some("reply") { gate(&sig) } else { None };
+    // the user is away: Pigeon answers them itself, as Pigeon, on the chat channels; in a group
+    // only what's written to the user
+    let away = match away::CHANNELS.contains(&conv.connector.as_str()) {
+        true => away::get(&st.pool, &conv.user_id).await?,
+        false => None,
+    };
+    let away_answers = away.is_some() && (conv.contact_id.is_some() || sig.addressed >= ADDRESSED_AT);
+    // the responder: the reply to them, unless Jev's gate keeps it for the user (away, Pigeon
+    // speaks as itself: nothing to keep)
+    let held = if attention == Some("reply") && !away_answers { gate(&sig) } else { None };
     // the user is writing there: Pigeon doesn't answer, and comes back when they stop (below)
     let paused = actions::quiet_until(st, id).await?;
     let mut outcomes = Vec::new();
-    if attention == Some("reply") && held.is_none() && paused.is_none() {
+    if let (Some(a), true, None) = (&away, away_answers, paused) {
+        outcomes.extend(agent::away_reply(st, id, triage_id, &sig, a).await?);
+    } else if away.is_none() && attention == Some("reply") && held.is_none() && paused.is_none() {
         // an auto reply goes out paced like a person's (`pace`)
         outcomes.extend(agent::respond(st, id, triage_id, &sig).await?);
     }

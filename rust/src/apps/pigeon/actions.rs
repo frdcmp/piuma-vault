@@ -124,6 +124,10 @@ pub async fn propose(st: &State, p: Proposal) -> anyhow::Result<Outcome> {
         anyhow::bail!("{}.{} needs a conversation", p.connector, p.action);
     }
     let pol = policy::resolve(&st.pool, &p.user_id, def.kind, conv.as_ref().and_then(|c| c.contact_id), p.conversation_id).await?;
+    // an away reply (`away`): Pigeon's own words while the user is away, theirs to send by setting
+    // away; it goes on its own (their Off still stops it, and the reply guard holds)
+    let away_reply = def.kind == Kind::Reply && p.args.get("away").and_then(Json::as_bool) == Some(true);
+    let pol = if away_reply && pol != Policy::Off { Policy::Auto } else { pol };
     // off drops what Pigeon proposes on its own; a draft the user asked for still comes to them
     if pol == Policy::Off && p.hold.as_deref() != Some(super::agent::ASKED_AS_DRAFT) {
         return Ok(Outcome { id: None, status: "off".into(), detail: Some(format!("{} actions are off here", def.kind.as_str())) });
@@ -141,7 +145,7 @@ pub async fn propose(st: &State, p: Proposal) -> anyhow::Result<Outcome> {
 
     let mut hold = p.hold.clone();
     if pol == Policy::Auto && hold.is_none() {
-        if !policy::auto_enabled(&st.pool, &p.user_id).await? {
+        if !away_reply && !policy::auto_enabled(&st.pool, &p.user_id).await? {
             hold = Some("auto is switched off".into());
         } else if def.kind == Kind::Reply {
             if let Some(c) = &conv {
@@ -369,7 +373,8 @@ pub async fn execute(st: &State, id: Uuid, by: &str) -> anyhow::Result<ActionRow
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    if status == "done" && row.kind == "reply" {
+    // an away reply leaves the chat needing the user: Pigeon only told them they're away
+    if status == "done" && row.kind == "reply" && row.args.get("away").and_then(Json::as_bool) != Some(true) {
         if let Some(c) = row.conversation_id {
             sqlx::query("UPDATE db_pigeon_conversations SET attention = NULL, needs_note = NULL, handled_at = NOW() WHERE id = $1").bind(c).execute(&st.pool).await?;
         }

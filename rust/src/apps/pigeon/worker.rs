@@ -1,6 +1,6 @@
 //! The pigeon-worker's loops: what runs whoever is looking. Triage (every 5 s, a few at once),
 //! the channels' own background work (Gmail's polling), the incoming messages pushed to the phone,
-//! the sweeps (expired drafts, rule runs and questions), and per user the morning summary and the
+//! the sweeps (expired drafts, rule runs and questions, aways past their end), and per user the morning summary and the
 //! health checks. The LLM's calls aren't `Send` (the providers' stream sender), so everything that
 //! may write with it runs on this thread's LocalSet (`spawn_local`).
 
@@ -10,7 +10,7 @@ use tokio::task::spawn_local;
 
 use crate::apps::pigeon::events::{kinds, Bus};
 use crate::apps::pigeon::state::{self, AppState};
-use crate::apps::pigeon::{actions, avatars, cards, health, listen, media, rules, slugs, summary, triage};
+use crate::apps::pigeon::{actions, avatars, away, cards, health, listen, media, rules, slugs, summary, triage};
 use crate::db::db::DbPool;
 
 /// Run until the process ends. Call inside a `LocalSet`.
@@ -75,6 +75,12 @@ async fn sweeps(st: AppState) {
         }
         if let Err(e) = cards::sweep(&st).await {
             log::warn!("pigeon: expiring questions: {e:#}");
+        }
+        // aways past their end: back, with what happened meanwhile
+        match away::expire_due(&st).await {
+            Ok(n) if n > 0 => log::info!("pigeon: {n} away(s) ended"),
+            Ok(_) => {}
+            Err(e) => log::warn!("pigeon: ending aways: {e:#}"),
         }
         // people's profile pictures: the new ones, and weekly again
         match avatars::sweep(&st).await {
