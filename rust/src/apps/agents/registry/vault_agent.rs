@@ -107,14 +107,15 @@ pub static DEF: AgentDef = AgentDef {
         "backup_database",
         // Image generation — provider from admin → Services; result stored in S3
         "generate_image",
-        // The Inbox (Pigeon: WhatsApp, Instagram, Gmail). Messages to people are drafts the user
-        // sends from the Inbox; big changes wait for their tap there (apps::pigeon::confirm)
+        // The Inbox (Pigeon: WhatsApp, Instagram, Gmail). Messages to people go only on the user's
+        // word, in words they've seen; big changes wait for their tap there (apps::pigeon::confirm)
         "pigeon_inbox",
         "pigeon_search",
         "pigeon_conversation",
         "pigeon_mark_handled",
         "pigeon_pending",
         "pigeon_draft_reply",
+        "pigeon_send_reply",
         "pigeon_draft_email",
         "pigeon_edit_draft",
         "pigeon_approve",

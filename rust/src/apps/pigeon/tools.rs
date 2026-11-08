@@ -3,9 +3,10 @@
 //! conversations, people and rules only.
 //!
 //! Two rules hold whatever the model asks:
-//!   - a message to someone is always a draft: `pigeon_draft_reply` and `pigeon_draft_email` leave
-//!     a ✍ card in the Inbox, and only the user's Send there sends it (`pigeon_approve` refuses
-//!     replies; `pigeon_edit_draft` changes a draft's words, still waiting)
+//!   - a message to someone goes only on the user's word, in words they've seen: `pigeon_draft_reply`
+//!     and `pigeon_draft_email` leave a ✍ card in the Inbox (the user's Send there sends it, or
+//!     their yes in the chat: `pigeon_approve`; `pigeon_edit_draft` changes its words, still
+//!     waiting); `pigeon_send_reply` sends words the user saw and told Piuma to send, at once
 //!   - a big change (auto switched on, a merge, a rule deleted or set to trash, a rule run on past
 //!     messages) becomes a 🕊 confirmation card (`confirm`): it runs when the user taps Yes
 
@@ -75,6 +76,14 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
             }, "required": ["conversation_id"] }),
         ),
         (
+            "pigeon_send_reply",
+            "Send a message in an Inbox conversation NOW, as the user, with these exact words. Only when the user told you to send it and has seen these exact words in this chat: show them the text and wait for their yes (words they dictated with \"send it\" count as seen). When they haven't said send: pigeon_draft_reply. Sent and logged like their own Send in the Inbox.",
+            json!({ "type": "object", "properties": {
+                "conversation_id": id("The conversation"),
+                "text": { "type": "string", "description": "The message's exact words, as the user saw them" },
+            }, "required": ["conversation_id", "text"] }),
+        ),
+        (
             "pigeon_draft_email",
             "A new email (its own thread) to one address, from the user's connected Gmail, as a DRAFT the user sends from the Inbox (never sent from here). Show the user its text.",
             json!({ "type": "object", "properties": {
@@ -94,7 +103,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
         ),
         (
             "pigeon_approve",
-            "Do a waiting suggestion (a task, an event, an archive) or a waiting rule run, on the user's yes. Never a message to someone: drafts are sent by the user from the Inbox. `edits` replaces some of the arguments first.",
+            "Do a waiting suggestion (a task, an event, an archive) or a waiting rule run, on the user's yes. A draft (a message to someone) is sent: only when the user told you to send it and has seen its words (show them first). `edits` replaces some of the arguments first (e.g. {\"text\": …} for the words they changed).",
             json!({ "type": "object", "properties": {
                 "action_id": id("From pigeon_pending"),
                 "edits": { "type": "object", "description": "Arguments to replace before doing it" },
@@ -366,6 +375,14 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
             let args = json!({ "to": text(args, "to"), "subject": text(args, "subject"), "text": text(args, "text"), "from": text(args, "from") });
             draft_email(st, user, args).await
         }
+        "pigeon_send_reply" => {
+            let id = uuid_arg(args, "conversation_id")?;
+            let conv = own_conversation(st, user, id).await?;
+            let words = text(args, "text").ok_or_else(|| anyhow::anyhow!("`text` is required: the exact words the user saw"))?;
+            let aid = actions::queue(st, user, &conv.connector, "send_reply", json!({ "text": words }), Some(id), "sent from Piuma, on the user's word").await?;
+            let row = actions::approve(st, aid, None, BY).await?;
+            Ok(actions::view(&row))
+        }
         "pigeon_edit_draft" => {
             let id = uuid_arg(args, "action_id")?;
             let words = text(args, "text").ok_or_else(|| anyhow::anyhow!("`text` is required"))?;
@@ -375,10 +392,7 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
         }
         "pigeon_approve" => {
             let id = uuid_arg(args, "action_id")?;
-            if let Some(row) = own_action(st, user, id).await? {
-                if row.kind == Kind::Reply.as_str() {
-                    anyhow::bail!("a message to someone is sent by the user from the Inbox (its ✍ card), not from the chat");
-                }
+            if own_action(st, user, id).await?.is_some() {
                 let row = actions::approve(st, id, args.get("edits"), BY).await?;
                 return Ok(actions::view(&row));
             }

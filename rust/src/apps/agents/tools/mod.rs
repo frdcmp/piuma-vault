@@ -223,7 +223,7 @@ pub async fn dispatch(
         "backup_database" => db_backup::backup_database(pool, args).await,
         // ── Image generation (provider from admin → Services; result stored in S3) ──
         "generate_image" => image::generate_image(pool, user_id, args).await,
-        // ── Pigeon (the Inbox: messages to people are drafts) ──
+        // ── Pigeon (the Inbox: messages to people only on the user's word) ──
         other if other.starts_with(pigeon::PREFIX) => pigeon::call(pool, user_id, other, args).await,
         // ── MCP (`mcp__{server}__{tool}` → external server, via the mcp-worker) ──
         other if other.starts_with(super::mcp::TOOL_PREFIX) => super::mcp::call(other, args).await,
