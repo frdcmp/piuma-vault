@@ -691,6 +691,44 @@ pub async fn email_action(st: web::Data<AppState>, u: InboxWriter, path: web::Pa
 }
 
 #[derive(Deserialize)]
+pub struct ReactBody {
+    /// the emoji; none or "": the user's taken off
+    emoji: Option<String>,
+}
+
+/// The user's emoji on a message, sent on its channel (WhatsApp: any; Instagram: ❤️), and shown
+/// on it as theirs; none takes it off.
+pub async fn react(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>, body: web::Json<ReactBody>) -> HttpResponse {
+    let user = &u.0.user_id;
+    let id = path.into_inner();
+    let r: anyhow::Result<Json> = async {
+        let emoji = body.emoji.as_deref().map(str::trim).unwrap_or("");
+        if emoji.chars().count() > 12 {
+            anyhow::bail!("a reaction is one emoji");
+        }
+        let (conv, connector, external_id, direction, sender): (Uuid, String, String, String, Option<String>) = sqlx::query_as(
+            "SELECT i.conversation_id, i.connector, i.external_id, i.direction, i.sender FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
+              WHERE i.id = $1 AND c.user_id = $2",
+        )
+        .bind(id)
+        .bind(user)
+        .fetch_optional(&st.pool)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("no such message"))?;
+        let c = connectors::find(&st, &connector).ok_or_else(|| anyhow::anyhow!("{connector} isn't here"))?;
+        c.available(&st).map_err(|e| anyhow::anyhow!(e))?;
+        let m = connectors::Reacted { external_id: external_id.clone(), mine: direction == "out", sender };
+        c.react(&st, conv, &m, emoji).await?;
+        let shown = (!emoji.is_empty()).then_some(emoji);
+        items::react(&st.pool, user, &connector, &external_id, "me", true, None, shown, Utc::now()).await?;
+        events::conversation(&st.pool, conv).await;
+        Ok(json!({ "item": id, "emoji": emoji }))
+    }
+    .await;
+    reply(r)
+}
+
+#[derive(Deserialize)]
 pub struct OnlyQuery {
     /// just this person
     contact_id: Option<Uuid>,

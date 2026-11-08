@@ -23,7 +23,7 @@ use serde_json::{json, Value as Json};
 use uuid::Uuid;
 
 use crate::apps::pigeon::config::WhatsappConf;
-use crate::apps::pigeon::connectors::{need_str, ActionDef, Connector, Kind, Pairing};
+use crate::apps::pigeon::connectors::{need_str, ActionDef, Connector, Kind, Pairing, Reacted};
 use crate::apps::pigeon::items::{self, Author, Direction, Incoming};
 use crate::apps::pigeon::media;
 use crate::apps::pigeon::sign;
@@ -467,6 +467,13 @@ impl Connector for Whatsapp {
 
     fn shows_typing(&self) -> bool {
         true
+    }
+
+    async fn react(&self, st: &State, conversation: Uuid, m: &Reacted, emoji: &str) -> anyhow::Result<()> {
+        let (chat, user) = chat_of(st, conversation).await?;
+        let body = json!({ "chat": chat, "message": m.external_id, "from_me": m.mine, "sender": m.sender, "emoji": emoji });
+        bridge(st, &user, reqwest::Method::POST, "/react", Some(&body)).await?;
+        Ok(())
     }
 
     async fn typing(&self, st: &State, conversation: Uuid, on: bool) -> anyhow::Result<()> {

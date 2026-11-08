@@ -82,6 +82,13 @@ pub enum Pairing {
     Connected(String),
 }
 
+/// The message a reaction goes on: its id on the channel, whether it's the user's, who wrote it.
+pub struct Reacted {
+    pub external_id: String,
+    pub mine: bool,
+    pub sender: Option<String>,
+}
+
 #[async_trait]
 pub trait Connector: Send + Sync {
     fn id(&self) -> &'static str;
@@ -106,6 +113,11 @@ pub trait Connector: Send + Sync {
     /// before typing an auto reply.
     async fn seen(&self, _st: &State, _conversation: Uuid) -> anyhow::Result<()> {
         Ok(())
+    }
+    /// The user's emoji on one of the conversation's messages ("" takes theirs off), on channels
+    /// that have reactions.
+    async fn react(&self, _st: &State, _conversation: Uuid, _message: &Reacted, _emoji: &str) -> anyhow::Result<()> {
+        anyhow::bail!("{} has no reactions", self.title())
     }
     /// Background work (polling a mailbox), started once in the pigeon-worker when available.
     fn start(&self, _st: AppState) {}

@@ -23,7 +23,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde_json::{json, Value as Json};
 use uuid::Uuid;
 
-use crate::apps::pigeon::connectors::{need_str, ActionDef, Connector, Kind};
+use crate::apps::pigeon::connectors::{need_str, ActionDef, Connector, Kind, Reacted};
 use crate::apps::pigeon::items::{self, Author, Direction, Incoming};
 use crate::apps::pigeon::media;
 use crate::apps::pigeon::sign;
@@ -385,8 +385,9 @@ async fn ig_id(st: &State, connection: i32) -> anyhow::Result<String> {
         .ok_or_else(|| anyhow::anyhow!("the Instagram account has no id: connect it again"))
 }
 
-/// What the other person sees the user doing in a conversation (typing_on, typing_off, mark_seen).
-async fn sender_action(st: &State, conversation: Uuid, action: &str) -> anyhow::Result<()> {
+/// What the other person sees the user doing in a conversation (typing_on, typing_off, mark_seen;
+/// react and unreact, with their `payload`).
+async fn sender_action(st: &State, conversation: Uuid, action: &str, payload: Option<Json>) -> anyhow::Result<()> {
     let (other, connection): (String, Option<i32>) =
         sqlx::query_as("SELECT external_id, connection_id FROM db_pigeon_conversations WHERE id = $1 AND connector = $2")
             .bind(conversation)
@@ -397,7 +398,10 @@ async fn sender_action(st: &State, conversation: Uuid, action: &str) -> anyhow::
     let connection = connection.ok_or_else(|| anyhow::anyhow!("the conversation has no Instagram account"))?;
     let token = api::token(st, connection).await?;
     let my_id = ig_id(st, connection).await?;
-    let body = json!({ "recipient": { "id": other }, "sender_action": action });
+    let mut body = json!({ "recipient": { "id": other }, "sender_action": action });
+    if let Some(p) = payload {
+        body["payload"] = p;
+    }
     api::graph(&token, "POST", &format!("/{my_id}/messages"), &[], Some(&body)).await?;
     Ok(())
 }
@@ -561,11 +565,20 @@ impl Connector for Instagram {
 
     async fn typing(&self, st: &State, conversation: Uuid, on: bool) -> anyhow::Result<()> {
         // Instagram takes the indicator off by itself after about 20 s, or when the message goes
-        sender_action(st, conversation, if on { "typing_on" } else { "typing_off" }).await
+        sender_action(st, conversation, if on { "typing_on" } else { "typing_off" }, None).await
     }
 
     async fn seen(&self, st: &State, conversation: Uuid) -> anyhow::Result<()> {
-        sender_action(st, conversation, "mark_seen").await
+        sender_action(st, conversation, "mark_seen", None).await
+    }
+
+    /// Instagram takes one reaction from an app: the heart ("love").
+    async fn react(&self, st: &State, conversation: Uuid, m: &Reacted, emoji: &str) -> anyhow::Result<()> {
+        match emoji.trim_end_matches('\u{fe0f}') {
+            "" => sender_action(st, conversation, "unreact", Some(json!({ "message_id": m.external_id }))).await,
+            "❤" => sender_action(st, conversation, "react", Some(json!({ "message_id": m.external_id, "reaction": "love" }))).await,
+            _ => anyhow::bail!("Instagram takes only ❤️ as a reaction"),
+        }
     }
 
     async fn health(&self, st: &State, user: &str) -> Json {

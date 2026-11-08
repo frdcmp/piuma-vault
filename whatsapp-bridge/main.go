@@ -165,6 +165,7 @@ func main() {
 	mux.HandleFunc("POST /u/{user}/send-file", b.auth((*session).sendFile))
 	mux.HandleFunc("POST /u/{user}/typing", b.auth((*session).typing))
 	mux.HandleFunc("POST /u/{user}/read", b.auth((*session).read))
+	mux.HandleFunc("POST /u/{user}/react", b.auth((*session).react))
 	mux.HandleFunc("POST /u/{user}/logout", b.auth((*session).logout))
 	mux.HandleFunc("GET /u/{user}/contacts", b.auth((*session).contacts))
 	mux.HandleFunc("POST /u/{user}/media", b.auth((*session).media))
@@ -1131,6 +1132,56 @@ func (s *session) read(w http.ResponseWriter, r *http.Request) {
 		n += len(list)
 	}
 	reply(w, http.StatusOK, map[string]any{"read": n})
+}
+
+// react: the user's emoji on a message ("" takes it off). message: its id as `message` gave it
+// ("<chat>/<WhatsApp's id>"); from_me: the user's own; sender: who wrote it ("+<number>" or a
+// JID), for a group's.
+func (s *session) react(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Chat    string `json:"chat"`
+		Message string `json:"message"`
+		FromMe  bool   `json:"from_me"`
+		Sender  string `json:"sender"`
+		Emoji   string `json:"emoji"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	chat, err := types.ParseJID(req.Chat)
+	if err != nil || chat.User == "" {
+		fail(w, http.StatusBadRequest, fmt.Errorf("chat: a WhatsApp JID, not %q", req.Chat))
+		return
+	}
+	id := types.MessageID(req.Message[strings.LastIndex(req.Message, "/")+1:])
+	if id == "" {
+		fail(w, http.StatusBadRequest, errors.New("message is empty"))
+		return
+	}
+	cli := s.loggedIn(w)
+	if cli == nil {
+		return
+	}
+	// who wrote it: none for the user's own (the key says from me); theirs as it came in, else
+	// the chat (one to one) or the sender given (a group)
+	var sender types.JID
+	if !req.FromMe {
+		sender = chat
+		s.mu.Lock()
+		o, ok := s.origins[id]
+		s.mu.Unlock()
+		if ok {
+			chat, sender = o.chat, o.sender
+		} else if chat.Server == types.GroupServer {
+			sender = jidOf(req.Sender)
+		}
+	}
+	if _, err := cli.SendMessage(r.Context(), chat, cli.BuildReaction(chat, sender, id, req.Emoji)); err != nil {
+		fail(w, http.StatusBadGateway, err)
+		return
+	}
+	reply(w, http.StatusOK, map[string]any{"reacted": req.Emoji})
 }
 
 // jidOf: "+<number>" as its JID, else the JID it is.
