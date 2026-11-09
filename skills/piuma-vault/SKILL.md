@@ -166,14 +166,15 @@ pigeon.py contacts query=alex           # people: @slug, handles, note, memory
 pigeon.py names_from_whatsapp contact_id=<uuid|@slug>   # name one from WhatsApp; none: everyone
 pigeon.py set_contact contact_id=@alex relationship=friend slug=alex-r
 pigeon.py draft_reply conversation_id=<uuid> instructions="say I'll be late, sweetly"
+pigeon.py send_reply conversation_id=<uuid> text="…"   # only on the user's word, words they saw
 pigeon.py set_alerts contact_id=@alex level=all
 ```
 
 ## Inbox rules
 
-- **Nothing is sent from here.** A message to someone is always a **draft** the user sends
-  from the Inbox (`draft_reply`, `draft_email`, `edit_draft`). Before `approve` on a reply,
-  show the user its full text.
+- **A message goes only on the user's word.** By default it's a **draft** the user sends from
+  the Inbox (`draft_reply`, `draft_email`, `edit_draft`). When they say send it: show them
+  the exact text first, then `send_reply` (new words) or `approve` (a waiting draft).
 - **Never set a policy to `auto`** (`set_policy`, `set_auto`) unless the user asks for it.
 - Big changes (merging two people, deleting a rule, switching auto) don't run: they come
   back as a card the user taps in the Inbox. Say so rather than retrying.
@@ -190,8 +191,8 @@ pigeon.py set_alerts contact_id=@alex level=all
   `names_from_whatsapp` does it now from the phone's address book (and gives the slug).
 - `learn` brings old conversations in and writes what Pigeon knows about people: slow, it
   runs in the background without `contact_id`.
-- An older standalone Pigeon (with its own `pigeon` MCP) may still be connected: it is a
-  different system with its own database, and changes there don't reach the vault's Inbox.
+- There is no Pigeon MCP: the older standalone Pigeon (its own `pigeon` MCP and database) is
+  gone. `pigeon.py` is the way in.
 
 ---
 

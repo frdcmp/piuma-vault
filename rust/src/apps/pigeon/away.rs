@@ -6,7 +6,7 @@
 //! anything for them. Their chats still need the user: an away reply doesn't mark them handled.
 //! Where the user writes themselves, Pigeon steps back there (`actions::quiet_until`).
 //!
-//! Set from the Inbox, Piuma or the MCP (`pigeon_away`), kept in `db_pigeon_settings` (key
+//! Set from the Inbox, Piuma or a script (`pigeon_away`, the skill's pigeon.py), kept in `db_pigeon_settings` (key
 //! `away`); it ends when the user ends it or at its `until` (`expire_due`, the worker's sweep).
 //! On the way back, Pigeon's chat gets what happened (`recap`).
 
