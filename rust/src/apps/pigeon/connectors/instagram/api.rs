@@ -148,11 +148,23 @@ pub async fn graph(token: &Token, method: &str, path: &str, query: &[(&str, Stri
         None if method == "POST" => req.header(reqwest::header::CONTENT_LENGTH, "0"),
         None => req,
     };
+    answer(format!("{method} {path}"), req).await
+}
+
+/// A POST as form fields, the way Meta's reference writes some calls (a JSON value goes as its
+/// text in a field).
+pub async fn graph_form(token: &Token, path: &str, form: &[(&str, String)]) -> anyhow::Result<Json> {
+    let req = http().post(format!("{GRAPH}{path}")).bearer_auth(&token.access).query(&[("appsecret_proof", &token.proof)]).form(form);
+    answer(format!("POST {path}"), req).await
+}
+
+/// Meta's answer to a call, or why it refused.
+async fn answer(what: String, req: reqwest::RequestBuilder) -> anyhow::Result<Json> {
     let res = req.send().await.map_err(|e| anyhow::anyhow!("Instagram unreachable: {}", e.without_url()))?;
     let status = res.status();
     let body: Json = res.json().await.unwrap_or(Json::Null);
     if !status.is_success() {
-        return Err(GraphError::of(format!("{method} {path}"), status.as_u16(), &body).into());
+        return Err(GraphError::of(what, status.as_u16(), &body).into());
     }
     Ok(body)
 }

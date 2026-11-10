@@ -385,9 +385,8 @@ async fn ig_id(st: &State, connection: i32) -> anyhow::Result<String> {
         .ok_or_else(|| anyhow::anyhow!("the Instagram account has no id: connect it again"))
 }
 
-/// What the other person sees the user doing in a conversation (typing_on, typing_off, mark_seen;
-/// react and unreact, with their `payload`).
-async fn sender_action(st: &State, conversation: Uuid, action: &str, payload: Option<Json>) -> anyhow::Result<()> {
+/// A conversation's side of a call: the account's token and id, and the other person's.
+async fn thread(st: &State, conversation: Uuid) -> anyhow::Result<(api::Token, String, String)> {
     let (other, connection): (String, Option<i32>) =
         sqlx::query_as("SELECT external_id, connection_id FROM db_pigeon_conversations WHERE id = $1 AND connector = $2")
             .bind(conversation)
@@ -396,14 +395,54 @@ async fn sender_action(st: &State, conversation: Uuid, action: &str, payload: Op
             .await?
             .ok_or_else(|| anyhow::anyhow!("{conversation} is not an Instagram conversation"))?;
     let connection = connection.ok_or_else(|| anyhow::anyhow!("the conversation has no Instagram account"))?;
-    let token = api::token(st, connection).await?;
-    let my_id = ig_id(st, connection).await?;
-    let mut body = json!({ "recipient": { "id": other }, "sender_action": action });
-    if let Some(p) = payload {
-        body["payload"] = p;
-    }
+    Ok((api::token(st, connection).await?, ig_id(st, connection).await?, other))
+}
+
+/// What the other person sees the user doing in a conversation (typing_on, typing_off, mark_seen).
+async fn sender_action(st: &State, conversation: Uuid, action: &str) -> anyhow::Result<()> {
+    let (token, my_id, other) = thread(st, conversation).await?;
+    let body = json!({ "recipient": { "id": other }, "sender_action": action });
     api::graph(&token, "POST", &format!("/{my_id}/messages"), &[], Some(&body)).await?;
     Ok(())
+}
+
+/// The user's reaction on a message, or its removal (`react`, `unreact`), with its `payload`.
+/// Meta's reference writes this call as form fields: tried when it refuses the JSON one. Refused
+/// both ways, the log says what Meta knows of the message.
+async fn reaction(st: &State, conversation: Uuid, action: &str, payload: Json) -> anyhow::Result<()> {
+    let (token, my_id, other) = thread(st, conversation).await?;
+    let path = format!("/{my_id}/messages");
+    let body = json!({ "recipient": { "id": other }, "sender_action": action, "payload": payload });
+    let e = match api::graph(&token, "POST", &path, &[], Some(&body)).await {
+        Ok(_) => return Ok(()),
+        Err(e) if api::bad_parameter(&e) => e,
+        Err(e) => return Err(e),
+    };
+    log::warn!("instagram: {action} refused as JSON ({e:#}): as form fields");
+    let form = [("recipient", json!({ "id": other }).to_string()), ("sender_action", action.to_string()), ("payload", payload.to_string())];
+    let e = match api::graph_form(&token, &path, &form).await {
+        Ok(_) => {
+            log::info!("instagram: {action} went as form fields");
+            return Ok(());
+        }
+        Err(e) if api::bad_parameter(&e) => e,
+        Err(e) => return Err(e),
+    };
+    let mid = payload["message_id"].as_str().unwrap_or_default();
+    let known = match api::graph(&token, "GET", &format!("/{mid}"), &[("fields", "id,created_time".to_string())], None).await {
+        Ok(m) => format!("known, of {}, its id {}", m["created_time"], if m["id"].as_str() == Some(mid) { "the same" } else { "another" }),
+        Err(k) => format!("{k:#}"),
+    };
+    let q = [("platform", "instagram".to_string()), ("user_id", other.clone()), ("fields", "messages.limit(10){id}".to_string())];
+    let listed = match api::graph(&token, "GET", &format!("/{my_id}/conversations"), &q, None).await {
+        Ok(l) => {
+            let ids: Vec<&str> = l["data"][0]["messages"]["data"].as_array().into_iter().flatten().filter_map(|d| d["id"].as_str()).collect();
+            format!("{} of the conversation's latest {}, the first {:?}", if ids.contains(&mid) { "one" } else { "none" }, ids.len(), ids.first())
+        }
+        Err(l) => format!("{l:#}"),
+    };
+    log::warn!("instagram: no {action} on {mid}: {e:#}; the message: {known}; listed: {listed}");
+    anyhow::bail!("Instagram doesn't take a reaction on this message from Pigeon: react to it in Instagram")
 }
 
 /// Meta refused the account's token: mark the account to be connected again.
@@ -565,35 +604,20 @@ impl Connector for Instagram {
 
     async fn typing(&self, st: &State, conversation: Uuid, on: bool) -> anyhow::Result<()> {
         // Instagram takes the indicator off by itself after about 20 s, or when the message goes
-        sender_action(st, conversation, if on { "typing_on" } else { "typing_off" }, None).await
+        sender_action(st, conversation, if on { "typing_on" } else { "typing_off" }).await
     }
 
     async fn seen(&self, st: &State, conversation: Uuid) -> anyhow::Result<()> {
-        sender_action(st, conversation, "mark_seen", None).await
+        sender_action(st, conversation, "mark_seen").await
     }
 
-    /// Instagram takes one reaction from an app: the heart. Meta names it "love" in one API and
-    /// takes the emoji itself in the other: the name first, the emoji when that's refused.
+    /// Instagram takes one reaction from an app: the heart ("love").
     async fn react(&self, st: &State, conversation: Uuid, m: &Reacted, emoji: &str) -> anyhow::Result<()> {
-        let sent = match emoji.trim_end_matches('\u{fe0f}') {
-            "" => sender_action(st, conversation, "unreact", Some(json!({ "message_id": m.external_id }))).await,
-            "❤" => match sender_action(st, conversation, "react", Some(json!({ "message_id": m.external_id, "reaction": "love" }))).await {
-                Err(e) if api::bad_parameter(&e) => {
-                    log::warn!("instagram: a reaction as \"love\" refused ({e:#}): as the emoji");
-                    sender_action(st, conversation, "react", Some(json!({ "message_id": m.external_id, "reaction": "❤️" }))).await
-                }
-                r => r,
-            },
+        match emoji.trim_end_matches('\u{fe0f}') {
+            "" => reaction(st, conversation, "unreact", json!({ "message_id": m.external_id })).await,
+            "❤" => reaction(st, conversation, "react", json!({ "message_id": m.external_id, "reaction": "love" })).await,
             _ => anyhow::bail!("Instagram takes only ❤️ as a reaction"),
-        };
-        sent.map_err(|e| {
-            if api::bad_parameter(&e) {
-                log::warn!("instagram: no reaction on {}: {e:#}", m.external_id);
-                anyhow::anyhow!("Instagram doesn't take a reaction on this message from Pigeon: react to it in Instagram")
-            } else {
-                e
-            }
-        })
+        }
     }
 
     async fn health(&self, st: &State, user: &str) -> Json {
