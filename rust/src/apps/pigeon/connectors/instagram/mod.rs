@@ -572,13 +572,28 @@ impl Connector for Instagram {
         sender_action(st, conversation, "mark_seen", None).await
     }
 
-    /// Instagram takes one reaction from an app: the heart ("love").
+    /// Instagram takes one reaction from an app: the heart. Meta names it "love" in one API and
+    /// takes the emoji itself in the other: the name first, the emoji when that's refused.
     async fn react(&self, st: &State, conversation: Uuid, m: &Reacted, emoji: &str) -> anyhow::Result<()> {
-        match emoji.trim_end_matches('\u{fe0f}') {
+        let sent = match emoji.trim_end_matches('\u{fe0f}') {
             "" => sender_action(st, conversation, "unreact", Some(json!({ "message_id": m.external_id }))).await,
-            "❤" => sender_action(st, conversation, "react", Some(json!({ "message_id": m.external_id, "reaction": "love" }))).await,
+            "❤" => match sender_action(st, conversation, "react", Some(json!({ "message_id": m.external_id, "reaction": "love" }))).await {
+                Err(e) if api::bad_parameter(&e) => {
+                    log::warn!("instagram: a reaction as \"love\" refused ({e:#}): as the emoji");
+                    sender_action(st, conversation, "react", Some(json!({ "message_id": m.external_id, "reaction": "❤️" }))).await
+                }
+                r => r,
+            },
             _ => anyhow::bail!("Instagram takes only ❤️ as a reaction"),
-        }
+        };
+        sent.map_err(|e| {
+            if api::bad_parameter(&e) {
+                log::warn!("instagram: no reaction on {}: {e:#}", m.external_id);
+                anyhow::anyhow!("Instagram doesn't take a reaction on this message from Pigeon: react to it in Instagram")
+            } else {
+                e
+            }
+        })
     }
 
     async fn health(&self, st: &State, user: &str) -> Json {

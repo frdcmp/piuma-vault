@@ -52,14 +52,24 @@ pub struct GraphError {
     pub what: String,
     pub status: u16,
     pub code: Option<i64>,
+    /// Meta's finer code, when it gives one
+    pub subcode: Option<i64>,
     pub message: String,
+    /// what Meta would tell the person (`error_user_msg`), when it says
+    pub hint: Option<String>,
 }
 
 impl std::fmt::Display for GraphError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.code {
-            Some(c) => write!(f, "Instagram {}: {} {} (code {c})", self.what, self.status, self.message),
-            None => write!(f, "Instagram {}: {} {}", self.what, self.status, self.message),
+        write!(f, "Instagram {}: {} {}", self.what, self.status, self.message)?;
+        match (self.code, self.subcode) {
+            (Some(c), Some(s)) => write!(f, " (code {c}, {s})")?,
+            (Some(c), None) => write!(f, " (code {c})")?,
+            _ => {}
+        }
+        match &self.hint {
+            Some(h) => write!(f, ": {h}"),
+            None => Ok(()),
         }
     }
 }
@@ -69,8 +79,14 @@ impl std::error::Error for GraphError {}
 impl GraphError {
     fn of(what: String, status: u16, body: &Json) -> GraphError {
         let message = body["error"]["message"].as_str().or(body["error_message"].as_str()).or(body["error"].as_str()).unwrap_or("no details").to_string();
-        GraphError { what, status, code: body["error"]["code"].as_i64(), message }
+        let hint = body["error"]["error_user_msg"].as_str().or(body["error"]["error_user_title"].as_str()).map(str::to_string);
+        GraphError { what, status, code: body["error"]["code"].as_i64(), subcode: body["error"]["error_subcode"].as_i64(), message, hint }
     }
+}
+
+/// Meta found a parameter wrong (code 100): what was sent, not the account or its token.
+pub fn bad_parameter(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<GraphError>().is_some_and(|g| g.code == Some(100))
 }
 
 /// The token no longer works (expired, the app removed from the business portfolio, the account
