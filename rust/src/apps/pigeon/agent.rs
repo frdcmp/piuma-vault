@@ -607,8 +607,11 @@ pub async fn summary(st: &State, conv: &Conversation) -> anyhow::Result<Option<S
         &st.pool,
         &format!(
             "Summarise a conversation for {name} in 2 to 4 short lines of English: what it is about, where it stands, \
-             and anything open (questions to {name}, things {name} promised, dates). No preamble.",
-            name = me.name
+             and anything open (questions to {name}, things {name} promised, dates). No preamble. \
+             The messages' times are UTC; {name} is in {tz}. A day someone names from their own (today, tomorrow, tonight) \
+             counts from that message's date there: write it as its date.",
+            name = me.name,
+            tz = me.tz
         ),
         &format!("Channel: {}\nWith: {them}\n\n{}", conv.connector, conversations::transcript(&items, &them, (&me.name, &handles), 1500)),
     )
