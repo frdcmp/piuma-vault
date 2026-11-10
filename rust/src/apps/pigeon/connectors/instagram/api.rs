@@ -7,6 +7,7 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use base64::Engine;
 use hmac::{Hmac, Mac};
 use serde_json::Value as Json;
 use sha2::Sha256;
@@ -148,25 +149,60 @@ pub async fn graph(token: &Token, method: &str, path: &str, query: &[(&str, Stri
         None if method == "POST" => req.header(reqwest::header::CONTENT_LENGTH, "0"),
         None => req,
     };
-    answer(format!("{method} {path}"), req).await
-}
-
-/// A POST as form fields, the way Meta's reference writes some calls (a JSON value goes as its
-/// text in a field).
-pub async fn graph_form(token: &Token, path: &str, form: &[(&str, String)]) -> anyhow::Result<Json> {
-    let req = http().post(format!("{GRAPH}{path}")).bearer_auth(&token.access).query(&[("appsecret_proof", &token.proof)]).form(form);
-    answer(format!("POST {path}"), req).await
-}
-
-/// Meta's answer to a call, or why it refused.
-async fn answer(what: String, req: reqwest::RequestBuilder) -> anyhow::Result<Json> {
     let res = req.send().await.map_err(|e| anyhow::anyhow!("Instagram unreachable: {}", e.without_url()))?;
     let status = res.status();
     let body: Json = res.json().await.unwrap_or(Json::Null);
     if !status.is_success() {
-        return Err(GraphError::of(what, status.as_u16(), &body).into());
+        return Err(GraphError::of(format!("{method} {path}"), status.as_u16(), &body).into());
     }
     Ok(body)
+}
+
+// Meta writes a message's id two ways: a webhook's `ig_dm_item:…` and the Graph API's
+// `new_ig_dm_item:…`, the same message (the same numbers after). Each is that text in base64, Z
+// written ZA and = written ZD. The Graph API knows only its own: a reaction on a webhook's id is
+// refused ("Message ID is invalid", 2534002).
+const WEBHOOK_MID: &str = "ig_dm_item:";
+const API_MID: &str = "new_ig_dm_item:";
+
+fn mid_text(mid: &str) -> Option<String> {
+    let mut b64 = String::with_capacity(mid.len());
+    let mut chars = mid.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            'Z' => b64.push(match chars.next()? {
+                'A' => 'Z',
+                'D' => '=',
+                _ => return None,
+            }),
+            c => b64.push(c),
+        }
+    }
+    String::from_utf8(base64::engine::general_purpose::STANDARD.decode(b64).ok()?).ok()
+}
+
+fn mid_of(text: &str) -> String {
+    base64::engine::general_purpose::STANDARD.encode(text).replace('Z', "ZA").replace('=', "ZD")
+}
+
+/// A message's id the other way Meta writes it; none: not one of the two.
+pub fn other_mid(mid: &str) -> Option<String> {
+    let text = mid_text(mid)?;
+    if text.starts_with(WEBHOOK_MID) {
+        Some(mid_of(&format!("new_{text}")))
+    } else if text.starts_with(API_MID) {
+        Some(mid_of(&text["new_".len()..]))
+    } else {
+        None
+    }
+}
+
+/// A message's id as the Graph API writes it: a webhook's turned, any other as it is.
+pub fn api_mid(mid: &str) -> String {
+    match mid_text(mid) {
+        Some(text) if text.starts_with(WEBHOOK_MID) => mid_of(&format!("new_{text}")),
+        _ => mid.to_string(),
+    }
 }
 
 /// The account's token (encrypted in `db_pigeon_connections`).
@@ -213,6 +249,20 @@ mod tests {
         assert!(u.contains("redirect_uri=https%3A%2F%2Fvault.example.com%2Fapi%2Fv1%2Fpigeon%2Fconnect%2Finstagram%2Fcallback"));
         assert!(u.contains("response_type=code&override_default_response_type=true&prompt=login&state=tok%261"));
         assert!(!u.contains("scope="), "the configuration replaces the scope");
+    }
+
+    #[test]
+    fn a_message_id_goes_both_ways() {
+        let webhook = mid_of("ig_dm_item:1:IGMessageID:17841400000000001:340282366841710300000000000000000001:33098666936755470000000000000000001");
+        assert!(webhook.starts_with("aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOj"), "as Meta writes a webhook's: {webhook}");
+        let api = api_mid(&webhook);
+        assert!(api.starts_with("bmV3X2lnX2RtX2l0ZAW06MTpJR01lc3NhZA2VJRDox"), "as Meta writes the API's: {api}");
+        assert!(api.ends_with("ZD") && !api.contains('='), "the padding written ZD");
+        assert_eq!(api_mid(&api), api, "the API's stays");
+        assert_eq!(other_mid(&webhook).as_deref(), Some(api.as_str()));
+        assert_eq!(other_mid(&api).as_deref(), Some(webhook.as_str()));
+        assert_eq!(api_mid("m1"), "m1", "anything else as it is");
+        assert_eq!(other_mid("m1"), None);
     }
 
     #[test]
