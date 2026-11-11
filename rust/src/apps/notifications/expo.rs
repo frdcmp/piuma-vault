@@ -35,12 +35,13 @@ pub async fn dispatch_expo(
 }
 
 /// How a push shows: the app it goes to (`PIUMA` when unset), its Android channel, its category
-/// (the action buttons the app registered for it), and whether it makes a sound.
+/// (the action buttons the app registered for it), its Android tag, and whether it makes a sound.
 #[derive(Debug, Clone, Default)]
 pub struct PushOptions {
     pub app: Option<String>,
     pub channel: Option<String>,
     pub category: Option<String>,
+    pub tag: Option<String>,
     pub silent: bool,
 }
 
@@ -65,6 +66,9 @@ pub async fn dispatch_expo_with(
         }
         if let Some(c) = &opts.category {
             m["categoryId"] = json!(c);
+        }
+        if let Some(t) = &opts.tag {
+            m["tag"] = json!(t);
         }
         m
     })

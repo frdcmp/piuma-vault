@@ -39,6 +39,10 @@ pub struct NewNotification {
     pub silent: bool,
     /// The phone app the push goes to (`expo::PIUMA` when unset).
     pub phone_app: Option<String>,
+    /// The Android notification's tag: what the app knows a push by once Android shows it (in
+    /// the background it shows the push itself, without its data); one with the same tag
+    /// replaces it.
+    pub push_tag: Option<String>,
 }
 
 impl NewNotification {
@@ -61,6 +65,7 @@ impl NewNotification {
             push_category: None,
             silent: false,
             phone_app: None,
+            push_tag: None,
         }
     }
 
@@ -98,6 +103,10 @@ impl NewNotification {
     }
     pub fn phone_app(mut self, app: impl Into<String>) -> Self {
         self.phone_app = Some(app.into());
+        self
+    }
+    pub fn push_tag(mut self, tag: impl Into<String>) -> Self {
+        self.push_tag = Some(tag.into());
         self
     }
 }
@@ -216,6 +225,7 @@ pub async fn notify(
                 app: n.phone_app.clone(),
                 channel: n.push_channel.clone(),
                 category: n.push_category.clone(),
+                tag: n.push_tag.clone(),
                 silent: n.silent,
             };
             let _ = expo::dispatch_expo_with(pool, &n.user_id, &n.title, &body, &data, &opts).await;

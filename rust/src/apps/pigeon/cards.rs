@@ -293,8 +293,18 @@ async fn push(st: &State, user: &str, conversation: Option<Uuid>, card: Option<&
     send(st, user, conversation, json!({ "card": card }), text, ring, channel, category).await;
 }
 
+/// A push's Android tag. In the background Android shows a push itself, without its data: the
+/// tag is all the app has to know whose it is (it takes a chat's pushes away when the chat is
+/// read). A message's says its chat and the message; anything else is Pigeon's.
+fn push_tag(conversation: Option<Uuid>, extra: &Json) -> String {
+    match (conversation, extra.get("message").and_then(Json::as_str)) {
+        (Some(c), Some(item)) => format!("m:{c}:{item}"),
+        _ => format!("p:{}", Uuid::new_v4()),
+    }
+}
+
 /// The push itself: titled by who the conversation is with, opening it; `extra` joins the
-/// metadata (with `conversation_id` and `ring`).
+/// metadata (with `conversation_id`, whose it is as `person`, and `ring`).
 #[allow(clippy::too_many_arguments)]
 async fn send(st: &State, user: &str, conversation: Option<Uuid>, extra: Json, text: &str, ring: bool, channel: &str, category: Option<String>) {
     let title = match conversation {
@@ -307,13 +317,19 @@ async fn send(st: &State, user: &str, conversation: Option<Uuid>, extra: Json, t
     };
     // the badge: the phone puts the number on the app's icon
     let badge = conversations::unread_count(&st.pool, user).await.unwrap_or(0);
-    let mut metadata = json!({ "conversation_id": conversation, "ring": ring, "badge": badge });
+    // whose chat it is: the app opens a person's chat with it, without asking for the conversation first
+    let person = match conversation {
+        Some(c) => conversations::get(&st.pool, c).await.ok().flatten().and_then(|c| c.contact_id),
+        None => None,
+    };
+    let tag = push_tag(conversation, &extra);
+    let mut metadata = json!({ "conversation_id": conversation, "person": person, "ring": ring, "badge": badge });
     if let (Some(m), Json::Object(extra)) = (metadata.as_object_mut(), extra) {
         m.extend(extra);
     }
     let mut n = NewNotification::new(user, "pigeon", title).body(text).action_url(url).metadata(metadata);
     // to the Pigeon app (the Piuma app has no Inbox)
-    n = n.phone_app(crate::apps::notifications::expo::PIGEON).push_channel(channel).silent(!ring);
+    n = n.phone_app(crate::apps::notifications::expo::PIGEON).push_channel(channel).push_tag(tag).silent(!ring);
     if let Some(c) = category {
         n = n.push_category(c);
     }
@@ -665,4 +681,19 @@ pub async fn open_questions(st: &State, user: &str) -> anyhow::Result<Vec<Json>>
             json!({ "kind": "question", "id": id, "conversation_id": conversation_id, "question": question, "options": options, "created_at": created_at })
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_push_is_known_by_its_tag() {
+        let chat = Uuid::new_v4();
+        let item = Uuid::new_v4();
+        assert_eq!(push_tag(Some(chat), &json!({ "message": item })), format!("m:{chat}:{item}"));
+        // a card or news about a chat is Pigeon's, like one about nothing
+        assert!(push_tag(Some(chat), &json!({ "card": null })).starts_with("p:"));
+        assert!(push_tag(None, &json!({ "card": null })).starts_with("p:"));
+    }
 }
