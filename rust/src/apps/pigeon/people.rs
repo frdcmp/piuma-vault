@@ -760,7 +760,11 @@ pub async fn set_contact(st: &State, user: &str, input: ContactInput) -> anyhow:
             .await?;
         match owner {
             Some(o) if o == id => {}
-            Some(o) => anyhow::bail!("{ch} {h} is contact {o}'s: if they are the same person, merge them"),
+            Some(o) => {
+                let theirs: Option<String> = sqlx::query_scalar("SELECT name FROM db_pigeon_contacts WHERE id = $1").bind(o).fetch_optional(&mut *tx).await?.flatten();
+                let theirs = theirs.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| "someone else".into());
+                anyhow::bail!("{h} is already {theirs}'s: if they are the same person, merge them (contact {o})")
+            }
             None => {
                 sqlx::query("INSERT INTO db_pigeon_contact_handles (user_id, connector, handle, contact_id) VALUES ($1, $2, $3, $4)")
                     .bind(user)
