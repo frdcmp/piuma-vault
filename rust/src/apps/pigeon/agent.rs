@@ -31,6 +31,7 @@ use crate::apps::pigeon::people;
 use crate::apps::pigeon::policy::{self, Policy};
 use crate::apps::pigeon::triage::{Signals, HOLD_AT};
 use crate::apps::pigeon::state::State;
+use crate::apps::telemetry::{Event, Severity};
 
 /// The most actions one turn may propose.
 const MAX_PROPOSALS: usize = 3;
@@ -126,6 +127,7 @@ fn offers(mode: &Mode<'_>, kind: Kind) -> bool {
 }
 
 async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome>> {
+    let started = std::time::Instant::now();
     let lock = conversation_lock(id);
     let _round = lock.lock().await;
     let conv = conversations::get(&st.pool, id).await?.ok_or_else(|| anyhow::anyhow!("no conversation {id}"))?;
@@ -157,7 +159,10 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
     // away, Pigeon writes as itself: the user's voice isn't needed
     let away_mode = matches!(mode, Mode::Away { .. });
     let writes_reply_as_user = writes_reply && !away_mode;
-    if let Some(c) = &contact {
+    if drafting {
+        // the user waits on the button: what Pigeon knows as it stands, brought up to date behind
+        people::catch_up_later(st, contact.as_ref(), &conv);
+    } else if let Some(c) = &contact {
         // what Pigeon knows about them, and how the user writes to them here, brought up to date
         if let Err(e) = people::ensure_memory(st, c, false).await {
             log::warn!("memory of {}: {e:#}", c.id);
@@ -283,6 +288,15 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
             Ok(o) => out.push(o),
             Err(e) => log::warn!("agent on {id}: proposing {}: {e:#}", call.name),
         }
+    }
+    if let Mode::Draft { instructions, compose } = &mode {
+        // how long the user waited on the button (its model calls are `llm` events of their own)
+        Event::new("pigeon", "draft", Severity::Info)
+            .user_id(&conv.user_id)
+            .entity("conversation", id)
+            .duration(started.elapsed().as_millis().min(u32::MAX as u128) as u32)
+            .attrs(json!({ "compose": compose, "told": instructions.is_some_and(|i| !i.trim().is_empty()), "wrote": !out.is_empty(), "channel": conv.connector }))
+            .emit();
     }
     Ok(out)
 }
@@ -603,8 +617,9 @@ pub async fn summary(st: &State, conv: &Conversation) -> anyhow::Result<Option<S
     let them = conversations::who(contact.as_ref(), conv);
     let items = conversations::recent_items(&st.pool, conv.id, 40).await?;
     let handles = conversations::my_handles(&st.pool, &conv.user_id).await?;
-    let text = llm::text(
+    let text = llm::text_of(
         &st.pool,
+        "summary",
         &format!(
             "Summarise a conversation for {name} in 2 to 4 short lines of English: what it is about, where it stands, \
              and anything open (questions to {name}, things {name} promised, dates). No preamble. \

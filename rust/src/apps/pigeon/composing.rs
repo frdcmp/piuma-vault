@@ -1,7 +1,6 @@
 //! The reply Pigeon writes into the user's own message box (the draft button): written in a task of
-//! its own, so it finishes when the phone leaves mid-way (Android drops the request in the
-//! background, and a dropped request would end it). The words wait here, by conversation, for the
-//! chat to take them (`take`), and the user's apps hear it's ready (`events::kinds::COMPOSED`).
+//! its own (`start`), whatever the phone does meanwhile. The words wait here, by conversation, for
+//! the chat to take them (`take`), and the user's apps hear it's ready (`events::kinds::COMPOSED`).
 //! In memory: one backend, and a restart only loses a draft not yet taken.
 
 use std::collections::HashMap;
@@ -33,9 +32,9 @@ fn slots() -> &'static Mutex<HashMap<Uuid, Slot>> {
     SLOTS.get_or_init(Default::default)
 }
 
-/// Pigeon writes the reply; the words, if whoever asked is still there. Gone meanwhile: they wait
-/// for `take`.
-pub async fn compose(st: AppState, user: String, conversation: Uuid, instructions: Option<String>) -> anyhow::Result<String> {
+/// Pigeon starts writing the reply; the words wait for `take`, and the user's apps hear when
+/// they're there. What it gives back settles then.
+pub fn start(st: AppState, user: String, conversation: Uuid, instructions: Option<String>) -> tokio::sync::oneshot::Receiver<()> {
     slots().lock().unwrap().insert(conversation, Slot::Writing(Utc::now()));
     let (tx, rx) = tokio::sync::oneshot::channel();
     actix_web::rt::spawn(async move {
@@ -48,7 +47,14 @@ pub async fn compose(st: AppState, user: String, conversation: Uuid, instruction
         events::publish(&st.pool, &user, kinds::COMPOSED, Some(conversation)).await;
         let _ = tx.send(());
     });
-    rx.await.map_err(|_| anyhow::anyhow!("Pigeon stopped writing: try again"))?;
+    rx
+}
+
+/// Pigeon writes the reply; the words, if whoever asked is still there. Gone meanwhile: they wait
+/// for `take`. (The apps before `start`: the answer was the words, and one the phone never got,
+/// away or its connection cut on the way, was lost.)
+pub async fn compose(st: AppState, user: String, conversation: Uuid, instructions: Option<String>) -> anyhow::Result<String> {
+    start(st, user, conversation, instructions).await.map_err(|_| anyhow::anyhow!("Pigeon stopped writing: try again"))?;
     match take_slot(conversation) {
         Some(Slot::Done { text, .. }) => text.map_err(|e| anyhow::anyhow!(e)),
         // another draft asked meanwhile took its place: that one answers

@@ -398,6 +398,9 @@ pub struct DraftBody {
     /// the words back for the user's message box ({ text }), no card
     #[serde(default)]
     compose: bool,
+    /// with `compose`: `{ writing: true }` at once, the words by `composed` once they're there
+    #[serde(default)]
+    later: bool,
 }
 
 /// Pigeon writes a reply now: a draft card, or (`compose`) the words for the user's own box.
@@ -406,6 +409,10 @@ pub async fn draft(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid
     let id = path.into_inner();
     let r: anyhow::Result<Json> = async {
         tools::own_conversation(&st, user, id).await?;
+        if body.compose && body.later {
+            drop(composing::start(st.get_ref().clone(), user.clone(), id, body.instructions.clone()));
+            return Ok(json!({ "writing": true }));
+        }
         if body.compose {
             // written in its own task: the phone leaving mid-way doesn't stop it (`composed`)
             let text = composing::compose(st.get_ref().clone(), user.clone(), id, body.instructions.clone()).await?;

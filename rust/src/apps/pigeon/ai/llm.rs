@@ -1,7 +1,9 @@
 //! The model Pigeon writes with: one of the vault's own (admin → Agents), the one picked for
 //! Pigeon (`app_settings` pigeon_model_id) or else the default. Two ways: plain text (a summary,
 //! a style profile) and tool calls (the agent proposing actions). No streaming: nobody watches
-//! it type. Each call's tokens go to the usage ledger as `pigeon`.
+//! it type. Each call's tokens go to the usage ledger as `pigeon`, and how long it took to
+//! telemetry (`llm` events, route `pigeon`, the event's type what it wrote: draft, reply, memory,
+//! style…): no words, only the model, the tokens and the time.
 
 use futures::channel::mpsc;
 use serde_json::{json, Value as Json};
@@ -10,6 +12,7 @@ use uuid::Uuid;
 use crate::apps::agents::models::{ModelRow, ProviderRow};
 use crate::apps::agents::providers;
 use crate::apps::settings::store;
+use crate::apps::telemetry::{Event, Severity};
 use crate::db::db::DbPool;
 
 /// The `app_settings` key naming the model Pigeon uses (a `db_llm_models` id).
@@ -88,9 +91,14 @@ pub async fn complete(pool: &DbPool, system: &str, user: &str, tools: &[Json]) -
 
 /// The same, with the model for what it writes (`Writer::Reply`: the replies model).
 pub async fn complete_as(pool: &DbPool, writer: Writer, system: &str, user: &str, tools: &[Json]) -> anyhow::Result<Reply> {
+    complete_for(pool, writer, if writer == Writer::Reply { "reply" } else { "other" }, system, user, tools).await
+}
+
+/// The same, named in telemetry by what it writes (`what`).
+async fn complete_for(pool: &DbPool, writer: Writer, what: &str, system: &str, user: &str, tools: &[Json]) -> anyhow::Result<Reply> {
     let r = resolve_for(pool, writer).await?;
     let messages = [json!({ "role": "system", "content": system }), json!({ "role": "user", "content": user })];
-    let res = call(pool, &r, &messages, tools, "pigeon").await?;
+    let res = call(pool, &r, &messages, tools, "pigeon", what).await?;
     Ok(reply_of(res))
 }
 
@@ -112,7 +120,7 @@ pub async fn complete_reading(pool: &DbPool, user_id: &str, system: &str, user: 
     for round in 0..=READ_ROUNDS {
         // the last round: only the actions, it writes now
         let offered: &[Json] = if round == READ_ROUNDS { tools } else { &all };
-        let res = call(pool, &r, &messages, offered, "pigeon-draft").await?;
+        let res = call(pool, &r, &messages, offered, "pigeon-draft", "draft").await?;
         let reading: Vec<&providers::ToolCall> = res.tool_calls.iter().filter(|c| VAULT_READS.contains(&c.name.as_str())).collect();
         if reading.is_empty() {
             return Ok(reply_of(res));
@@ -137,13 +145,28 @@ pub async fn complete_reading(pool: &DbPool, user_id: &str, system: &str, user: 
     anyhow::bail!("the drafter kept reading and wrote nothing")
 }
 
-/// One call to the model, its tokens to the usage ledger under `source`.
-async fn call(pool: &DbPool, r: &Resolved, messages: &[Json], tools: &[Json], source: &str) -> anyhow::Result<providers::CallResult> {
+/// One call to the model, its tokens to the usage ledger under `source`, its time to telemetry
+/// as `what`.
+async fn call(pool: &DbPool, r: &Resolved, messages: &[Json], tools: &[Json], source: &str, what: &str) -> anyhow::Result<providers::CallResult> {
     // nobody streams it: the deltas go nowhere
     let (tx, _rx) = mpsc::unbounded();
-    let res = providers::call(&r.kind, &r.api_key, r.base_url.as_deref(), &r.model, messages, tools, &tx)
-        .await
-        .map_err(|e| anyhow::anyhow!("the model refused: {e}"))?;
+    let started = std::time::Instant::now();
+    let res = providers::call(&r.kind, &r.api_key, r.base_url.as_deref(), &r.model, messages, tools, &tx).await;
+    let took = started.elapsed().as_millis().min(u32::MAX as u128) as u32;
+    let event = |severity| Event::new("llm", what, severity).route("pigeon").model(&r.model).duration(took);
+    let res = match res {
+        Ok(res) => {
+            event(Severity::Info)
+                .tokens(res.tokens_in.max(0) as u32, res.tokens_out.max(0) as u32)
+                .attrs(json!({ "provider": r.kind, "tokens_cached": res.tokens_cached }))
+                .emit();
+            res
+        }
+        Err(e) => {
+            event(Severity::Error).error_code("model_refused").attrs(json!({ "provider": r.kind })).emit();
+            anyhow::bail!("the model refused: {e}");
+        }
+    };
     if res.tokens_in + res.tokens_out > 0 {
         let _ = sqlx::query(
             "INSERT INTO db_token_usage (kind, source, provider_kind, model, tokens_input, tokens_output, tokens_cached, tokens_cache_write)
@@ -173,7 +196,12 @@ fn reply_of(res: providers::CallResult) -> Reply {
 
 /// Plain text, no tools.
 pub async fn text(pool: &DbPool, system: &str, user: &str) -> anyhow::Result<String> {
-    Ok(complete(pool, system, user, &[]).await?.text.trim().to_string())
+    text_of(pool, "other", system, user).await
+}
+
+/// The same, named in telemetry by what it writes (`what`: memory, style, summary).
+pub async fn text_of(pool: &DbPool, what: &str, system: &str, user: &str) -> anyhow::Result<String> {
+    Ok(complete_for(pool, Writer::Other, what, system, user, &[]).await?.text.trim().to_string())
 }
 
 /// Whether a model is there to write with.

@@ -152,8 +152,9 @@ pub async fn ensure_group_style(st: &State, conv: &conversations::Conversation, 
     let mine = chat_voice(st, conv.id, 40).await?;
     let examples: String = mine.iter().map(|m| format!("- {}\n", conversations::clip(m, 500))).collect();
     let group = conv.title.as_deref().filter(|t| !t.is_empty()).unwrap_or("a group");
-    let profile = llm::text(
+    let profile = llm::text_of(
         &st.pool,
+        "style",
         "You describe how a person writes in one group chat (WhatsApp, …), so someone else can write there exactly like \
          them. Answer with 3 to 6 short bullet points in English: language(s) and dialect, length, formality, emoji and \
          punctuation habits, how they address the others, nicknames, slang or recurring phrases, what they leave out. \
@@ -232,8 +233,9 @@ pub async fn ensure_style(st: &State, c: &Contact, connector: &str, force: bool)
     let me = owner::get(&st.pool, &c.user_id).await.name;
     let mine = voice_examples(st, c.id, Some(connector), 40).await?;
     let examples: String = mine.iter().map(|(_, m)| format!("- {}\n", conversations::clip(m, 500))).collect();
-    let profile = llm::text(
+    let profile = llm::text_of(
             &st.pool,
+            "style",
             "You describe how a person writes to one specific contact on one channel (email, WhatsApp, …), so someone else \
              can write there exactly like them. Answer with 3 to 6 short bullet points in English: language(s), length, \
              formality, greetings and sign-offs, emoji and punctuation habits, nicknames or recurring phrases. Describe; \
@@ -252,6 +254,43 @@ pub async fn ensure_style(st: &State, c: &Contact, connector: &str, force: bool)
     .execute(&st.pool)
     .await?;
     Ok(true)
+}
+
+/// The people and groups being brought up to date behind a draft: one task each at a time.
+static CATCHING_UP: Mutex<Option<HashSet<Uuid>>> = Mutex::new(None);
+
+/// For a reply the user waits for (the draft button): what Pigeon knows is used as it stands, and
+/// brought up to date behind, in a task of its own. Waited for, the memory and the style (each
+/// rewritten every few messages, each a long call) came before a word of the reply: in a busy
+/// chat most drafts took the better part of a minute. The reply has the conversation and the
+/// user's own messages there either way.
+pub fn catch_up_later(st: &State, contact: Option<&Contact>, conv: &conversations::Conversation) {
+    let key = contact.map(|c| c.id).unwrap_or(conv.id);
+    if !CATCHING_UP.lock().unwrap().get_or_insert_with(HashSet::new).insert(key) {
+        return;
+    }
+    let (st, contact, conv) = (crate::apps::pigeon::state::shared(&st.pool), contact.cloned(), conv.clone());
+    // on this thread (a draft is asked from a request: the model's call isn't one to move)
+    actix_web::rt::spawn(async move {
+        match &contact {
+            Some(c) => {
+                if let Err(e) = ensure_memory(&st, c, false).await {
+                    log::warn!("memory of {}: {e:#}", c.id);
+                }
+                if let Err(e) = ensure_style(&st, c, &conv.connector, false).await {
+                    log::warn!("{} style of {}: {e:#}", conv.connector, c.id);
+                }
+            }
+            None => {
+                if let Err(e) = ensure_group_style(&st, &conv, false).await {
+                    log::warn!("style of group {}: {e:#}", conv.id);
+                }
+            }
+        }
+        if let Some(set) = CATCHING_UP.lock().unwrap().as_mut() {
+            set.remove(&key);
+        }
+    });
 }
 
 /// Write what Pigeon knows about this person, when due (or `force`). True when written.
@@ -301,8 +340,9 @@ pub async fn ensure_memory(st: &State, c: &Contact, force: bool) -> anyhow::Resu
         prompt.push_str(&format!("\nWhat you remembered before (update it; drop what the conversations show is over):\n{}\n", m.memory));
     }
     prompt.push_str(&format!("\nTheir conversations with {name}, latest first, each oldest message first:\n{text}"));
-    let written = llm::text(
+    let written = llm::text_of(
             &st.pool,
+            "memory",
             &format!("You keep Pigeon's memory of one person {name} talks to, so {name}'s replies to them make sense. Write 4 to 12 short \
              bullet points in English: who they are to {name} (friend, family, client, colleague, a company), what they \
              talk about, facts worth remembering (names, places, dates, preferences, the language they use), and what is \
