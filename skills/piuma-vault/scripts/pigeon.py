@@ -10,6 +10,11 @@ key's user: `pigeon.py contacts query=elena` runs pigeon_contacts with
 one's arguments. A value is JSON when it parses (numbers, true, [..], {..}),
 else text; `-` reads it from stdin. Where a contact is expected (contact_id,
 merge_id), `@slug` works too.
+
+One command is not a tool: `pigeon.py file item=<message id> file=<file id>
+[to=<folder or path>]` saves a message's photo, video, voice note or document
+(the ids are in `conversation` and `search`, under each message's `files`) and
+prints where it is.
 """
 from __future__ import annotations
 
@@ -75,6 +80,46 @@ def call(method: str, path: str, body=None):
         die(f"can't reach the vault: {e.reason}")
 
 
+# Where a message's file is saved unless `to` says: private to the user.
+FILES = Path.home() / ".cache/piuma-vault/files"
+
+
+def save_file(args: dict):
+    """A message's file, from storage onto this machine; prints its path."""
+    item, file = args.get("item") or args.get("item_id"), args.get("file") or args.get("file_id")
+    if not item or not file:
+        die("file: item=<message id> file=<file id> [to=<folder or path>]")
+    req = urllib.request.Request(
+        f"{API}/admin/pigeon/items/{urllib.parse.quote(str(item))}/media/{urllib.parse.quote(str(file))}",
+        headers={"x-api-key": KEY, "User-Agent": "piuma-vault-skill/1.0 (+claude-code)"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=600) as r:
+            # its own name, kept to plain characters, after the file's id (two can share a name)
+            name = r.headers.get_filename() or "file"
+            name = re.sub(r"[^\w.\- ]", "_", Path(name).name).strip(". ") or "file"
+            to = Path(str(args["to"])).expanduser() if args.get("to") else FILES
+            if args.get("to") and not to.is_dir() and to.suffix:
+                path = to
+                path.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                to.mkdir(parents=True, exist_ok=True, mode=0o700)
+                path = to / f"{str(file)[:8]}-{name}"
+            with open(path, "wb") as out:
+                while chunk := r.read(1 << 16):
+                    out.write(chunk)
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace")
+        try:
+            detail = json.loads(detail).get("error", detail)
+        except ValueError:
+            pass
+        die(f"{e.code}: {detail}")
+    except urllib.error.URLError as e:
+        die(f"can't reach the vault: {e.reason}")
+    print(path)
+
+
 def tool_name(cmd: str) -> str:
     return cmd if cmd.startswith(PREFIX) else PREFIX + cmd.replace("-", "_")
 
@@ -124,6 +169,7 @@ def main(argv: list[str]):
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(__doc__.strip())
         print("\nUsage: pigeon.py tools [name] | pigeon.py <tool> [key=value ...] [--json '{...}']")
+        print("       pigeon.py file item=<message id> file=<file id> [to=<folder or path>]")
         return
     API, KEY = load_creds()
     if argv[0] == "tools":
@@ -147,6 +193,9 @@ def main(argv: list[str]):
     for k in ("contact_id", "merge_id"):
         if isinstance(args.get(k), str) and args[k].startswith("@"):
             args[k] = contact_by_slug(args[k])
+    if argv[0] == "file":
+        save_file(args)
+        return
     out = call("POST", f"/admin/pigeon/tools/{name}", args)
     print(json.dumps(out, indent=2, ensure_ascii=False))
 

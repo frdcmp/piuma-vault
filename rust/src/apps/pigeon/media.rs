@@ -162,6 +162,24 @@ pub fn kind_of(mime: &str) -> &'static str {
     }
 }
 
+/// A message's files as a tool tells them: what each is, a voice note's words, and its id (the
+/// file itself is `/admin/pigeon/items/{item}/media/{id}`); never where it's kept or fetched from.
+pub fn told(media: &Json) -> Vec<Json> {
+    let Some(list) = media.as_array() else { return vec![] };
+    list.iter()
+        .filter(|m| m.is_object())
+        .map(|m| {
+            let mut o = serde_json::Map::new();
+            for k in ["id", "kind", "name", "mime", "size", "seconds", "status", "transcript"] {
+                if !m[k].is_null() {
+                    o.insert(k.into(), m[k].clone());
+                }
+            }
+            Json::Object(o)
+        })
+        .collect()
+}
+
 /// The words a message's body has for a file ("image", "document: Report.pdf").
 pub fn label_of(kind: &str, name: Option<&str>) -> String {
     match kind {
@@ -502,6 +520,17 @@ pub async fn sign(pool: &DbPool, items: &mut [Json]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tool_is_told_what_a_file_is_not_where() {
+        let media = json!([
+            "location",
+            { "id": "f1", "kind": "image", "mime": "image/jpeg", "name": null, "size": 10, "status": "stored",
+              "key": "pigeon/u1/media/whatsapp/2026/11/f1.jpg", "source": { "url": "https://x" } },
+        ]);
+        assert_eq!(told(&media), vec![json!({ "id": "f1", "kind": "image", "mime": "image/jpeg", "size": 10, "status": "stored" })]);
+        assert!(told(&json!(null)).is_empty());
+    }
 
     #[test]
     fn keys_by_channel_and_month() {

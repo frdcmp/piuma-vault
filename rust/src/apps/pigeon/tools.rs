@@ -17,7 +17,7 @@ use crate::apps::pigeon::connectors::Kind;
 use crate::apps::pigeon::conversations::{self, Conversation};
 use crate::apps::pigeon::policy::Policy;
 use crate::apps::pigeon::state::{AppState, State};
-use crate::apps::pigeon::{actions, agent, alerts, away, cards, confirm, people, policy, rules, summary};
+use crate::apps::pigeon::{actions, agent, alerts, away, cards, confirm, media, people, policy, rules, summary};
 
 /// Who Piuma's decisions are logged as.
 const BY: &str = "piuma";
@@ -41,7 +41,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
         ),
         (
             "pigeon_search",
-            "Search every message in the Inbox (words, a name, an address), newest first, with its conversation.",
+            "Search every message in the Inbox (words, a name, an address), newest first, with its conversation and its files (as pigeon_conversation lists them).",
             json!({ "type": "object", "properties": {
                 "query": { "type": "string" },
                 "connector": { "type": "string" },
@@ -50,7 +50,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
         ),
         (
             "pigeon_conversation",
-            "One Inbox conversation: its recent messages, a summary, the person (the user's note, what Pigeon knows, how the user writes to them), its policies and what waits there.",
+            "One Inbox conversation: its recent messages, a summary, the person (the user's note, what Pigeon knows, how the user writes to them), its policies and what waits there. A message's photos, videos, voice notes and documents are its `files`: what each is, a voice note's words, and its id (the file itself is fetched by the message's id and the file's).",
             json!({ "type": "object", "properties": {
                 "conversation_id": id("From pigeon_inbox or pigeon_search"),
                 "items": { "type": "integer", "description": "How many recent messages, default 20" },
@@ -755,8 +755,8 @@ async fn inbox(st: &State, user: &str, args: &Json) -> anyhow::Result<Json> {
 async fn search(st: &State, user: &str, args: &Json) -> anyhow::Result<Json> {
     let q = text(args, "query").ok_or_else(|| anyhow::anyhow!("`query` is required"))?;
     #[allow(clippy::type_complexity)]
-    let rows: Vec<(Uuid, Uuid, String, String, Option<String>, Option<String>, Option<String>, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
-        "SELECT i.id, i.conversation_id, i.connector, i.author, i.sender, i.sender_name, i.subject, i.body, i.at
+    let rows: Vec<(Uuid, Uuid, String, String, Option<String>, Option<String>, Option<String>, String, chrono::DateTime<chrono::Utc>, Json)> = sqlx::query_as(
+        "SELECT i.id, i.conversation_id, i.connector, i.author, i.sender, i.sender_name, i.subject, i.body, i.at, i.media
            FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
           WHERE c.user_id = $4 AND ($2::text IS NULL OR i.connector = $2)
             AND (to_tsvector('simple', coalesce(i.subject, '') || ' ' || i.body) @@ plainto_tsquery('simple', $1)
@@ -771,12 +771,24 @@ async fn search(st: &State, user: &str, args: &Json) -> anyhow::Result<Json> {
     .await?;
     let out: Vec<Json> = rows
         .into_iter()
-        .map(|(id, conv, connector, author, sender, name, subject, body, at)| {
-            json!({ "item_id": id, "conversation_id": conv, "channel": connector, "author": author, "from": name.or(sender),
-                    "subject": subject, "text": conversations::clip(&body, 300), "at": at })
+        .map(|(id, conv, connector, author, sender, name, subject, body, at, files)| {
+            with_files(
+                json!({ "item_id": id, "conversation_id": conv, "channel": connector, "author": author, "from": name.or(sender),
+                        "subject": subject, "text": conversations::clip(&body, 300), "at": at }),
+                &files,
+            )
         })
         .collect();
     Ok(json!({ "results": out }))
+}
+
+/// A message as a tool tells it, with its files when it has any.
+fn with_files(mut message: Json, files: &Json) -> Json {
+    let files = media::told(files);
+    if !files.is_empty() {
+        message["files"] = json!(files);
+    }
+    message
 }
 
 async fn conversation(st: &State, user: &str, args: &Json) -> anyhow::Result<Json> {
@@ -808,10 +820,10 @@ async fn conversation(st: &State, user: &str, args: &Json) -> anyhow::Result<Jso
         "policies": pols,
         "alerts": alerts::resolve(&st.pool, user, conv.contact_id, Some(id)).await?.as_str(),
         "waiting": waiting,
-        "items": items.iter().map(|i| json!({
+        "items": items.iter().map(|i| with_files(json!({
             "id": i.id, "at": i.at, "author": i.author, "from": i.sender_name.clone().or(i.sender.clone()),
             "subject": i.subject, "text": conversations::clip(&i.body, 4000),
-        })).collect::<Vec<_>>(),
+        }), &i.media)).collect::<Vec<_>>(),
     }))
 }
 

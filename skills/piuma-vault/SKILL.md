@@ -161,7 +161,8 @@ pigeon.py summary                       # what's open, in a few lines
 pigeon.py inbox attention=true          # what needs the user
 pigeon.py pending                       # drafts, suggestions, questions waiting
 pigeon.py search query="invoice"
-pigeon.py conversation conversation_id=<uuid>
+pigeon.py conversation conversation_id=<uuid>   # each message's photos and files: its `files`
+pigeon.py file item=<message id> file=<file id> # save one here, prints its path (then read it)
 pigeon.py contacts query=alex           # people: @slug, handles, note, memory
 pigeon.py names_from_whatsapp contact_id=<uuid|@slug>   # name one from WhatsApp; none: everyone
 pigeon.py set_contact contact_id=@alex relationship=friend slug=alex-r
@@ -187,6 +188,11 @@ pigeon.py set_alerts contact_id=@alex level=all
 
 - The key needs **`inbox.read`** (and **`inbox.write`** for anything marked `w` in
   `tools`): a `403 … inbox.read permission required` means the key lacks it.
+- A message's text says only `[image]` or `[voice message]`: what was sent is in its
+  `files` (kind, name, a voice note's `transcript`, `status`). To see a photo or read a
+  document, `pigeon.py file item=… file=…` saves it under `~/.cache/piuma-vault/files`
+  (`to=` for elsewhere) and prints the path. Only a `stored` file can be had: `expired`
+  and `gone` ones are no longer kept. `file` is the script's own, not one of the tools.
 - A person known only by a number takes the name their next message carries on its own;
   `names_from_whatsapp` does it now from the phone's address book (and gives the slug).
 - `learn` brings old conversations in and writes what Pigeon knows about people: slow, it
