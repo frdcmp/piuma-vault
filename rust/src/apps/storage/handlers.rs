@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use actix_web::{web, HttpResponse, Responder};
 use aws_sdk_s3::{
-    config::{BehaviorVersion, Credentials, Region},
+    config::{BehaviorVersion, Credentials, Region, RequestChecksumCalculation, ResponseChecksumValidation},
     presigning::PresigningConfig,
     primitives::ByteStream,
     Client,
@@ -215,6 +215,9 @@ pub(crate) async fn s3_client(pool: &DbPool) -> Result<(Client, String), String>
 }
 
 // Builds the aws-sdk-s3 client + bucket name from a resolved config.
+// Checksums only where S3 requires one: by default the SDK adds a CRC to every upload, and for a
+// streamed body (a file) sends it as a trailer after the bytes (aws-chunked), which S3-compatible
+// storage may not take: the connection is closed and the upload fails after a minute.
 fn client_from(cfg: crate::apps::settings::store::S3Config) -> (Client, String) {
     let creds = Credentials::new(
         cfg.access_key_id,
@@ -229,6 +232,8 @@ fn client_from(cfg: crate::apps::settings::store::S3Config) -> (Client, String) 
         .credentials_provider(creds)
         .endpoint_url(cfg.endpoint)
         .force_path_style(true)
+        .request_checksum_calculation(RequestChecksumCalculation::WhenRequired)
+        .response_checksum_validation(ResponseChecksumValidation::WhenRequired)
         .build();
     (Client::from_conf(conf), cfg.bucket)
 }

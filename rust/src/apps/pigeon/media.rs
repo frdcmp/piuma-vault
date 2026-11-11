@@ -11,7 +11,8 @@
 //! (a location, a contact, a poll), or a message from before files were kept.
 //!
 //! Every file is fetched right after its message is stored (`fetch_soon`); what didn't make it
-//! is tried again by the worker's sweep (`retry`), a few times. A voice note, once stored, is
+//! is tried again by the worker's sweep (`retry`), each try later than the one before (`retry_at`
+//! on its entry) for some hours, then it is `failed`. A voice note, once stored, is
 //! heard (`listen`: its words on its entry). The apps get each stored file
 //! with a signed link (`sign`), or the file itself to save (`download`).
 //!
@@ -42,8 +43,9 @@ use crate::db::db::DbPool;
 
 /// How many files are fetched at once (a history brings many).
 static FETCHING: LazyLock<tokio::sync::Semaphore> = LazyLock::new(|| tokio::sync::Semaphore::new(3));
-/// Tries before a file is given up as failed.
-const TRIES: i64 = 5;
+/// Tries before a file is given up as failed: each waits twice the one before (`wait`), about
+/// six hours in all, so storage or a channel that is down for a while doesn't cost the file.
+const TRIES: i64 = 12;
 /// How long a signed link lasts.
 const LINK_SECS: i64 = 24 * 3600;
 /// How long files are kept after their message, unless the user chose (`media_days`).
@@ -217,7 +219,7 @@ pub async fn put_outgoing(
     let key = e["key"].as_str().unwrap_or_default().to_string();
     let (client, bucket) = s3_client(pool).await.map_err(|e| anyhow::anyhow!(e))?;
     let body = ByteStream::from_path(path).await.map_err(|e| anyhow::anyhow!("reading the upload: {e}"))?;
-    client.put_object().bucket(&bucket).key(&key).body(body).content_type(mime).send().await.map_err(|e| anyhow::anyhow!("storing it: {e}"))?;
+    client.put_object().bucket(&bucket).key(&key).body(body).content_type(mime).send().await.map_err(|e| anyhow::anyhow!(unstored(e)))?;
     if let Some(o) = e.as_object_mut() {
         o.remove("source");
         o.insert("status".into(), json!("stored"));
@@ -306,6 +308,8 @@ fn has_pending(media: &Json) -> bool {
 pub async fn retry(st: &State) -> anyhow::Result<usize> {
     let items: Vec<Uuid> = sqlx::query_scalar(
         "SELECT id FROM db_pigeon_items WHERE media @> '[{\"status\": \"pending\"}]'::jsonb AND created_at < NOW() - INTERVAL '2 minutes'
+            AND EXISTS (SELECT 1 FROM jsonb_array_elements(media) e WHERE jsonb_typeof(e) = 'object' AND e->>'status' = 'pending'
+                         AND COALESCE((e->>'retry_at')::timestamptz, '-infinity') <= NOW())
           ORDER BY created_at DESC LIMIT 20",
     )
     .fetch_all(&st.pool)
@@ -324,6 +328,17 @@ pub(crate) enum Miss {
     Gone(String),
     /// worth another try
     Failed(String),
+}
+
+/// How long a file waits after its nth failed try: 1 minute, 2, 4… an hour at most.
+fn wait(tries: i64) -> chrono::Duration {
+    chrono::Duration::minutes((1i64 << (tries - 1).clamp(0, 6)).min(60))
+}
+
+/// Storage refused a file: the whole cause to the log (the SDK's own words are "dispatch failure").
+fn unstored<E: std::error::Error>(e: E) -> String {
+    log::warn!("pigeon media: storing a file: {}", aws_sdk_s3::error::DisplayErrorContext(&e));
+    format!("storing it: {e}")
 }
 
 
@@ -352,17 +367,21 @@ async fn fetch(st: &State, item: Uuid) -> anyhow::Result<()> {
     }
     for m in media.as_array().into_iter().flatten().filter(|m| m["status"] == "pending") {
         let Some(id) = m["id"].as_str() else { continue };
+        // its next try isn't due yet
+        if m["retry_at"].as_str().and_then(|t| t.parse::<DateTime<Utc>>().ok()).is_some_and(|t| t > Utc::now()) {
+            continue;
+        }
         let _turn = FETCHING.acquire().await?;
         let patch = match keep(st, &user, item, m).await {
-            Ok(size) => json!({ "status": "stored", "size": size, "source": null, "error": null }),
-            Err(Miss::Gone(why)) => json!({ "status": "gone", "source": null, "error": why }),
+            Ok(size) => json!({ "status": "stored", "size": size, "source": null, "error": null, "retry_at": null }),
+            Err(Miss::Gone(why)) => json!({ "status": "gone", "source": null, "error": why, "retry_at": null }),
             Err(Miss::Failed(why)) => {
                 let tries = m["tries"].as_i64().unwrap_or(0) + 1;
                 log::info!("pigeon media {id} of {item}: try {tries}: {why}");
                 if tries >= TRIES {
-                    json!({ "status": "failed", "tries": tries, "source": null, "error": why })
+                    json!({ "status": "failed", "tries": tries, "source": null, "error": why, "retry_at": null })
                 } else {
-                    json!({ "tries": tries, "error": why })
+                    json!({ "tries": tries, "error": why, "retry_at": (Utc::now() + wait(tries)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true) })
                 }
             }
         };
@@ -448,7 +467,7 @@ async fn keep(st: &State, user: &str, item: Uuid, m: &Json) -> Result<i64, Miss>
         }
     };
     let up = match ByteStream::from_path(&tmp).await {
-        Ok(body) => client.put_object().bucket(&bucket).key(key).body(body).content_type(mime).send().await.map(|_| ()).map_err(|e| Miss::Failed(format!("storing it: {e}"))),
+        Ok(body) => client.put_object().bucket(&bucket).key(key).body(body).content_type(mime).send().await.map(|_| ()).map_err(|e| Miss::Failed(unstored(e))),
         Err(e) => Err(Miss::Failed(format!("reading it back: {e}"))),
     };
     let _ = tokio::fs::remove_file(&tmp).await;
@@ -520,6 +539,12 @@ pub async fn sign(pool: &DbPool, items: &mut [Json]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_try_waits_longer_up_to_an_hour() {
+        let minutes: Vec<i64> = (1..TRIES).map(|n| wait(n).num_minutes()).collect();
+        assert_eq!(minutes, vec![1, 2, 4, 8, 16, 32, 60, 60, 60, 60, 60]);
+    }
 
     #[test]
     fn a_tool_is_told_what_a_file_is_not_where() {
