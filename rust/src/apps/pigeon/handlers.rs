@@ -203,10 +203,12 @@ pub async fn conversation_items(st: web::Data<AppState>, u: InboxReader, path: w
         .await?;
         // who wrote them, as the people Pigeon knows: a group's history gives numbers, not names
         let mut handles: Vec<String> = items.iter().filter(|i| i.direction == "in").filter_map(|i| i.sender.clone()).collect();
+        // and who they tag
+        handles.extend(items.iter().flat_map(|i| i.mentions.as_array().into_iter().flatten()).filter_map(|m| m["phone"].as_str().map(str::to_string)));
         handles.sort();
         handles.dedup();
-        let people: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT h.handle, c.name, c.slug FROM db_pigeon_contact_handles h JOIN db_pigeon_contacts c ON c.id = h.contact_id
+        let people: Vec<(String, Option<String>, Option<String>, Uuid)> = sqlx::query_as(
+            "SELECT h.handle, c.name, c.slug, c.id FROM db_pigeon_contact_handles h JOIN db_pigeon_contacts c ON c.id = h.contact_id
               WHERE h.user_id = $1 AND h.connector = $2 AND h.handle = ANY($3)",
         )
         .bind(user)
@@ -215,7 +217,7 @@ pub async fn conversation_items(st: web::Data<AppState>, u: InboxReader, path: w
         .fetch_all(&st.pool)
         .await?;
         let senders: serde_json::Map<String, Json> =
-            people.into_iter().map(|(handle, name, slug)| (handle, json!({ "name": name, "slug": slug }))).collect();
+            people.into_iter().map(|(handle, name, slug, id)| (handle, json!({ "name": name, "slug": slug, "id": id }))).collect();
         // their files, each with a link
         let mut items: Vec<Json> = items.iter().map(serde_json::to_value).collect::<Result<_, _>>()?;
         tell::on_items(&st.pool, &mut items).await;
@@ -1307,10 +1309,11 @@ pub async fn person_items(st: web::Data<AppState>, u: InboxReader, path: web::Pa
         .await?;
         let mut handles: Vec<String> =
             items.iter().filter(|i| i["direction"] == "in").filter_map(|i| i["sender"].as_str().map(str::to_string)).collect();
+        handles.extend(items.iter().flat_map(|i| i["mentions"].as_array().into_iter().flatten()).filter_map(|m| m["phone"].as_str().map(str::to_string)));
         handles.sort();
         handles.dedup();
-        let people_rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT h.handle, c.name, c.slug FROM db_pigeon_contact_handles h JOIN db_pigeon_contacts c ON c.id = h.contact_id
+        let people_rows: Vec<(String, Option<String>, Option<String>, Uuid)> = sqlx::query_as(
+            "SELECT h.handle, c.name, c.slug, c.id FROM db_pigeon_contact_handles h JOIN db_pigeon_contacts c ON c.id = h.contact_id
               WHERE h.user_id = $1 AND h.handle = ANY($2)",
         )
         .bind(user)
@@ -1318,7 +1321,7 @@ pub async fn person_items(st: web::Data<AppState>, u: InboxReader, path: web::Pa
         .fetch_all(&st.pool)
         .await?;
         let senders: serde_json::Map<String, Json> =
-            people_rows.into_iter().map(|(handle, name, slug)| (handle, json!({ "name": name, "slug": slug }))).collect();
+            people_rows.into_iter().map(|(handle, name, slug, id)| (handle, json!({ "name": name, "slug": slug, "id": id }))).collect();
         tell::on_items(&st.pool, &mut items).await;
         media::sign(&st.pool, &mut items).await;
         Ok(json!({

@@ -72,11 +72,20 @@ pub struct Item {
     pub via: Option<String>,
     /// an email that came in, out of its inbox (archived, in Gmail or from the Inbox)
     pub archived: bool,
+    /// who it tags (WhatsApp): `[{id, name, phone, me}]`; the body has "@<name>" where they are
+    pub mentions: Json,
+}
+
+impl Item {
+    /// Whether it tags the user.
+    pub fn mentions_me(&self) -> bool {
+        self.mentions.as_array().into_iter().flatten().any(|m| m["me"].as_bool() == Some(true))
+    }
 }
 
 pub const ITEM_COLS: &str = "id, direction, author, sender, sender_name, subject, body, media, at, created_at, \
      COALESCE(raw->'to', '[]'::jsonb) AS to_addrs, COALESCE(raw->'cc', '[]'::jsonb) AS cc_addrs, \
-     COALESCE(raw->'reactions', '{}'::jsonb) AS reactions, raw->>'via' AS via, \
+     COALESCE(raw->'reactions', '{}'::jsonb) AS reactions, raw->>'via' AS via, COALESCE(raw->'mentions', '[]'::jsonb) AS mentions, \
      (SELECT 'https://mail.google.com/mail/?authuser=' || k.account || '#all/' || db_pigeon_items.external_id \
         FROM db_pigeon_conversations v JOIN db_pigeon_connections k ON k.id = v.connection_id \
        WHERE v.id = db_pigeon_items.conversation_id AND db_pigeon_items.connector = 'gmail') AS open_url, \
@@ -267,6 +276,7 @@ mod tests {
             open_url: None,
             via: None,
             archived: false,
+            mentions: serde_json::json!([]),
         }
     }
 

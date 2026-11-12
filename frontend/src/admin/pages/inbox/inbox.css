@@ -335,6 +335,15 @@
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 }
+/* someone the message tags */
+.inbox-mention {
+	color: var(--vp-info);
+	font-weight: 600;
+	text-decoration: none;
+}
+a.inbox-mention:hover {
+	text-decoration: underline;
+}
 .inbox-msg-meta {
 	margin-top: 2px;
 	display: flex;

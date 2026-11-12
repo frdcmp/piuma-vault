@@ -26,6 +26,7 @@ use crate::apps::pigeon::config::WhatsappConf;
 use crate::apps::pigeon::connectors::{need_str, ActionDef, Connector, Kind, Pairing, Reacted};
 use crate::apps::pigeon::items::{self, Author, Direction, Incoming};
 use crate::apps::pigeon::media;
+use crate::apps::pigeon::owner;
 use crate::apps::pigeon::sign;
 use crate::apps::pigeon::state::{AppState, State};
 
@@ -205,6 +206,25 @@ pub struct Message {
     /// its files, with what the bridge needs to fetch each (`POST /u/{user}/media`)
     #[serde(default)]
     pub files: Vec<Json>,
+    /// who it tags
+    #[serde(default)]
+    pub mentions: Vec<Mention>,
+}
+
+/// Someone a message tags. The text has "@<id>" where they are: WhatsApp's id for them, their
+/// number or a hidden id that says nothing to a reader.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Mention {
+    pub id: String,
+    /// "+<number>", when WhatsApp has told which
+    #[serde(default)]
+    pub phone: Option<String>,
+    /// how the user saved them in WhatsApp, else the name they gave themselves
+    #[serde(default)]
+    pub name: Option<String>,
+    /// the user themselves
+    #[serde(default)]
+    pub me: bool,
 }
 
 /// A message's `media`: its files (fetched into storage), then what isn't a file (a location, a
@@ -251,14 +271,73 @@ pub(crate) async fn media(st: &State, user: &str, details: &Json) -> Result<reqw
     Err(media::bridge_miss(status, v["error"].as_str().unwrap_or_default().to_string()))
 }
 
-/// A message's text as an item's body: the text, and what's attached.
-fn body_of(m: &Message) -> String {
+/// A message's text as an item's body: the text (its tags as names: `named`), and what's attached.
+fn body_of(m: &Message, tags: &[Json]) -> String {
     let mut parts: Vec<String> = Vec::new();
     if !m.text.trim().is_empty() {
-        parts.push(m.text.clone());
+        parts.push(named(&m.text, tags));
     }
     parts.extend(m.kinds.iter().map(|k| format!("[{k}]")));
     parts.join("\n")
+}
+
+/// Who a message tags, as the Inbox keeps them (an item's `raw.mentions`): `{id, name, phone,
+/// me}`. The name is the one to read: the user's own, the person's in the Inbox, the one
+/// WhatsApp has for them, else their number; none when WhatsApp told nothing about the id.
+async fn tags_of(st: &State, user: &str, m: &Message) -> anyhow::Result<Vec<Json>> {
+    if m.mentions.is_empty() {
+        return Ok(Vec::new());
+    }
+    let phones: Vec<String> = m.mentions.iter().filter_map(|t| some(&t.phone)).collect();
+    let known: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT h.handle, c.name FROM db_pigeon_contact_handles h JOIN db_pigeon_contacts c ON c.id = h.contact_id
+          WHERE h.user_id = $1 AND h.connector = $2 AND h.handle = ANY($3)",
+    )
+    .bind(user)
+    .bind(ID)
+    .bind(&phones)
+    .fetch_all(&st.pool)
+    .await?;
+    let mut me: Option<String> = None;
+    let mut out = Vec::new();
+    for t in &m.mentions {
+        let phone = some(&t.phone);
+        let name = if t.me {
+            if me.is_none() {
+                me = Some(owner::get(&st.pool, user).await.name);
+            }
+            me.clone()
+        } else {
+            // a person saved as their number has no name yet: WhatsApp's is better
+            let saved = phone.as_ref().and_then(|p| known.iter().find(|(h, _)| h == p)).and_then(|(_, n)| some(n)).filter(|n| n.chars().any(char::is_alphabetic));
+            saved.or_else(|| some(&t.name)).or_else(|| phone.clone())
+        };
+        out.push(json!({ "id": t.id, "name": name, "phone": phone, "me": t.me }));
+    }
+    Ok(out)
+}
+
+/// A text with its tags as names: "@111222333444555" as "@Marco". A tag nobody could be put to
+/// stays as WhatsApp wrote it.
+fn named(text: &str, tags: &[Json]) -> String {
+    if tags.is_empty() || !text.contains('@') {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find('@') {
+        out.push_str(&rest[..=at]);
+        rest = &rest[at + 1..];
+        // the id is the whole run after the @: "@12" isn't the start of "@123"
+        let end = rest.find(|c: char| !c.is_ascii_alphanumeric()).unwrap_or(rest.len());
+        let name = tags.iter().find(|t| t["id"].as_str() == Some(&rest[..end]) && end > 0).and_then(|t| t["name"].as_str());
+        if let Some(name) = name {
+            out.push_str(name);
+            rest = &rest[end..];
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// A person's chat as their handle (their phone number); a group, or a chat WhatsApp keeps
@@ -324,6 +403,11 @@ async fn note_error(st: &State, user: &str, error: &str) -> anyhow::Result<()> {
 async fn store(st: &State, user: &str, connection: Option<i32>, m: &Message, triage: bool) -> anyhow::Result<Option<Uuid>> {
     let name = some(&m.chat_name);
     let at = Utc.timestamp_millis_opt(m.at).single().unwrap_or_else(Utc::now);
+    let tags = tags_of(st, user, m).await?;
+    let mut raw = json!({ "id": m.id });
+    if !tags.is_empty() {
+        raw["mentions"] = json!(tags);
+    }
     let inc = Incoming {
         user_id: user.to_string(),
         connector: ID,
@@ -336,9 +420,9 @@ async fn store(st: &State, user: &str, connection: Option<i32>, m: &Message, tri
         sender: Some(m.sender.clone()),
         sender_name: if m.from_me { None } else { some(&m.sender_name) },
         subject: None,
-        body: body_of(m),
+        body: body_of(m, &tags),
         media: media_of(user, m, at),
-        raw: json!({ "id": m.id }),
+        raw,
         at,
         // a group isn't a person: its conversation has no contact
         counterpart: (!m.group).then(|| (handle_of_chat(&m.chat), name)),
@@ -582,7 +666,29 @@ mod tests {
             "id": "1@s.whatsapp.net/ABC", "chat": "1@s.whatsapp.net", "text": "look", "at": 0, "kinds": ["image"]
         }))
         .unwrap();
-        assert_eq!(body_of(&m), "look\n[image]");
-        assert!(!m.from_me && !m.group);
+        assert_eq!(body_of(&m, &[]), "look\n[image]");
+        assert!(!m.from_me && !m.group && m.mentions.is_empty());
+    }
+
+    #[test]
+    fn tags_as_names() {
+        let tags = [
+            json!({ "id": "111222333444555", "name": "Marco Rossi", "phone": "+393331234567", "me": false }),
+            json!({ "id": "66677788899900", "name": "Anna", "phone": null, "me": true }),
+            // WhatsApp told nothing about this one
+            json!({ "id": "777", "name": null, "phone": null, "me": false }),
+        ];
+        assert_eq!(named("@111222333444555 @66677788899900 andiamo?", &tags), "@Marco Rossi @Anna andiamo?");
+        assert_eq!(named("ok @66677788899900, e @777?", &tags), "ok @Anna, e @777?");
+        // a longer number isn't the tag, nor is an address
+        assert_eq!(named("@1112223334445559 a@b.it @", &tags), "@1112223334445559 a@b.it @");
+        assert_eq!(named("città @66677788899900è", &tags), "città @Annaè");
+        let m: Message = serde_json::from_value(json!({
+            "id": "1@g.us/ABC", "chat": "1@g.us", "group": true, "text": "@777 @66677788899900", "at": 0,
+            "mentions": [{ "id": "777" }, { "id": "66677788899900", "phone": "+393330000000", "me": true }]
+        }))
+        .unwrap();
+        assert!(m.mentions[1].me && m.mentions[0].phone.is_none());
+        assert_eq!(body_of(&m, &tags), "@777 @Anna");
     }
 }

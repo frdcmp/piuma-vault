@@ -64,6 +64,7 @@ import {
 	POLICY_OPTIONS,
 	reactionGroups,
 	senderLabel,
+	tagParts,
 	withInherit,
 } from "./inboxText";
 import { arrived, localItem, outboxEntry } from "./outbox";
@@ -196,6 +197,30 @@ function Outgoing({ entry }) {
 	);
 }
 
+// A message's words: who it tags stands out, and opens the person when Pigeon
+// knows them (you, and a number it doesn't, don't).
+function Words({ text, mentions, senders }) {
+	const parts = tagParts(text, mentions);
+	if (!parts.some((p) => p.mention)) return text;
+	return parts.map((p) => {
+		if (!p.mention) return p.text;
+		const person = p.mention.me ? null : senders?.[p.mention.phone]?.id;
+		return person ? (
+			<Link key={p.at} className="inbox-mention" to={`/inbox/p/${person}`}>
+				{p.text}
+			</Link>
+		) : (
+			<span
+				key={p.at}
+				className="inbox-mention"
+				title={p.mention.phone || undefined}
+			>
+				{p.text}
+			</span>
+		);
+	});
+}
+
 // `group`: more than one person writes here, so each message says who.
 // `email`: it's an email, shown as it was sent.
 // `channel`: where it came, when a person's chat mixes channels.
@@ -219,7 +244,12 @@ function Message({
 	const media = mediaWords(item.media);
 	const files = mediaFiles(item.media);
 	const links = mediaLinks(item.media);
-	const body = bodyText(item.body, item.media);
+	const words = bodyText(item.body, item.media);
+	const body = words ? (
+		<div className="inbox-msg-body">
+			<Words text={words} mentions={item.mentions} senders={senders} />
+		</div>
+	) : null;
 	const sender = group && !out ? senderLabel(item, senders) : null;
 	const reactions = reactionGroups(item.reactions, senders);
 	return (
@@ -274,16 +304,7 @@ function Message({
 				) : (
 					<InboxMedia item={item.id} files={files} />
 				)}
-				{email && !local ? (
-					<EmailFrame
-						id={item.id}
-						fallback={
-							body ? <div className="inbox-msg-body">{body}</div> : null
-						}
-					/>
-				) : body ? (
-					<div className="inbox-msg-body">{body}</div>
-				) : null}
+				{email && !local ? <EmailFrame id={item.id} fallback={body} /> : body}
 				{email && !local ? <EmailActions item={item} /> : null}
 				<div className="inbox-msg-meta">
 					{channel ? (

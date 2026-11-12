@@ -92,6 +92,8 @@ type session struct {
 	groups  map[types.JID]string
 	// where each message they sent came from, as WhatsApp addresses it: its read receipt goes there
 	origins map[types.MessageID]origin
+	// when each group's members were last asked for (who a hidden id is)
+	members map[types.JID]time.Time
 	// the history so far, for the log
 	historyChats, historyMessages int
 }
@@ -227,7 +229,7 @@ func (b *bridge) session(user string) *session {
 }
 
 func (b *bridge) newSession(user string, device *store.Device) *session {
-	s := &session{b: b, user: user, groups: map[types.JID]string{}, origins: map[types.MessageID]origin{}}
+	s := &session{b: b, user: user, groups: map[types.JID]string{}, origins: map[types.MessageID]origin{}, members: map[types.JID]time.Time{}}
 	s.setDevice(device)
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -313,17 +315,28 @@ func (s *session) onEvent(evt any) {
 // ── what goes to the vault ───────────────────────────────────────────────
 
 type message struct {
-	ID         string   `json:"id"`
-	Chat       string   `json:"chat"`
-	ChatName   string   `json:"chat_name,omitempty"`
-	Group      bool     `json:"group"`
-	FromMe     bool     `json:"from_me"`
-	Sender     string   `json:"sender"`
-	SenderName string   `json:"sender_name,omitempty"`
-	Text       string   `json:"text"`
-	At         int64    `json:"at"`
-	Kinds      []string `json:"kinds,omitempty"`
-	Files      []file   `json:"files,omitempty"`
+	ID         string    `json:"id"`
+	Chat       string    `json:"chat"`
+	ChatName   string    `json:"chat_name,omitempty"`
+	Group      bool      `json:"group"`
+	FromMe     bool      `json:"from_me"`
+	Sender     string    `json:"sender"`
+	SenderName string    `json:"sender_name,omitempty"`
+	Text       string    `json:"text"`
+	At         int64     `json:"at"`
+	Kinds      []string  `json:"kinds,omitempty"`
+	Files      []file    `json:"files,omitempty"`
+	Mentions   []mention `json:"mentions,omitempty"`
+}
+
+// mention: someone tagged in a message. The text has "@<ID>" where they are: WhatsApp's own id
+// for them, their number or a hidden id (LID) that says nothing to a reader. Phone and Name are
+// who that is, as far as WhatsApp has told; Me: the user themselves.
+type mention struct {
+	ID    string `json:"id"`
+	Phone string `json:"phone,omitempty"` // "+<number>"
+	Name  string `json:"name,omitempty"`
+	Me    bool   `json:"me,omitempty"`
 }
 
 // file: a photo, video, voice note, document or sticker on a message: what it is, the tiny
@@ -454,6 +467,7 @@ func (s *session) groupName(ctx context.Context, j types.JID) string {
 		n = info.Name
 		s.mu.Lock()
 		s.groups[j] = n
+		s.members[j] = time.Now()
 		s.mu.Unlock()
 	}
 	return n
@@ -496,7 +510,78 @@ func (s *session) message(ctx context.Context, e *events.Message) *message {
 	default:
 		m.ChatName = m.SenderName
 	}
+	m.Mentions = s.mentions(ctx, chat, e.Info.IsGroup, e.Message)
 	return m
+}
+
+// How often a group's members are asked for again, for a tag nobody can be put to.
+const membersEvery = 10 * time.Minute
+
+// mentions: who a message tags, each with their number and name when WhatsApp has told them. A
+// hidden id nobody knows yet is usually a member of the group: its members say who (kept by
+// whatsmeow as it reads them).
+func (s *session) mentions(ctx context.Context, chat types.JID, group bool, msg *waE2E.Message) []mention {
+	ids := mentioned(msg)
+	if len(ids) == 0 {
+		return nil
+	}
+	cli := s.client()
+	me, myLID := cli.Store.GetJID().ToNonAD(), cli.Store.GetLID().ToNonAD()
+	var out []mention
+	for _, id := range ids {
+		j, err := types.ParseJID(id)
+		if err != nil || j.User == "" {
+			continue
+		}
+		j = j.ToNonAD()
+		p := s.pn(ctx, j)
+		if p.Server == types.HiddenUserServer && group && s.learnMembers(ctx, chat) {
+			p = s.pn(ctx, j)
+		}
+		m := mention{ID: j.User}
+		if p.Server == types.DefaultUserServer {
+			m.Phone = phone(p)
+		}
+		if (!me.IsEmpty() && p == me) || (!myLID.IsEmpty() && j == myLID) {
+			m.Me = true
+		} else if m.Name = s.name(ctx, p, ""); m.Name == "" && p != j {
+			m.Name = s.name(ctx, j, "")
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// mentioned: the ids a message tags, as WhatsApp writes them ("<number>@s.whatsapp.net",
+// "<hidden id>@lid"): on a text, or on a photo's, a video's or a document's caption.
+func mentioned(msg *waE2E.Message) []string {
+	for _, c := range []*waE2E.ContextInfo{
+		msg.GetExtendedTextMessage().GetContextInfo(),
+		msg.GetImageMessage().GetContextInfo(),
+		msg.GetVideoMessage().GetContextInfo(),
+		msg.GetDocumentMessage().GetContextInfo(),
+	} {
+		if ids := c.GetMentionedJID(); len(ids) > 0 {
+			return ids
+		}
+	}
+	return nil
+}
+
+// learnMembers: asks WhatsApp for a group's members (whatsmeow keeps which number each hidden
+// id is), no more often than membersEvery. False: asked too recently, or it failed.
+func (s *session) learnMembers(ctx context.Context, group types.JID) bool {
+	s.mu.Lock()
+	recent := time.Since(s.members[group]) < membersEvery
+	if !recent {
+		s.members[group] = time.Now()
+	}
+	s.mu.Unlock()
+	if recent {
+		return false
+	}
+	_, err := s.client().GetGroupInfo(ctx, group)
+	return err == nil
 }
 
 // content: a message's text, what's attached to it (in words), and its files.

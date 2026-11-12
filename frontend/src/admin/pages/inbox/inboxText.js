@@ -132,6 +132,31 @@ export const bodyText = (body, media) => {
 		.trim();
 };
 
+// A message's words with who it tags (`mentions`: [{ name, phone, me }], the
+// words have "@<name>" where each is) as parts of their own:
+// [{ text, at }, { text, at, mention }, …], in order.
+export const tagParts = (text, mentions) => {
+	const tags = (mentions ?? [])
+		.filter((m) => m?.name)
+		// "@Anna Rossi" before "@Anna"
+		.sort((a, b) => b.name.length - a.name.length);
+	if (!tags.length || !text) return [{ text, at: 0 }];
+	const out = [];
+	let from = 0;
+	let i = text.indexOf("@");
+	while (i !== -1) {
+		const tag = tags.find((m) => text.startsWith(m.name, i + 1));
+		if (tag) {
+			if (i > from) out.push({ text: text.slice(from, i), at: from });
+			out.push({ text: `@${tag.name}`, at: i, mention: tag });
+			from = i + 1 + tag.name.length;
+		}
+		i = text.indexOf("@", tag ? from : i + 1);
+	}
+	if (from < text.length) out.push({ text: text.slice(from), at: from });
+	return out;
+};
+
 // Who wrote a message in a group: the person Pigeon knows, by name or @slug,
 // else the name the channel gave, else their number.
 export const senderLabel = (item, senders) => {

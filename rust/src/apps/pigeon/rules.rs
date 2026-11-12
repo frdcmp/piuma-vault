@@ -619,6 +619,7 @@ mod tests {
             open_url: None,
             via: None,
             archived: false,
+            mentions: json!([]),
         }
     }
 

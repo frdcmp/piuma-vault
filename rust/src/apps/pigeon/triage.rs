@@ -269,7 +269,8 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
         mood_changed: answers.yes("mood_changed").unwrap_or(0.0),
         importance: answers.score_fraction("importance", IMPORTANCE.len()).unwrap_or(0.0),
         kind: answers.choice("kind").map(|(k, _)| k),
-        addressed: answers.yes("addressed").unwrap_or(1.0),
+        // tagged by name: written to them, whatever else Jev reads in it
+        addressed: if new_owned.iter().any(|i| i.direction == "in" && i.mentions_me()) { 1.0 } else { answers.yes("addressed").unwrap_or(1.0) },
         others: others_on(&new_owned, &handles),
         users_call: answers.yes("users_call").unwrap_or(0.0),
         doubts_user: answers.yes("doubts_user").unwrap_or(0.0),

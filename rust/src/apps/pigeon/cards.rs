@@ -387,11 +387,15 @@ pub async fn news(st: &State, user: &str, conversation: Option<Uuid>, text: &str
 
 /// A message from someone came in: on the phone by their alert switch (all rings; smart and
 /// quiet arrive silently; off: nothing), with Reply and Mark as read. In a group, who wrote it
-/// heads the text.
+/// heads the text; one that tags the user rings as a person's message does, not as the group's.
 pub async fn message_in(st: &State, user: &str, item: Uuid) -> anyhow::Result<()> {
-    let row: Option<(Uuid, Option<String>, Option<String>, String)> =
-        sqlx::query_as("SELECT conversation_id, sender_name, sender, body FROM db_pigeon_items WHERE id = $1").bind(item).fetch_optional(&st.pool).await?;
-    let Some((conversation, name, sender, body)) = row else { return Ok(()) };
+    let row: Option<(Uuid, Option<String>, Option<String>, String, bool)> = sqlx::query_as(
+        "SELECT conversation_id, sender_name, sender, body, COALESCE(raw->'mentions', '[]'::jsonb) @> '[{\"me\": true}]' FROM db_pigeon_items WHERE id = $1",
+    )
+    .bind(item)
+    .fetch_optional(&st.pool)
+    .await?;
+    let Some((conversation, name, sender, body, tagged)) = row else { return Ok(()) };
     let ring = match alerts::for_message(alerts::of_conversation(&st.pool, conversation).await?) {
         alerts::Delivery::Skip => return Ok(()),
         alerts::Delivery::Silent => false,
@@ -407,8 +411,8 @@ pub async fn message_in(st: &State, user: &str, item: Uuid) -> anyhow::Result<()
     };
     let channel = match (ring, group) {
         (false, _) => CH_QUIET,
-        (true, true) => CH_GROUPS,
-        (true, false) => CH_MESSAGES,
+        (true, true) if !tagged => CH_GROUPS,
+        (true, _) => CH_MESSAGES,
     };
     send(st, user, Some(conversation), json!({ "message": item }), &text, ring, channel, Some("pigeon-message".into())).await;
     Ok(())
