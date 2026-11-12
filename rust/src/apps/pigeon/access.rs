@@ -810,7 +810,8 @@ pub struct Pause {
 /// The pause, while it lasts.
 pub async fn paused(pool: &DbPool, user: &str) -> anyhow::Result<Option<Pause>> {
     let v: Option<Json> = sqlx::query_scalar("SELECT value FROM db_pigeon_settings WHERE user_id = $1 AND key = $2").bind(user).bind(PAUSE_KEY).fetch_optional(pool).await?;
-    Ok(v.and_then(|v| serde_json::from_value::<Pause>(v).ok()).filter(|p| p.until.is_none_or(|u| u > Utc::now())))
+    // one that can't be read still holds
+    Ok(v.map(|v| serde_json::from_value::<Pause>(v).unwrap_or(Pause { since: Utc::now(), until: None })).filter(|p| p.until.is_none_or(|u| u > Utc::now())))
 }
 
 pub async fn pause(st: &State, user: &str, until: Option<DateTime<Utc>>) -> anyhow::Result<Pause> {

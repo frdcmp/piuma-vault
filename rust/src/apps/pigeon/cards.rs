@@ -519,7 +519,7 @@ pub async fn run_waiting(st: &State, user: &str, conversation: Uuid, run: Uuid) 
 pub async fn answer(st: &AppState, question: Uuid, answer: &str, by: &str) -> anyhow::Result<String> {
     let row: Option<(Uuid, String)> = sqlx::query_as(
         "UPDATE db_pigeon_questions SET status = 'answered', answer = $2, answered_by = $3, answered_at = NOW()
-          WHERE id = $1 AND status = 'open' RETURNING conversation_id, question",
+          WHERE id = $1 AND status = 'open' AND options->'uncovered' IS NULL RETURNING conversation_id, question",
     )
     .bind(question)
     .bind(answer)
@@ -530,6 +530,14 @@ pub async fn answer(st: &AppState, question: Uuid, answer: &str, by: &str) -> an
     events::conversation(&st.pool, conversation).await;
     act_on(st, conversation, Said::Answer { asked, answer: answer.to_string() });
     Ok("Got it: Pigeon is on it.".into())
+}
+
+/// Whether an open question is a 🔑 card (`tell::press` answers those: this once, allow, no).
+pub async fn is_uncovered(st: &AppState, question: Uuid) -> anyhow::Result<bool> {
+    Ok(sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM db_pigeon_questions WHERE id = $1 AND status = 'open' AND options->'uncovered' IS NOT NULL)")
+        .bind(question)
+        .fetch_one(&st.pool)
+        .await?)
 }
 
 /// What the user said that sends Pigeon back to a conversation.
@@ -708,7 +716,11 @@ pub async fn open_questions(st: &State, user: &str) -> anyhow::Result<Vec<Json>>
     Ok(rows
         .into_iter()
         .map(|(id, conversation_id, question, options, created_at)| {
-            json!({ "kind": "question", "id": id, "conversation_id": conversation_id, "question": question, "options": options, "created_at": created_at })
+            // a 🔑 card: someone asked for what they hold no permission for
+            match options.get("uncovered") {
+                Some(u) => json!({ "kind": "uncovered", "id": id, "conversation_id": conversation_id, "question": question, "asks_for": u["tool"], "answers": ["once", "granted", "no"], "created_at": created_at }),
+                None => json!({ "kind": "question", "id": id, "conversation_id": conversation_id, "question": question, "options": options, "created_at": created_at }),
+            }
         })
         .collect())
 }

@@ -302,6 +302,10 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
         let reason = args.as_object_mut().and_then(|o| o.remove("reason")).and_then(|r| r.as_str().map(str::to_string));
         if let Some(o) = args.as_object_mut() {
             o.remove("conversation_id");
+            // what Pigeon's code alone says of a reply (below, `actions`): never the model's to write
+            for k in ["used", "used_auto", "as_written", "edited", "away"] {
+                o.remove(k);
+            }
         }
         // away: Pigeon's mark before its words, and the reply known as an away one (it goes on its
         // own, and leaves the chat needing the user)
@@ -595,6 +599,7 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
     let answers: Vec<(String, String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
         "SELECT question, answer, answered_at FROM db_pigeon_questions
           WHERE conversation_id = $1 AND status = 'answered' AND answer IS NOT NULL AND answered_at > NOW() - INTERVAL '2 days'
+            AND options->'uncovered' IS NULL
           ORDER BY answered_at DESC LIMIT 5",
     )
     .bind(conv.id)

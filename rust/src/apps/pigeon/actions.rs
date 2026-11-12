@@ -11,7 +11,7 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 use crate::apps::pigeon::connectors::{self, Kind};
-use crate::apps::pigeon::{conversations, pace, policy};
+use crate::apps::pigeon::{access, conversations, pace, policy};
 use crate::apps::pigeon::policy::Policy;
 use crate::apps::pigeon::state::State;
 
@@ -157,8 +157,12 @@ pub async fn propose(st: &State, mut p: Proposal) -> anyhow::Result<Outcome> {
 
     let mut hold = p.hold.clone();
     if pol == Policy::Auto && hold.is_none() {
-        if !away_reply && !policy::auto_enabled(&st.pool, &p.user_id).await? {
+        // an away reply goes with Auto off (setting away is the user's yes): not with something
+        // of theirs in it
+        if (!away_reply || told) && !policy::auto_enabled(&st.pool, &p.user_id).await? {
             hold = Some("auto is switched off".into());
+        } else if told && access::paused(&st.pool, &p.user_id).await?.is_some() {
+            hold = Some("telling is paused".into());
         } else if def.kind == Kind::Reply {
             if let Some(c) = &conv {
                 hold = reply_guard(st, c).await?;
@@ -236,6 +240,18 @@ pub async fn propose(st: &State, mut p: Proposal) -> anyhow::Result<Outcome> {
                 log::info!("pigeon action {id}: auto reply not sent, {why}");
                 return Ok(Outcome { id: Some(id), status: "cancelled".into(), detail: Some(why.into()) });
             }
+        }
+        // telling was paused while it typed: the reply waits for the user
+        if told && access::paused(&st.pool, &p.user_id).await?.is_some() {
+            sqlx::query("UPDATE db_pigeon_actions SET policy = 'ask', reason = 'telling was paused while it was typing: yours to send', updated_at = NOW() WHERE id = $1")
+                .bind(id)
+                .execute(&st.pool)
+                .await?;
+            if let Some(c) = typed {
+                crate::apps::pigeon::events::working(&st.pool, c, "done", None, Some("paused")).await;
+                crate::apps::pigeon::events::conversation(&st.pool, c).await;
+            }
+            return Ok(Outcome { id: Some(id), status: "pending".into(), detail: Some("telling is paused".into()) });
         }
         let row = match execute(st, id, "pigeon (auto)").await {
             Ok(row) => row,

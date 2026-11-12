@@ -578,6 +578,10 @@ pub struct PressBody {
 pub async fn press(st: web::Data<AppState>, u: InboxWriter, path: web::Path<(String, Uuid)>, body: web::Json<PressBody>) -> HttpResponse {
     let user = &u.0.user_id;
     let (kind, id) = path.into_inner();
+    // "allow" on a 🔑 card is a grant: its own scope, like every other
+    if kind == "uncovered" && body.button == "allow" && !check_permission(&u.0, "inbox.access") {
+        return HttpResponse::Forbidden().json(json!({ "error": "Access denied: inbox.access permission required" }));
+    }
     match cards::press(&st, user, &kind, id, &body.button, body.text.as_deref()).await {
         Ok(said) => HttpResponse::Ok().json(json!({ "result": said })),
         Err(e) => fail(e),

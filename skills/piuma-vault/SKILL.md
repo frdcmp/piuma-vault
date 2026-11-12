@@ -221,6 +221,13 @@ pigeon.py mark_wrong action_id=<uuid>   # that reply told too much: its auto goe
   uses; with `auto` it goes out only when Jev is sure they asked, for themselves and nothing
   else, and the reply read back says no more than their level. A place older than 30 minutes
   and a calendar with repeating events are never told on Pigeon's own.
+- In `pending` a 🔑 card is kind `uncovered` (`asks_for`: the tool). `answer` on it takes
+  `once` (Pigeon drafts the answer for this time, with the least that answers), `granted`
+  (after a `grant`: Pigeon drafts with it) or `no`. While telling is paused (`access`:
+  `paused`) only `no` works.
+- Flights (`flights.use.ask`) are read from the calendar: events of the next 30 days whose
+  title says so (“Flight to …”, ✈, two airports like `NRT-BKK`). One titled otherwise isn't
+  seen.
 - A person known only by a number takes the name their next message carries on its own;
   `names_from_whatsapp` does it now from the phone's address book (and gives the slug).
 - `learn` brings old conversations in and writes what Pigeon knows about people: slow, it

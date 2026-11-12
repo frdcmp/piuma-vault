@@ -376,7 +376,7 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
     let mut outcomes = Vec::new();
     if let (Some(a), true, None) = (&away, away_answers, paused) {
         // away, nobody taps a draft: only what goes on its own
-        let own: Vec<tell::Use> = told.uses.iter().filter(|u| u.auto).cloned().collect();
+        let own: Vec<tell::Use> = if policy::auto_enabled(&st.pool, &conv.user_id).await? { told.uses.iter().filter(|u| u.auto).cloned().collect() } else { Vec::new() };
         outcomes.extend(agent::away_reply(st, id, triage_id, &sig, a, &own).await?);
     } else if away.is_none() && attention == Some("reply") && (held.is_none() || with_leave) && paused.is_none() {
         // an auto reply goes out paced like a person's (`pace`)

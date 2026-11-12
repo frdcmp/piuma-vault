@@ -51,6 +51,7 @@ const CALENDAR_DAYS: i32 = 7;
 /// What was told, kept on the record, at most.
 const MAX_TOLD: usize = 600;
 /// Flights: how far ahead, and what reads as one in an event's title.
+const CALENDAR_EVENTS: i64 = 40;
 const FLIGHT_DAYS: i32 = 30;
 const FLIGHT_WORDS: &str = r"\m(flight|flights|volo|voli|flug|vuelo)\M|✈|🛫|🛬";
 const FLIGHT_ROUTE: &str = r"\m[A-Z]{3} ?(-|–|→|>|to) ?[A-Z]{3}\M";
@@ -88,6 +89,10 @@ pub struct Use {
     /// how the agent is told (never kept)
     #[serde(skip)]
     pub how: String,
+    /// of what it was given, the only thing a reply may say (never kept): the calendar is given
+    /// whole, to answer "free or busy" from
+    #[serde(skip)]
+    pub only: Option<String>,
 }
 
 /// Something asked that they don't hold.
@@ -122,6 +127,7 @@ struct Said {
     told: String,
     how: String,
     beyond: Vec<String>,
+    only: Option<String>,
     at: Option<DateTime<Utc>>,
     stale: bool,
 }
@@ -154,7 +160,7 @@ async fn place(st: &State, user: &str, me: &Owner, tool: &Tool, level: usize) ->
     let Some((level, told)) = (0..=top).rev().find_map(|i| f.at_level(tool.levels[i].name).map(|w| (i, w))) else { return Ok(None) };
     let more: Vec<String> = tool.levels.iter().skip(level + 1).filter_map(|l| f.at_level(l.name)).collect();
     let how = format!("Where {} is right now (as of {}): {told}. Say it no more precisely than that.", me.name, me.local(f.at).format("%H:%M"));
-    Ok(Some(Said { level, beyond: finer(&told, &more), told, how, at: Some(f.at), stale: f.stale() }))
+    Ok(Some(Said { level, beyond: finer(&told, &more), only: None, told, how, at: Some(f.at), stale: f.stale() }))
 }
 
 async fn calendar(st: &State, user: &str, me: &Owner, level: usize) -> anyhow::Result<Option<Said>> {
@@ -162,10 +168,11 @@ async fn calendar(st: &State, user: &str, me: &Owner, level: usize) -> anyhow::R
         "SELECT title, starts_at, ends_at, all_day FROM db_calendar_events
           WHERE user_id = $1 AND starts_at < NOW() + make_interval(days => $2)
             AND COALESCE(ends_at, starts_at + CASE WHEN all_day THEN INTERVAL '1 day' ELSE INTERVAL '1 hour' END) > NOW()
-          ORDER BY starts_at LIMIT 40",
+          ORDER BY starts_at LIMIT $3",
     )
     .bind(user)
     .bind(CALENDAR_DAYS)
+    .bind(CALENDAR_EVENTS)
     .fetch_all(&st.pool)
     .await?;
     // an event's repeats are stored, expanded nowhere: with any, the list may miss what's on
@@ -187,10 +194,13 @@ async fn calendar(st: &State, user: &str, me: &Owner, level: usize) -> anyhow::R
         })
         .collect();
     let told = if lines.is_empty() { format!("nothing on the calendar in the next {CALENDAR_DAYS} days") } else { lines.join("\n") };
-    let may = match level {
-        0 => format!("Say only whether {name} is free or busy at the time they ask about: not the times of what's on, nor what it is."),
-        1 => format!("You may say when {name} is busy and when free; never what it is."),
-        _ => format!("You may say what's on at the time they ask about."),
+    let (may, only) = match level {
+        0 => (
+            format!("Say only whether {name} is free or busy at the time they ask about: not the times of what's on, nor what it is."),
+            Some(format!("whether {name} is free or busy at the time they asked about: not when anything starts or ends, nor what it is")),
+        ),
+        1 => (format!("You may say when {name} is busy and when free; never what it is."), Some(format!("when {name} is busy and when free: never what anything is"))),
+        _ => (format!("You may say what's on at the time they ask about."), None),
     };
     let mut how = format!(
         "{name}'s calendar from now ({} {}, {}), the next {CALENDAR_DAYS} days:\n{told}\n{may} Being free isn't a yes: never accept a meeting, a call or a plan for {name}.",
@@ -202,7 +212,8 @@ async fn calendar(st: &State, user: &str, me: &Owner, level: usize) -> anyhow::R
         how.push_str(&format!(" What repeats isn't listed: never say {name} is surely free."));
     }
     let beyond = if level >= 2 { Vec::new() } else { rows.iter().map(|r| r.0.trim().to_lowercase()).filter(|t| t.chars().count() >= 4).collect() };
-    Ok(Some(Said { level, told, how, beyond, at: None, stale: repeats }))
+    // cut at the limit, it may miss what's on: like repeats, never on its own
+    Ok(Some(Said { level, told, how, beyond, only, at: None, stale: repeats || rows.len() as i64 >= CALENDAR_EVENTS }))
 }
 
 /// The user's flights: what's in the calendar, the next weeks, that reads as one (the word in
@@ -245,7 +256,7 @@ async fn flights(st: &State, user: &str, me: &Owner) -> anyhow::Result<Option<Sa
         me.now().format("UTC%:z"),
         me.now().format("%a %-d %b %H:%M"),
     );
-    Ok(Some(Said { level: 0, told, how, beyond: Vec::new(), at: None, stale: false }))
+    Ok(Some(Said { level: 0, told, how, beyond: Vec::new(), only: None, at: None, stale: false }))
 }
 
 fn put(u: &mut Use, tool: &Tool, s: Said) {
@@ -255,6 +266,7 @@ fn put(u: &mut Use, tool: &Tool, s: Said) {
     u.told = conversations::clip(&s.told, MAX_TOLD);
     u.how = s.how;
     u.beyond = s.beyond;
+    u.only = s.only;
     u.at = s.at;
     u.stale = s.stale;
 }
@@ -278,6 +290,7 @@ fn blank(tool: &Tool, permission: String, grant: Option<Uuid>, via: String, p: f
         wrong: false,
         beyond: Vec::new(),
         how: String::new(),
+        only: None,
     }
 }
 
@@ -374,7 +387,7 @@ async fn newest(st: &State, conv: &Conversation, me: &Owner) -> anyhow::Result<J
 /// answers (told at that one, whatever more they hold), and whether it may go on its own: asked
 /// for themselves, plainly, with nothing else that is the user's to answer (in a group: put to
 /// the user). Anything Jev isn't sure of, or can't be asked: nothing goes on its own.
-pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig: Option<&Signals>, uses: &mut [Use]) {
+pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig: Option<&Signals>, uses: &mut [Use]) -> bool {
     let autos = uses.iter().any(|u| u.auto);
     let mut q = Map::new();
     for u in uses.iter().filter(|u| u.has_levels && u.fact_id.is_none()) {
@@ -405,7 +418,7 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
         }
     }
     if q.is_empty() {
-        return;
+        return true;
     }
     jev::for_user(&mut q, &me.name);
     let asked: Vec<String> = q.keys().cloned().collect();
@@ -418,7 +431,7 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
         Err(e) => {
             log::warn!("pigeon tell gate on {}: {e:#}", conv.id);
             uses.iter_mut().for_each(|u| u.auto = false);
-            return;
+            return false;
         }
     };
     for u in uses.iter_mut() {
@@ -439,7 +452,7 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
         }
     }
     if !autos {
-        return;
+        return true;
     }
     let sure = |k: &str| !asked.iter().any(|a| a == k) || answers.yes(k).unwrap_or(0.0) >= SURE_AT;
     let calm = sig.is_none_or(|s| s.sensitive < HOLD_AT && s.mood_changed < HOLD_AT && s.others.is_empty());
@@ -456,6 +469,7 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
             "calm": calm, "open": open,
         }))
         .emit();
+    true
 }
 
 /// For the agent's context: what it may tell them, and how far.
@@ -494,7 +508,13 @@ pub async fn leaks(st: &State, conv: &Conversation, me: &Owner, uses: &[Use], al
     let why = match uses.iter().find(|u| u.beyond.iter().any(|b| low.contains(b.as_str()))) {
         Some(u) => Some(format!("it says more than {} allows", u.label.to_lowercase())),
         None => {
-            let mut allowed: Vec<Json> = uses.iter().map(|u| json!({ "about": u.label, "may_say": u.told })).collect();
+            let mut allowed: Vec<Json> = uses
+                .iter()
+                .map(|u| match &u.only {
+                    Some(only) => json!({ "about": u.label, "knows": u.told, "may_say_only": only }),
+                    None => json!({ "about": u.label, "may_say": u.told }),
+                })
+                .collect();
             if let Some(a) = also {
                 allowed.push(json!({ "about": "also fine to say", "may_say": a }));
             }
@@ -503,7 +523,7 @@ pub async fn leaks(st: &State, conv: &Conversation, me: &Owner, uses: &[Use], al
             q.insert(
                 "beyond".into(),
                 jev::noul(
-                    "Does `reply` state a fact about {me} (where {me} is, what {me} is doing, {me}'s schedule or plans, who {me} is with) that `allowed` doesn't contain, or more precisely than `allowed` has it?",
+                    "Does `reply` state a fact about {me} (where {me} is, what {me} is doing, {me}'s schedule or plans, who {me} is with) that `allowed` doesn't contain, more precisely than `allowed` has it, or, where an entry has `may_say_only`, anything of its `knows` beyond that?",
                 ),
             );
             q.insert("promises".into(), jev::noul("Does `reply` agree to, accept, promise or decline something on {me}'s behalf (a meeting, a call, a time, a favour, a plan)? Saying {me} will see their message is no."));
@@ -581,6 +601,9 @@ pub async fn press(st: &AppState, user: &str, id: Uuid, button: &str, text: Opti
         cards::drop_question(st, id).await?;
         return Ok("🗑 Dropped".into());
     }
+    if access::paused(&st.pool, user).await?.is_some() {
+        anyhow::bail!("Telling is paused: resume it first");
+    }
     let conv = tools::own_conversation(st, user, conversation).await?;
     let me = owner::get(&st.pool, user).await;
     let (mut u, answer) = match button {
@@ -612,11 +635,15 @@ pub async fn press(st: &AppState, user: &str, id: Uuid, button: &str, text: Opti
     };
     let top = tool.level(&u.level).unwrap_or(0);
     let said = say(st, user, &me, tool, top).await?;
-    sqlx::query("UPDATE db_pigeon_questions SET status = 'answered', answer = $2, answered_by = 'user (Inbox)', answered_at = NOW() WHERE id = $1 AND status = 'open'")
+    // pressed twice at once: the first one writes
+    let taken = sqlx::query("UPDATE db_pigeon_questions SET status = 'answered', answer = $2, answered_by = 'user (Inbox)', answered_at = NOW() WHERE id = $1 AND status = 'open'")
         .bind(id)
         .bind(&answer)
         .execute(&st.pool)
         .await?;
+    if taken.rows_affected() == 0 {
+        anyhow::bail!("that card is gone");
+    }
     events::conversation(&st.pool, conversation).await;
     let Some(said) = said else {
         return Ok(format!("Pigeon doesn't know {} right now: nothing written.", tool.gives));
@@ -625,9 +652,20 @@ pub async fn press(st: &AppState, user: &str, id: Uuid, button: &str, text: Opti
     let mut uses = vec![u];
     // no more than answers what they asked, unless the user chose the level
     if !(button == "once" && text.is_some()) {
-        match newest(st, &conv, &me).await {
+        let asked = match newest(st, &conv, &me).await {
             Ok(state) => gate(st, &conv, &me, &state, None, &mut uses).await,
-            Err(e) => log::warn!("pigeon tell on {conversation}: {e:#}"),
+            Err(e) => {
+                log::warn!("pigeon tell on {conversation}: {e:#}");
+                false
+            }
+        };
+        // this once, no level chosen and Jev not there to say how much answers: the least
+        if button == "once" && !asked && tool.has_levels() {
+            match say(st, user, &me, tool, 0).await {
+                Ok(Some(said)) => put(&mut uses[0], tool, said),
+                Ok(None) => {}
+                Err(e) => log::warn!("pigeon tell on {conversation}: {e:#}"),
+            }
         }
     }
     cards::act_on(st, conversation, cards::Said::Tell(uses));

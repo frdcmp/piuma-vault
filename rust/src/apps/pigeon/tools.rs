@@ -65,7 +65,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
         ),
         (
             "pigeon_pending",
-            "What waits for the user in the Inbox: drafts and suggestions (replies, tasks, events), rule runs (kind rule_run), Pigeon's questions (kind question: answer with pigeon_answer) and confirmations (kind confirmation: only the user's tap in the Inbox decides them).",
+            "What waits for the user in the Inbox: drafts and suggestions (replies, tasks, events), rule runs (kind rule_run), Pigeon's questions (kind question: answer with pigeon_answer), 🔑 cards (kind uncovered: someone asked for what they hold no permission for; pigeon_answer with once, granted or no) and confirmations (kind confirmation: only the user's tap in the Inbox decides them).",
             json!({ "type": "object", "properties": { "limit": { "type": "integer", "description": "Default 50" } } }),
         ),
         (
@@ -118,7 +118,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
         ),
         (
             "pigeon_answer",
-            "Answer a question Pigeon asked the user (from pigeon_pending, kind question), in the user's words: Pigeon goes back to that conversation and acts on it (its reply waits as a draft unless the user set replies to auto).",
+            "Answer a question Pigeon asked the user (from pigeon_pending, kind question), in the user's words: Pigeon goes back to that conversation and acts on it (its reply waits as a draft unless the user set replies to auto). A 🔑 card (kind uncovered) takes `once` (Pigeon drafts the answer, this time only), `granted` (after pigeon_grant: it drafts with the permission) or `no`.",
             json!({ "type": "object", "properties": {
                 "question_id": id("From pigeon_pending"),
                 "answer": { "type": "string", "description": "The user's answer, in their words" },
@@ -643,6 +643,16 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
             let answer = text(args, "answer").ok_or_else(|| anyhow::anyhow!("`answer` is required"))?;
             if question_owner(st, id).await?.as_deref() != Some(user) {
                 anyhow::bail!("no such question");
+            }
+            if cards::is_uncovered(st, id).await? {
+                // a 🔑 card: this time only (a draft), or no; allowing is pigeon_grant, then "granted"
+                let button = match answer.trim().to_lowercase().as_str() {
+                    "once" | "this once" => "once",
+                    "granted" => "granted",
+                    "no" | "x" => "x",
+                    _ => anyhow::bail!("a 🔑 card takes `once` (Pigeon drafts the answer, this time only), `granted` (after pigeon_grant) or `no`"),
+                };
+                return Ok(json!({ "result": tell::press(st, user, id, button, None).await? }));
             }
             Ok(json!({ "result": cards::answer(st, id, answer, BY).await? }))
         }
