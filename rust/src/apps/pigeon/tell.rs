@@ -50,6 +50,10 @@ const SUGGEST_AFTER: i64 = 3;
 const CALENDAR_DAYS: i32 = 7;
 /// What was told, kept on the record, at most.
 const MAX_TOLD: usize = 600;
+/// Flights: how far ahead, and what reads as one in an event's title.
+const FLIGHT_DAYS: i32 = 30;
+const FLIGHT_WORDS: &str = r"\m(flight|flights|volo|voli|flug|vuelo)\M|✈|🛫|🛬";
+const FLIGHT_ROUTE: &str = r"\m[A-Z]{3} ?(-|–|→|>|to) ?[A-Z]{3}\M";
 
 /// One tool used in one reply: what Pigeon was given, by which permission, and how sure Jev was.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,6 +143,7 @@ async fn say(st: &State, user: &str, me: &Owner, tool: &Tool, level: usize) -> a
     match tool.name {
         "location" => place(st, user, me, tool, level).await,
         "calendar" => calendar(st, user, me, level).await,
+        "flights" => flights(st, user, me).await,
         _ => Ok(None),
     }
 }
@@ -198,6 +203,49 @@ async fn calendar(st: &State, user: &str, me: &Owner, level: usize) -> anyhow::R
     }
     let beyond = if level >= 2 { Vec::new() } else { rows.iter().map(|r| r.0.trim().to_lowercase()).filter(|t| t.chars().count() >= 4).collect() };
     Ok(Some(Said { level, told, how, beyond, at: None, stale: repeats }))
+}
+
+/// The user's flights: what's in the calendar, the next weeks, that reads as one (the word in
+/// a few languages, a plane, or two airports: "NRT-BKK"). None in there: nothing known.
+async fn flights(st: &State, user: &str, me: &Owner) -> anyhow::Result<Option<Said>> {
+    let rows: Vec<(String, DateTime<Utc>, Option<DateTime<Utc>>, Option<String>)> = sqlx::query_as(
+        "SELECT title, starts_at, ends_at, location FROM db_calendar_events
+          WHERE user_id = $1 AND NOT all_day AND starts_at < NOW() + make_interval(days => $2)
+            AND COALESCE(ends_at, starts_at + INTERVAL '3 hours') > NOW() - INTERVAL '3 hours'
+            AND (title ~* $3 OR title ~ $4)
+          ORDER BY starts_at LIMIT 12",
+    )
+    .bind(user)
+    .bind(FLIGHT_DAYS)
+    .bind(FLIGHT_WORDS)
+    .bind(FLIGHT_ROUTE)
+    .fetch_all(&st.pool)
+    .await?;
+    if rows.is_empty() {
+        return Ok(None);
+    }
+    let name = &me.name;
+    let lines: Vec<String> = rows
+        .iter()
+        .map(|(title, starts, ends, place)| {
+            let s = me.local(*starts);
+            let span = match ends.map(|e| me.local(e)) {
+                Some(e) if e.date_naive() == s.date_naive() => format!("{}–{}", s.format("%H:%M"), e.format("%H:%M")),
+                Some(e) => format!("{}–{}", s.format("%H:%M"), e.format("%a %-d %b %H:%M")),
+                None => s.format("%H:%M").to_string(),
+            };
+            let place = place.as_deref().map(str::trim).filter(|p| !p.is_empty()).map(|p| format!(" ({p})")).unwrap_or_default();
+            format!("{} {span}: {}{place}", s.format("%a %-d %b"), title.trim())
+        })
+        .collect();
+    let told = lines.join("\n");
+    let how = format!(
+        "{name}'s flights in the calendar, the next {FLIGHT_DAYS} days (times in {}, {}; now it's {}):\n{told}\nSay only what they ask about a flight: its day, its times, from where to where. Nothing else about the trip, and no promise to meet or be picked up.",
+        me.tz,
+        me.now().format("UTC%:z"),
+        me.now().format("%a %-d %b %H:%M"),
+    );
+    Ok(Some(Said { level: 0, told, how, beyond: Vec::new(), at: None, stale: false }))
 }
 
 fn put(u: &mut Use, tool: &Tool, s: Said) {

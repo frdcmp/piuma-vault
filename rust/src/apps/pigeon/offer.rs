@@ -1,5 +1,5 @@
 //! What Pigeon may tell or do for the people who write: the catalogue. Each thing is a tool
-//! (`Tool`: the user's place, their calendar, something they left for someone), with its levels
+//! (`Tool`: the user's place, their calendar, their flights, something they left for someone), with its levels
 //! (how much: a country, a city, the exact spot), least first. A permission is one name,
 //! `tool.level.mode`, held by a person, a chat or a group (`access`): the mode is `ask` (Pigeon
 //! prepares it, the user taps) or `auto` (Pigeon does it and tells them). `auto` includes `ask`, a
@@ -69,6 +69,16 @@ pub static TOOLS: &[Tool] = &[
             Level { name: "times", label: "The times", example: "“I'm busy until 6, free after”" },
             Level { name: "details", label: "What it is", example: "“I have a dinner until 9”" },
         ],
+        ask_only: false,
+        live: true,
+        fresh: None,
+    },
+    Tool {
+        name: "flights",
+        label: "Flights",
+        gives: "when you are flying",
+        asks: "Do the new messages ask about {me}'s flights: when {me} flies, takes off or lands, or which flight {me} is on?",
+        levels: USE,
         ask_only: false,
         live: true,
         fresh: None,
