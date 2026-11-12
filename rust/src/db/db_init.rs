@@ -1520,6 +1520,84 @@ const TABLES: &[TableDefinition] = &[
         "#,
         indices: &[],
     },
+    // What Pigeon may tell or do for the people who write (`apps::pigeon::access`):
+    // a group of them, the user's own (Family, Friends, Work: data, nothing relies
+    // on one existing). Known by its id: its name changes freely.
+    TableDefinition {
+        name: "db_pigeon_groups",
+        sql: r#"
+            CREATE TABLE db_pigeon_groups (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &["CREATE UNIQUE INDEX IF NOT EXISTS idx_pigeon_groups_name ON db_pigeon_groups (user_id, lower(name))"],
+    },
+    // Who holds what, one row each. Who: a person, a chat or a group. What: a
+    // permission (`tool.level.mode`, wildcards allowed: the names are the tools'
+    // own, `apps::pigeon::offer`) or being in a group (`member_of`; a group in a
+    // group inherits what it holds). `until`: when it ends (none: it doesn't; the
+    // worker sweeps the ended ones); `said`: the user's words when they gave it.
+    // Allow only: someone who must hear nothing holds nothing.
+    TableDefinition {
+        name: "db_pigeon_grants",
+        sql: r#"
+            CREATE TABLE db_pigeon_grants (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                contact_id UUID REFERENCES db_pigeon_contacts(id) ON DELETE CASCADE,
+                conversation_id UUID REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                group_id UUID REFERENCES db_pigeon_groups(id) ON DELETE CASCADE,
+                permission TEXT,
+                member_of UUID REFERENCES db_pigeon_groups(id) ON DELETE CASCADE,
+                until TIMESTAMPTZ,
+                said TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                CHECK (num_nonnulls(contact_id, conversation_id, group_id) = 1),
+                CHECK (num_nonnulls(permission, member_of) = 1),
+                CHECK (conversation_id IS NULL OR member_of IS NULL),
+                CHECK (group_id IS NULL OR member_of IS NULL OR group_id <> member_of)
+            )
+        "#,
+        indices: &[
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pigeon_grants_one ON db_pigeon_grants (COALESCE(contact_id, conversation_id, group_id), COALESCE(permission, member_of::text))",
+            "CREATE INDEX IF NOT EXISTS idx_pigeon_grants_user ON db_pigeon_grants (user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_pigeon_grants_member_of ON db_pigeon_grants (member_of) WHERE member_of IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_pigeon_grants_until ON db_pigeon_grants (until) WHERE until IS NOT NULL",
+        ],
+    },
+    // What Pigeon knows about the user right now, for the tools that tell people
+    // (`apps::pigeon::facts`): `key` (location, passon, anything a tool reads),
+    // `value` (JSON) and `levels` (the same fact said at each of the tool's levels:
+    // {"country": "Japan", "city": "Tokyo", …}). `for_contact` / `for_chat`: only for
+    // them (a pass-on); none: for whoever holds the permission, the latest only,
+    // never a history. `source`: the phone, the user, a tool.
+    TableDefinition {
+        name: "db_pigeon_facts",
+        sql: r#"
+            CREATE TABLE db_pigeon_facts (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                for_contact UUID REFERENCES db_pigeon_contacts(id) ON DELETE CASCADE,
+                for_chat UUID REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                value JSONB NOT NULL DEFAULT '{}',
+                levels JSONB NOT NULL DEFAULT '{}',
+                source TEXT NOT NULL DEFAULT 'user',
+                at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                expires_at TIMESTAMPTZ,
+                CHECK (for_contact IS NULL OR for_chat IS NULL)
+            )
+        "#,
+        indices: &[
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pigeon_facts_latest ON db_pigeon_facts (user_id, key) WHERE for_contact IS NULL AND for_chat IS NULL",
+            "CREATE INDEX IF NOT EXISTS idx_pigeon_facts_user ON db_pigeon_facts (user_id, key)",
+        ],
+    },
 ];
 
 // Trigger DDL, applied idempotently on every boot (CREATE OR REPLACE + DROP IF

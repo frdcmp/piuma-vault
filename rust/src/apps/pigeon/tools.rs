@@ -8,7 +8,8 @@
 //!     their yes in the chat: `pigeon_approve`; `pigeon_edit_draft` changes its words, still
 //!     waiting); `pigeon_send_reply` sends words the user saw and told Piuma to send, at once
 //!   - a big change (auto switched on, a merge, a rule deleted or set to trash, a rule run on past
-//!     messages) becomes a 🕊 confirmation card (`confirm`): it runs when the user taps Yes
+//!     messages, someone let to hear something from Pigeon on its own) becomes a 🕊 confirmation
+//!     card (`confirm`): it runs when the user taps Yes
 
 use serde_json::{json, Value as Json};
 use uuid::Uuid;
@@ -17,6 +18,7 @@ use crate::apps::pigeon::connectors::Kind;
 use crate::apps::pigeon::conversations::{self, Conversation};
 use crate::apps::pigeon::policy::Policy;
 use crate::apps::pigeon::state::{AppState, State};
+use crate::apps::pigeon::access::{self, Holder, What};
 use crate::apps::pigeon::{actions, agent, alerts, away, cards, confirm, media, people, policy, rules};
 
 /// Who Piuma's decisions are logged as.
@@ -278,11 +280,119 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
             } }),
         ),
         (
+            "pigeon_access",
+            "Who Pigeon may tell what, all at once: the catalogue (each tool the people who write may be answered with, like the user's place or \
+             calendar, and its levels, least first), the user's groups (Family, Friends: who's in, what each holds, which group sits in which), \
+             what people and chats hold on their own, and whether sharing is paused. A permission is `tool.level.mode`: mode `ask` = Pigeon \
+             prepares the answer and the user taps, `auto` = Pigeon answers and tells them; a level includes the ones under it; `*` is any part.",
+            json!({ "type": "object", "properties": {} }),
+        ),
+        (
+            "pigeon_permissions",
+            "What one person, one chat or one group holds: their own grants, the groups they're in, and everything that counts for them with \
+             where each comes from (their own, the chat's, from a group, through which groups). A group chat gets only the chat's own, never \
+             its members'.",
+            json!({ "type": "object", "properties": {
+                "contact_id": id("A person (pigeon_contacts)"),
+                "conversation_id": id("A chat"),
+                "group_id": id("A group"),
+                "group": { "type": "string", "description": "Or the group by its name" },
+            } }),
+        ),
+        (
+            "pigeon_groups",
+            "The user's groups of people (who may be told what goes by group, like roles): every group with how many people and what it \
+             holds, or one group (group_id or group) with its people, the groups in it and what it inherits.",
+            json!({ "type": "object", "properties": {
+                "group_id": id("One group"),
+                "group": { "type": "string", "description": "Or by its name" },
+            } }),
+        ),
+        (
+            "pigeon_set_group",
+            "Make a group (name), rename or describe one (group_id or group, with name and/or description: its people and permissions stay), \
+             or delete one (delete: true, needs the user's tap: everyone in it loses what it gave).",
+            json!({ "type": "object", "properties": {
+                "group_id": id("The group to change; none: a new one"),
+                "group": { "type": "string", "description": "Or the group to change by its name today" },
+                "name": { "type": "string", "description": "Its name (new, or renamed to)" },
+                "description": { "type": "string", "description": "Who it's for, in a few words; \"\" clears it" },
+                "delete": { "type": "boolean" },
+            } }),
+        ),
+        (
+            "pigeon_grant",
+            "Give a person, a chat or a group a permission (`permission`: tool.level.mode from pigeon_access's catalogue, like \
+             location.city.ask; it replaces what they held for that tool), or put a person or a group in a group (`member_of`: the group's id \
+             or name). `until` or `minutes` makes it end by itself (\"tell Marco where I am for the next two hours\"). Give `said`: the user's \
+             own words for it. Only on the user's word, and for exactly whom and what they said. Mode `ask` is safe (the user still taps each \
+             answer); anything that lets Pigeon answer on its own (mode auto, or a place in a group that holds an auto) waits for the user's \
+             tap in the Inbox.",
+            json!({ "type": "object", "properties": {
+                "contact_id": id("To this person"),
+                "conversation_id": id("Or to this chat (a group chat's only way)"),
+                "group_id": id("Or to this group"),
+                "group": { "type": "string", "description": "Or to the group with this name" },
+                "permission": { "type": "string", "description": "tool.level.mode, e.g. location.city.ask, calendar.busy.auto, location.*.ask" },
+                "member_of": { "type": "string", "description": "Or: put them in this group (its id or name)" },
+                "until": { "type": "string", "description": "When it ends, ISO 8601 with the offset" },
+                "minutes": { "type": "integer", "description": "Or: it ends in this many minutes" },
+                "said": { "type": "string", "description": "The user's words for it" },
+            } }),
+        ),
+        (
+            "pigeon_revoke",
+            "Take back a permission or a place in a group: by grant_id (from pigeon_permissions), or by whom (contact_id, conversation_id, \
+             group_id or group) and what (permission or member_of). What they hold through a group stays: take them out of the group, or \
+             change the group.",
+            json!({ "type": "object", "properties": {
+                "grant_id": id("The grant"),
+                "contact_id": id("Or whose: this person's"),
+                "conversation_id": id("this chat's"),
+                "group_id": id("this group's"),
+                "group": { "type": "string", "description": "the group's with this name" },
+                "permission": { "type": "string", "description": "and what: this permission" },
+                "member_of": { "type": "string", "description": "or their place in this group (its id or name)" },
+            } }),
+        ),
+        (
+            "pigeon_pause_sharing",
+            "\"Don't tell anyone anything\": while it's on Pigeon answers nobody with the user's place, calendar or anything else they were \
+             granted, whatever they hold. On with `minutes` or `until` (none: until the user ends it), `end: true` ends it, no arguments: \
+             whether it's on.",
+            json!({ "type": "object", "properties": {
+                "pause": { "type": "boolean", "description": "true: pause now" },
+                "until": { "type": "string", "description": "Until when, ISO 8601 with the offset" },
+                "minutes": { "type": "integer", "description": "Or: for this many minutes" },
+                "end": { "type": "boolean", "description": "true: sharing again" },
+            } }),
+        ),
+        (
             "pigeon_connectors",
             "The Inbox's channels: each one available here or why not, the user's accounts on it and their health. Accounts are connected in the Inbox's settings.",
             json!({ "type": "object", "properties": {} }),
         ),
     ]
+}
+
+/// The tools that only read: an `inbox.read` key may run them.
+const READS: &[&str] = &[
+    "pigeon_inbox", "pigeon_search", "pigeon_conversation", "pigeon_pending", "pigeon_rules", "pigeon_rule_runs",
+    "pigeon_actions", "pigeon_contacts", "pigeon_policies", "pigeon_connectors", "pigeon_access", "pigeon_permissions", "pigeon_groups",
+];
+
+/// The tools that decide who may be told what: their own scope, `inbox.access`.
+const ACCESS: &[&str] = &["pigeon_set_group", "pigeon_grant", "pigeon_revoke"];
+
+/// The scope a key needs to run a tool from outside (the tools' API, MCP).
+pub fn scope(name: &str) -> &'static str {
+    if READS.contains(&name) {
+        "inbox.read"
+    } else if ACCESS.contains(&name) {
+        "inbox.access"
+    } else {
+        "inbox.write"
+    }
 }
 
 /// Every tool's name: what Piuma subscribes to.
@@ -320,6 +430,47 @@ fn limit(args: &Json, default: i64, max: i64) -> i64 {
 
 fn text<'a>(args: &'a Json, name: &str) -> Option<&'a str> {
     args.get(name).and_then(Json::as_str).map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// When something ends: `until` (ISO 8601 with the offset) or `minutes` from now; none: it doesn't.
+fn until_arg(args: &Json) -> anyhow::Result<Option<chrono::DateTime<chrono::Utc>>> {
+    Ok(match (text(args, "until"), args.get("minutes").and_then(Json::as_i64)) {
+        (Some(u), _) => Some(chrono::DateTime::parse_from_rfc3339(u).map_err(|_| anyhow::anyhow!("`until`: ISO 8601 with the offset, not {u}"))?.to_utc()),
+        (None, Some(m)) if m > 0 => Some(chrono::Utc::now() + chrono::Duration::minutes(m)),
+        _ => None,
+    })
+}
+
+/// The group a call names: `group_id`, or `group` (its name).
+async fn group_arg(st: &State, user: &str, args: &Json) -> anyhow::Result<Option<Uuid>> {
+    match (opt_uuid(args, "group_id")?, text(args, "group")) {
+        (Some(id), _) => Ok(Some(access::find_group(st, user, &id.to_string()).await?.id)),
+        (None, Some(name)) => Ok(Some(access::find_group(st, user, name).await?.id)),
+        (None, None) => Ok(None),
+    }
+}
+
+/// Whom an access call is about: a person, a chat, or a group (by id or name).
+pub async fn holder_arg(st: &State, user: &str, args: &Json) -> anyhow::Result<Holder> {
+    let mut found: Vec<Holder> = Vec::new();
+    found.extend(opt_uuid(args, "contact_id")?.map(Holder::Contact));
+    found.extend(opt_uuid(args, "conversation_id")?.map(Holder::Conversation));
+    found.extend(group_arg(st, user, args).await?.map(Holder::Group));
+    match found.as_slice() {
+        [one] => Ok(*one),
+        [] => anyhow::bail!("for whom: contact_id (a person), conversation_id (a chat) or group_id (a group)"),
+        _ => anyhow::bail!("one of contact_id, conversation_id, group_id, not several"),
+    }
+}
+
+/// What an access call gives or takes: `permission`, or `member_of` (a group's id or name).
+pub async fn what_arg(st: &State, user: &str, args: &Json) -> anyhow::Result<What> {
+    match (text(args, "permission"), text(args, "member_of")) {
+        (Some(p), None) => Ok(What::Permission(p.to_string())),
+        (None, Some(g)) => Ok(What::MemberOf(access::find_group(st, user, g).await?.id)),
+        (Some(_), Some(_)) => anyhow::bail!("one of permission, member_of, not both"),
+        (None, None) => anyhow::bail!("what: permission (tool.level.mode) or member_of (a group)"),
+    }
 }
 
 /// One of the user's conversations, or an error naming it.
@@ -571,12 +722,49 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
             let Some(reason) = args.get("reason").and_then(Json::as_str) else {
                 return Ok(json!({ "away": away::get(&st.pool, user).await? }));
             };
-            let until = match (args.get("until").and_then(Json::as_str), args.get("minutes").and_then(Json::as_i64)) {
-                (Some(u), _) => Some(chrono::DateTime::parse_from_rfc3339(u).map_err(|_| anyhow::anyhow!("`until`: ISO 8601 with the offset, not {u}"))?.to_utc()),
-                (None, Some(m)) if m > 0 => Some(chrono::Utc::now() + chrono::Duration::minutes(m)),
-                _ => None,
+            Ok(json!({ "away": away::set(st, user, reason, until_arg(args)?).await? }))
+        }
+        "pigeon_access" => access::overview(st, user).await,
+        "pigeon_permissions" => match holder_arg(st, user, args).await? {
+            Holder::Contact(c) => access::of_contact(st, user, c).await,
+            Holder::Conversation(c) => access::of_conversation(st, user, c).await,
+            Holder::Group(g) => access::of_group(st, user, g).await,
+        },
+        "pigeon_groups" => match group_arg(st, user, args).await? {
+            Some(g) => access::of_group(st, user, g).await,
+            None => Ok(json!({ "groups": access::overview(st, user).await?["groups"] })),
+        },
+        "pigeon_set_group" => {
+            let id = group_arg(st, user, args).await?;
+            if args.get("delete").and_then(Json::as_bool) == Some(true) {
+                let id = id.ok_or_else(|| anyhow::anyhow!("which group: group_id or group"))?;
+                return Ok(json!({ "deleted": access::delete_group(st, user, id).await? }));
+            }
+            let g = access::save_group(st, user, id, text(args, "name"), args.get("description").and_then(Json::as_str)).await?;
+            Ok(json!({ "group": g }))
+        }
+        "pigeon_grant" => {
+            let h = holder_arg(st, user, args).await?;
+            let what = what_arg(st, user, args).await?;
+            Ok(json!({ "granted": access::grant(st, user, h, &what, until_arg(args)?, text(args, "said")).await? }))
+        }
+        "pigeon_revoke" => {
+            let id = match opt_uuid(args, "grant_id")? {
+                Some(id) => id,
+                None => access::find_grant(st, user, holder_arg(st, user, args).await?, &what_arg(st, user, args).await?).await?,
             };
-            Ok(json!({ "away": away::set(st, user, reason, until).await? }))
+            Ok(json!({ "revoked": access::revoke(st, user, id).await? }))
+        }
+        "pigeon_pause_sharing" => {
+            if args.get("end").and_then(Json::as_bool) == Some(true) {
+                access::resume(st, user).await?;
+                return Ok(json!({ "paused": null }));
+            }
+            let until = until_arg(args)?;
+            if until.is_none() && args.get("pause").and_then(Json::as_bool) != Some(true) {
+                return Ok(json!({ "paused": access::paused(&st.pool, user).await? }));
+            }
+            Ok(json!({ "paused": access::pause(st, user, until).await? }))
         }
         "pigeon_connectors" => connectors_view(st, user).await,
         other => anyhow::bail!("unknown tool: {other}"),

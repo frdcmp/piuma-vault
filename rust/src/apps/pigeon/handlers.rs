@@ -1,6 +1,7 @@
 //! The Inbox's API (`/admin/pigeon/…`): the chats, their messages and cards, the user's own
 //! messages, the switches, people, rules, settings and connections. Reading needs `inbox.read`,
-//! changing `inbox.write` (`admin_access` holds both). Everything is the signed-in user's own.
+//! changing `inbox.write`, and deciding who may be told what (`access`: groups, grants)
+//! `inbox.access` (`admin_access` holds them all). Everything is the signed-in user's own.
 
 use actix_web::{dev::Payload, web, FromRequest, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
@@ -34,6 +35,17 @@ impl FromRequest for InboxWriter {
     type Future = GateFuture<Self>;
     fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
         gated(req, payload, "inbox.write", InboxWriter)
+    }
+}
+
+/// Who may be told what is its own scope: a key that sends messages doesn't thereby decide that.
+pub struct InboxAccess(pub AuthenticatedUser);
+
+impl FromRequest for InboxAccess {
+    type Error = actix_web::Error;
+    type Future = GateFuture<Self>;
+    fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
+        gated(req, payload, "inbox.access", InboxAccess)
     }
 }
 
@@ -719,6 +731,64 @@ pub async fn end_away(st: web::Data<AppState>, u: InboxWriter) -> HttpResponse {
     reply(tools::run(&st, &u.0.user_id, "pigeon_away", &json!({ "end": true })).await)
 }
 
+// ── who may be told what ─────────────────────────────────────────────────
+//
+// The access tools, for the apps: the user's tap is theirs, so nothing waits for a card here.
+
+async fn access_tool(st: &AppState, user: &str, name: &str, args: Json) -> HttpResponse {
+    reply(tools::run(st, user, name, &args).await)
+}
+
+/// The catalogue, the pause, the groups and what people and chats hold on their own.
+pub async fn access_overview(st: web::Data<AppState>, u: InboxReader) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_access", json!({})).await
+}
+
+/// What counts for one person, and where each comes from.
+pub async fn access_contact(st: web::Data<AppState>, u: InboxReader, path: web::Path<Uuid>) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_permissions", json!({ "contact_id": path.into_inner() })).await
+}
+
+/// What counts in one chat.
+pub async fn access_conversation(st: web::Data<AppState>, u: InboxReader, path: web::Path<Uuid>) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_permissions", json!({ "conversation_id": path.into_inner() })).await
+}
+
+/// One group: its people, what it holds, what it inherits.
+pub async fn access_group(st: web::Data<AppState>, u: InboxReader, path: web::Path<Uuid>) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_groups", json!({ "group_id": path.into_inner() })).await
+}
+
+/// A new group, or one renamed: {id?, name?, description?}.
+pub async fn access_save_group(st: web::Data<AppState>, u: InboxAccess, body: web::Json<Json>) -> HttpResponse {
+    let b = body.into_inner();
+    access_tool(&st, &u.0.user_id, "pigeon_set_group", json!({ "group_id": b.get("id"), "name": b.get("name"), "description": b.get("description") })).await
+}
+
+pub async fn access_delete_group(st: web::Data<AppState>, u: InboxAccess, path: web::Path<Uuid>) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_set_group", json!({ "group_id": path.into_inner(), "delete": true })).await
+}
+
+/// A permission given, or someone put in a group: {contact_id | conversation_id | group_id,
+/// permission | member_of, until?, minutes?, said?}.
+pub async fn access_grant(st: web::Data<AppState>, u: InboxAccess, body: web::Json<Json>) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_grant", body.into_inner()).await
+}
+
+pub async fn access_revoke(st: web::Data<AppState>, u: InboxAccess, path: web::Path<Uuid>) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_revoke", json!({ "grant_id": path.into_inner() })).await
+}
+
+/// "Don't tell anyone anything" from now: {until?, minutes?} (neither: until they end it).
+pub async fn access_pause(st: web::Data<AppState>, u: InboxWriter, body: Option<web::Json<Json>>) -> HttpResponse {
+    let b = body.map(|b| b.into_inner()).unwrap_or_else(|| json!({}));
+    access_tool(&st, &u.0.user_id, "pigeon_pause_sharing", json!({ "pause": true, "until": b.get("until"), "minutes": b.get("minutes") })).await
+}
+
+pub async fn access_resume(st: web::Data<AppState>, u: InboxWriter) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_pause_sharing", json!({ "end": true })).await
+}
+
 #[derive(Deserialize)]
 pub struct ReactBody {
     /// the emoji; none or "": the user's taken off
@@ -1275,18 +1345,12 @@ pub async fn item_media(st: web::Data<AppState>, u: InboxReader, path: web::Path
     }
 }
 
-/// The Inbox tools that only read: an `inbox.read` key may run them; the rest need `inbox.write`.
-const READ_TOOLS: &[&str] = &[
-    "pigeon_inbox", "pigeon_search", "pigeon_conversation", "pigeon_pending", "pigeon_rules", "pigeon_rule_runs",
-    "pigeon_actions", "pigeon_contacts", "pigeon_policies", "pigeon_connectors",
-];
-
 /// Piuma's Inbox tools, for a script or another assistant (the piuma-vault skill's pigeon.py):
 /// each with what it does, its arguments' JSON schema, and whether it changes anything.
 pub async fn list_tools(_u: InboxReader) -> HttpResponse {
     let tools: Vec<Json> = tools::defs()
         .into_iter()
-        .map(|(name, description, parameters)| json!({ "name": name, "description": description, "parameters": parameters, "writes": !READ_TOOLS.contains(&name) }))
+        .map(|(name, description, parameters)| json!({ "name": name, "description": description, "parameters": parameters, "writes": tools::scope(name) != "inbox.read", "scope": tools::scope(name) }))
         .collect();
     HttpResponse::Ok().json(json!({ "tools": tools }))
 }
@@ -1297,7 +1361,7 @@ pub async fn run_tool(st: web::Data<AppState>, user: AuthenticatedUser, path: we
     if !tools::names().contains(&name.as_str()) {
         return HttpResponse::NotFound().json(json!({ "error": format!("no Inbox tool {name}") }));
     }
-    let need = if READ_TOOLS.contains(&name.as_str()) { "inbox.read" } else { "inbox.write" };
+    let need = tools::scope(&name);
     if !check_permission(&user, need) {
         return HttpResponse::Forbidden().json(json!({ "error": format!("Access denied: {need} permission required") }));
     }

@@ -1,6 +1,7 @@
 //! Confirmations: what Piuma may only do on the user's tap. A big change asked in the chat (auto
 //! switched on, a reply policy to auto, a merge, a rule deleted, set to auto or to trash, a rule
-//! run on past messages) isn't done: it's kept (`db_pigeon_confirmations`) and shown as a 🕊 card in
+//! run on past messages, a person or a group let to hear something from Pigeon on its own, a
+//! group deleted) isn't done: it's kept (`db_pigeon_confirmations`) and shown as a 🕊 card in
 //! the Inbox (the conversation's, or General), and runs when the user taps Yes. Piuma is told it
 //! waits, and why; it can't press the card itself.
 
@@ -10,6 +11,7 @@ use uuid::Uuid;
 use crate::apps::pigeon::connectors::Kind;
 use crate::apps::pigeon::policy::Policy;
 use crate::apps::pigeon::state::{AppState, State};
+use crate::apps::pigeon::access::{self, Holder};
 use crate::apps::pigeon::{events, people, rules, tools};
 
 /// What a tool would change, when that needs the user's tap: the card's words, and where it
@@ -87,6 +89,21 @@ pub async fn needs_tap(st: &State, user: &str, tool: &str, args: &Json) -> anyho
                     general(format!("The rule «{}»: {}", r.name.trim(), what.join(", and ")))
                 }
             }
+        }
+        // someone let to hear something from Pigeon on its own; asking first is theirs to give by word
+        "pigeon_grant" => {
+            let h = tools::holder_arg(st, user, args).await?;
+            let what = tools::what_arg(st, user, args).await?;
+            let conversation = match h {
+                Holder::Conversation(c) => Some(c),
+                _ => None,
+            };
+            access::on_its_own(st, user, h, &what).await?.map(|summary| Tap { summary, conversation })
+        }
+        "pigeon_set_group" if args.get("delete").and_then(Json::as_bool) == Some(true) => {
+            let Holder::Group(g) = tools::holder_arg(st, user, args).await? else { anyhow::bail!("which group: group_id or group") };
+            let name = access::find_group(st, user, &g.to_string()).await?.name;
+            general(format!("Delete the group «{name}»: everyone in it loses what it gave"))
         }
         _ => None,
     })

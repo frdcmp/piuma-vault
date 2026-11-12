@@ -103,6 +103,12 @@ const SCOPE_OPTIONS = [
 			"Act in the Inbox: send messages as you, answer Pigeon's cards (sending its drafts), change people, rules, switches and connections",
 	},
 	{
+		label: "Inbox (access)",
+		value: "inbox.access",
+		description:
+			"Decide who Pigeon may tell what: make and change groups, give and take back permissions (your place, your calendar)",
+	},
+	{
 		label: "Notifications",
 		value: "notifications",
 		description:
@@ -122,6 +128,7 @@ const SCOPE_TAG_CLASSES = {
 	"sprites.manage": "vp-tag--green",
 	"inbox.read": "vp-tag--accent",
 	"inbox.write": "vp-tag--accent",
+	"inbox.access": "vp-tag--accent",
 	notifications: "vp-tag--blue",
 };
 
@@ -137,6 +144,7 @@ const SCOPE_LABELS = {
 	"sprites.manage": "Sprites",
 	"inbox.read": "Inbox (read)",
 	"inbox.write": "Inbox",
+	"inbox.access": "Inbox (access)",
 	notifications: "Notifications",
 };
 

@@ -2,7 +2,7 @@
 """Piuma Vault — the Inbox (Pigeon): WhatsApp, Instagram and Gmail in one place.
 
 Companion to vault.sh (notes) and agenda.py (tasks, calendar). Same vault, same
-x-api-key auth; the key needs inbox.read (and inbox.write to change anything).
+x-api-key auth; the key needs inbox.read (inbox.write to change anything, inbox.access for groups and grants).
 
 Every command is one of the vault's Inbox tools, the ones Piuma has, run as the
 key's user: `pigeon.py contacts query=elena` runs pigeon_contacts with

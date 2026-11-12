@@ -462,6 +462,15 @@ pub async fn merge(st: &AppState, user: &str, keep: Uuid, other: Uuid) -> anyhow
     .bind(other)
     .execute(&mut *tx)
     .await?;
+    // what the other may be told and their groups, where the kept one has no say on the same
+    // tool (or isn't in that group); what was left for the other to hear
+    moved(
+        "UPDATE db_pigeon_grants g SET contact_id = $1 WHERE g.contact_id = $2 AND NOT EXISTS (SELECT 1 FROM db_pigeon_grants k WHERE k.contact_id = $1
+            AND COALESCE(split_part(k.permission, '.', 1), k.member_of::text) = COALESCE(split_part(g.permission, '.', 1), g.member_of::text))",
+    )
+    .execute(&mut *tx)
+    .await?;
+    moved("UPDATE db_pigeon_facts SET for_contact = $1 WHERE for_contact = $2").execute(&mut *tx).await?;
     sqlx::query("DELETE FROM db_pigeon_contacts WHERE id = $1").bind(other).execute(&mut *tx).await?;
     sqlx::query(
         "UPDATE db_pigeon_contacts SET name = $2, note = $3, relationship = COALESCE(relationship, $4),

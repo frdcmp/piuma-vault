@@ -169,6 +169,13 @@ pigeon.py set_contact contact_id=@alex relationship=friend slug=alex-r
 pigeon.py draft_reply conversation_id=<uuid> instructions="say I'll be late, sweetly"
 pigeon.py send_reply conversation_id=<uuid> text="…"   # only on the user's word, words they saw
 pigeon.py set_alerts contact_id=@alex level=all
+pigeon.py access                        # who may be told what: the catalogue, groups, grants
+pigeon.py permissions contact_id=@alex  # what counts for one person (or conversation_id=, group=)
+pigeon.py set_group name=Friends        # a group; rename: group=Friends name=Mates
+pigeon.py grant contact_id=@alex member_of=Friends
+pigeon.py grant group=Friends permission=location.city.ask
+pigeon.py grant contact_id=@alex permission=location.exact.ask minutes=120 said="for tonight"
+pigeon.py revoke grant_id=<uuid>
 ```
 
 ## Inbox rules
@@ -179,6 +186,11 @@ pigeon.py set_alerts contact_id=@alex level=all
 - **Never set a policy to `auto`** (`set_policy`, `set_auto`) unless the user asks for it.
 - Big changes (merging two people, deleting a rule, switching auto) don't run: they come
   back as a card the user taps in the Inbox. Say so rather than retrying.
+- **Who may be told what** (`access`, `grant`, `revoke`, the groups): a permission is
+  `tool.level.mode` from the catalogue `access` prints (`location.city.ask`). Grant only what
+  the user asked, for whom they said. Mode `ask` still shows them every answer first; mode
+  `auto` (or a place in a group that holds one) is Pigeon answering on its own: only when
+  they ask for it, and it comes back as a card they tap.
 - Messages are the user's private conversations: quote only what the task needs, and never
   into a commit, an issue or anywhere public.
 - Find people by `contacts` before changing them; a handle that is someone else's is
@@ -187,7 +199,8 @@ pigeon.py set_alerts contact_id=@alex level=all
 ## Inbox facts that bite
 
 - The key needs **`inbox.read`** (and **`inbox.write`** for anything marked `w` in
-  `tools`): a `403 … inbox.read permission required` means the key lacks it.
+  `tools`): a `403 … inbox.read permission required` means the key lacks it. Groups and
+  grants (`set_group`, `grant`, `revoke`) need their own scope, **`inbox.access`**.
 - A message's text says only `[image]` or `[voice message]`: what was sent is in its
   `files` (kind, name, a voice note's `transcript`, `status`). To see a photo or read a
   document, `pigeon.py file item=… file=…` saves it under `~/.cache/piuma-vault/files`
@@ -197,8 +210,9 @@ pigeon.py set_alerts contact_id=@alex level=all
   `names_from_whatsapp` does it now from the phone's address book (and gives the slug).
 - `learn` brings old conversations in and writes what Pigeon knows about people: slow, it
   runs in the background without `contact_id`.
-- There is no Pigeon MCP: the older standalone Pigeon (its own `pigeon` MCP and database) is
-  gone. `pigeon.py` is the way in.
+- The same tools are served over MCP at `$VAULT_URL/api/v1/mcp` (streamable HTTP, the key in
+  an `x-api-key` header; it lists only what the key's scopes allow). The older standalone
+  Pigeon (its own `pigeon` MCP and database) is gone.
 
 ---
 
@@ -209,8 +223,8 @@ The script resolves, in order: exported `VAULT_API_KEY` → `~/.config/piuma-vau
 
 Both `VAULT_URL` and `VAULT_API_KEY` are **required** — the scripts exit 2 rather than
 guess a host. Mint a dedicated key in the vault UI (admin → API Keys) scoped to
-`notes.read` + `notes.write` (and `tasks.*`, `calendar.*`, `inbox.read` + `inbox.write` for
-`agenda.py` and `pigeon.py`), then write both to `~/.config/piuma-vault/env`:
+`notes.read` + `notes.write` (and `tasks.*`, `calendar.*`, `inbox.read` + `inbox.write` +
+`inbox.access` for `agenda.py` and `pigeon.py`), then write both to `~/.config/piuma-vault/env`:
 
 ```sh
 install -Dm600 /dev/stdin ~/.config/piuma-vault/env <<'EOF'

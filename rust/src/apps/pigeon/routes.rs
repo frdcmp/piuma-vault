@@ -1,13 +1,16 @@
 use actix_web::web;
 
-use super::{connect, events, handlers as h, webhooks};
+use super::{connect, events, handlers as h, mcp_server, webhooks};
 
 /// A provider's delivery, at most.
 const WEBHOOK_BODY: usize = 4 * 1024 * 1024;
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     // the Inbox (signed in); fixed sub-paths before the `{id}` ones
-    cfg.route("/admin/pigeon/events", web::get().to(events::stream))
+    cfg.route("/mcp", web::post().to(mcp_server::post))
+        .route("/mcp", web::get().to(mcp_server::no_stream))
+        .route("/mcp", web::delete().to(mcp_server::no_stream))
+        .route("/admin/pigeon/events", web::get().to(events::stream))
         .route("/admin/pigeon/conversations", web::get().to(h::list_conversations))
         .route("/admin/pigeon/conversations/{id}", web::get().to(h::get_conversation))
         .route("/admin/pigeon/conversations/{id}/items", web::get().to(h::conversation_items))
@@ -39,6 +42,16 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/admin/pigeon/away", web::get().to(h::get_away))
         .route("/admin/pigeon/away", web::put().to(h::set_away))
         .route("/admin/pigeon/away", web::delete().to(h::end_away))
+        .route("/admin/pigeon/access", web::get().to(h::access_overview))
+        .route("/admin/pigeon/access/pause", web::put().to(h::access_pause))
+        .route("/admin/pigeon/access/pause", web::delete().to(h::access_resume))
+        .route("/admin/pigeon/access/groups", web::put().to(h::access_save_group))
+        .route("/admin/pigeon/access/groups/{id}", web::get().to(h::access_group))
+        .route("/admin/pigeon/access/groups/{id}", web::delete().to(h::access_delete_group))
+        .route("/admin/pigeon/access/grants", web::post().to(h::access_grant))
+        .route("/admin/pigeon/access/grants/{id}", web::delete().to(h::access_revoke))
+        .route("/admin/pigeon/access/contacts/{id}", web::get().to(h::access_contact))
+        .route("/admin/pigeon/access/conversations/{id}", web::get().to(h::access_conversation))
         .route("/admin/pigeon/tools", web::get().to(h::list_tools))
         .route("/admin/pigeon/tools/{name}", web::post().to(h::run_tool))
         .route("/admin/pigeon/contacts/{id}", web::get().to(h::get_contact))

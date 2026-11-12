@@ -16,6 +16,7 @@
 //! through Postgres and tell the apps through `events` (NOTIFY). Every row carries its user.
 //! Tables are `db_pigeon_*` (`db/db_init.rs`); settings `PIGEON_*` (`config`, `.env.example`).
 
+pub mod access;
 pub mod actions;
 pub mod agent;
 pub mod ai;
@@ -35,7 +36,9 @@ pub mod handlers;
 pub mod health;
 pub mod items;
 pub mod listen;
+pub mod mcp_server;
 pub mod media;
+pub mod offer;
 pub mod owner;
 pub mod pace;
 pub mod people;
