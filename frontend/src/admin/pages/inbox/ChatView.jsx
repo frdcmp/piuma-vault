@@ -71,6 +71,7 @@ import PigeonCards from "./PigeonCards";
 import SentBy from "./SentBy";
 import SwitchInfo from "./SwitchInfo";
 import { senderColor } from "./senderColor";
+import Used from "./Used";
 import Working from "./Working";
 
 // What the channels take in one file (the vault's limit too).
@@ -300,6 +301,7 @@ function Message({
 					)}
 					{formatTime(item.at)}
 				</div>
+				{out && !local ? <Used item={item} /> : null}
 				{failed ? (
 					<PvButton
 						size="sm"

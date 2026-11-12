@@ -10,6 +10,7 @@ import { PvAvatar, PvIconButton, PvInput, PvSegmented, PvSpin } from "@/ui";
 import { usePigeonChats, usePigeonGeneral } from "../../../queries";
 import { timeAgo } from "../../../utils/dateTime";
 import { AwayButton, AwayStrip } from "./InboxAway";
+import { SharingStrip } from "./InboxSharing";
 import { channelLabel, channelTone, initials } from "./inboxText";
 
 const FILTERS = [
@@ -97,6 +98,7 @@ export default function InboxRail({ activeKey, page }) {
 				/>
 			</div>
 			<AwayStrip />
+			<SharingStrip />
 
 			<div className="inbox-side-tools">
 				<PvInput

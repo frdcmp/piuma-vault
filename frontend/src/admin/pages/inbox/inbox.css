@@ -377,7 +377,8 @@
 	box-shadow: 3px 3px 0 var(--vp-shadow-color);
 }
 .pigeon-card--question,
-.pigeon-card--needs {
+.pigeon-card--needs,
+.pigeon-card--uncovered {
 	border-color: var(--vp-warning);
 	background: color-mix(in srgb, var(--vp-warning) 6%, var(--vp-panel));
 }
@@ -419,6 +420,45 @@
 .pigeon-card-time {
 	color: var(--vp-faint);
 	font-size: 8pt;
+}
+
+/* "Allow…" on a 🔑 card: how much, and how */
+.pigeon-allow {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.pigeon-allow-help {
+	margin: 0;
+	color: var(--vp-muted);
+}
+/* what a reply of Pigeon's used, under its time; the dialog behind it */
+.inbox-used {
+	align-self: flex-end;
+	color: var(--vp-faint);
+	font-size: 8pt;
+}
+.inbox-used.is-wrong {
+	color: var(--vp-danger);
+}
+.inbox-used-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.inbox-used-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.inbox-used-told {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.inbox-used-how {
+	margin: 0;
+	color: var(--vp-muted);
+	font-size: 9pt;
 }
 
 /* ── The composer ──────────────────────────────────────────────────────── */

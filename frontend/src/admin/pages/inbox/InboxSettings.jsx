@@ -33,6 +33,7 @@ import {
 	useUserMe,
 } from "../../../queries";
 import { timeAgo } from "../../../utils/dateTime";
+import { SharingField } from "./InboxSharing";
 import {
 	ALERT_HINT,
 	ALERT_OPTIONS,
@@ -275,6 +276,7 @@ export default function InboxSettings() {
 						onChange={(v) => set({ reply: v })}
 					/>
 				</PvField>
+				<SharingField />
 				<PvField label="Recording (tasks, events, notes)" as="div">
 					<PvSegmented
 						size="sm"

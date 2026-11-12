@@ -147,6 +147,23 @@ export const senderLabel = (item, senders) => {
 export const errorText = (e) =>
 	e?.response?.data?.error || e?.message || "Something went wrong";
 
+// What Pigeon may tell people. "Place · City", or the tool alone when it has
+// no levels (a permission, or one use of it in a reply).
+export const permissionLabel = (p) =>
+	p?.has_levels && p.level_label ? `${p.label} · ${p.level_label}` : p?.label;
+
+// "Place · City (from Friends)": what a reply uses, and where the leave comes from.
+export const usesLine = (used) =>
+	(used ?? [])
+		.map((u) =>
+			u.via ? `${permissionLabel(u)} (${u.via})` : permissionLabel(u),
+		)
+		.join(", ");
+
+// How sure Jev was, 0..1, as "82%".
+export const percent = (p) =>
+	typeof p === "number" ? `${Math.round(p * 100)}%` : "";
+
 // What each switch value does, for the ⓘ next to a switch.
 export const SWITCH_INFO = {
 	reply: {

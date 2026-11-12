@@ -345,3 +345,35 @@ export const fetchPigeonPairing = async (connector) => {
 	);
 	return data;
 };
+
+// ── What Pigeon may tell people (access) ────────────────────────────────────
+
+// The catalogue of what can be told ({ tool, label, gives, levels, has_levels,
+// ask_only }), whether telling is paused ({ since, until } | null), the groups
+// and who holds what.
+export const fetchPigeonAccess = async () => {
+	const { data } = await axiosInstance.get(`${BASE}/access`);
+	return data;
+};
+
+// Pigeon tells nobody anything while paused (until: an end, or until resumed).
+export const pausePigeonSharing = async ({ until } = {}) => {
+	const { data } = await axiosInstance.put(`${BASE}/access/pause`, {
+		until: until ?? null,
+	});
+	return data;
+};
+
+export const resumePigeonSharing = async () => {
+	const { data } = await axiosInstance.delete(`${BASE}/access/pause`);
+	return data;
+};
+
+// A reply of Pigeon's told what it shouldn't have: what allowed it asks again.
+export const markPigeonReplyWrong = async ({ actionId, tool }) => {
+	const { data } = await axiosInstance.post(
+		`${BASE}/actions/${actionId}/wrong`,
+		{ tool: tool ?? null },
+	);
+	return data;
+};

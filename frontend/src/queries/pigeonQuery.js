@@ -11,6 +11,7 @@ import {
 	downloadPigeonMedia,
 	draftPigeonReply,
 	endPigeonAway,
+	fetchPigeonAccess,
 	fetchPigeonAway,
 	fetchPigeonChats,
 	fetchPigeonConnections,
@@ -36,11 +37,14 @@ import {
 	markPigeonPersonHandled,
 	markPigeonPersonRead,
 	markPigeonRead,
+	markPigeonReplyWrong,
 	mergePigeonContacts,
+	pausePigeonSharing,
 	pigeonEmailAction,
 	pressPigeonCard,
 	resumePigeonAuto,
 	resumePigeonPersonAuto,
+	resumePigeonSharing,
 	sendPigeonFile,
 	sendPigeonMessage,
 	setPigeonAway,
@@ -73,6 +77,7 @@ export const pigeonKeys = {
 	ruleRuns: (id) => ["pigeon", "rule-runs", id],
 	settings: () => ["pigeon", "settings"],
 	away: () => ["pigeon", "away"],
+	access: () => ["pigeon", "access"],
 	connections: () => ["pigeon", "connections"],
 	pairing: (connector) => ["pigeon", "pairing", connector],
 	chats: (params) => ["pigeon", "chats", params ?? {}],
@@ -132,6 +137,11 @@ const applyPigeonEvent = (qc, kind, id, data) => {
 		case "connections":
 			inv(pigeonKeys.settings());
 			inv(pigeonKeys.connections());
+			return;
+		case "access":
+			// who may be told what, the pause, what Pigeon knows: the chats were
+			// refreshed above (a reply's "this was wrong")
+			inv(pigeonKeys.access());
 			return;
 		case "message_in":
 			// the phone's push; the conversation event refreshes the chat
@@ -283,6 +293,42 @@ const useAwayMutation = (fn) => {
 };
 export const useSetPigeonAway = () => useAwayMutation(setPigeonAway);
 export const useEndPigeonAway = () => useAwayMutation(endPigeonAway);
+
+// What Pigeon may tell people: the catalogue, the pause, who holds what.
+export const usePigeonAccess = (enabled = true) =>
+	useQuery({
+		queryKey: pigeonKeys.access(),
+		queryFn: fetchPigeonAccess,
+		enabled,
+	});
+const useSharingMutation = (fn) => {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: fn,
+		onSuccess: () => qc.invalidateQueries({ queryKey: pigeonKeys.access() }),
+	});
+};
+export const usePausePigeonSharing = () =>
+	useSharingMutation(pausePigeonSharing);
+export const useResumePigeonSharing = () =>
+	useSharingMutation(resumePigeonSharing);
+
+// "This was wrong" on a reply of Pigeon's: the messages again (its mark), and
+// who holds what (the permissions behind it went back to Ask).
+export function useMarkPigeonReplyWrong() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: markPigeonReplyWrong,
+		onSuccess: () =>
+			Promise.all(
+				[
+					["pigeon", "items"],
+					["pigeon", "person-items"],
+					pigeonKeys.access(),
+				].map((queryKey) => qc.invalidateQueries({ queryKey })),
+			),
+	});
+}
 
 // Archive or trash an email: the chats' messages and the lists again.
 export function usePigeonEmailAction() {
