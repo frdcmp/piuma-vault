@@ -8,7 +8,7 @@ use serde_json::{json, Map};
 use uuid::Uuid;
 
 use crate::apps::pigeon::ai::jev;
-use crate::apps::pigeon::{actions, agent, away, cards, conversations, owner, people, policy, rules};
+use crate::apps::pigeon::{actions, agent, away, cards, conversations, facts, owner, people, policy, rules, tell};
 use crate::apps::pigeon::state::{AppState, State};
 
 pub const REPLY_AT: f64 = 0.6;
@@ -68,13 +68,17 @@ pub struct Signals {
 /// nothing; the intaker puts it to the user), if it mustn't.
 pub fn gate(sig: &Signals) -> Option<&'static str> {
     if sig.doubts_user >= HOLD_AT {
-        Some("they ask if it's really you")
+        Some(DOUBTS)
     } else if sig.users_call >= HOLD_AT {
-        Some("your call")
+        Some(USERS_CALL)
     } else {
         None
     }
 }
+
+/// The gate's reasons, as the user reads them.
+const DOUBTS: &str = "they ask if it's really you";
+const USERS_CALL: &str = "your call";
 
 /// How long a triage holds its conversation: past it, a triage cut off (Pigeon restarted, a
 /// deploy) is run again.
@@ -248,6 +252,13 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
     for (i, (r, it)) in hits.iter().enumerate() {
         q.insert(format!("rule_{i}"), rules::question(r, it));
     }
+    // what the user lets Pigeon tell people (`tell`): does someone ask for it? Whether they hold
+    // it is looked up after, never told to Jev
+    let passons = facts::passons(&st.pool, &conv.user_id, conv.contact_id, Some(conv.id)).await.unwrap_or_else(|e| {
+        log::warn!("triage {id}: pass-ons: {e:#}");
+        Vec::new()
+    });
+    tell::questions(&mut q, &passons);
     jev::for_user(&mut q, &owner.name);
     let answers = jev.ask(&state, q).await?;
 
@@ -345,12 +356,31 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
     let held = if attention == Some("reply") && !away_answers { gate(&sig) } else { None };
     // the user is writing there: Pigeon doesn't answer, and comes back when they stop (below)
     let paused = actions::quiet_until(st, id).await?;
+    // with their replies off the user answers them: the intaker only for something to do
+    let replies_off = policy::resolve(&st.pool, &conv.user_id, crate::apps::pigeon::connectors::Kind::Reply, conv.contact_id, Some(id)).await? == policy::Policy::Off;
+    // what they ask for that the user lets Pigeon tell (`tell`): the responder answers with what
+    // they hold; what they don't hold goes to the user as a 🔑 card. Not when the user answers
+    // them themselves, is writing there, or they doubt who writes
+    let mut told = tell::Round::default();
+    if attention == Some("reply") && !replies_off && paused.is_none() && held != Some(DOUBTS) {
+        match tell::round(st, &conv, &owner, &answers, &passons).await {
+            Ok(r) => told = r,
+            Err(e) => log::warn!("triage {id}: what to tell them: {e:#}"),
+        }
+        if !told.uses.is_empty() {
+            tell::gate(st, &conv, &owner, &state, Some(&sig), &mut told.uses).await;
+        }
+    }
+    // "your call" is Jev seeing that only the user knows it: with their leave, Pigeon does too
+    let with_leave = !told.uses.is_empty() && held == Some(USERS_CALL);
     let mut outcomes = Vec::new();
     if let (Some(a), true, None) = (&away, away_answers, paused) {
-        outcomes.extend(agent::away_reply(st, id, triage_id, &sig, a).await?);
-    } else if away.is_none() && attention == Some("reply") && held.is_none() && paused.is_none() {
+        // away, nobody taps a draft: only what goes on its own
+        let own: Vec<tell::Use> = told.uses.iter().filter(|u| u.auto).cloned().collect();
+        outcomes.extend(agent::away_reply(st, id, triage_id, &sig, a, &own).await?);
+    } else if away.is_none() && attention == Some("reply") && (held.is_none() || with_leave) && paused.is_none() {
         // an auto reply goes out paced like a person's (`pace`)
-        outcomes.extend(agent::respond(st, id, triage_id, &sig).await?);
+        outcomes.extend(agent::respond(st, id, triage_id, &sig, &told.uses).await?);
     }
     // the intaker: tasks and events, and what to ask the user; not needed when the reply took
     // care of it and there's nothing to do or remember
@@ -365,15 +395,29 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
         return Ok("stopped");
     }
     let answered = matches!(replied.as_deref(), Some("done" | "pending"));
-    // with their replies off the user answers them: the intaker only for something to do
-    let replies_off = policy::resolve(&st.pool, &conv.user_id, crate::apps::pigeon::connectors::Kind::Reply, conv.contact_id, Some(id)).await? == policy::Policy::Off;
+    // answered with the user's leave: nothing was kept for them
+    let held = if answered && with_leave { None } else { held };
+    // asked without leave: the 🔑 cards (answer this once, allow it, or no), and the intaker
+    // doesn't ask the same
+    let mut put: Vec<String> = Vec::new();
+    for u in &told.uncovered {
+        match tell::uncovered_card(st, &conv, &them, u).await {
+            Ok(card) => {
+                outcomes.push(actions::Outcome { id: Some(card), status: "asked".into(), detail: None });
+                put.push(tell::gives(u.tool, &owner.name));
+            }
+            Err(e) => log::warn!("triage {id}: the card for {}: {e:#}", u.tool.name),
+        }
+    }
+    let put = (!put.is_empty())
+        .then(|| format!("Pigeon already put a card to {} about whether to tell them {}: don't ask about that.", owner.name, put.join(", ")));
     let intake = if paused.is_some() || replies_off {
         sig.actionable >= ACTION_AT
     } else {
         !answered || attention == Some("action") || sig.actionable >= ACTION_AT
     };
     if intake {
-        outcomes.extend(agent::intake(st, id, triage_id, &sig, held, replied.as_deref()).await?);
+        outcomes.extend(agent::intake(st, id, triage_id, &sig, held, replied.as_deref(), put.as_deref()).await?);
     }
     if let Some(until) = paused {
         // not triaged yet: once the user stopped writing, the round runs again on what they left

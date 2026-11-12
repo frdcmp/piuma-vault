@@ -16,7 +16,7 @@ use crate::apps::pigeon::ai::llm;
 use crate::apps::pigeon::connectors::{self, console, Kind};
 use crate::apps::pigeon::policy::{self, Policy};
 use crate::apps::pigeon::state::AppState;
-use crate::apps::pigeon::{actions, agent, alerts, avatars, cards, composing, connect, conversations, events, items, media, people, rules, tools, triage};
+use crate::apps::pigeon::{actions, agent, alerts, avatars, cards, composing, connect, conversations, events, items, media, people, rules, tell, tools, triage};
 use crate::apps::settings::store;
 
 pub struct InboxReader(pub AuthenticatedUser);
@@ -218,6 +218,7 @@ pub async fn conversation_items(st: web::Data<AppState>, u: InboxReader, path: w
             people.into_iter().map(|(handle, name, slug)| (handle, json!({ "name": name, "slug": slug }))).collect();
         // their files, each with a link
         let mut items: Vec<Json> = items.iter().map(serde_json::to_value).collect::<Result<_, _>>()?;
+        tell::on_items(&st.pool, &mut items).await;
         media::sign(&st.pool, &mut items).await;
         Ok(json!({
             "items": items,
@@ -789,6 +790,62 @@ pub async fn access_resume(st: web::Data<AppState>, u: InboxWriter) -> HttpRespo
     access_tool(&st, &u.0.user_id, "pigeon_pause_sharing", json!({ "end": true })).await
 }
 
+/// What Pigeon knows right now: `facts` about the user, `passons` left for someone.
+pub async fn list_facts(st: web::Data<AppState>, u: InboxReader) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_facts", json!({})).await
+}
+
+/// The user's fact for a key, the latest replacing the one before (the phone writes their
+/// place): {key, value?, levels?, source?, until?, minutes?}.
+pub async fn set_fact(st: web::Data<AppState>, u: InboxWriter, body: web::Json<Json>) -> HttpResponse {
+    let b = body.into_inner();
+    let args = json!({
+        "key": b.get("key"), "value": b.get("value"), "levels": b.get("levels"), "source": b.get("source"),
+        "until": b.get("until"), "minutes": b.get("minutes"),
+    });
+    access_tool(&st, &u.0.user_id, "pigeon_set_fact", args).await
+}
+
+/// A fact or a pass-on, forgotten.
+pub async fn delete_fact(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_set_fact", json!({ "fact_id": path.into_inner(), "delete": true })).await
+}
+
+/// Something left for one person or one chat to hear when they ask: {contact_id | conversation_id,
+/// text, until?, minutes?}.
+pub async fn leave_passon(st: web::Data<AppState>, u: InboxWriter, body: web::Json<Json>) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_passon", body.into_inner()).await
+}
+
+#[derive(Deserialize)]
+pub struct UsesQuery {
+    contact_id: Option<Uuid>,
+    conversation_id: Option<Uuid>,
+    limit: Option<i64>,
+}
+
+/// The replies that used a tool, newest first: for one person, one chat, or everyone.
+pub async fn access_uses(st: web::Data<AppState>, u: InboxReader, q: web::Query<UsesQuery>) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_tool_uses", json!({ "contact_id": q.contact_id, "conversation_id": q.conversation_id, "limit": q.limit })).await
+}
+
+/// "This was wrong" on a reply that used something: {tool?} (none: all it used).
+pub async fn action_wrong(st: web::Data<AppState>, u: InboxAccess, path: web::Path<Uuid>, body: Option<web::Json<Json>>) -> HttpResponse {
+    let tool = body.and_then(|b| b.get("tool").cloned()).unwrap_or(Json::Null);
+    access_tool(&st, &u.0.user_id, "pigeon_mark_wrong", json!({ "action_id": path.into_inner(), "tool": tool })).await
+}
+
+/// A permission tried on what its holder wrote lately: {contact_id | conversation_id | group_id,
+/// permission, limit?}. Nothing is sent or changed.
+pub async fn access_try(st: web::Data<AppState>, u: InboxReader, body: web::Json<Json>) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_try_permission", body.into_inner()).await
+}
+
+/// Which of the user's groups a person belongs in, as Jev reads what Pigeon knows about them.
+pub async fn access_suggest(st: web::Data<AppState>, u: InboxReader, path: web::Path<Uuid>) -> HttpResponse {
+    reply(tell::suggest_group(&st, &u.0.user_id, path.into_inner()).await)
+}
+
 #[derive(Deserialize)]
 pub struct ReactBody {
     /// the emoji; none or "": the user's taken off
@@ -1258,6 +1315,7 @@ pub async fn person_items(st: web::Data<AppState>, u: InboxReader, path: web::Pa
         .await?;
         let senders: serde_json::Map<String, Json> =
             people_rows.into_iter().map(|(handle, name, slug)| (handle, json!({ "name": name, "slug": slug }))).collect();
+        tell::on_items(&st.pool, &mut items).await;
         media::sign(&st.pool, &mut items).await;
         Ok(json!({
             "items": items,

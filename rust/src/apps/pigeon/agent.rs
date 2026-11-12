@@ -12,6 +12,11 @@
 //! the reply was kept for them; the answer brings Pigeon back (`after_answer`) to answer them as
 //! the user said. What a round leaves for the user is cards in the Inbox (`cards::round`).
 //!
+//! What the user lets Pigeon tell the person (`tell`: where they are, whether they're free, what
+//! they left for them) comes to the responder as the round's `tells`: it answers with them, the
+//! reply carries their record (`args.used`), and goes on its own only when each was allowed on
+//! its own and the reply, read back, says nothing more (`tell::leaks`).
+//!
 //! Also here: the conversation summary (written when asked for and stale).
 
 use std::collections::HashMap;
@@ -31,6 +36,7 @@ use crate::apps::pigeon::people;
 use crate::apps::pigeon::policy::{self, Policy};
 use crate::apps::pigeon::triage::{Signals, HOLD_AT};
 use crate::apps::pigeon::state::State;
+use crate::apps::pigeon::tell::{self, Use};
 use crate::apps::telemetry::{Event, Severity};
 
 /// The most actions one turn may propose.
@@ -41,7 +47,9 @@ const VOICE_EXAMPLES: i64 = 8;
 enum Mode<'a> {
     /// After a triage: the responder (the reply to them) or the intaker (tasks, events, what to
     /// ask the user), under the policies.
-    AfterTriage { triage_id: i64, sig: &'a Signals, role: Role, held: Option<&'a str>, replied: Option<&'a str> },
+    /// `tells`: what the responder may answer them with; `note`: what the intaker mustn't ask
+    /// again (a 🔑 card is already open about it).
+    AfterTriage { triage_id: i64, sig: &'a Signals, role: Role, held: Option<&'a str>, replied: Option<&'a str>, tells: &'a [Use], note: Option<&'a str> },
     /// The user (or Piuma for them) asked for a reply: reply actions only, always held for them.
     /// `compose`: the words come back for the user's box instead of a card
     Draft { instructions: Option<&'a str>, compose: bool },
@@ -50,7 +58,20 @@ enum Mode<'a> {
     Answer { asked: &'a str, answer: &'a str },
     /// The user is away (`away`): Pigeon answers them itself, as Pigeon. `first`: its first
     /// message in this chat this away; `known`: someone the user writes to (they hear why).
-    Away { triage_id: i64, sig: &'a Signals, away: &'a Away, first: bool, known: bool },
+    Away { triage_id: i64, sig: &'a Signals, away: &'a Away, first: bool, known: bool, tells: &'a [Use] },
+    /// The user said to tell them (a 🔑 card): the reply with these, held for them like a draft.
+    Tell { uses: &'a [Use] },
+}
+
+impl<'a> Mode<'a> {
+    /// What this round may tell them of the user's.
+    fn tells(&self) -> &'a [Use] {
+        match self {
+            Mode::AfterTriage { tells, .. } | Mode::Away { tells, .. } => tells,
+            Mode::Tell { uses } => uses,
+            _ => &[],
+        }
+    }
 }
 
 /// Who acts in an agent round.
@@ -63,23 +84,25 @@ pub enum Role {
     Intaker,
 }
 
-/// The responder after a triage: the reply to them (auto, or waiting for the user).
-pub async fn respond(st: &State, conversation: Uuid, triage_id: i64, sig: &Signals) -> anyhow::Result<Vec<Outcome>> {
-    run(st, conversation, Mode::AfterTriage { triage_id, sig, role: Role::Responder, held: None, replied: None }).await
+/// The responder after a triage: the reply to them (auto, or waiting for the user), with what
+/// the user lets Pigeon tell them (`tells`).
+pub async fn respond(st: &State, conversation: Uuid, triage_id: i64, sig: &Signals, tells: &[Use]) -> anyhow::Result<Vec<Outcome>> {
+    run(st, conversation, Mode::AfterTriage { triage_id, sig, role: Role::Responder, held: None, replied: None, tells, note: None }).await
 }
 
 /// The intaker after a triage: `held` is why the reply was kept for the user (Jev's gate),
-/// `replied` what became of the responder's reply.
-pub async fn intake(st: &State, conversation: Uuid, triage_id: i64, sig: &Signals, held: Option<&str>, replied: Option<&str>) -> anyhow::Result<Vec<Outcome>> {
-    run(st, conversation, Mode::AfterTriage { triage_id, sig, role: Role::Intaker, held, replied }).await
+/// `replied` what became of the responder's reply, `note` what is already put to the user.
+pub async fn intake(st: &State, conversation: Uuid, triage_id: i64, sig: &Signals, held: Option<&str>, replied: Option<&str>, note: Option<&str>) -> anyhow::Result<Vec<Outcome>> {
+    run(st, conversation, Mode::AfterTriage { triage_id, sig, role: Role::Intaker, held, replied, tells: &[], note }).await
 }
 
-/// The away responder after a triage: Pigeon answers them as itself while the user is away.
-pub async fn away_reply(st: &State, conversation: Uuid, triage_id: i64, sig: &Signals, away: &Away) -> anyhow::Result<Vec<Outcome>> {
+/// The away responder after a triage: Pigeon answers them as itself while the user is away
+/// (`tells`: what it may tell them on its own).
+pub async fn away_reply(st: &State, conversation: Uuid, triage_id: i64, sig: &Signals, away: &Away, tells: &[Use]) -> anyhow::Result<Vec<Outcome>> {
     let contact: Option<Uuid> = sqlx::query_scalar("SELECT contact_id FROM db_pigeon_conversations WHERE id = $1").bind(conversation).fetch_one(&st.pool).await?;
     let first = !away::answered_here(&st.pool, conversation, away).await?;
     let known = away::known(&st.pool, contact).await?;
-    run(st, conversation, Mode::Away { triage_id, sig, away, first, known }).await
+    run(st, conversation, Mode::Away { triage_id, sig, away, first, known, tells }).await
 }
 
 pub async fn draft_reply(st: &State, conversation: Uuid, instructions: Option<&str>) -> anyhow::Result<Vec<Outcome>> {
@@ -105,6 +128,19 @@ pub async fn after_answer(st: &State, conversation: Uuid, asked: &str, answer: &
     run(st, conversation, Mode::Answer { asked, answer }).await
 }
 
+/// The user said to tell them (a 🔑 card's "answer this once", or what they just allowed): the
+/// reply with it, as a draft they send.
+pub async fn tell_reply(st: &State, conversation: Uuid, uses: &[Use]) -> anyhow::Result<Vec<Outcome>> {
+    sqlx::query(
+        "UPDATE db_pigeon_actions SET status = 'expired', error = 'replaced: you said to tell them', updated_at = NOW()
+          WHERE conversation_id = $1 AND status = 'pending' AND source = 'agent' AND kind = 'reply'",
+    )
+    .bind(conversation)
+    .execute(&st.pool)
+    .await?;
+    run(st, conversation, Mode::Tell { uses }).await
+}
+
 /// One agent round per conversation at a time (a triage and the user's answer to a question can come
 /// together): the second waits and sees what the first did (its replies count for the auto limit).
 fn conversation_lock(id: Uuid) -> Arc<tokio::sync::Mutex<()>> {
@@ -123,6 +159,7 @@ fn offers(mode: &Mode<'_>, kind: Kind) -> bool {
         Mode::AfterTriage { role: Role::Intaker, .. } => kind != Kind::Reply,
         Mode::Answer { .. } => true,
         Mode::Away { .. } => kind == Kind::Reply,
+        Mode::Tell { .. } => kind == Kind::Reply,
     }
 }
 
@@ -137,6 +174,9 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
     // the tools: this conversation's channel actions, and actions that aren't on a conversation
     // (the vault), the ones this round offers, minus what the policies switched off
     let drafting = matches!(mode, Mode::Draft { .. });
+    // the user asked for this reply (a draft, or "tell them"): it comes to them whatever the policy
+    let asked_for = drafting || matches!(mode, Mode::Tell { .. });
+    let tells = mode.tells();
     let mut offered: Vec<(Arc<dyn Connector>, ActionDef)> = Vec::new();
     for (c, def) in connectors::available_actions(st) {
         if def.on_conversation && c.id() != conv.connector {
@@ -145,7 +185,7 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
         if !def.agent || !offers(&mode, def.kind) {
             continue;
         }
-        if policy::resolve(&st.pool, &conv.user_id, def.kind, conv.contact_id, Some(id)).await? == Policy::Off && !drafting {
+        if policy::resolve(&st.pool, &conv.user_id, def.kind, conv.contact_id, Some(id)).await? == Policy::Off && !asked_for {
             continue;
         }
         offered.push((c, def));
@@ -159,7 +199,7 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
     // away, Pigeon writes as itself: the user's voice isn't needed
     let away_mode = matches!(mode, Mode::Away { .. });
     let writes_reply_as_user = writes_reply && !away_mode;
-    if drafting {
+    if asked_for {
         // the user waits on the button: what Pigeon knows as it stands, brought up to date behind
         people::catch_up_later(st, contact.as_ref(), &conv);
     } else if let Some(c) = &contact {
@@ -218,7 +258,7 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
 
     let (triage_id, hold_reply) = match &mode {
         Mode::AfterTriage { triage_id, sig, .. } => (Some(*triage_id), hold_for(sig)),
-        Mode::Draft { .. } => (None, Some(ASKED_AS_DRAFT.to_string())),
+        Mode::Draft { .. } | Mode::Tell { .. } => (None, Some(ASKED_AS_DRAFT.to_string())),
         Mode::Answer { .. } => (None, None),
         Mode::Away { triage_id, .. } => (Some(*triage_id), None),
     };
@@ -273,6 +313,31 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
             args["text"] = json!(format!("{}{text}", away::mark(&conv.connector, &me.name, *first)));
             args["away"] = json!(true);
         }
+        let mut hold = if def.kind == Kind::Reply || drafting { hold_reply.clone() } else { None };
+        // written with something of the user's: the reply carries what (the record), and goes on
+        // its own only when each was allowed on its own and, read back, it says nothing more
+        if def.kind == Kind::Reply && !tells.is_empty() {
+            args["used"] = tell::record(tells);
+            if hold.is_none() {
+                let labels = tells.iter().map(|u| u.label.to_lowercase()).collect::<Vec<_>>().join(", ");
+                let (on_its_own, also) = match &mode {
+                    Mode::AfterTriage { .. } => (true, None),
+                    Mode::Away { away, known, .. } => {
+                        let why = if *known { format!(" ({})", away.reason) } else { String::new() };
+                        (true, Some(format!("that {} is away right now{why}, when {} is back, and that Pigeon takes a message", me.name, me.name)))
+                    }
+                    _ => (false, None),
+                };
+                if on_its_own && tells.iter().all(|u| u.auto) {
+                    match tell::leaks(st, &conv, &me, tells, also.as_deref(), args["text"].as_str().unwrap_or_default()).await {
+                        None => args["used_auto"] = json!(true),
+                        Some(why) => hold = Some(format!("uses your {labels}: {why}")),
+                    }
+                } else {
+                    hold = Some(format!("uses your {labels}: yours to send"));
+                }
+            }
+        }
         let p = Proposal {
             user_id: conv.user_id.clone(),
             conversation_id: Some(id),
@@ -282,7 +347,7 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
             reason,
             source: Source::Agent,
             triage_id,
-            hold: if def.kind == Kind::Reply || drafting { hold_reply.clone() } else { None },
+            hold,
         };
         match actions::propose(st, p).await {
             Ok(o) => out.push(o),
@@ -429,6 +494,13 @@ fn system_prompt(me: &Owner, mode: &Mode<'_>, asking: bool, replies_off: bool) -
                 ));
             }
         }
+        Mode::Tell { .. } => {
+            s.push_str(&replying);
+            s.push_str(&format!(
+                "\n- {name} said to answer them with what is listed below (what {name} lets Pigeon tell them): propose exactly \
+                 one reply that says it, as {name} would, and nothing more."
+            ));
+        }
         Mode::Answer { .. } => {
             s.push_str(&replying);
             s.push_str(&format!(
@@ -438,6 +510,14 @@ fn system_prompt(me: &Owner, mode: &Mode<'_>, asking: bool, replies_off: bool) -
                  propose nothing. Even on the answer, never write that it's really {name} writing when it isn't."
             ));
         }
+    }
+    if !mode.tells().is_empty() {
+        s.push_str(&format!(
+            "\n- {name} lets Pigeon tell this person some things about {name}: what, and how far, is listed below (what {name} \
+             lets Pigeon tell them). They asked for it: answer it with just that. Doing so isn't deciding for {name}, and it \
+             comes before any rule above that says to tell nothing about {name}. Say only what answers what they asked: nothing \
+             finer than what is listed, no guess beyond it, nothing else about {name}, and still no promise or plan in {name}'s name."
+        ));
     }
     s
 }
@@ -529,8 +609,11 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
             s.push_str(&format!("- {}: Pigeon asked \"{q}\", {name} answered \"{a}\"\n", me.local(*at).format("%Y-%m-%d %H:%M")));
         }
     }
+    if !mode.tells().is_empty() {
+        s.push_str(&tell::brief(mode.tells(), name, &them));
+    }
     match mode {
-        Mode::AfterTriage { sig, role, held, replied, .. } => {
+        Mode::AfterTriage { sig, role, held, replied, note, .. } => {
             if *role == Role::Intaker {
                 match (held, replied) {
                     _ if replies_off => s.push_str(&format!("\n{name} answers this person themselves (Pigeon doesn't reply to them).\n")),
@@ -541,6 +624,9 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
                     (None, Some("done")) => s.push_str("\nPigeon has already replied to them (above, its message).\n"),
                     (None, Some("pending")) => s.push_str(&format!("\nPigeon wrote a reply that waits for {name}'s yes.\n")),
                     _ => s.push_str("\nPigeon proposed no reply to them.\n"),
+                }
+                if let Some(n) = note {
+                    s.push_str(&format!("{n}\n"));
                 }
                 let waiting = actions::list(st, &conv.user_id, Some("pending"), Some(conv.id), 10).await?;
                 if !waiting.is_empty() {
@@ -586,6 +672,9 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
         }
         Mode::Answer { asked, answer } => {
             s.push_str(&format!("\nPigeon asked {name}: {asked}\n{name}'s answer: {answer}\n"));
+        }
+        Mode::Tell { .. } => {
+            s.push_str(&format!("\n{name} asks for a reply now that answers what {them} asked, with the above.\n"));
         }
         Mode::Away { sig, .. } => {
             if sig.urgent >= crate::apps::pigeon::triage::URGENT_AT {

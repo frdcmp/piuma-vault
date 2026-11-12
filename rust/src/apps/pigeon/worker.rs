@@ -1,6 +1,6 @@
 //! The pigeon-worker's loops: what runs whoever is looking. Triage (every 5 s, a few at once),
 //! the channels' own background work (Gmail's polling), the incoming messages pushed to the phone,
-//! the sweeps (expired drafts, rule runs and questions, aways and grants past their end), and per user the
+//! the sweeps (expired drafts, rule runs and questions, aways, grants and facts past their end), and per user the
 //! health checks. The LLM's calls aren't `Send` (the providers' stream sender), so everything that
 //! may write with it runs on this thread's LocalSet (`spawn_local`).
 
@@ -10,7 +10,7 @@ use tokio::task::spawn_local;
 
 use crate::apps::pigeon::events::{kinds, Bus};
 use crate::apps::pigeon::state::{self, AppState};
-use crate::apps::pigeon::{access, actions, avatars, away, cards, health, listen, media, rules, slugs, triage};
+use crate::apps::pigeon::{access, actions, avatars, away, cards, facts, health, listen, media, rules, slugs, triage};
 use crate::db::db::DbPool;
 
 /// Run until the process ends. Call inside a `LocalSet`.
@@ -93,6 +93,12 @@ async fn sweeps(st: AppState) {
             Ok(n) if n > 0 => log::info!("pigeon: {n} grant(s) ended"),
             Ok(_) => {}
             Err(e) => log::warn!("pigeon: ending grants: {e:#}"),
+        }
+        // what Pigeon knew until now: facts and pass-ons past their end
+        match facts::sweep(&st).await {
+            Ok(n) if n > 0 => log::info!("pigeon: {n} fact(s) ended"),
+            Ok(_) => {}
+            Err(e) => log::warn!("pigeon: ending facts: {e:#}"),
         }
         // people's profile pictures: the new ones, and weekly again
         match avatars::sweep(&st).await {

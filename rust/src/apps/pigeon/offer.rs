@@ -6,7 +6,8 @@
 //! level includes the ones under it, and `*` stands for any part (`location.*.ask`, `*.*.*`).
 //!
 //! The names live here, in code, and nowhere else: no table lists them, and the apps draw their
-//! screens from `catalogue()` (they know no tool by name). A tool that renames a permission lists
+//! screens from `catalogue()` (they know no tool by name); what each tool answers with, at a
+//! level, is `tell`. A tool that renames a permission lists
 //! the old name in `WAS`: grants written with it keep working, and are rewritten at the worker's
 //! start (`access::renames`).
 
@@ -36,6 +37,8 @@ pub struct Tool {
     pub ask_only: bool,
     /// Pigeon uses it today (false: it can be granted, nothing runs on it yet)
     pub live: bool,
+    /// its fact ages: older than this many minutes, Pigeon only drafts with it
+    pub fresh: Option<i64>,
 }
 
 const USE: &[Level] = &[Level { name: "use", label: "Yes", example: "" }];
@@ -53,7 +56,8 @@ pub static TOOLS: &[Tool] = &[
             Level { name: "exact", label: "Exact spot", example: "the street, or a pin on the map" },
         ],
         ask_only: false,
-        live: false,
+        live: true,
+        fresh: Some(30),
     },
     Tool {
         name: "calendar",
@@ -66,7 +70,8 @@ pub static TOOLS: &[Tool] = &[
             Level { name: "details", label: "What it is", example: "“I have a dinner until 9”" },
         ],
         ask_only: false,
-        live: false,
+        live: true,
+        fresh: None,
     },
     Tool {
         name: "passon",
@@ -75,7 +80,8 @@ pub static TOOLS: &[Tool] = &[
         asks: "",
         levels: USE,
         ask_only: false,
-        live: false,
+        live: true,
+        fresh: None,
     },
 ];
 
@@ -198,6 +204,7 @@ pub fn catalogue() -> Json {
             "has_levels": t.has_levels(),
             "ask_only": t.ask_only,
             "live": t.live,
+            "fresh_minutes": t.fresh,
         }))
         .collect::<Vec<_>>())
 }

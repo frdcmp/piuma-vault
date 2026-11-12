@@ -109,7 +109,16 @@ pub struct Outcome {
 }
 
 /// Put one proposal through its policy: dropped (off), queued (ask), or done (auto).
-pub async fn propose(st: &State, p: Proposal) -> anyhow::Result<Outcome> {
+pub async fn propose(st: &State, mut p: Proposal) -> anyhow::Result<Outcome> {
+    // what a reply used of the user's (`tell`), and that it may go on its own, is Pigeon's own
+    // agent's to say: nobody else's arguments carry it
+    if !matches!(p.source, Source::Agent) {
+        if let Some(o) = p.args.as_object_mut() {
+            for k in ["used", "used_auto", "as_written", "edited"] {
+                o.remove(k);
+            }
+        }
+    }
     let Some(connector) = connectors::find(st, &p.connector).filter(|c| c.available(st).is_ok()) else {
         anyhow::bail!("no connector '{}' here", p.connector);
     };
@@ -127,7 +136,10 @@ pub async fn propose(st: &State, p: Proposal) -> anyhow::Result<Outcome> {
     // an away reply (`away`): Pigeon's own words while the user is away, theirs to send by setting
     // away; it goes on its own (their Off still stops it, and the reply guard holds)
     let away_reply = def.kind == Kind::Reply && p.args.get("away").and_then(Json::as_bool) == Some(true);
-    let pol = if away_reply && pol != Policy::Off { Policy::Auto } else { pol };
+    // a reply with what the user lets Pigeon tell them on its own (`tell`: asked, held as auto,
+    // read back): the permission is their yes, the same way
+    let told = def.kind == Kind::Reply && p.args.get("used_auto").and_then(Json::as_bool) == Some(true);
+    let pol = if (away_reply || told) && pol != Policy::Off { Policy::Auto } else { pol };
     // off drops what Pigeon proposes on its own; a draft the user asked for still comes to them
     if pol == Policy::Off && p.hold.as_deref() != Some(super::agent::ASKED_AS_DRAFT) {
         return Ok(Outcome { id: None, status: "off".into(), detail: Some(format!("{} actions are off here", def.kind.as_str())) });
@@ -382,7 +394,12 @@ pub async fn execute(st: &State, id: Uuid, by: &str) -> anyhow::Result<ActionRow
     if let Some(c) = row.conversation_id {
         crate::apps::pigeon::events::conversation(&st.pool, c).await;
     }
-    Ok(get(st, id).await?.expect("the row just updated"))
+    let row = get(st, id).await?.expect("the row just updated");
+    // a reply that told something of the user's went out: its pass-ons are said, and the like (`tell`)
+    if status == "done" && row.kind == "reply" && row.args.get("used").is_some() {
+        super::tell::sent(st, &row).await;
+    }
+    Ok(row)
 }
 
 /// The user's yes, optionally with new arguments (an edited reply): replaces the ones given.
@@ -396,10 +413,18 @@ pub async fn approve(st: &State, id: Uuid, edits: Option<&Json>, by: &str) -> an
         anyhow::bail!("action {id} has expired");
     }
     let mut args = row.args.clone();
+    // sent as Pigeon wrote it, by the user: counts toward letting it go on its own (`tell::sent`)
+    let as_written = by.starts_with("user") && super::tell::as_written(&row, edits);
     if let (Some(Json::Object(edits)), Some(obj)) = (edits, args.as_object_mut()) {
         for (k, v) in edits {
-            obj.insert(k.clone(), v.clone());
+            // what the reply used is the record's, not an edit's
+            if !["used", "used_auto", "as_written", "edited"].contains(&k.as_str()) {
+                obj.insert(k.clone(), v.clone());
+            }
         }
+    }
+    if let (true, Some(obj)) = (as_written, args.as_object_mut()) {
+        obj.insert("as_written".into(), json!(true));
     }
     sqlx::query("UPDATE db_pigeon_actions SET args = $2, decided_by = $3, decided_at = NOW(), updated_at = NOW() WHERE id = $1")
         .bind(id)
@@ -413,7 +438,8 @@ pub async fn approve(st: &State, id: Uuid, edits: Option<&Json>, by: &str) -> an
 /// A waiting draft's new words: it stays a draft.
 pub async fn redraft(st: &State, id: Uuid, text: &str) -> anyhow::Result<ActionRow> {
     let n = sqlx::query(
-        "UPDATE db_pigeon_actions SET args = jsonb_set(args, '{text}', to_jsonb($2::text)), updated_at = NOW()
+        "UPDATE db_pigeon_actions SET args = jsonb_set(args, '{text}', to_jsonb($2::text)) || CASE WHEN args ? 'used' THEN '{\"edited\": true}'::jsonb ELSE '{}'::jsonb END,
+                updated_at = NOW()
           WHERE id = $1 AND status = 'pending' AND kind = 'reply'",
     )
     .bind(id)

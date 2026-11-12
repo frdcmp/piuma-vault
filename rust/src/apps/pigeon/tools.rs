@@ -19,7 +19,7 @@ use crate::apps::pigeon::conversations::{self, Conversation};
 use crate::apps::pigeon::policy::Policy;
 use crate::apps::pigeon::state::{AppState, State};
 use crate::apps::pigeon::access::{self, Holder, What};
-use crate::apps::pigeon::{actions, agent, alerts, away, cards, confirm, media, people, policy, rules};
+use crate::apps::pigeon::{actions, agent, alerts, away, cards, confirm, facts, media, people, policy, rules, tell};
 
 /// Who Piuma's decisions are logged as.
 const BY: &str = "piuma";
@@ -368,6 +368,76 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
             } }),
         ),
         (
+            "pigeon_tool_uses",
+            "What Pigeon told people with the user's leave: the replies (sent, or waiting as drafts) that used a tool, newest first, each \
+             with what was told, at which level, through which permission and from where, and how sure Jev was they asked. For one person \
+             (contact_id), one chat (conversation_id), or everyone.",
+            json!({ "type": "object", "properties": {
+                "contact_id": id("Only to this person"),
+                "conversation_id": id("Only in this chat"),
+                "limit": { "type": "integer", "description": "At most this many (default 30)" },
+            } }),
+        ),
+        (
+            "pigeon_facts",
+            "What Pigeon knows about the user right now: `facts` (their place, written by the phone, or anything said about themselves: told \
+             to whoever holds the tool's permission, at their level) and `passons` (what the user left for one person or one chat to hear \
+             when they ask).",
+            json!({ "type": "object", "properties": {} }),
+        ),
+        (
+            "pigeon_set_fact",
+            "Write what Pigeon knows about the user for a key (the latest replaces the one before): `location` is their place, said at each \
+             level it's known at (`levels`: {\"country\": \"Japan\", \"city\": \"Tokyo\", \"area\": \"Shibuya, Tokyo\", \"exact\": \"…\"}: \
+             people are told it only up to the level they hold, so leave out what the user didn't say). `until` or `minutes` makes it end by \
+             itself. Or forget one: `fact_id` with `delete: true` (a fact or a pass-on, from pigeon_facts). Only on the user's word.",
+            json!({ "type": "object", "properties": {
+                "key": { "type": "string", "description": "The tool it's for (pigeon_access's catalogue): location" },
+                "levels": { "type": "object", "description": "It, said at each level: the tool's level names to words" },
+                "value": { "type": "object", "description": "Anything more to keep with it (a place's lat, lon)" },
+                "until": { "type": "string", "description": "When it stops being true, ISO 8601 with the offset" },
+                "minutes": { "type": "integer", "description": "Or: true for this many minutes" },
+                "fact_id": id("With delete: the fact or pass-on to forget"),
+                "delete": { "type": "boolean" },
+            } }),
+        ),
+        (
+            "pigeon_passon",
+            "Leave something for one person (contact_id) or one chat (conversation_id) to hear when they ask (\"if Marco asks tonight, we're \
+             at the ramen place\"): `text` in the user's words. When they ask, Pigeon writes the reply with it as a draft for the user (on \
+             its own only for who holds passon.use.auto); once told it's gone, and `until` or `minutes` ends it unsaid. Only on the user's word.",
+            json!({ "type": "object", "properties": {
+                "contact_id": id("For this person"),
+                "conversation_id": id("Or for this chat"),
+                "text": { "type": "string", "description": "What they should hear" },
+                "until": { "type": "string", "description": "Until when it holds, ISO 8601 with the offset" },
+                "minutes": { "type": "integer", "description": "Or: for this many minutes" },
+            }, "required": ["text"] }),
+        ),
+        (
+            "pigeon_try_permission",
+            "Before granting: try a permission (tool.level.mode) on what a person, a chat or a group's people wrote lately. Jev reads their \
+             last messages one by one: which asked for it, and what Pigeon would have done with each (answer on its own, or ask the user). \
+             Nothing is sent or changed. Slow (up to ~20 s).",
+            json!({ "type": "object", "properties": {
+                "contact_id": id("This person's messages"),
+                "conversation_id": id("Or this chat's"),
+                "group_id": id("Or this group's people's"),
+                "group": { "type": "string", "description": "Or the group with this name" },
+                "permission": { "type": "string", "description": "tool.level.mode, e.g. location.city.auto" },
+                "limit": { "type": "integer", "description": "How many of their last messages (default 30, at most 60)" },
+            }, "required": ["permission"] }),
+        ),
+        (
+            "pigeon_mark_wrong",
+            "\"That was wrong\": a reply told someone something it shouldn't have (action_id, from pigeon_tool_uses; `tool`: only that one \
+             of what it used). The permissions behind it that let Pigeon answer on its own go back to ask, and the record says so.",
+            json!({ "type": "object", "properties": {
+                "action_id": id("The reply"),
+                "tool": { "type": "string", "description": "Only this tool of what it used" },
+            }, "required": ["action_id"] }),
+        ),
+        (
             "pigeon_connectors",
             "The Inbox's channels: each one available here or why not, the user's accounts on it and their health. Accounts are connected in the Inbox's settings.",
             json!({ "type": "object", "properties": {} }),
@@ -379,10 +449,11 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
 const READS: &[&str] = &[
     "pigeon_inbox", "pigeon_search", "pigeon_conversation", "pigeon_pending", "pigeon_rules", "pigeon_rule_runs",
     "pigeon_actions", "pigeon_contacts", "pigeon_policies", "pigeon_connectors", "pigeon_access", "pigeon_permissions", "pigeon_groups",
+    "pigeon_tool_uses", "pigeon_facts", "pigeon_try_permission",
 ];
 
 /// The tools that decide who may be told what: their own scope, `inbox.access`.
-const ACCESS: &[&str] = &["pigeon_set_group", "pigeon_grant", "pigeon_revoke"];
+const ACCESS: &[&str] = &["pigeon_set_group", "pigeon_grant", "pigeon_revoke", "pigeon_mark_wrong"];
 
 /// The scope a key needs to run a tool from outside (the tools' API, MCP).
 pub fn scope(name: &str) -> &'static str {
@@ -766,6 +837,29 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
             }
             Ok(json!({ "paused": access::pause(st, user, until).await? }))
         }
+        "pigeon_tool_uses" => tell::uses(st, user, opt_uuid(args, "contact_id")?, opt_uuid(args, "conversation_id")?, limit(args, 30, 200)).await,
+        "pigeon_facts" => facts::all(st, user).await,
+        "pigeon_set_fact" => {
+            if args.get("delete").and_then(Json::as_bool) == Some(true) {
+                return Ok(json!({ "deleted": facts::delete(st, user, uuid_arg(args, "fact_id")?).await?.id }));
+            }
+            let key = text(args, "key").ok_or_else(|| anyhow::anyhow!("`key` is required: location"))?;
+            let (value, levels) = (args.get("value").unwrap_or(&Json::Null), args.get("levels").unwrap_or(&Json::Null));
+            let f = facts::set(st, user, key, value, levels, text(args, "source").unwrap_or("user"), until_arg(args)?).await?;
+            Ok(json!({ "fact": facts::views(&st.pool, &[f]).await?.pop() }))
+        }
+        "pigeon_passon" => {
+            let h = holder_arg(st, user, args).await?;
+            let words = text(args, "text").ok_or_else(|| anyhow::anyhow!("`text` is required: what they should hear"))?;
+            let f = facts::leave(st, user, h, words, until_arg(args)?).await?;
+            Ok(json!({ "fact": facts::views(&st.pool, &[f]).await?.pop() }))
+        }
+        "pigeon_try_permission" => {
+            let h = holder_arg(st, user, args).await?;
+            let permission = text(args, "permission").ok_or_else(|| anyhow::anyhow!("`permission` is required: tool.level.mode"))?;
+            tell::try_on_past(st, user, h, permission, limit(args, 30, 60)).await
+        }
+        "pigeon_mark_wrong" => tell::wrong(st, user, uuid_arg(args, "action_id")?, text(args, "tool")).await,
         "pigeon_connectors" => connectors_view(st, user).await,
         other => anyhow::bail!("unknown tool: {other}"),
     }

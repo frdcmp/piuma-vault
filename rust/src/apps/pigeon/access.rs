@@ -29,7 +29,7 @@ use uuid::Uuid;
 use crate::apps::pigeon::conversations::Conversation;
 use crate::apps::pigeon::offer::{self, Permission, Tool};
 use crate::apps::pigeon::state::State;
-use crate::apps::pigeon::{avatars, events, people, policy, tools};
+use crate::apps::pigeon::{avatars, events, facts, people, policy, tools};
 use crate::db::db::DbPool;
 
 /// A group's name, at most.
@@ -38,6 +38,8 @@ pub const MAX_DESCRIPTION: usize = 300;
 /// The user's words kept with a grant, at most.
 pub const MAX_SAID: usize = 300;
 const PAUSE_KEY: &str = "sharing_paused";
+/// The tool the phone writes for: where the user is.
+const PLACE: &str = "location";
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Group {
@@ -447,12 +449,19 @@ pub async fn overview(st: &State, user: &str) -> anyhow::Result<Json> {
         })
         .collect();
     direct.sort_by_key(|v| v["name"].as_str().unwrap_or_default().to_lowercase());
+    // where the user is, as Pigeon knows it: null when nothing wrote it (the phone's switch is off)
+    let place = match facts::latest(&st.pool, user, PLACE).await? {
+        Some(f) => facts::views(&st.pool, &[f]).await?.pop().unwrap_or(Json::Null),
+        None => Json::Null,
+    };
     Ok(json!({
         "catalogue": offer::catalogue(),
         "paused": paused(&st.pool, user).await?,
         "auto_enabled": policy::auto_enabled(&st.pool, user).await?,
         "groups": groups,
         "direct": direct,
+        "place": place,
+        "place_fresh_minutes": offer::find(PLACE).and_then(|t| t.fresh),
     }))
 }
 
@@ -469,6 +478,7 @@ pub async fn of_contact(st: &State, user: &str, contact: Uuid) -> anyhow::Result
         "groups": memberships(&book, h),
         "own": own_views(&book, &names, h),
         "effective": eff_views(&book.effective(&[h])),
+        "passons": facts::views(&st.pool, &facts::left_for(&st.pool, user, contact).await?).await?,
     }))
 }
 
@@ -484,6 +494,7 @@ pub async fn of_conversation(st: &State, user: &str, conversation: Uuid) -> anyh
         "group_chat": conv.contact_id.is_none(),
         "own": own_views(&book, &names, Holder::Conversation(conversation)),
         "effective": eff_views(&book.effective(&holders_of(&conv))),
+        "passons": facts::views(&st.pool, &facts::passons(&st.pool, user, conv.contact_id, Some(conversation)).await?).await?,
     }))
 }
 

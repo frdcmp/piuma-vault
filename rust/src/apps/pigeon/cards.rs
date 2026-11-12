@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 use crate::apps::notifications::{notify, Channels, NewNotification};
 use crate::apps::pigeon::state::{AppState, State};
-use crate::apps::pigeon::{actions, agent, alerts, conversations, events, rules, slugs};
+use crate::apps::pigeon::{actions, agent, alerts, conversations, events, rules, slugs, tell};
 
 /// The agent's tool to ask the user.
 pub const ASK_TOOL: &str = "pigeon_ask_user";
@@ -41,7 +41,7 @@ pub struct Button {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Card {
-    /// question · draft · suggestion · run · needs · confirm
+    /// question · uncovered · draft · suggestion · run · needs · confirm
     pub kind: &'static str,
     pub id: Uuid,
     pub text: String,
@@ -51,6 +51,9 @@ pub struct Card {
     pub free_text: bool,
     pub buttons: Vec<Button>,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// what the apps draw it from: an uncovered card's tool and holder, the tools a draft uses
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Json>,
 }
 
 fn button(label: &str, value: &str) -> Button {
@@ -123,6 +126,7 @@ fn tidy_card(rows: &[&actions::ActionRow]) -> Card {
         free_text: false,
         buttons,
         created_at: rows[0].created_at,
+        data: None,
     }
 }
 
@@ -165,14 +169,18 @@ async fn press_tidy(st: &AppState, user: &str, row: actions::ActionRow, button: 
 /// An action as a card: ✍ a reply to send, 💡 something to add.
 fn action_card(row: &actions::ActionRow) -> Card {
     if row.kind == "reply" {
+        // a reply written with something of the user's says so: what, how much, by which leave
+        let used = tell::used(&row.args);
+        let text = if used.is_empty() { format!("✍ {}", describe(row)) } else { format!("✍ {}\n🔑 {}", describe(row), tell::line(&used)) };
         return Card {
             kind: "draft",
             id: row.id,
-            text: format!("✍ {}", describe(row)),
+            text,
             draft: row.args["text"].as_str().map(str::to_string),
             free_text: false,
             buttons: vec![button("✅ Send", "y"), button("🗑 Drop", "n")],
             created_at: row.created_at,
+            data: (!used.is_empty()).then(|| json!({ "used": used })),
         };
     }
     let what = describe(row);
@@ -189,6 +197,7 @@ fn action_card(row: &actions::ActionRow) -> Card {
         free_text: false,
         buttons: vec![button("✅ Add", "y"), button("🗑 Drop", "n")],
         created_at: row.created_at,
+        data: None,
     }
 }
 
@@ -203,10 +212,16 @@ pub async fn list(st: &State, user: &str, conversation: Option<Uuid>) -> anyhow:
         .fetch_all(&st.pool)
         .await?;
         for (id, question, options, created_at) in questions {
+            // asked, and they don't hold it (`tell`): the 🔑 card
+            if let Some(data) = options.get("uncovered") {
+                let buttons = vec![button("Answer this once", "once"), button("Allow…", "allow"), button("No", "x")];
+                out.push(Card { kind: "uncovered", id, text: format!("🔑 {question}"), draft: None, free_text: false, buttons, created_at, data: Some(data.clone()) });
+                continue;
+            }
             let mut buttons: Vec<Button> =
                 options.as_array().into_iter().flatten().filter_map(|o| o.as_str()).enumerate().map(|(i, o)| button(o, &i.to_string())).collect();
             buttons.push(button("🗑 Drop", "x"));
-            out.push(Card { kind: "question", id, text: format!("❓ {question}"), draft: None, free_text: true, buttons, created_at });
+            out.push(Card { kind: "question", id, text: format!("❓ {question}"), draft: None, free_text: true, buttons, created_at, data: None });
         }
         let mut rows = actions::list(st, user, Some("pending"), Some(conversation), 20).await?;
         // an auto one is on its way (Pigeon is typing it): nothing to approve
@@ -232,7 +247,7 @@ pub async fn list(st: &State, user: &str, conversation: Option<Uuid>) -> anyhow:
             if let Some(r) = reason {
                 text.push_str(&format!("\nwaits: {r}"));
             }
-            out.push(Card { kind: "run", id, text, draft: None, free_text: false, buttons: vec![button("✅ Run it", "y"), button("🗑 Drop", "n")], created_at });
+            out.push(Card { kind: "run", id, text, draft: None, free_text: false, buttons: vec![button("✅ Run it", "y"), button("🗑 Drop", "n")], created_at, data: None });
         }
         let needs: Option<(Option<String>, chrono::DateTime<chrono::Utc>)> =
             sqlx::query_as("SELECT needs_note, COALESCE(triaged_at, updated_at) FROM db_pigeon_conversations WHERE id = $1 AND needs_note IS NOT NULL")
@@ -241,7 +256,7 @@ pub async fn list(st: &State, user: &str, conversation: Option<Uuid>) -> anyhow:
                 .await?;
         if let Some((Some(note), at)) = needs {
             let text = if note.starts_with(URGENT) { note } else { format!("✋ {note}") };
-            out.push(Card { kind: "needs", id: conversation, text, draft: None, free_text: true, buttons: vec![button("✓ Handled", "y")], created_at: at });
+            out.push(Card { kind: "needs", id: conversation, text, draft: None, free_text: true, buttons: vec![button("✓ Handled", "y")], created_at: at, data: None });
         }
     }
     if conversation.is_none() {
@@ -266,6 +281,7 @@ pub async fn list(st: &State, user: &str, conversation: Option<Uuid>) -> anyhow:
             free_text: false,
             buttons: vec![button("✅ Yes, do it", "y"), button("✖ Cancel", "n")],
             created_at,
+            data: None,
         });
     }
     Ok(out)
@@ -288,7 +304,8 @@ async fn push(st: &State, user: &str, conversation: Option<Uuid>, card: Option<&
         (true, Some(_)) => CH_CARDS,
         (true, None) => CH_NEWS,
     };
-    let category = card.map(|c| format!("pigeon-{}", c.kind));
+    // a 🔑 card's choices need the app (what to allow): no buttons on the push
+    let category = card.filter(|c| c.kind != "uncovered").map(|c| format!("pigeon-{}", c.kind));
     let card = card.map(|c| json!({ "kind": c.kind, "id": c.id, "buttons": c.buttons, "free_text": c.free_text }));
     send(st, user, conversation, json!({ "card": card }), text, ring, channel, category).await;
 }
@@ -511,20 +528,32 @@ pub async fn answer(st: &AppState, question: Uuid, answer: &str, by: &str) -> an
     .await?;
     let Some((conversation, asked)) = row else { return Ok("That question is answered already.".into()) };
     events::conversation(&st.pool, conversation).await;
-    act_on(st, conversation, asked, answer.to_string());
+    act_on(st, conversation, Said::Answer { asked, answer: answer.to_string() });
     Ok("Got it: Pigeon is on it.".into())
+}
+
+/// What the user said that sends Pigeon back to a conversation.
+pub enum Said {
+    /// their answer to a question
+    Answer { asked: String, answer: String },
+    /// "tell them" on a 🔑 card: write the reply with these
+    Tell(Vec<tell::Use>),
 }
 
 /// Pigeon back on a conversation with what the user said: a reply waiting or something to add
 /// comes as its card; what failed, or nothing to do, is told (what went out is in the chat).
-fn act_on(st: &AppState, conversation: Uuid, asked: String, answer: String) {
+pub(crate) fn act_on(st: &AppState, conversation: Uuid, said: Said) {
     let st = st.clone();
     tokio::task::spawn_local(async move {
         let Ok(Some(conv)) = conversations::get(&st.pool, conversation).await else { return };
         let user = conv.user_id;
         // the chat shows Pigeon at it (then typing, when a reply goes out), and where it ended
         events::working(&st.pool, conversation, "deciding", None, None).await;
-        let outcomes = match agent::after_answer(&st, conversation, &asked, &answer).await {
+        let outcomes = match &said {
+            Said::Answer { asked, answer } => agent::after_answer(&st, conversation, asked, answer).await,
+            Said::Tell(uses) => agent::tell_reply(&st, conversation, uses).await,
+        };
+        let outcomes = match outcomes {
             Ok(o) => o,
             Err(e) => {
                 events::working(&st.pool, conversation, "done", None, Some("stopped")).await;
@@ -640,12 +669,13 @@ pub async fn press(st: &AppState, user: &str, kind: &str, id: Uuid, button: &str
             events::conversation(&st.pool, id).await;
             match text {
                 Some(t) => {
-                    act_on(st, id, "What should Pigeon do about this conversation?".into(), t.to_string());
+                    act_on(st, id, Said::Answer { asked: "What should Pigeon do about this conversation?".into(), answer: t.to_string() });
                     Ok("Got it: Pigeon is on it.".into())
                 }
                 None => Ok("✓ Handled".into()),
             }
         }
+        "uncovered" => tell::press(st, user, id, button, text).await,
         "confirm" => crate::apps::pigeon::confirm::decide(st, user, id, button == "y").await,
         _ => anyhow::bail!("a card Pigeon doesn't know"),
     }

@@ -176,6 +176,12 @@ pigeon.py grant contact_id=@alex member_of=Friends
 pigeon.py grant group=Friends permission=location.city.ask
 pigeon.py grant contact_id=@alex permission=location.exact.ask minutes=120 said="for tonight"
 pigeon.py revoke grant_id=<uuid>
+pigeon.py try_permission group=Friends permission=location.city.auto   # what it would have done lately
+pigeon.py facts                         # what Pigeon knows now: the user's place, pass-ons
+pigeon.py set_fact key=location levels='{"country":"Japan","city":"Tokyo"}' minutes=180
+pigeon.py passon contact_id=@alex text="we're at the ramen place" minutes=240
+pigeon.py tool_uses contact_id=@alex    # what Pigeon told them, with which permission
+pigeon.py mark_wrong action_id=<uuid>   # that reply told too much: its auto goes back to ask
 ```
 
 ## Inbox rules
@@ -191,6 +197,10 @@ pigeon.py revoke grant_id=<uuid>
   the user asked, for whom they said. Mode `ask` still shows them every answer first; mode
   `auto` (or a place in a group that holds one) is Pigeon answering on its own: only when
   they ask for it, and it comes back as a card they tap.
+- **What Pigeon knows** (`facts`, `set_fact`, `passon`): the user's place (their phone writes
+  it; `set_fact` only when they say where they are, with just the levels they said) and what
+  they left for one person to hear when they ask (`passon`, their words). Both are told to
+  other people: only on the user's word.
 - Messages are the user's private conversations: quote only what the task needs, and never
   into a commit, an issue or anywhere public.
 - Find people by `contacts` before changing them; a handle that is someone else's is
@@ -200,12 +210,17 @@ pigeon.py revoke grant_id=<uuid>
 
 - The key needs **`inbox.read`** (and **`inbox.write`** for anything marked `w` in
   `tools`): a `403 … inbox.read permission required` means the key lacks it. Groups and
-  grants (`set_group`, `grant`, `revoke`) need their own scope, **`inbox.access`**.
+  grants (`set_group`, `grant`, `revoke`, `mark_wrong`) need their own scope, **`inbox.access`**.
 - A message's text says only `[image]` or `[voice message]`: what was sent is in its
   `files` (kind, name, a voice note's `transcript`, `status`). To see a photo or read a
   document, `pigeon.py file item=… file=…` saves it under `~/.cache/piuma-vault/files`
   (`to=` for elsewhere) and prints the path. Only a `stored` file can be had: `expired`
   and `gone` ones are no longer kept. `file` is the script's own, not one of the tools.
+- When someone asks for something they hold no permission for, the user gets a 🔑 card in
+  the Inbox (answer this once, allow, no); with `ask` the answer is a draft that says what it
+  uses; with `auto` it goes out only when Jev is sure they asked, for themselves and nothing
+  else, and the reply read back says no more than their level. A place older than 30 minutes
+  and a calendar with repeating events are never told on Pigeon's own.
 - A person known only by a number takes the name their next message carries on its own;
   `names_from_whatsapp` does it now from the phone's address book (and gives the slug).
 - `learn` brings old conversations in and writes what Pigeon knows about people: slow, it
