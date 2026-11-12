@@ -6,7 +6,7 @@
 //!
 //! A message's `media` lists them: `{id, kind, label, mime, name, size, seconds, width, height,
 //! key, thumb, status}` each (`status`: pending, stored, gone (the channel no longer has it),
-//! failed), and while pending, `source`: where to fetch it (`wa`: the WhatsApp bridge's details,
+//! failed), and while pending or failed, `source`: where to fetch it (`wa`: the WhatsApp bridge's details,
 //! `url`, `gmail`: {message, attachment}). A string in the list is something that isn't a file
 //! (a location, a contact, a poll), or a message from before files were kept.
 //!
@@ -379,7 +379,8 @@ async fn fetch(st: &State, item: Uuid) -> anyhow::Result<()> {
                 let tries = m["tries"].as_i64().unwrap_or(0) + 1;
                 log::info!("pigeon media {id} of {item}: try {tries}: {why}");
                 if tries >= TRIES {
-                    json!({ "status": "failed", "tries": tries, "source": null, "error": why, "retry_at": null })
+                    // its source stays: it can be put back to pending while the channel still has the file
+                    json!({ "status": "failed", "tries": tries, "error": why, "retry_at": null })
                 } else {
                     json!({ "tries": tries, "error": why, "retry_at": (Utc::now() + wait(tries)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true) })
                 }
