@@ -1,5 +1,5 @@
 //! Pigeon Worker — the Inbox's background work (`apps::pigeon::worker`): triage, Gmail's polling,
-//! the pushes, the sweeps, the morning summary and the health checks. Pigeon's LLM calls hold the
+//! the pushes, the sweeps and the health checks. Pigeon's LLM calls hold the
 //! providers' stream sender (not `Send`), so it runs on a current-thread runtime + LocalSet.
 
 use backend::apps::pigeon::worker;

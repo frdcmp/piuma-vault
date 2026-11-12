@@ -1,6 +1,6 @@
 //! The pigeon-worker's loops: what runs whoever is looking. Triage (every 5 s, a few at once),
 //! the channels' own background work (Gmail's polling), the incoming messages pushed to the phone,
-//! the sweeps (expired drafts, rule runs and questions, aways past their end), and per user the morning summary and the
+//! the sweeps (expired drafts, rule runs and questions, aways past their end), and per user the
 //! health checks. The LLM's calls aren't `Send` (the providers' stream sender), so everything that
 //! may write with it runs on this thread's LocalSet (`spawn_local`).
 
@@ -10,7 +10,7 @@ use tokio::task::spawn_local;
 
 use crate::apps::pigeon::events::{kinds, Bus};
 use crate::apps::pigeon::state::{self, AppState};
-use crate::apps::pigeon::{actions, avatars, away, cards, health, listen, media, rules, slugs, summary, triage};
+use crate::apps::pigeon::{actions, avatars, away, cards, health, listen, media, rules, slugs, triage};
 use crate::db::db::DbPool;
 
 /// Run until the process ends. Call inside a `LocalSet`.
@@ -118,13 +118,10 @@ async fn sweeps(st: AppState) {
     }
 }
 
-/// Every minute for each user with a channel connected: the morning summary when it's due;
-/// every two, the health checks.
+/// Every two minutes for each user with a channel connected: the health checks.
 async fn per_user(st: AppState) {
-    let mut n: u64 = 0;
     loop {
-        tokio::time::sleep(Duration::from_secs(60)).await;
-        n += 1;
+        tokio::time::sleep(Duration::from_secs(120)).await;
         let users: Vec<String> = match sqlx::query_scalar("SELECT DISTINCT user_id FROM db_pigeon_connections WHERE status <> 'disconnected'")
             .fetch_all(&st.pool)
             .await
@@ -136,13 +133,8 @@ async fn per_user(st: AppState) {
             }
         };
         for user in &users {
-            if let Err(e) = summary::tick(&st, user).await {
-                log::warn!("pigeon summary for {user}: {e:#}");
-            }
-            if n % 2 == 0 {
-                if let Err(e) = health::check(&st, user).await {
-                    log::warn!("pigeon health for {user}: {e:#}");
-                }
+            if let Err(e) = health::check(&st, user).await {
+                log::warn!("pigeon health for {user}: {e:#}");
             }
         }
     }

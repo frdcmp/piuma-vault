@@ -1,5 +1,5 @@
 //! Whose Pigeon it is: the user's name (as the prompts and the transcript call them) and their
-//! timezone (dates are written and the morning summary runs in it), from their vault profile.
+//! timezone (dates are written in it), from their vault profile.
 
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;

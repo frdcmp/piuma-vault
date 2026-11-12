@@ -17,7 +17,7 @@ use crate::apps::pigeon::connectors::Kind;
 use crate::apps::pigeon::conversations::{self, Conversation};
 use crate::apps::pigeon::policy::Policy;
 use crate::apps::pigeon::state::{AppState, State};
-use crate::apps::pigeon::{actions, agent, alerts, away, cards, confirm, media, people, policy, rules, summary};
+use crate::apps::pigeon::{actions, agent, alerts, away, cards, confirm, media, people, policy, rules};
 
 /// Who Piuma's decisions are logged as.
 const BY: &str = "piuma";
@@ -276,11 +276,6 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
                 "minutes": { "type": "integer", "description": "Or: back in this many minutes" },
                 "end": { "type": "boolean", "description": "true: they're back" },
             } }),
-        ),
-        (
-            "pigeon_summary",
-            "What's open in the Inbox, in a few lines (the morning summary): drafts waiting for the user's Send, what Pigeon asks, who's unanswered, tasks and events to confirm.",
-            json!({ "type": "object", "properties": {} }),
         ),
         (
             "pigeon_connectors",
@@ -583,7 +578,6 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
             };
             Ok(json!({ "away": away::set(st, user, reason, until).await? }))
         }
-        "pigeon_summary" => Ok(json!({ "text": summary::render(st, user).await? })),
         "pigeon_connectors" => connectors_view(st, user).await,
         other => anyhow::bail!("unknown tool: {other}"),
     }

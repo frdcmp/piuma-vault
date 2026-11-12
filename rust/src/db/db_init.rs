@@ -1439,7 +1439,7 @@ const TABLES: &[TableDefinition] = &[
         indices: &[],
     },
     // News for the user, nothing to decide: what Pigeon did on an answer (with a
-    // link), a health problem, the morning summary. In the person's chat, or
+    // link), a health problem. In the person's chat, or
     // General when `conversation_id` is null.
     TableDefinition {
         name: "db_pigeon_news",

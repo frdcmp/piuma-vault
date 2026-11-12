@@ -45,7 +45,6 @@ pub mod rules;
 pub mod sign;
 pub mod slugs;
 pub mod state;
-pub mod summary;
 pub mod tools;
 pub mod triage;
 pub mod webhooks;

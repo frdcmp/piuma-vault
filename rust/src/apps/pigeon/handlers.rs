@@ -1278,7 +1278,7 @@ pub async fn item_media(st: web::Data<AppState>, u: InboxReader, path: web::Path
 /// The Inbox tools that only read: an `inbox.read` key may run them; the rest need `inbox.write`.
 const READ_TOOLS: &[&str] = &[
     "pigeon_inbox", "pigeon_search", "pigeon_conversation", "pigeon_pending", "pigeon_rules", "pigeon_rule_runs",
-    "pigeon_actions", "pigeon_contacts", "pigeon_policies", "pigeon_summary", "pigeon_connectors",
+    "pigeon_actions", "pigeon_contacts", "pigeon_policies", "pigeon_connectors",
 ];
 
 /// Piuma's Inbox tools, for a script or another assistant (the piuma-vault skill's pigeon.py):

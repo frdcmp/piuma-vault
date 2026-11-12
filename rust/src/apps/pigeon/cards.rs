@@ -397,7 +397,7 @@ pub async fn message_in(st: &State, user: &str, item: Uuid) -> anyhow::Result<()
     Ok(())
 }
 
-/// Something about Pigeon itself (its health, the morning's summary), in General, ringing.
+/// Something about Pigeon itself (its health), in General, ringing.
 pub async fn alert(st: &State, user: &str, text: &str) {
     news(st, user, None, text, None, true).await;
 }
