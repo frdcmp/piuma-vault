@@ -13,8 +13,8 @@ import {
 	pvMessage,
 } from "@/ui";
 import { usePigeonAccess, usePressPigeonCard } from "../../../queries";
-import { timeAgo } from "../../../utils/dateTime";
-import { errorText, usesLine } from "./inboxText";
+import { formatTime, timeAgo } from "../../../utils/dateTime";
+import { errorText, placePoint, placeUrl, usesLine } from "./inboxText";
 
 const MODES = [
 	{ value: "ask", label: "Ask me" },
@@ -102,6 +102,7 @@ function PigeonCard({ card, conversationId }) {
 	const [answer, setAnswer] = useState("");
 	const [allowing, setAllowing] = useState(false);
 	const uses = card.kind === "draft" ? usesLine(card.data?.used) : "";
+	const place = card.kind === "draft" ? card.data?.place : null;
 
 	const send = (button, text) =>
 		press.mutate(
@@ -152,6 +153,16 @@ function PigeonCard({ card, conversationId }) {
 						onChange={(e) => setDraft(e.target.value)}
 						aria-label="The draft's words"
 					/>
+					{place ? (
+						<div className="pigeon-card-label">
+							📍 With a pin of where you are:{" "}
+							<a href={placeUrl(place)} target="_blank" rel="noreferrer">
+								{place.address || placePoint(place)}
+							</a>
+							{place.at ? ` (${formatTime(place.at)})` : ""}. The latest your
+							phone told goes.
+						</div>
+					) : null}
 					{uses ? (
 						<div className="pigeon-card-label">🔑 Uses {uses}</div>
 					) : null}

@@ -23,7 +23,7 @@ use serde_json::{json, Value as Json};
 use uuid::Uuid;
 
 use crate::apps::pigeon::config::WhatsappConf;
-use crate::apps::pigeon::connectors::{need_str, ActionDef, Connector, Kind, Pairing, Reacted};
+use crate::apps::pigeon::connectors::{arg_str, need_str, ActionDef, Connector, Kind, Pairing, Reacted};
 use crate::apps::pigeon::items::{self, Author, Direction, Incoming};
 use crate::apps::pigeon::media;
 use crate::apps::pigeon::owner;
@@ -269,6 +269,20 @@ pub(crate) async fn media(st: &State, user: &str, details: &Json) -> Result<reqw
     }
     let v: Json = resp.json().await.unwrap_or(Json::Null);
     Err(media::bridge_miss(status, v["error"].as_str().unwrap_or_default().to_string()))
+}
+
+/// The place a reply carries (`args.place`), as a point on Earth.
+fn place_of(args: &Json) -> anyhow::Result<Option<(f64, f64)>> {
+    let Some(p) = args.get("place").filter(|p| !p.is_null()) else { return Ok(None) };
+    match (p["lat"].as_f64(), p["lon"].as_f64()) {
+        (Some(lat), Some(lon)) if lat.abs() <= 90.0 && lon.abs() <= 180.0 => Ok(Some((lat, lon))),
+        _ => anyhow::bail!("`place` needs lat and lon, a place on Earth"),
+    }
+}
+
+/// A pin as the bridge words one that came in: what its item's body and media hold.
+fn place_kind(lat: f64, lon: f64) -> String {
+    format!("location: {lat:.5},{lon:.5}")
 }
 
 /// A message's text as an item's body: the text (its tags as names: `named`), and what's attached.
@@ -540,13 +554,44 @@ impl Connector for Whatsapp {
         if action == "send_file" {
             return send_file(st, user, &chat, args).await;
         }
-        let text = need_str(args, "text")?;
-        if text.len() > MAX_TEXT {
-            anyhow::bail!("the reply is {} bytes; {MAX_TEXT} at most", text.len());
+        // a place rides along (`args.place`): the words first, when there are any, then the pin
+        let place = place_of(args)?;
+        let text = match place {
+            Some(_) => arg_str(args, "text"),
+            None => Some(need_str(args, "text")?),
+        };
+        if let Some(t) = text.filter(|t| t.len() > MAX_TEXT) {
+            anyhow::bail!("the reply is {} bytes; {MAX_TEXT} at most", t.len());
         }
-        let sent = bridge(st, user, reqwest::Method::POST, "/send", Some(&json!({ "chat": chat, "text": text }))).await?;
-        let id = store_sent(st, user, &chat, &sent, text.to_string(), json!([])).await?;
-        Ok(json!({ "sent": true, "to": handle_of_chat(&chat), "message_id": id }))
+        let mut id = None;
+        if let Some(text) = text {
+            let sent = bridge(st, user, reqwest::Method::POST, "/send", Some(&json!({ "chat": chat, "text": text }))).await?;
+            id = Some(store_sent(st, user, &chat, &sent, text.to_string(), json!([])).await?);
+        }
+        let mut out = json!({ "sent": true, "to": handle_of_chat(&chat) });
+        if let Some((lat, lon)) = place {
+            let pin = match bridge(st, user, reqwest::Method::POST, "/send-location", Some(&json!({ "chat": chat, "lat": lat, "lon": lon }))).await {
+                Ok(sent) => sent,
+                // the words are out: failing here would send them again on a second try
+                Err(e) if id.is_some() => {
+                    log::warn!("whatsapp: the pin after a reply to {chat}: {e:#}");
+                    out["message_id"] = json!(id);
+                    out["pin"] = json!(format!("not sent: {e:#}"));
+                    return Ok(out);
+                }
+                Err(e) => return Err(e),
+            };
+            let kind = place_kind(lat, lon);
+            let pin = store_sent(st, user, &chat, &pin, format!("[{kind}]"), json!([kind])).await?;
+            out["pin"] = json!(pin);
+            id.get_or_insert(pin);
+        }
+        out["message_id"] = json!(id);
+        Ok(out)
+    }
+
+    fn sends_places(&self) -> bool {
+        true
     }
 
     fn shows_typing(&self) -> bool {
@@ -668,6 +713,15 @@ mod tests {
         .unwrap();
         assert_eq!(body_of(&m, &[]), "look\n[image]");
         assert!(!m.from_me && !m.group && m.mentions.is_empty());
+    }
+
+    #[test]
+    fn a_place_to_send() {
+        assert_eq!(place_of(&json!({ "text": "here" })).unwrap(), None);
+        assert_eq!(place_of(&json!({ "place": { "lat": 12.5, "lon": -3.25 } })).unwrap(), Some((12.5, -3.25)));
+        assert!(place_of(&json!({ "place": { "lat": 120.0, "lon": 0.0 } })).is_err());
+        assert!(place_of(&json!({ "place": "12.5,-3.25" })).is_err());
+        assert_eq!(place_kind(12.5, -3.25), "location: 12.50000,-3.25000");
     }
 
     #[test]

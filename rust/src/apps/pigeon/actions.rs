@@ -108,6 +108,21 @@ pub struct Outcome {
     pub detail: Option<String>,
 }
 
+/// A place asked for in an action's arguments (`place`, whatever it holds) is where the user's
+/// phone is, never a point the caller gives: Pigeon's agent attaches it itself (`agent`).
+async fn own_place(st: &State, user: &str, args: &mut Json) -> anyhow::Result<()> {
+    if args.get("place").is_none_or(|p| p.is_null() || p == &json!(false)) {
+        if let Some(o) = args.as_object_mut() {
+            o.remove("place");
+        }
+        return Ok(());
+    }
+    let spot = super::facts::spot(&st.pool, user).await?;
+    let spot = spot.ok_or_else(|| anyhow::anyhow!("Pigeon doesn't know where your phone is: switch your place on in the app (Settings > Access)"))?;
+    args["place"] = spot.json();
+    Ok(())
+}
+
 /// Put one proposal through its policy: dropped (off), queued (ask), or done (auto).
 pub async fn propose(st: &State, mut p: Proposal) -> anyhow::Result<Outcome> {
     // what a reply used of the user's (`tell`), and that it may go on its own, is Pigeon's own
@@ -118,6 +133,7 @@ pub async fn propose(st: &State, mut p: Proposal) -> anyhow::Result<Outcome> {
                 o.remove(k);
             }
         }
+        own_place(st, &p.user_id, &mut p.args).await?;
     }
     let Some(connector) = connectors::find(st, &p.connector).filter(|c| c.available(st).is_ok()) else {
         anyhow::bail!("no connector '{}' here", p.connector);
@@ -377,7 +393,15 @@ pub async fn execute(st: &State, id: Uuid, by: &str) -> anyhow::Result<ActionRow
         Some("pending") => {}
         Some(s) => anyhow::bail!("action {id} is {s}, not pending"),
     }
-    let row = get(st, id).await?.ok_or_else(|| anyhow::anyhow!("no action {id}"))?;
+    let mut row = get(st, id).await?.ok_or_else(|| anyhow::anyhow!("no action {id}"))?;
+    // a pin goes from where the phone is now: a place it told since the draft replaces the draft's
+    if row.args.get("place").is_some_and(Json::is_object) {
+        let drafted = row.args["place"]["at"].as_str().and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok()).map(|t| t.with_timezone(&Utc));
+        if let Some(spot) = super::facts::spot(&st.pool, &row.user_id).await?.filter(|s| drafted.is_none_or(|d| s.at > d)) {
+            row.args["place"] = spot.json();
+            sqlx::query("UPDATE db_pigeon_actions SET args = $2 WHERE id = $1").bind(id).bind(&row.args).execute(&mut *tx).await?;
+        }
+    }
     let result = match connectors::find(st, &row.connector) {
         Some(c) if c.available(st).is_ok() => c.run(st, &row.user_id, &row.action, &row.args, row.conversation_id).await,
         _ => Err(anyhow::anyhow!("connector {} is not available", row.connector)),
@@ -433,8 +457,8 @@ pub async fn approve(st: &State, id: Uuid, edits: Option<&Json>, by: &str) -> an
     let as_written = by.starts_with("user") && super::tell::as_written(&row, edits);
     if let (Some(Json::Object(edits)), Some(obj)) = (edits, args.as_object_mut()) {
         for (k, v) in edits {
-            // what the reply used is the record's, not an edit's
-            if !["used", "used_auto", "as_written", "edited"].contains(&k.as_str()) {
+            // what the reply used is the record's, not an edit's; its place is the phone's
+            if !["used", "used_auto", "as_written", "edited", "place"].contains(&k.as_str()) {
                 obj.insert(k.clone(), v.clone());
             }
         }
@@ -563,7 +587,7 @@ pub async fn run_now(
     user: &str,
     connector: &str,
     action: &str,
-    args: Json,
+    mut args: Json,
     conversation: Option<Uuid>,
     source: Source,
     policy: &str,
@@ -573,6 +597,7 @@ pub async fn run_now(
     let def = connectors::find(st, connector)
         .and_then(|c| c.actions().into_iter().find(|a| a.name == action))
         .ok_or_else(|| anyhow::anyhow!("no action {connector}.{action}"))?;
+    own_place(st, user, &mut args).await?;
     if def.on_conversation && conversation.is_none() {
         anyhow::bail!("{connector}.{action} needs conversation_id");
     }

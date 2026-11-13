@@ -74,6 +74,8 @@ pub struct Item {
     pub archived: bool,
     /// who it tags (WhatsApp): `[{id, name, phone, me}]`; the body has "@<name>" where they are
     pub mentions: Json,
+    /// a place it carries (a WhatsApp pin): `{lat, lon, name}`, read from the body's "[location: …]"
+    pub place: Option<Json>,
 }
 
 impl Item {
@@ -89,7 +91,9 @@ pub const ITEM_COLS: &str = "id, direction, author, sender, sender_name, subject
      (SELECT 'https://mail.google.com/mail/?authuser=' || k.account || '#all/' || db_pigeon_items.external_id \
         FROM db_pigeon_conversations v JOIN db_pigeon_connections k ON k.id = v.connection_id \
        WHERE v.id = db_pigeon_items.conversation_id AND db_pigeon_items.connector = 'gmail') AS open_url, \
-     (connector = 'gmail' AND direction = 'in' AND jsonb_typeof(raw->'labels') = 'array' AND NOT (raw->'labels') ? 'INBOX') AS archived";
+     (connector = 'gmail' AND direction = 'in' AND jsonb_typeof(raw->'labels') = 'array' AND NOT (raw->'labels') ? 'INBOX') AS archived, \
+     (SELECT jsonb_build_object('name', NULLIF(btrim(m[1]), ''), 'lat', m[2]::float8, 'lon', m[3]::float8) \
+        FROM regexp_match(body, '\\[(?:live )?location:\\s*(.*\\s)?(-?[0-9]+\\.[0-9]+),(-?[0-9]+\\.[0-9]+)\\]') AS m WHERE m IS NOT NULL) AS place";
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Contact {
@@ -277,6 +281,7 @@ mod tests {
             via: None,
             archived: false,
             mentions: serde_json::json!([]),
+            place: None,
         }
     }
 

@@ -620,6 +620,7 @@ mod tests {
             via: None,
             archived: false,
             mentions: json!([]),
+            place: None,
         }
     }
 

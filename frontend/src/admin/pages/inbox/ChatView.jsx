@@ -3,6 +3,7 @@ import {
 	CheckOutlined,
 	ControlOutlined,
 	EditOutlined,
+	EnvironmentOutlined,
 	FileTextOutlined,
 	MessageOutlined,
 	PaperClipOutlined,
@@ -58,10 +59,13 @@ import {
 	channelTone,
 	errorText,
 	initials,
+	isPlaceWord,
 	mediaFiles,
 	mediaLinks,
 	mediaWords,
 	POLICY_OPTIONS,
+	placePoint,
+	placeUrl,
 	reactionGroups,
 	senderLabel,
 	tagParts,
@@ -241,10 +245,14 @@ function Message({
 	const out = item.direction === "out";
 	const local = item.local;
 	const failed = local?.status === "failed";
-	const media = mediaWords(item.media);
+	// a place shows as itself, not as its words
+	const place = item.place;
+	const media = mediaWords(item.media).filter(
+		(m) => !(place && isPlaceWord(m)),
+	);
 	const files = mediaFiles(item.media);
 	const links = mediaLinks(item.media);
-	const words = bodyText(item.body, item.media);
+	const words = bodyText(item.body, item.media, place);
 	const body = words ? (
 		<div className="inbox-msg-body">
 			<Words text={words} mentions={item.mentions} senders={senders} />
@@ -284,6 +292,19 @@ function Message({
 							<PvTag key={i}>{m}</PvTag>
 						))}
 					</div>
+				) : null}
+				{place ? (
+					<a
+						className="inbox-shared"
+						href={placeUrl(place)}
+						target="_blank"
+						rel="noreferrer"
+					>
+						<span className="inbox-shared-name">
+							<EnvironmentOutlined /> {place.name || "Location"} ↗
+						</span>
+						<span className="inbox-shared-title">{placePoint(place)}</span>
+					</a>
 				) : null}
 				{links.map((l) => (
 					<a

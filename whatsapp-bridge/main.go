@@ -13,6 +13,7 @@
 //	GET  /u/{user}/status   {state, phone, name}
 //	GET  /u/{user}/pair     the QR code to scan (pairing starts if it isn't), or connected
 //	POST /u/{user}/send     {chat, text} → {id, at}
+//	POST /u/{user}/send-location {chat, lat, lon} → {id, at}: a place, as WhatsApp's own pin
 //	POST /u/{user}/typing   {chat, on}
 //	POST /u/{user}/read     {chat, messages: [{id, sender}]}: read receipts (Pigeon's ids, "+<number>")
 //	POST /u/{user}/logout
@@ -38,6 +39,7 @@ import (
 	_ "image/png"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -165,6 +167,7 @@ func main() {
 	mux.HandleFunc("GET /u/{user}/pair", b.auth((*session).pair))
 	mux.HandleFunc("POST /u/{user}/send", b.auth((*session).send))
 	mux.HandleFunc("POST /u/{user}/send-file", b.auth((*session).sendFile))
+	mux.HandleFunc("POST /u/{user}/send-location", b.auth((*session).sendLocation))
 	mux.HandleFunc("POST /u/{user}/typing", b.auth((*session).typing))
 	mux.HandleFunc("POST /u/{user}/read", b.auth((*session).read))
 	mux.HandleFunc("POST /u/{user}/react", b.auth((*session).react))
@@ -628,6 +631,9 @@ func content(msg *waE2E.Message) (string, []string, []file) {
 	if m := msg.GetLocationMessage(); m != nil {
 		kinds = append(kinds, fmt.Sprintf("location: %s %.5f,%.5f", m.GetName(), m.GetDegreesLatitude(), m.GetDegreesLongitude()))
 	}
+	if m := msg.GetLiveLocationMessage(); m != nil {
+		kinds = append(kinds, fmt.Sprintf("live location: %.5f,%.5f", m.GetDegreesLatitude(), m.GetDegreesLongitude()))
+	}
 	if m := msg.GetContactMessage(); m != nil {
 		kinds = append(kinds, "contact: "+m.GetDisplayName())
 	}
@@ -935,9 +941,11 @@ func (s *session) goOnline(ctx context.Context, cli *whatsmeow.Client) {
 }
 
 type sendReq struct {
-	Chat string `json:"chat"`
-	Text string `json:"text"`
-	On   bool   `json:"on"`
+	Chat string   `json:"chat"`
+	Text string   `json:"text"`
+	On   bool     `json:"on"`
+	Lat  *float64 `json:"lat"`
+	Lon  *float64 `json:"lon"`
 }
 
 func readReq(w http.ResponseWriter, r *http.Request) (*sendReq, types.JID, bool) {
@@ -968,6 +976,32 @@ func (s *session) send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp, err := cli.SendMessage(r.Context(), jid, &waE2E.Message{Conversation: proto.String(req.Text)})
+	if err != nil {
+		fail(w, http.StatusBadGateway, err)
+		return
+	}
+	s.goOnline(r.Context(), cli)
+	reply(w, http.StatusOK, map[string]any{"id": jid.String() + "/" + resp.ID, "at": resp.Timestamp.UnixMilli()})
+}
+
+// sendLocation: a place as WhatsApp's own pin (what "send your current location" sends).
+func (s *session) sendLocation(w http.ResponseWriter, r *http.Request) {
+	req, jid, ok := readReq(w, r)
+	if !ok {
+		return
+	}
+	if req.Lat == nil || req.Lon == nil || math.Abs(*req.Lat) > 90 || math.Abs(*req.Lon) > 180 {
+		fail(w, http.StatusBadRequest, errors.New("lat and lon: a place on Earth"))
+		return
+	}
+	cli := s.loggedIn(w)
+	if cli == nil {
+		return
+	}
+	resp, err := cli.SendMessage(r.Context(), jid, &waE2E.Message{LocationMessage: &waE2E.LocationMessage{
+		DegreesLatitude:  proto.Float64(*req.Lat),
+		DegreesLongitude: proto.Float64(*req.Lon),
+	}})
 	if err != nil {
 		fail(w, http.StatusBadGateway, err)
 		return

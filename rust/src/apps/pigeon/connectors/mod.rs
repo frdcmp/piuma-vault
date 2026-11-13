@@ -98,6 +98,12 @@ pub trait Connector: Send + Sync {
     fn actions(&self) -> Vec<ActionDef>;
     /// Do one of its actions, as `user`. `conversation` is set for an `on_conversation` action.
     async fn run(&self, st: &State, user: &str, action: &str, args: &Json, conversation: Option<Uuid>) -> anyhow::Result<Json>;
+    /// Whether a reply here can carry a place as the channel's own pin on the map (`args.place`:
+    /// `{lat, lon}`, set by Pigeon's code from the user's phone, never by a model). Elsewhere the
+    /// place goes as a link in the text.
+    fn sends_places(&self) -> bool {
+        false
+    }
     /// Whether the other person sees "typing…" here (`typing`): an auto reply then goes out paced
     /// like a person's (core::pace).
     fn shows_typing(&self) -> bool {

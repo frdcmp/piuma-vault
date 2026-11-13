@@ -88,6 +88,17 @@ export const mediaWords = (media) =>
 		.map((m) => (typeof m === "string" ? m : m?.type))
 		.filter(Boolean);
 
+// A place a message carries (`item.place`: { lat, lon, name }) or a draft will
+// (`card.data.place`: { lat, lon, address, at }): where it opens on a map, and
+// its point in words.
+export const placeUrl = (p) =>
+	`https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}`;
+export const placePoint = (p) =>
+	`${Number(p.lat).toFixed(5)}, ${Number(p.lon).toFixed(5)}`;
+
+// The words that stand for a place ("location: …"): the place itself shows.
+export const isPlaceWord = (m) => /^(live )?location:/.test(m);
+
 // A message's reactions grouped by emoji: [{ emoji, count, who: [names] }],
 // "You" for the user's own. `senders`: handle → { name, slug }.
 export const reactionGroups = (reactions, senders) => {
@@ -121,13 +132,20 @@ export const duration = (s) =>
 		: "";
 
 // A message's words without the "[image]" lines that stand in for its media
-// (the media's own tags say it already).
-export const bodyText = (body, media) => {
+// (the media's own tags say it already), nor the one for its place (`place`:
+// the message carries one, shown as itself).
+export const bodyText = (body, media, place) => {
 	const labels = new Set(mediaLabels(media).map((m) => `[${m}]`));
-	if (!labels.size || !body) return body;
+	if ((!labels.size && !place) || !body) return body;
 	return body
 		.split("\n")
-		.filter((line) => !labels.has(line.trim()))
+		.filter((line) => {
+			const l = line.trim();
+			return !(
+				labels.has(l) ||
+				(place && l.endsWith("]") && isPlaceWord(l.slice(1)))
+			);
+		})
 		.join("\n")
 		.trim();
 };

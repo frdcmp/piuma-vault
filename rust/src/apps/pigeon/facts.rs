@@ -78,6 +78,46 @@ impl Fact {
     }
 }
 
+/// Where the user's phone last was, as a point: what a pin on the map is sent from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Spot {
+    pub lat: f64,
+    pub lon: f64,
+    pub at: DateTime<Utc>,
+    /// the place in words (its finest level), when the phone gave one
+    pub address: Option<String>,
+    /// older than a place may be told on Pigeon's own
+    pub stale: bool,
+}
+
+impl Spot {
+    /// As a reply carries it (`args.place`).
+    pub fn json(&self) -> Json {
+        json!({ "lat": self.lat, "lon": self.lon, "at": self.at, "address": self.address })
+    }
+
+    /// A link that opens it on a map: for the channels with no pin of their own.
+    pub fn link(&self) -> String {
+        format!("https://maps.google.com/?q={:.5},{:.5}", self.lat, self.lon)
+    }
+}
+
+impl Fact {
+    /// The point it holds (`value.lat`, `value.lon`: a place on Earth), if it holds one.
+    pub fn spot(&self) -> Option<Spot> {
+        let (lat, lon) = (self.value["lat"].as_f64()?, self.value["lon"].as_f64()?);
+        if lat.abs() > 90.0 || lon.abs() > 180.0 || (lat == 0.0 && lon == 0.0) {
+            return None;
+        }
+        Some(Spot { lat, lon, at: self.at, address: self.at_level("exact"), stale: self.stale() })
+    }
+}
+
+/// Where the user is, as their phone last said it. None: Pigeon holds no point of theirs.
+pub async fn spot(pool: &DbPool, user: &str) -> anyhow::Result<Option<Spot>> {
+    Ok(latest(pool, user, "location").await?.and_then(|f| f.spot()))
+}
+
 /// The user's fact with this key, while it lasts.
 pub async fn latest(pool: &DbPool, user: &str, key: &str) -> anyhow::Result<Option<Fact>> {
     Ok(sqlx::query_as(&format!("SELECT {COLS} FROM db_pigeon_facts WHERE user_id = $1 AND key = $2 AND for_contact IS NULL AND for_chat IS NULL AND {LIVE}"))
@@ -318,5 +358,19 @@ mod tests {
         assert!(fact("location", json!({}), json!({ "city": "Tokyo" }), 45).stale(), "a place of 45 minutes ago is old");
         assert!(!fact("status", json!({}), json!({}), 600).stale(), "what has no tool doesn't age");
         assert_eq!(fact(PASSON, json!({ "text": "we're at the ramen place" }), json!({}), 0).text(), "we're at the ramen place");
+    }
+
+    #[test]
+    fn a_place_as_a_point() {
+        let f = fact("location", json!({ "lat": 12.5, "lon": -3.25, "accuracy": 20 }), json!({ "city": "Somewhere", "exact": "1 Some Street" }), 5);
+        let s = f.spot().expect("a point");
+        assert_eq!((s.lat, s.lon, s.stale), (12.5, -3.25, false));
+        assert_eq!(s.address.as_deref(), Some("1 Some Street"));
+        assert_eq!(s.link(), "https://maps.google.com/?q=12.50000,-3.25000");
+        assert_eq!(s.json()["lat"], json!(12.5));
+        assert!(fact("location", json!({ "lat": 12.5, "lon": -3.25 }), json!({}), 45).spot().is_some_and(|s| s.stale), "an old one is still a point, marked old");
+        assert_eq!(fact("location", json!({}), json!({ "city": "Somewhere" }), 5).spot(), None, "said in words only: no point");
+        assert_eq!(fact("location", json!({ "lat": 0.0, "lon": 0.0 }), json!({}), 5).spot(), None);
+        assert_eq!(fact("location", json!({ "lat": 95.0, "lon": 10.0 }), json!({}), 5).spot(), None);
     }
 }

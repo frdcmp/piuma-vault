@@ -559,6 +559,23 @@ pub async fn leaks(st: &State, conv: &Conversation, me: &Owner, uses: &[Use], al
     why
 }
 
+/// How sure Jev is that the user's answer to Pigeon says to send the person where the user is (a
+/// pin on the map). 0 when Jev can't be asked: the pin then waits for the user.
+pub async fn asks_place(st: &State, conv: &Conversation, me: &Owner, asked: &str, answer: &str) -> f64 {
+    let Some(jev) = &st.jev else { return 0.0 };
+    let state = json!({ "pigeon_asked": asked, "answer": answer });
+    let mut q = Map::new();
+    q.insert("place".into(), jev::noul("Does `answer`, {me}'s answer to what Pigeon asked, tell Pigeon to send them where {me} is (their location, their position, a pin on the map)?"));
+    jev::for_user(&mut q, &me.name);
+    match jev.ask(&state, q).await {
+        Ok(a) => a.yes("place").unwrap_or(0.0),
+        Err(e) => {
+            log::warn!("pigeon place check on {}: {e:#}", conv.id);
+            0.0
+        }
+    }
+}
+
 // ── the 🔑 card: asked, and they don't hold it ──────────────────────────────
 
 /// Who would hold it: the chat's person, or the chat itself in a group.

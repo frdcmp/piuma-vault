@@ -81,6 +81,11 @@ pub fn describe(row: &actions::ActionRow) -> String {
     let a = &row.args;
     let s = |k: &str| a[k].as_str().unwrap_or_default().to_string();
     match (row.kind.as_str(), row.action.as_str()) {
+        // a place rides along as a pin (`args.place`)
+        ("reply", _) if a["place"].is_object() => match s("text").as_str() {
+            "" => "📍 your place, as a pin".to_string(),
+            text => format!("«{text}» 📍"),
+        },
         ("reply", _) => format!("«{}»", s("text")),
         (_, "create_task") => {
             let due = a["due"].as_str().map(|d| format!(" · {}", short_when(d))).unwrap_or_default();
@@ -180,7 +185,10 @@ fn action_card(row: &actions::ActionRow) -> Card {
             free_text: false,
             buttons: vec![button("✅ Send", "y"), button("🗑 Drop", "n")],
             created_at: row.created_at,
-            data: (!used.is_empty()).then(|| json!({ "used": used })),
+            data: match (used.is_empty(), row.args.get("place").filter(|p| p.is_object())) {
+                (true, None) => None,
+                (_, place) => Some(json!({ "used": used, "place": place })),
+            },
         };
     }
     let what = describe(row);
