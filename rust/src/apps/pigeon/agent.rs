@@ -357,6 +357,14 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
             args["away"] = json!(true);
         }
         let mut hold = if def.kind == Kind::Reply || drafting { hold_reply.clone() } else { None };
+        // asking again for what they hold on auto reads as pressing: no reason to keep it from them
+        // (sensitive and others on it still hold, and the reply is still read back below)
+        if let Mode::AfterTriage { sig, .. } = &mode {
+            let pressing_only = sig.sensitive < HOLD_AT && sig.others.is_empty();
+            if def.kind == Kind::Reply && pressing_only && !tells.is_empty() && tells.iter().all(|u| u.auto) {
+                hold = None;
+            }
+        }
         // written with something of the user's: the reply carries what (the record), and goes on
         // its own only when each was allowed on its own and, read back, it says nothing more
         if def.kind == Kind::Reply && !tells.is_empty() {

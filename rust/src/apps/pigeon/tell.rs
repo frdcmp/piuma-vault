@@ -155,6 +155,9 @@ async fn say(st: &State, user: &str, me: &Owner, tool: &Tool, level: usize) -> a
 }
 
 async fn place(st: &State, user: &str, me: &Owner, tool: &Tool, level: usize) -> anyhow::Result<Option<Said>> {
+    // the place as of now: the phone is asked when the one stored is older than two minutes (it
+    // writes the fact read below), else an on-demand place is always old and never goes on its own
+    facts::spot_now(&st.pool, user).await?;
     let Some(f) = facts::latest(&st.pool, user, tool.name).await? else { return Ok(None) };
     let top = level.min(tool.levels.len().saturating_sub(1));
     let Some((level, told)) = (0..=top).rev().find_map(|i| f.at_level(tool.levels[i].name).map(|w| (i, w))) else { return Ok(None) };
