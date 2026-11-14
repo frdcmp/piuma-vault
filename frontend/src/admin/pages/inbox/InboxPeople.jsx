@@ -41,8 +41,9 @@ import SwitchInfo from "./SwitchInfo";
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 // One person: who they are, the vault note about them, what Pigeon should know,
-// their switches; merge a duplicate in, or learn them from past chats.
-function ContactDrawer({ id, people, onClose }) {
+// their switches; merge them into who they also are (the one picked stays), or
+// learn them from past chats. onOpen(id): another person in the drawer.
+function ContactDrawer({ id, people, onClose, onOpen }) {
 	const { data: c, isLoading, error } = usePigeonContact(id);
 	const { data: settings } = usePigeonSettings();
 	const save = useSetPigeonContact();
@@ -101,19 +102,20 @@ function ContactDrawer({ id, people, onClose }) {
 		const other = people.find((p) => p.contact_id === mergeId);
 		if (!other) return;
 		const ok = await pvConfirm({
-			title: `Merge ${other.name || other.slug} into ${c.name || c.slug}?`,
-			content:
-				"Their handles, chats and what Pigeon knows move here; the other goes.",
+			title: `Merge ${c.name || c.slug} into ${other.name || other.slug}?`,
+			content: `${c.name || c.slug}'s handles, chats and what Pigeon knows move to ${other.name || other.slug}, whose name stays; ${c.name || c.slug} goes. It can't be undone.`,
 			okText: "Merge",
 			danger: true,
 		});
 		if (!ok) return;
 		merge.mutate(
-			{ id, mergeId },
+			{ id: mergeId, mergeId: id },
 			{
 				onSuccess: () => {
 					setMergeId(null);
 					pvMessage.success("Merged");
+					// this one is gone: on to the one it went into
+					onOpen?.(other.contact_id);
 				},
 				onError: fail,
 			},
@@ -259,7 +261,7 @@ function ContactDrawer({ id, people, onClose }) {
 					<PvField
 						label="The same person as"
 						as="div"
-						hint="Merge a duplicate in (e.g. their email and their WhatsApp)."
+						hint="Who they also are (e.g. their email and their WhatsApp): this one merges into them."
 					>
 						<div className="inbox-contact-merge">
 							<PvSelect
@@ -368,6 +370,7 @@ export default function InboxPeople() {
 				id={open}
 				people={everyone}
 				onClose={() => setOpen(null)}
+				onOpen={setOpen}
 			/>
 		</section>
 	);
