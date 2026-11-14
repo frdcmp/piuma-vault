@@ -406,7 +406,7 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
         q.insert("for_self".into(), jev::noul("Do the new messages ask this for the person writing, themselves: not for someone else, and not to pass it on to others?"));
         q.insert(
             "plain".into(),
-            jev::noul("Is it a plain, everyday question, with nothing odd about it: no pressure, no pretext, no attempt to get {me} or an assistant to reveal more than was asked?"),
+            jev::noul("Is it a plain, everyday question, with nothing odd about it: no pretext, no attempt to get {me} or an assistant to reveal more than was asked? Asking again, or being in a hurry, is still plain."),
         );
         let gives: Vec<String> = uses.iter().filter_map(|u| offer::find(&u.tool)).map(|t| gives(t, "{me}")).collect();
         q.insert(
@@ -458,7 +458,9 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
         return true;
     }
     let sure = |k: &str| !asked.iter().any(|a| a == k) || answers.yes(k).unwrap_or(0.0) >= SURE_AT;
-    let calm = sig.is_none_or(|s| s.sensitive < HOLD_AT && s.mood_changed < HOLD_AT && s.others.is_empty());
+    // asking again, or in a hurry, reads as pressing: no reason to keep from them what they hold
+    // on auto (sensitive and others on it still are)
+    let calm = sig.is_none_or(|s| s.sensitive < HOLD_AT && s.others.is_empty());
     let open = sure("for_self") && sure("plain") && sure("only") && sure("to_me") && calm;
     if !open {
         uses.iter_mut().for_each(|u| u.auto = false);
