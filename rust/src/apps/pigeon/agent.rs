@@ -19,7 +19,7 @@
 //!
 //! Where the user is, as a pin on the map (`Pin`): the model only asks for one (`pin` on the
 //! reply), when the round may tell their exact spot or on the user's own word; the place is the
-//! phone's (`facts::spot`), attached here, never a place the model read or wrote.
+//! phone's (`facts::spot_now`: asked right then), attached here, never a place the model read or wrote.
 //!
 //! Also here: the conversation summary (written when asked for and stale).
 
@@ -391,7 +391,7 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
         }
         if wants_pin {
             let text = args["text"].as_str().map(str::trim).unwrap_or_default().to_string();
-            match facts::spot(&st.pool, &conv.user_id).await? {
+            match facts::spot_now(&st.pool, &conv.user_id).await? {
                 Some(spot) => {
                     if hold.is_none() {
                         if spot.stale {

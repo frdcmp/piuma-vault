@@ -117,7 +117,7 @@ async fn own_place(st: &State, user: &str, args: &mut Json) -> anyhow::Result<()
         }
         return Ok(());
     }
-    let spot = super::facts::spot(&st.pool, user).await?;
+    let spot = super::facts::spot_now(&st.pool, user).await?;
     let spot = spot.ok_or_else(|| anyhow::anyhow!("Pigeon doesn't know where your phone is: switch your place on in the app (Settings > Access)"))?;
     args["place"] = spot.json();
     Ok(())
@@ -385,6 +385,11 @@ async fn reply_guard(st: &State, c: &conversations::Conversation) -> anyhow::Res
 /// replies, this one too; with the row locked here, the ingest would wait on this run while this
 /// run waits on the ingest, every later message of the chat behind them, until the pool ran dry.
 pub async fn execute(st: &State, id: Uuid, by: &str) -> anyhow::Result<ActionRow> {
+    // a pin goes from where the phone is now: asked before the lock (it can take seconds)
+    let now = match get(st, id).await? {
+        Some(r) if r.status == "pending" && r.args.get("place").is_some_and(Json::is_object) => super::facts::spot_now(&st.pool, &r.user_id).await?,
+        _ => None,
+    };
     let mut tx = st.pool.begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))").bind(id).execute(&mut *tx).await?;
     let status: Option<String> = sqlx::query_scalar("SELECT status FROM db_pigeon_actions WHERE id = $1").bind(id).fetch_optional(&mut *tx).await?;
@@ -394,10 +399,10 @@ pub async fn execute(st: &State, id: Uuid, by: &str) -> anyhow::Result<ActionRow
         Some(s) => anyhow::bail!("action {id} is {s}, not pending"),
     }
     let mut row = get(st, id).await?.ok_or_else(|| anyhow::anyhow!("no action {id}"))?;
-    // a pin goes from where the phone is now: a place it told since the draft replaces the draft's
+    // a place the phone told since the draft replaces the draft's
     if row.args.get("place").is_some_and(Json::is_object) {
         let drafted = row.args["place"]["at"].as_str().and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok()).map(|t| t.with_timezone(&Utc));
-        if let Some(spot) = super::facts::spot(&st.pool, &row.user_id).await?.filter(|s| drafted.is_none_or(|d| s.at > d)) {
+        if let Some(spot) = now.filter(|s| drafted.is_none_or(|d| s.at > d)) {
             row.args["place"] = spot.json();
             sqlx::query("UPDATE db_pigeon_actions SET args = $2 WHERE id = $1").bind(id).bind(&row.args).execute(&mut *tx).await?;
         }

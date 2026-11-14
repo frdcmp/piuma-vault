@@ -118,6 +118,39 @@ pub async fn spot(pool: &DbPool, user: &str) -> anyhow::Result<Option<Spot>> {
     Ok(latest(pool, user, "location").await?.and_then(|f| f.spot()))
 }
 
+/// A place this fresh is where the phone is now: it isn't asked again.
+const NOW: chrono::Duration = chrono::Duration::minutes(2);
+/// How long Pigeon waits for the phone to say where it is.
+const WAIT: std::time::Duration = std::time::Duration::from_secs(20);
+/// The silent push that asks the Pigeon app where the phone is (`data.type`).
+pub const ASK_WHERE: &str = "pigeon-where";
+
+/// Where the user is now, for a pin: a place from the last two minutes as it is, else the phone
+/// is asked (a silent push to the Pigeon app, which answers with a fresh `location` if its place
+/// switch is on) and Pigeon waits for it up to 20 seconds. No answer: the last place, if any
+/// (`stale` once older than half an hour).
+pub async fn spot_now(pool: &DbPool, user: &str) -> anyhow::Result<Option<Spot>> {
+    let asked = Utc::now();
+    let last = spot(pool, user).await?;
+    if last.as_ref().is_some_and(|s| asked - s.at < NOW) {
+        return Ok(last);
+    }
+    let data = json!({ "type": ASK_WHERE, "at": asked });
+    let reached = crate::apps::notifications::expo::dispatch_expo_data_to(pool, user, crate::apps::notifications::expo::PIGEON, &data).await;
+    if reached == 0 {
+        return Ok(last);
+    }
+    let until = tokio::time::Instant::now() + WAIT;
+    while tokio::time::Instant::now() < until {
+        tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+        if let Some(s) = spot(pool, user).await?.filter(|s| s.at >= asked) {
+            return Ok(Some(s));
+        }
+    }
+    log::info!("pigeon: {user}'s phone didn't say where it is within {}s", WAIT.as_secs());
+    Ok(last)
+}
+
 /// The user's fact with this key, while it lasts.
 pub async fn latest(pool: &DbPool, user: &str, key: &str) -> anyhow::Result<Option<Fact>> {
     Ok(sqlx::query_as(&format!("SELECT {COLS} FROM db_pigeon_facts WHERE user_id = $1 AND key = $2 AND for_contact IS NULL AND for_chat IS NULL AND {LIVE}"))

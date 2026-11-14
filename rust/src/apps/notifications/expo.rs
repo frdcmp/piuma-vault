@@ -81,7 +81,13 @@ pub async fn dispatch_expo_with(
 /// Snooze / Dismiss buttons). `_contentAvailable` is the iOS silent flag;
 /// `priority: high` maximises Android delivery to the background task.
 pub async fn dispatch_expo_data(pool: &DbPool, user_id: &str, data: &serde_json::Value) -> usize {
-    send_messages(pool, user_id, PIUMA, |t| {
+    dispatch_expo_data_to(pool, user_id, PIUMA, data).await
+}
+
+/// [`dispatch_expo_data`] to one app's tokens (`PIUMA`, `PIGEON`): nothing shows, the app's
+/// background task (or its listener, open) reads `data`.
+pub async fn dispatch_expo_data_to(pool: &DbPool, user_id: &str, app: &str, data: &serde_json::Value) -> usize {
+    send_messages(pool, user_id, app, |t| {
         json!({
             "to": t,
             "data": data,
