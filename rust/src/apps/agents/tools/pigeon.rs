@@ -13,5 +13,5 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
 
 pub async fn call(pool: &DbPool, user_id: &str, name: &str, args: &Value) -> Result<Value, String> {
     let st = crate::apps::pigeon::state::shared(pool);
-    crate::apps::pigeon::tools::call(&st, user_id, name, args).await
+    crate::apps::pigeon::tools::call_as(&st, user_id, name, args, "Piuma".into()).await
 }

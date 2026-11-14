@@ -618,6 +618,7 @@ mod tests {
             reactions: serde_json::json!({}),
             open_url: None,
             via: None,
+            via_by: None,
             archived: false,
             mentions: json!([]),
             place: None,

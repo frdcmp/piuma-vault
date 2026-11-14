@@ -1,5 +1,6 @@
 // Who sent a message of the user's side, next to its time: Pigeon (an auto
-// reply, or a draft of its they approved) gets its sprite; the user from the
+// reply, or a draft of its they approved) gets its sprite; an assistant on the
+// user's word (Piuma, Claude: `via` "assistant") a sparkle and its name; the user from the
 // channel's own app gets that app's mark (WhatsApp, Instagram, an envelope for
 // their mail app), all in the time's grey, faded; the user from the Inbox,
 // two ticks: the vault and the channel confirmed it went.
@@ -113,6 +114,31 @@ function MailMark() {
 	);
 }
 
+// A sparkle, and the assistant's name: an assistant sent it, on the user's word.
+function AssistantMark({ by }) {
+	const who = by || "an assistant";
+	return (
+		<span
+			className="inbox-sent-by inbox-sent-by-assistant"
+			title={`Sent by ${who} for you`}
+		>
+			<svg
+				viewBox="0 0 12 12"
+				width={10}
+				height={10}
+				role="img"
+				aria-label={`Sent by ${who} for you`}
+			>
+				<path
+					fill="currentColor"
+					d="M6 0l1.4 4.6L12 6 7.4 7.4 6 12 4.6 7.4 0 6l4.6-1.4z"
+				/>
+			</svg>
+			{who}
+		</span>
+	);
+}
+
 function Ticks() {
 	return (
 		<svg
@@ -138,6 +164,7 @@ export default function SentBy({ item, connector }) {
 	if (item.direction !== "out") return null;
 	if (item.author === "pigeon") return <PigeonMark />;
 	if (item.author !== "me") return null;
+	if (item.via === "assistant") return <AssistantMark by={item.via_by} />;
 	if (item.via) return <Ticks />;
 	if (connector === "whatsapp") return <WhatsAppMark />;
 	if (connector === "instagram") return <InstagramMark />;

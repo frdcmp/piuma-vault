@@ -20,6 +20,11 @@ use crate::apps::pigeon::{actions, agent, alerts, avatars, cards, composing, con
 use crate::apps::settings::store;
 
 pub struct InboxReader(pub AuthenticatedUser);
+
+/// The assistant behind a call: an API key's (its name), never the user's own sign-in (None).
+pub fn assistant(u: &AuthenticatedUser) -> Option<String> {
+    u.via_api_key.then(|| u.last_name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| "an assistant".into()))
+}
 pub struct InboxWriter(pub AuthenticatedUser);
 
 impl FromRequest for InboxReader {
@@ -252,21 +257,8 @@ pub async fn send(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>
         if row.status != "done" {
             anyhow::bail!("{}", row.error.unwrap_or_else(|| format!("not sent ({})", row.status)));
         }
-        // the connector stored it as Pigeon's: it's the user's
-        let item: Option<Uuid> = sqlx::query_scalar(
-            "SELECT i.id FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
-              WHERE c.id = $1 AND c.user_id = $3 AND i.direction = 'out' AND i.author = 'pigeon' AND i.body = $2
-                AND i.created_at > NOW() - INTERVAL '10 minutes'
-              ORDER BY i.created_at DESC LIMIT 1",
-        )
-        .bind(id)
-        .bind(text)
-        .bind(user)
-        .fetch_optional(&st.pool)
-        .await?;
-        if let Some(item) = item {
-            items::mark_mine(&st.pool, item).await?;
-        }
+        // the connector stored it as Pigeon's: it's the user's (an assistant's on their word)
+        items::mark_sent(&st.pool, user, id, text, assistant(&u.0).as_deref()).await?;
         Ok(actions::view(&row))
     }
     .await;
@@ -354,8 +346,9 @@ pub async fn send_file(st: web::Data<AppState>, u: InboxWriter, path: web::Path<
             .bind(&ids)
             .fetch_all(&st.pool)
             .await?;
+        let by = assistant(&u.0);
         for item in items {
-            items::mark_mine(&st.pool, item).await?;
+            items::mark_mine(&st.pool, item, by.as_deref()).await?;
         }
         Ok(actions::view(&row))
     }
@@ -1431,7 +1424,7 @@ pub async fn run_tool(st: web::Data<AppState>, user: AuthenticatedUser, path: we
         return HttpResponse::Forbidden().json(json!({ "error": format!("Access denied: {need} permission required") }));
     }
     let args = body.map(|b| b.into_inner()).filter(|a| a.is_object()).unwrap_or_else(|| json!({}));
-    match tools::call(&st, &user.user_id, &name, &args).await {
+    match tools::call_as(&st, &user.user_id, &name, &args, assistant(&user).unwrap_or_else(|| "an assistant".into())).await {
         Ok(v) => HttpResponse::Ok().json(v),
         Err(e) => HttpResponse::BadRequest().json(json!({ "error": e })),
     }

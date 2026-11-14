@@ -361,6 +361,13 @@ a.inbox-mention:hover {
 	opacity: 0.7;
 }
 /* Pigeon's sprite on its step line, in the line's colour */
+.inbox-sent-by-assistant {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	font-size: 11px;
+}
+
 .inbox-working .inbox-sent-by {
 	color: var(--vp-accent);
 	opacity: 1;

@@ -79,7 +79,7 @@ async fn handle(st: &AppState, user: &AuthenticatedUser, msg: &Json) -> Option<J
                 return Some(result(id, json!({ "content": [{ "type": "text", "text": format!("This key can't: it needs the {need} scope.") }], "isError": true })));
             }
             let args = params.get("arguments").cloned().filter(Json::is_object).unwrap_or_else(|| json!({}));
-            let (text, failed) = match tools::call(st, &user.user_id, name, &args).await {
+            let (text, failed) = match tools::call_as(st, &user.user_id, name, &args, super::handlers::assistant(user).unwrap_or_else(|| "an assistant".into())).await {
                 Ok(v) => (serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string()), false),
                 Err(e) => (e, true),
             };

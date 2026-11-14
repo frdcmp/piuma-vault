@@ -259,12 +259,21 @@ pub async fn ingest(pool: &DbPool, inc: &Incoming, debounce: Duration) -> anyhow
     Ok(Some(Ingested { conversation_id }))
 }
 
-/// The user's own words sent through Pigeon (written in the Inbox): the item is theirs (`via`
-/// "inbox": not from their phone); the conversation is handled, what Pigeon proposed or asked there is stale,
-/// and Pigeon steps back there for a while (actions::user_writing).
-pub async fn mark_mine(pool: &DbPool, item: Uuid) -> anyhow::Result<()> {
+/// The user's own words sent through Pigeon: the item is theirs (`via` "inbox": written in the
+/// Inbox, not from their phone; "assistant": an assistant wrote it on their word, `by`: which);
+/// the conversation is handled, what Pigeon proposed or asked there is stale, and Pigeon steps
+/// back there for a while (actions::user_writing).
+pub async fn mark_mine(pool: &DbPool, item: Uuid, by: Option<&str>) -> anyhow::Result<()> {
+    let via = match by {
+        Some(by) => serde_json::json!({ "via": "assistant", "via_by": by }),
+        None => serde_json::json!({ "via": "inbox" }),
+    };
     let mut tx = pool.begin().await?;
-    let conversation: Uuid = sqlx::query_scalar("UPDATE db_pigeon_items SET author = 'me', raw = COALESCE(raw, '{}'::jsonb) || '{\"via\": \"inbox\"}' WHERE id = $1 RETURNING conversation_id").bind(item).fetch_one(&mut *tx).await?;
+    let conversation: Uuid = sqlx::query_scalar("UPDATE db_pigeon_items SET author = 'me', raw = COALESCE(raw, '{}'::jsonb) || $2 WHERE id = $1 RETURNING conversation_id")
+        .bind(item)
+        .bind(&via)
+        .fetch_one(&mut *tx)
+        .await?;
     sqlx::query("UPDATE db_pigeon_conversations SET attention = NULL, needs_note = NULL, handled_at = NOW(), triage_due_at = NULL WHERE id = $1").bind(conversation).execute(&mut *tx).await?;
     sqlx::query(
         "UPDATE db_pigeon_actions SET status = 'expired', error = 'replied themselves', updated_at = NOW()
@@ -277,6 +286,26 @@ pub async fn mark_mine(pool: &DbPool, item: Uuid) -> anyhow::Result<()> {
     tx.commit().await?;
     // its triage is off: the chat stops showing Pigeon reading
     crate::apps::pigeon::events::working(pool, conversation, "done", None, Some("stopped")).await;
+    Ok(())
+}
+
+/// The user's words just sent in a conversation (an action of theirs, done): the latest item
+/// with them, stored as Pigeon's, made theirs ([`mark_mine`]).
+pub async fn mark_sent(pool: &DbPool, user: &str, conversation: Uuid, text: &str, by: Option<&str>) -> anyhow::Result<()> {
+    let item: Option<Uuid> = sqlx::query_scalar(
+        "SELECT i.id FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
+          WHERE c.id = $1 AND c.user_id = $3 AND i.direction = 'out' AND i.author = 'pigeon' AND i.body = $2
+            AND i.created_at > NOW() - INTERVAL '10 minutes'
+          ORDER BY i.created_at DESC LIMIT 1",
+    )
+    .bind(conversation)
+    .bind(text)
+    .bind(user)
+    .fetch_optional(pool)
+    .await?;
+    if let Some(item) = item {
+        mark_mine(pool, item, by).await?;
+    }
     Ok(())
 }
 

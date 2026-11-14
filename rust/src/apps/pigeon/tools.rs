@@ -19,10 +19,15 @@ use crate::apps::pigeon::conversations::{self, Conversation};
 use crate::apps::pigeon::policy::Policy;
 use crate::apps::pigeon::state::{AppState, State};
 use crate::apps::pigeon::access::{self, Holder, What};
-use crate::apps::pigeon::{actions, agent, alerts, away, cards, confirm, facts, media, people, policy, rules, tell};
+use crate::apps::pigeon::{actions, agent, alerts, away, cards, confirm, facts, items, media, people, policy, rules, tell};
 
 /// Who Piuma's decisions are logged as.
 const BY: &str = "piuma";
+
+tokio::task_local! {
+    /// The assistant running a tool ("Piuma", an API key's name): a message it sends is marked so.
+    static CALLER: String;
+}
 
 fn id(d: &str) -> Json {
     json!({ "type": "string", "description": d })
@@ -472,6 +477,11 @@ pub fn names() -> Vec<&'static str> {
 }
 
 /// A tool called by Piuma: a big change becomes a confirmation card instead of running.
+/// [`call`] by an assistant (`by`: "Piuma", an API key's name), what it sends marked as its.
+pub async fn call_as(st: &AppState, user: &str, name: &str, args: &Json, by: String) -> Result<Json, String> {
+    CALLER.scope(by, call(st, user, name, args)).await
+}
+
 pub async fn call(st: &AppState, user: &str, name: &str, args: &Json) -> Result<Json, String> {
     let r: anyhow::Result<Json> = async {
         if let Some(tap) = confirm::needs_tap(st, user, name, args).await? {
@@ -596,8 +606,13 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
             let id = uuid_arg(args, "conversation_id")?;
             let conv = own_conversation(st, user, id).await?;
             let words = text(args, "text").ok_or_else(|| anyhow::anyhow!("`text` is required: the exact words the user saw"))?;
-            let aid = actions::queue(st, user, &conv.connector, "send_reply", json!({ "text": words }), Some(id), "sent from Piuma, on the user's word").await?;
+            let by = CALLER.try_with(String::clone).unwrap_or_else(|_| "an assistant".into());
+            let aid = actions::queue(st, user, &conv.connector, "send_reply", json!({ "text": words }), Some(id), &format!("sent by {by}, on the user's word")).await?;
             let row = actions::approve(st, aid, None, BY).await?;
+            // the user's words, an assistant's hand: theirs, marked as its
+            if row.status == "done" {
+                items::mark_sent(&st.pool, user, id, words.trim(), Some(&by)).await?;
+            }
             Ok(actions::view(&row))
         }
         "pigeon_edit_draft" => {

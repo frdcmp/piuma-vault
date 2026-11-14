@@ -68,8 +68,11 @@ pub struct Item {
     pub reactions: Json,
     /// where it opens in its own app, on the web (an email in its mailbox)
     pub open_url: Option<String>,
-    /// the user's sent from the Inbox: "inbox" (None: from the channel's own app)
+    /// the user's sent from the Inbox: "inbox" (they wrote it), "assistant" (an assistant wrote
+    /// it on their word: `via_by`); None: from the channel's own app
     pub via: Option<String>,
+    /// the assistant that sent it ("Piuma", an API key's name)
+    pub via_by: Option<String>,
     /// an email that came in, out of its inbox (archived, in Gmail or from the Inbox)
     pub archived: bool,
     /// who it tags (WhatsApp): `[{id, name, phone, me}]`; the body has "@<name>" where they are
@@ -87,7 +90,7 @@ impl Item {
 
 pub const ITEM_COLS: &str = "id, direction, author, sender, sender_name, subject, body, media, at, created_at, \
      COALESCE(raw->'to', '[]'::jsonb) AS to_addrs, COALESCE(raw->'cc', '[]'::jsonb) AS cc_addrs, \
-     COALESCE(raw->'reactions', '{}'::jsonb) AS reactions, raw->>'via' AS via, COALESCE(raw->'mentions', '[]'::jsonb) AS mentions, \
+     COALESCE(raw->'reactions', '{}'::jsonb) AS reactions, raw->>'via' AS via, raw->>'via_by' AS via_by, COALESCE(raw->'mentions', '[]'::jsonb) AS mentions, \
      (SELECT 'https://mail.google.com/mail/?authuser=' || k.account || '#all/' || db_pigeon_items.external_id \
         FROM db_pigeon_conversations v JOIN db_pigeon_connections k ON k.id = v.connection_id \
        WHERE v.id = db_pigeon_items.conversation_id AND db_pigeon_items.connector = 'gmail') AS open_url, \
@@ -279,6 +282,7 @@ mod tests {
             reactions: serde_json::json!({}),
             open_url: None,
             via: None,
+            via_by: None,
             archived: false,
             mentions: serde_json::json!([]),
             place: None,
