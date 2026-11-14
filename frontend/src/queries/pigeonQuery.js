@@ -17,12 +17,14 @@ import {
 	fetchPigeonConnections,
 	fetchPigeonConnectLink,
 	fetchPigeonContact,
+	fetchPigeonContactAccess,
 	fetchPigeonContacts,
 	fetchPigeonConversation,
 	fetchPigeonConversations,
 	fetchPigeonGeneral,
 	fetchPigeonItemHtml,
 	fetchPigeonItems,
+	fetchPigeonNoteAccess,
 	fetchPigeonPairing,
 	fetchPigeonPersonChat,
 	fetchPigeonPersonItems,
@@ -30,6 +32,7 @@ import {
 	fetchPigeonRules,
 	fetchPigeonSettings,
 	fetchPigeonSummary,
+	grantPigeonAccess,
 	importPigeonWhatsappNames,
 	learnAllPigeonContacts,
 	learnPigeonContact,
@@ -45,6 +48,7 @@ import {
 	resumePigeonAuto,
 	resumePigeonPersonAuto,
 	resumePigeonSharing,
+	revokePigeonAccess,
 	sendPigeonFile,
 	sendPigeonMessage,
 	setPigeonAway,
@@ -78,6 +82,8 @@ export const pigeonKeys = {
 	settings: () => ["pigeon", "settings"],
 	away: () => ["pigeon", "away"],
 	access: () => ["pigeon", "access"],
+	contactAccess: (id) => ["pigeon", "access", "contact", id],
+	noteAccess: (target) => ["pigeon", "access", "notes", target ?? {}],
 	connections: () => ["pigeon", "connections"],
 	pairing: (connector) => ["pigeon", "pairing", connector],
 	chats: (params) => ["pigeon", "chats", params ?? {}],
@@ -312,6 +318,24 @@ export const usePausePigeonSharing = () =>
 	useSharingMutation(pausePigeonSharing);
 export const useResumePigeonSharing = () =>
 	useSharingMutation(resumePigeonSharing);
+
+// What a person holds, and who may be told from a note or a folder
+// (target: { noteId } | { folder }).
+export const usePigeonContactAccess = (id) =>
+	useQuery({
+		queryKey: pigeonKeys.contactAccess(id),
+		queryFn: () => fetchPigeonContactAccess(id),
+		enabled: !!id,
+	});
+export const usePigeonNoteAccess = (target) =>
+	useQuery({
+		queryKey: pigeonKeys.noteAccess(target),
+		queryFn: () => fetchPigeonNoteAccess(target),
+		enabled: !!(target?.noteId || target?.folder),
+	});
+export const useGrantPigeonAccess = () => useSharingMutation(grantPigeonAccess);
+export const useRevokePigeonAccess = () =>
+	useSharingMutation(revokePigeonAccess);
 
 // "This was wrong" on a reply of Pigeon's: the messages again (its mark), and
 // who holds what (the permissions behind it went back to Ask).

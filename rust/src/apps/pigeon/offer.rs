@@ -1,9 +1,11 @@
 //! What Pigeon may tell or do for the people who write: the catalogue. Each thing is a tool
-//! (`Tool`: the user's place, their calendar, their flights, something they left for someone), with its levels
+//! (`Tool`: the user's place, their calendar, something they left for someone, their notes), with its levels
 //! (how much: a country, a city, the exact spot), least first. A permission is one name,
 //! `tool.level.mode`, held by a person, a chat or a group (`access`): the mode is `ask` (Pigeon
 //! prepares it, the user taps) or `auto` (Pigeon does it and tells them). `auto` includes `ask`, a
 //! level includes the ones under it, and `*` stands for any part (`location.*.ask`, `*.*.*`).
+//! A tool that `targets` (Notes) gives one of the user's own things, never all of them: its
+//! grant names the note or the folder it is on, and no wildcard reaches it.
 //!
 //! The names live here, in code, and nowhere else: no table lists them, and the apps draw their
 //! screens from `catalogue()` (they know no tool by name); what each tool answers with, at a
@@ -39,6 +41,9 @@ pub struct Tool {
     pub live: bool,
     /// its fact ages: older than this many minutes, Pigeon only drafts with it
     pub fresh: Option<i64>,
+    /// a grant of it names what it is on (a note, a folder): a holder may have several, and
+    /// `*` for the tool doesn't reach it
+    pub targets: bool,
 }
 
 const USE: &[Level] = &[Level { name: "use", label: "Yes", example: "" }];
@@ -58,6 +63,7 @@ pub static TOOLS: &[Tool] = &[
         ask_only: false,
         live: true,
         fresh: Some(30),
+        targets: false,
     },
     Tool {
         name: "calendar",
@@ -72,16 +78,7 @@ pub static TOOLS: &[Tool] = &[
         ask_only: false,
         live: true,
         fresh: None,
-    },
-    Tool {
-        name: "flights",
-        label: "Flights",
-        gives: "when you are flying",
-        asks: "Do the new messages ask about {me}'s flights: when {me} flies, takes off or lands, or which flight {me} is on?",
-        levels: USE,
-        ask_only: false,
-        live: true,
-        fresh: None,
+        targets: false,
     },
     Tool {
         name: "passon",
@@ -92,6 +89,18 @@ pub static TOOLS: &[Tool] = &[
         ask_only: false,
         live: true,
         fresh: None,
+        targets: false,
+    },
+    Tool {
+        name: "notes",
+        label: "Notes",
+        gives: "what is in a note of yours",
+        asks: "Do the new messages ask for something {me} may have written down: an address, a code, instructions, the details of a plan?",
+        levels: USE,
+        ask_only: false,
+        live: true,
+        fresh: None,
+        targets: true,
     },
 ];
 
@@ -155,6 +164,9 @@ impl Permission {
         if tool.ask_only && p.mode != "ask" {
             anyhow::bail!("{} only asks for now: {}.{}.ask", tool.label, tool.name, p.level);
         }
+        if tool.targets && (p.level == "*" || p.mode == "*") {
+            anyhow::bail!("{} is {}.{}.ask or {}.{}.auto, on one note or one folder", tool.label, tool.name, tool.levels[0].name, tool.name, tool.levels[0].name);
+        }
         Ok(p)
     }
 
@@ -178,7 +190,7 @@ impl Permission {
     /// What it comes to for one tool: up to which level (an index into the tool's), and whether
     /// on its own. None: it isn't about this tool (or names a level the tool no longer has).
     pub fn reach(&self, tool: &Tool) -> Option<(usize, bool)> {
-        if self.tool != "*" && self.tool != tool.name {
+        if self.tool != tool.name && (self.tool != "*" || tool.targets) {
             return None;
         }
         let level = if self.level == "*" { tool.levels.len().checked_sub(1)? } else { tool.level(&self.level)? };
@@ -215,6 +227,7 @@ pub fn catalogue() -> Json {
             "ask_only": t.ask_only,
             "live": t.live,
             "fresh_minutes": t.fresh,
+            "targets": t.targets,
         }))
         .collect::<Vec<_>>())
 }
@@ -233,6 +246,9 @@ mod tests {
         assert!(Permission::parse("*.city.ask").is_err());
         assert!(Permission::parse("*.*.ask").is_ok());
         assert!(Permission::parse("location.*.auto").is_ok());
+        assert!(Permission::parse("notes.use.auto").is_ok());
+        assert!(Permission::parse("notes.*.ask").is_err());
+        assert!(Permission::parse("flights.use.ask").is_err());
     }
 
     #[test]
@@ -246,5 +262,9 @@ mod tests {
         let gone = Permission::read("location.planet.auto").unwrap();
         assert_eq!(gone.reach(place), None);
         assert!(!gone.known());
+        // one of the user's notes is never part of "everything"
+        let notes = find("notes").unwrap();
+        assert_eq!(Permission::read("*.*.*").unwrap().reach(notes), None);
+        assert_eq!(Permission::read("notes.use.auto").unwrap().reach(notes), Some((0, true)));
     }
 }

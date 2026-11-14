@@ -24,7 +24,7 @@ const MODES = [
 // "Allow…" on a 🔑 card (they asked for something they hold no permission
 // for): how much of it, and whether Pigeon asks first or tells on its own. The
 // levels come from the vault's catalogue; `onAllow(permission)` with its name,
-// `tool.level.mode`.
+// `tool.level.mode`. A note's card (`data.note`) allows that one note.
 function AllowDialog({ card, open, busy, onClose, onAllow }) {
 	const { data, isLoading } = usePigeonAccess(open);
 	const tool = data?.catalogue?.find((t) => t.tool === card.data?.tool);
@@ -33,6 +33,7 @@ function AllowDialog({ card, open, busy, onClose, onAllow }) {
 	const chosen = level ?? tool?.levels?.[0]?.name;
 	const example = tool?.levels?.find((l) => l.name === chosen)?.example;
 	const who = card.data?.holder?.name;
+	const note = card.data?.note;
 	const go = () => {
 		if (tool && chosen && !busy) onAllow(`${tool.tool}.${chosen}.${mode}`);
 	};
@@ -48,7 +49,9 @@ function AllowDialog({ card, open, busy, onClose, onAllow }) {
 			{tool ? (
 				<div className="pigeon-allow">
 					<p className="pigeon-allow-help">
-						Pigeon may tell them {tool.gives}, from now on.
+						Pigeon may tell them{" "}
+						{note ? `what is in your note «${note.title}»` : tool.gives}, from
+						now on.
 					</p>
 					{tool.has_levels ? (
 						<PvField label="How much" as="div" hint={example || undefined}>

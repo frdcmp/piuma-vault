@@ -13,7 +13,11 @@
 //!     holds which permission, alone or through the user's groups (`access`), what Pigeon knows
 //!     right now (`facts`: the user's place, pass-ons), and the telling itself (`tell`: Jev says
 //!     what's asked, the responder is given only what the chat's permission reaches, a reply that
-//!     went out on its own is read back first)
+//!     went out on its own is read back first); one of the tools is the user's own notes, given
+//!     note by note or folder by folder (`shared`: reading them, and only them)
+//!   - what Pigeon knows about a person is notes in the vault, in their folder in `/contacts`
+//!     (`folder`: Pigeon's memory and styles next to the user's own notes, which it reads too;
+//!     `people` writes them). Nothing there is ever told
 //!
 //! Channels are `connectors` (one folder each). The backend serves the API, the tools over MCP
 //! (`mcp_server`), the OAuth callbacks and the providers' webhooks; the pigeon-worker (`worker`,
@@ -39,6 +43,7 @@ pub mod context;
 pub mod conversations;
 pub mod events;
 pub mod facts;
+pub mod folder;
 pub mod handlers;
 pub mod health;
 pub mod items;
@@ -52,6 +57,7 @@ pub mod people;
 pub mod policy;
 pub mod routes;
 pub mod rules;
+pub mod shared;
 pub mod sign;
 pub mod slugs;
 pub mod state;

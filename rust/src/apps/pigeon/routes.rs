@@ -50,6 +50,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/admin/pigeon/access/groups/{id}", web::delete().to(h::access_delete_group))
         .route("/admin/pigeon/access/grants", web::post().to(h::access_grant))
         .route("/admin/pigeon/access/grants/{id}", web::delete().to(h::access_revoke))
+        .route("/admin/pigeon/access/notes", web::get().to(h::access_notes))
         .route("/admin/pigeon/access/uses", web::get().to(h::access_uses))
         .route("/admin/pigeon/access/try", web::post().to(h::access_try))
         .route("/admin/pigeon/access/contacts/{id}/suggest", web::get().to(h::access_suggest))

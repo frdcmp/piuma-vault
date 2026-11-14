@@ -36,6 +36,7 @@ use crate::apps::pigeon::cards::{self, ASK_TOOL};
 use crate::apps::pigeon::connectors::{self, ActionDef, Connector, Kind};
 use crate::apps::pigeon::conversations::{self, Contact, Conversation};
 use crate::apps::pigeon::facts;
+use crate::apps::pigeon::folder;
 use crate::apps::pigeon::owner::{self, Owner};
 use crate::apps::pigeon::people;
 use crate::apps::pigeon::policy::{self, Policy};
@@ -46,8 +47,6 @@ use crate::apps::telemetry::{Event, Severity};
 
 /// The most actions one turn may propose.
 const MAX_PROPOSALS: usize = 3;
-/// The user's own messages to a person shown as examples of their voice.
-const VOICE_EXAMPLES: i64 = 8;
 
 enum Mode<'a> {
     /// After a triage: the responder (the reply to them) or the intaker (tasks, events, what to
@@ -528,10 +527,10 @@ fn system_prompt(me: &Owner, mode: &Mode<'_>, asking: bool, replies_off: bool, p
     );
     let replying = format!(
         "\n- A reply is written as {name}, in the first person, to this person (or this group): match the language, \
-         dialect, length, tone, greetings and emoji use of {name}'s own messages there (the style and the examples), and \
-         follow {name}'s note on them above all. One reply at most.\n\
-         - Write it the way {name} would, not better: as long as {name}'s messages there usually are (the length given \
-         below; never twice it), one thing only, the answer to the newest messages. No joke, pun or callback added on top, \
+         dialect, length, tone, greetings and emoji use of {name}'s own messages there (the style and its samples below, \
+         and {name}'s messages in the conversation), and follow {name}'s note on them above all. One reply at most.\n\
+         - Write it the way {name} would, not better: as long as {name}'s messages there usually are (the usual length \
+         in the style below; never twice it), one thing only, the answer to the newest messages. No joke, pun or callback added on top, \
          no 'Ahah'/'Haha' opener, no exclamation runs, no summary or restating of the plan, no facts nobody asked about. \
          Emoji only as {name} uses them there (none if they don't). Plain and a little dry beats clever.\n\
          - A reply may acknowledge, thank, chat or ask, but accepting a request, a date, a price or a commitment is {name}'s \
@@ -674,55 +673,57 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
         if let Some(note) = c.note.as_deref().filter(|n| !n.trim().is_empty()) {
             s.push_str(&format!("\n{name}'s note on {them} (follow it):\n{note}\n"));
         }
-        if let Some(m) = people::memory(st, c.id).await? {
-            s.push_str(&format!("\nWhat Pigeon knows about {them}, from their past conversations:\n{}\n", m.memory));
+        // what Pigeon knows about them: its notes in their folder in the vault
+        let kept = folder::kept(st, folder::Whose::Person(c.id)).await?;
+        if let Some(m) = kept.iter().find(|k| k.kind == folder::MEMORY).filter(|k| !k.body().is_empty()) {
+            s.push_str(&format!("\nWhat Pigeon knows about {them}, from their past conversations:\n{}\n", m.body()));
         }
         // the user's voice: not when Pigeon writes as itself (away)
         if !away_mode {
-            if let Some(p) = people::style(st, c.id, &conv.connector).await? {
-                s.push_str(&format!("\nHow {name} writes to {them} on {}:\n{}\n", conv.connector, p.profile));
-            }
-            let here = people::voice_examples(st, c.id, Some(&conv.connector), VOICE_EXAMPLES).await?;
-            if !here.is_empty() {
-                s.push_str(&format!("\n{name}'s own recent messages to {them} on {} (their voice):\n", conv.connector));
-                for (_, e) in here {
-                    s.push_str(&format!("- {}\n", conversations::clip(&e, 400)));
-                }
+            let styles: Vec<&folder::Kept> = kept.iter().filter(|k| k.kind == folder::STYLE && !k.body().is_empty()).collect();
+            if let Some(p) = styles.iter().find(|k| k.connector.as_deref() == Some(conv.connector.as_str())) {
+                s.push_str(&format!(
+                    "\nHow {name} writes to {them} on {} (the style, the usual length, and {name}'s own messages as samples):\n{}\n",
+                    conv.connector,
+                    p.body()
+                ));
             } else {
-                // none on this channel yet: their messages elsewhere, for language and warmth, not form
-                let elsewhere = people::voice_examples(st, c.id, None, VOICE_EXAMPLES).await?;
-                if !elsewhere.is_empty() {
+                // none on this channel yet: how they write to them elsewhere, for language and warmth, not form
+                for p in styles {
+                    let ch = p.connector.as_deref().unwrap_or_default();
                     s.push_str(&format!(
-                        "\n{name} hasn't written to {them} on {} yet. {name}'s messages to them elsewhere (match the language and \
-                         warmth; the form on {} may differ):\n",
-                        conv.connector, conv.connector
+                        "\n{name} hasn't written to {them} on {} yet. How {name} writes to them on {ch} (match the language and \
+                         warmth; the form and the length on {} may differ):\n{}\n",
+                        conv.connector,
+                        conv.connector,
+                        p.body()
                     ));
-                    for (ch, e) in elsewhere {
-                        s.push_str(&format!("- [{ch}] {}\n", conversations::clip(&e, 400)));
-                    }
                 }
             }
         }
-    }
-    if contact.is_none() && !away_mode {
-        // a group: how the user writes in it, and their latest messages there
-        if let Some(p) = people::group_style(st, conv.id).await? {
-            s.push_str(&format!("\nHow {name} writes in this group:\n{}\n", p.profile));
+    } else if !away_mode {
+        // a group: how the user writes in it
+        if let Some(p) = people::group_style(st, conv).await?.filter(|p| !p.profile.is_empty()) {
+            s.push_str(&format!("\nHow {name} writes in this group (the style, the usual length, and {name}'s own messages as samples):\n{}\n", p.profile));
         }
-        let here = people::chat_voice(st, conv.id, VOICE_EXAMPLES).await?;
-        if !here.is_empty() {
-            s.push_str(&format!("\n{name}'s own recent messages in this group (their voice):\n"));
-            for e in here {
-                s.push_str(&format!("- {}\n", conversations::clip(&e, 400)));
+    }
+    // the user's own notes on them, in the same folder: not when Pigeon writes as itself (away),
+    // where nobody reads the reply before it goes
+    if !away_mode {
+        let (place, linked) = match contact {
+            Some(c) => (folder::of_person(st, c).await?, c.note_id),
+            None => (folder::of_chat(st, conv).await?, None),
+        };
+        let notes = folder::own_notes(st, &conv.user_id, &place, linked).await?;
+        if !notes.is_empty() {
+            s.push_str(&format!(
+                "\n{name}'s own notes on {them}, from {name}'s vault (to understand who they are and what is going on; private: \
+                 never quote them or pass on what they say unless {name}'s note above asks for it):\n"
+            ));
+            for (title, text) in notes {
+                s.push_str(&format!("--- {title}\n{text}\n"));
             }
         }
-    }
-    if let Some(n) = people::usual_length(st, conv.contact_id, conv.id, &conv.connector).await?.filter(|_| !away_mode) {
-        s.push_str(&format!(
-            "\n{name}'s messages here are usually about {n} characters long (half of them shorter): a reply stays near that, \
-             never over {}.\n",
-            (n * 2).max(40)
-        ));
     }
     if let Some(w) = conv.window_until {
         s.push_str(&format!("\nThe channel accepts replies until {}.\n", me.local(w).format("%Y-%m-%d %H:%M")));

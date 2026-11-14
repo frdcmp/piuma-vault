@@ -163,7 +163,7 @@ pigeon.py pending                       # drafts, suggestions, questions waiting
 pigeon.py search query="invoice"
 pigeon.py conversation conversation_id=<uuid>   # each message's photos and files: its `files`
 pigeon.py file item=<message id> file=<file id> # save one here, prints its path (then read it)
-pigeon.py contacts query=alex           # people: @slug, handles, note, memory
+pigeon.py contacts query=alex           # people: @slug, handles, note, memory (a note in their folder)
 pigeon.py names_from_whatsapp contact_id=<uuid|@slug>   # name one from WhatsApp; none: everyone
 pigeon.py set_contact contact_id=@alex relationship=friend slug=alex-r
 pigeon.py draft_reply conversation_id=<uuid> instructions="say I'll be late, sweetly"
@@ -175,6 +175,10 @@ pigeon.py set_group name=Friends        # a group; rename: group=Friends name=Ma
 pigeon.py grant contact_id=@alex member_of=Friends
 pigeon.py grant group=Friends permission=location.city.ask
 pigeon.py grant contact_id=@alex permission=location.exact.ask minutes=120 said="for tonight"
+pigeon.py grant contact_id=@alex permission=notes.use.ask folder=/shared/trip   # Notes: on one folder
+pigeon.py grant group=Family permission=notes.use.auto note_id=<uuid>           # or on one note
+pigeon.py shared_notes                  # every note and folder someone may be told from, and who
+pigeon.py shared_notes folder=/shared/trip   # who holds this one (or note_id=), also through a folder above
 pigeon.py revoke grant_id=<uuid>
 pigeon.py try_permission group=Friends permission=location.city.auto   # what it would have done lately
 pigeon.py facts                         # what Pigeon knows now: the user's place, pass-ons
@@ -197,6 +201,12 @@ pigeon.py mark_wrong action_id=<uuid>   # that reply told too much: its auto goe
   the user asked, for whom they said. Mode `ask` still shows them every answer first; mode
   `auto` (or a place in a group that holds one) is Pigeon answering on its own: only when
   they ask for it, and it comes back as a card they tap.
+- **Notes** (`notes.use.ask|auto`) is given on one note (`note_id=`) or one folder (`folder=`:
+  every note in and under it, the ones added later too), never on all of them: `*` doesn't
+  reach it, and someone can hold several. Pigeon then answers from that note when they ask
+  for what is in it. `/contacts` (what the user and Pigeon keep on people) and `/` are
+  refused: what is shared lives elsewhere, e.g. `/shared/…`. Say which note or folder and
+  to whom before granting, and never move a note into a shared folder without the user's word.
 - **What Pigeon knows** (`facts`, `set_fact`, `passon`): the user's place (their phone writes
   it; `set_fact` only when they say where they are, with just the levels they said) and what
   they left for one person to hear when they ask (`passon`, their words). Both are told to
@@ -225,9 +235,18 @@ pigeon.py mark_wrong action_id=<uuid>   # that reply told too much: its auto goe
   `once` (Pigeon drafts the answer for this time, with the least that answers), `granted`
   (after a `grant`: Pigeon drafts with it) or `no`. While telling is paused (`access`:
   `paused`) only `no` works.
-- Flights (`flights.use.ask`) are read from the calendar: events of the next 30 days whose
-  title says so (“Flight to …”, ✈, two airports like `NRT-BKK`). One titled otherwise isn't
-  seen.
+- Notes: Pigeon searches only the notes that chat holds, Jev picks one or none, and the reply
+  answers from that one note (its text, never its attachments). On its own (`auto`) only when
+  Jev is sure of the question and of the note, the note fits whole (8000 characters) and
+  holds no bank details (an IBAN, a card number): otherwise a draft. A note in the trash or
+  moved to `/contacts` is no longer read; a renamed folder keeps its grants; a 🔑 card for a
+  note names it (`note`), and allowing it grants that one note. `try_permission` doesn't
+  take Notes.
+- What Pigeon knows about a person is notes in their folder of the vault,
+  `/contacts/<person>/` (a group chat has one too): `Pigeon · Memory` and
+  `Pigeon · Style · <Channel>`, tagged `pigeon`, beside the user's own notes there, which
+  Pigeon also reads before writing to them. They are the user's to edit (`vault.sh`): an
+  edit wins, the next rewrite keeps it. Don't delete them or rename them.
 - A person known only by a number takes the name their next message carries on its own;
   `names_from_whatsapp` does it now from the phone's address book (and gives the slug).
 - `learn` brings old conversations in and writes what Pigeon knows about people: slow, it

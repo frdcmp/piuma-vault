@@ -98,7 +98,7 @@ pub async fn needs_tap(st: &State, user: &str, tool: &str, args: &Json) -> anyho
                 Holder::Conversation(c) => Some(c),
                 _ => None,
             };
-            access::on_its_own(st, user, h, &what).await?.map(|summary| Tap { summary, conversation })
+            access::on_its_own(st, user, h, &what, tools::target_arg(args)?.as_ref()).await?.map(|summary| Tap { summary, conversation })
         }
         "pigeon_set_group" if args.get("delete").and_then(Json::as_bool) == Some(true) => {
             let Holder::Group(g) = tools::holder_arg(st, user, args).await? else { anyhow::bail!("which group: group_id or group") };

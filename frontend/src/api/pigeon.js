@@ -369,6 +369,35 @@ export const resumePigeonSharing = async () => {
 	return data;
 };
 
+// What a person holds: { own: [grant], effective: [{ permission, from, target?, … }],
+// groups, passons }.
+export const fetchPigeonContactAccess = async (id) => {
+	const { data } = await axiosInstance.get(`${BASE}/access/contacts/${id}`);
+	return data;
+};
+
+// Who may be told from one of the user's notes ({ noteId }) or folders
+// ({ folder }, the notes in and under it): { target, shareable, holders: [grant,
+// with `through` when it comes from a folder above] }.
+export const fetchPigeonNoteAccess = async ({ noteId, folder }) => {
+	const { data } = await axiosInstance.get(`${BASE}/access/notes`, {
+		params: { note_id: noteId, folder },
+	});
+	return data;
+};
+
+// A permission for a person, a chat or a group: { contact_id | conversation_id |
+// group_id, permission, note_id | folder (Notes: what it is on), until? }.
+export const grantPigeonAccess = async (input) => {
+	const { data } = await axiosInstance.post(`${BASE}/access/grants`, input);
+	return data;
+};
+
+export const revokePigeonAccess = async (id) => {
+	const { data } = await axiosInstance.delete(`${BASE}/access/grants/${id}`);
+	return data;
+};
+
 // A reply of Pigeon's told what it shouldn't have: what allowed it asks again.
 export const markPigeonReplyWrong = async ({ actionId, tool }) => {
 	const { data } = await axiosInstance.post(

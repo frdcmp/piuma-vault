@@ -18,7 +18,7 @@ use crate::apps::pigeon::connectors::Kind;
 use crate::apps::pigeon::conversations::{self, Conversation};
 use crate::apps::pigeon::policy::Policy;
 use crate::apps::pigeon::state::{AppState, State};
-use crate::apps::pigeon::access::{self, Holder, What};
+use crate::apps::pigeon::access::{self, Holder, Target, What};
 use crate::apps::pigeon::{actions, agent, alerts, away, cards, confirm, facts, items, media, people, policy, rules, tell};
 
 /// Who Piuma's decisions are logged as.
@@ -286,22 +286,33 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
         ),
         (
             "pigeon_access",
-            "Who Pigeon may tell what, all at once: the catalogue (each tool the people who write may be answered with, like the user's place or \
-             calendar, and its levels, least first), the user's groups (Family, Friends: who's in, what each holds, which group sits in which), \
-             what people and chats hold on their own, and whether sharing is paused. A permission is `tool.level.mode`: mode `ask` = Pigeon \
-             prepares the answer and the user taps, `auto` = Pigeon answers and tells them; a level includes the ones under it; `*` is any part.",
+            "Who Pigeon may tell what, all at once: the catalogue (each tool the people who write may be answered with, like the user's place, \
+             calendar or notes, and its levels, least first), the user's groups (Family, Friends: who's in, what each holds, which group sits in \
+             which), what people and chats hold on their own, and whether sharing is paused. A permission is `tool.level.mode`: mode `ask` = \
+             Pigeon prepares the answer and the user taps, `auto` = Pigeon answers and tells them; a level includes the ones under it; `*` is \
+             any part. A tool with `targets` (Notes) is given one note or one folder at a time: each such grant has a `target`, and `*` never \
+             includes it.",
             json!({ "type": "object", "properties": {} }),
         ),
         (
             "pigeon_permissions",
             "What one person, one chat or one group holds: their own grants, the groups they're in, and everything that counts for them with \
-             where each comes from (their own, the chat's, from a group, through which groups). A group chat gets only the chat's own, never \
-             its members'.",
+             where each comes from (their own, the chat's, from a group, through which groups); for Notes, each note or folder they may be \
+             told from (`target`). A group chat gets only the chat's own, never its members'.",
             json!({ "type": "object", "properties": {
                 "contact_id": id("A person (pigeon_contacts)"),
                 "conversation_id": id("A chat"),
                 "group_id": id("A group"),
                 "group": { "type": "string", "description": "Or the group by its name" },
+            } }),
+        ),
+        (
+            "pigeon_shared_notes",
+            "Who may be told from the user's notes: for one note (note_id) or one folder (folder), everyone who holds it, on its own or \
+             through a folder above it; with neither, every note and folder shared with anyone and who holds each.",
+            json!({ "type": "object", "properties": {
+                "note_id": id("One note"),
+                "folder": { "type": "string", "description": "Or one folder, e.g. /shared/trip" },
             } }),
         ),
         (
@@ -329,16 +340,21 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
             "pigeon_grant",
             "Give a person, a chat or a group a permission (`permission`: tool.level.mode from pigeon_access's catalogue, like \
              location.city.ask; it replaces what they held for that tool), or put a person or a group in a group (`member_of`: the group's id \
-             or name). `until` or `minutes` makes it end by itself (\"tell Marco where I am for the next two hours\"). Give `said`: the user's \
-             own words for it. Only on the user's word, and for exactly whom and what they said. Mode `ask` is safe (the user still taps each \
-             answer); anything that lets Pigeon answer on its own (mode auto, or a place in a group that holds an auto) waits for the user's \
-             tap in the Inbox.",
+             or name). Notes are shared one at a time: `permission` notes.use.ask or notes.use.auto with `note_id` (that note, wherever it \
+             moves) or `folder` (every note in and under it, later ones too); someone may hold several, a second grant on the same note or \
+             folder replaces the first; nothing in /contacts and never the whole vault. Pigeon then answers from that note when they ask for \
+             what it says, one note a reply, never its attachments. `until` or `minutes` makes it end by itself (\"tell Marco where I am for \
+             the next two hours\"). Give `said`: the user's own words for it. Only on the user's word, and for exactly whom and what they \
+             said. Mode `ask` is safe (the user still taps each answer); anything that lets Pigeon answer on its own (mode auto, or a place in \
+             a group that holds an auto) waits for the user's tap in the Inbox.",
             json!({ "type": "object", "properties": {
                 "contact_id": id("To this person"),
                 "conversation_id": id("Or to this chat (a group chat's only way)"),
                 "group_id": id("Or to this group"),
                 "group": { "type": "string", "description": "Or to the group with this name" },
-                "permission": { "type": "string", "description": "tool.level.mode, e.g. location.city.ask, calendar.busy.auto, location.*.ask" },
+                "permission": { "type": "string", "description": "tool.level.mode, e.g. location.city.ask, calendar.busy.auto, location.*.ask, notes.use.ask" },
+                "note_id": id("With a notes permission: this note of the user's (vault notes)"),
+                "folder": { "type": "string", "description": "Or: this folder of notes and what is under it, e.g. /shared/trip" },
                 "member_of": { "type": "string", "description": "Or: put them in this group (its id or name)" },
                 "until": { "type": "string", "description": "When it ends, ISO 8601 with the offset" },
                 "minutes": { "type": "integer", "description": "Or: it ends in this many minutes" },
@@ -348,8 +364,8 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
         (
             "pigeon_revoke",
             "Take back a permission or a place in a group: by grant_id (from pigeon_permissions), or by whom (contact_id, conversation_id, \
-             group_id or group) and what (permission or member_of). What they hold through a group stays: take them out of the group, or \
-             change the group.",
+             group_id or group) and what (permission or member_of; for notes also which: note_id or folder, when they hold several). What they \
+             hold through a group stays: take them out of the group, or change the group.",
             json!({ "type": "object", "properties": {
                 "grant_id": id("The grant"),
                 "contact_id": id("Or whose: this person's"),
@@ -357,6 +373,8 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
                 "group_id": id("this group's"),
                 "group": { "type": "string", "description": "the group's with this name" },
                 "permission": { "type": "string", "description": "and what: this permission" },
+                "note_id": id("a notes permission: on this note"),
+                "folder": { "type": "string", "description": "or on this folder" },
                 "member_of": { "type": "string", "description": "or their place in this group (its id or name)" },
             } }),
         ),
@@ -423,7 +441,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
             "pigeon_try_permission",
             "Before granting: try a permission (tool.level.mode) on what a person, a chat or a group's people wrote lately. Jev reads their \
              last messages one by one: which asked for it, and what Pigeon would have done with each (answer on its own, or ask the user). \
-             Nothing is sent or changed. Slow (up to ~20 s).",
+             Nothing is sent or changed. Slow (up to ~20 s). Not for notes: whether a note answers depends on the note.",
             json!({ "type": "object", "properties": {
                 "contact_id": id("This person's messages"),
                 "conversation_id": id("Or this chat's"),
@@ -453,7 +471,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
 /// The tools that only read: an `inbox.read` key may run them.
 const READS: &[&str] = &[
     "pigeon_inbox", "pigeon_search", "pigeon_conversation", "pigeon_pending", "pigeon_rules", "pigeon_rule_runs",
-    "pigeon_actions", "pigeon_contacts", "pigeon_policies", "pigeon_connectors", "pigeon_access", "pigeon_permissions", "pigeon_groups",
+    "pigeon_actions", "pigeon_contacts", "pigeon_policies", "pigeon_connectors", "pigeon_access", "pigeon_permissions", "pigeon_shared_notes", "pigeon_groups",
     "pigeon_tool_uses", "pigeon_facts", "pigeon_try_permission",
 ];
 
@@ -551,6 +569,17 @@ pub async fn what_arg(st: &State, user: &str, args: &Json) -> anyhow::Result<Wha
         (None, Some(g)) => Ok(What::MemberOf(access::find_group(st, user, g).await?.id)),
         (Some(_), Some(_)) => anyhow::bail!("one of permission, member_of, not both"),
         (None, None) => anyhow::bail!("what: permission (tool.level.mode) or member_of (a group)"),
+    }
+}
+
+/// What a Notes grant is on: `note_id` (one note) or `folder` (it and what is under it); none:
+/// not a Notes grant.
+pub fn target_arg(args: &Json) -> anyhow::Result<Option<Target>> {
+    match (opt_uuid(args, "note_id")?, text(args, "folder")) {
+        (Some(id), None) => Ok(Some(Target::Note(id))),
+        (None, Some(f)) => Ok(Some(Target::Folder(f.to_string()))),
+        (Some(_), Some(_)) => anyhow::bail!("one of note_id, folder, not both"),
+        (None, None) => Ok(None),
     }
 }
 
@@ -839,15 +868,16 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
             let g = access::save_group(st, user, id, text(args, "name"), args.get("description").and_then(Json::as_str)).await?;
             Ok(json!({ "group": g }))
         }
+        "pigeon_shared_notes" => access::of_target(st, user, target_arg(args)?.as_ref()).await,
         "pigeon_grant" => {
             let h = holder_arg(st, user, args).await?;
             let what = what_arg(st, user, args).await?;
-            Ok(json!({ "granted": access::grant(st, user, h, &what, until_arg(args)?, text(args, "said")).await? }))
+            Ok(json!({ "granted": access::grant(st, user, h, &what, target_arg(args)?.as_ref(), until_arg(args)?, text(args, "said")).await? }))
         }
         "pigeon_revoke" => {
             let id = match opt_uuid(args, "grant_id")? {
                 Some(id) => id,
-                None => access::find_grant(st, user, holder_arg(st, user, args).await?, &what_arg(st, user, args).await?).await?,
+                None => access::find_grant(st, user, holder_arg(st, user, args).await?, &what_arg(st, user, args).await?, target_arg(args)?.as_ref()).await?,
             };
             Ok(json!({ "revoked": access::revoke(st, user, id).await? }))
         }

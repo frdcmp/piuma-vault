@@ -15,6 +15,10 @@
 //!   - only the user grants: from the Inbox (their tap), or through a tool (Piuma, a script, an
 //!     assistant over MCP), where anything Pigeon would then do on its own waits for their tap
 //!     (`confirm`)
+//!   - Notes is given on one thing (`Target`): one note, or one folder with what is in and under
+//!     it, notes added later too. A holder may have several (`Book::notes`), no wildcard reaches
+//!     them, and nothing of `/contacts` is ever one: what the user and Pigeon keep on people is
+//!     never told (`shareable`, and `tell` leaves those notes out when it reads)
 //!
 //! The pause ("don't tell anyone anything for two hours") is a setting (`sharing_paused`).
 
@@ -29,7 +33,7 @@ use uuid::Uuid;
 use crate::apps::pigeon::conversations::Conversation;
 use crate::apps::pigeon::offer::{self, Permission, Tool};
 use crate::apps::pigeon::state::State;
-use crate::apps::pigeon::{avatars, events, facts, people, policy, tools};
+use crate::apps::pigeon::{avatars, events, facts, folder, people, policy, tools};
 use crate::db::db::DbPool;
 
 /// A group's name, at most.
@@ -40,6 +44,10 @@ pub const MAX_SAID: usize = 300;
 const PAUSE_KEY: &str = "sharing_paused";
 /// The tool the phone writes for: where the user is.
 const PLACE: &str = "location";
+/// The tool whose grants are on a note or a folder.
+pub const NOTES: &str = "notes";
+/// A folder's path, at most (the vault's own limit).
+const MAX_FOLDER: usize = 255;
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Group {
@@ -64,10 +72,13 @@ pub struct Grant {
     pub until: Option<DateTime<Utc>>,
     pub said: Option<String>,
     pub created_at: DateTime<Utc>,
+    /// what a Notes grant is on: a note, or a folder
+    pub note_id: Option<Uuid>,
+    pub folder: Option<String>,
 }
 
 const GROUP_COLS: &str = "id, user_id, name, description, created_at, updated_at";
-const GRANT_COLS: &str = "id, user_id, contact_id, conversation_id, group_id, permission, member_of, until, said, created_at";
+const GRANT_COLS: &str = "id, user_id, contact_id, conversation_id, group_id, permission, member_of, until, said, created_at, note_id, folder";
 
 /// Who holds a grant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -103,6 +114,48 @@ impl Grant {
             _ => Holder::Group(Uuid::nil()),
         }
     }
+
+    pub fn target(&self) -> Option<Target> {
+        match (self.note_id, &self.folder) {
+            (Some(n), _) => Some(Target::Note(n)),
+            (_, Some(f)) => Some(Target::Folder(f.clone())),
+            _ => None,
+        }
+    }
+}
+
+/// What a Notes grant is on: one note, or a folder with everything in and under it.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Target {
+    Note(Uuid),
+    Folder(String),
+}
+
+impl Target {
+    /// What it gives, in words (`title`: the note's).
+    pub fn words(&self, title: Option<&str>) -> String {
+        match self {
+            Target::Note(_) => format!("what is in your note «{}»", title.unwrap_or("a note")),
+            Target::Folder(f) => format!("what is in your notes in {f}"),
+        }
+    }
+}
+
+/// A folder a Notes grant may be on, as it is stored (no slash at the end). Never the root (it
+/// holds `/contacts`), nor anything of `/contacts`.
+pub fn shareable(path: &str) -> anyhow::Result<String> {
+    let path = path.trim();
+    if !path.starts_with('/') || path.chars().count() > MAX_FOLDER {
+        anyhow::bail!("a folder is a path from the top, like /shared/trip");
+    }
+    let f = path.trim_end_matches('/');
+    if f.is_empty() {
+        anyhow::bail!("not the whole vault: it holds what you keep on people. Name a folder, like /shared");
+    }
+    if folder::private(f) {
+        anyhow::bail!("{} is private: what you and Pigeon keep on people is never told. Share from another folder, like /shared", folder::ROOT);
+    }
+    Ok(f.to_string())
 }
 
 /// What a holder is given.
@@ -130,6 +183,15 @@ impl From {
             From::Chat => "this chat's".into(),
             From::Group { name, through, .. } if through.is_empty() => format!("from {name}"),
             From::Group { name, through, .. } => format!("from {name}, through {}", through.join(", ")),
+        }
+    }
+
+    /// For the screens: its kind, and the group it is (id, name, the groups on the way).
+    fn parts(&self) -> (&'static str, Option<Uuid>, Option<String>, Vec<String>) {
+        match self {
+            From::Direct => ("direct", None, None, vec![]),
+            From::Chat => ("chat", None, None, vec![]),
+            From::Group { id, name, through } => ("group", Some(*id), Some(name.clone()), through.clone()),
         }
     }
 }
@@ -160,11 +222,7 @@ impl Eff {
 
     pub fn view(&self) -> Json {
         let l = &self.tool.levels[self.level];
-        let (from, group_id, group, through) = match &self.from {
-            From::Direct => ("direct", None, None, vec![]),
-            From::Chat => ("chat", None, None, vec![]),
-            From::Group { id, name, through } => ("group", Some(*id), Some(name.clone()), through.clone()),
-        };
+        let (from, group_id, group, through) = self.from.parts();
         json!({
             "tool": self.tool.name, "label": self.tool.label, "gives": self.tool.gives, "has_levels": self.tool.has_levels(), "live": self.tool.live,
             "level": l.name, "level_label": l.label, "example": l.example,
@@ -172,6 +230,35 @@ impl Eff {
             "permission": self.permission, "grant_id": self.grant,
             "from": from, "group_id": group_id, "group": group, "through": through, "origin": self.from.words(),
             "until": self.until,
+        })
+    }
+}
+
+/// One note or folder someone may be told from, and why.
+#[derive(Debug, Clone)]
+pub struct NoteEff {
+    pub target: Target,
+    pub auto: bool,
+    pub grant: Uuid,
+    pub permission: String,
+    pub from: From,
+    pub until: Option<DateTime<Utc>>,
+}
+
+impl NoteEff {
+    /// As `Eff::view`, with what it is on (`target`).
+    fn view(&self, names: &Names) -> Json {
+        let Some(tool) = offer::find(NOTES) else { return Json::Null };
+        let l = &tool.levels[0];
+        let (from, group_id, group, through) = self.from.parts();
+        json!({
+            "tool": tool.name, "label": tool.label, "gives": tool.gives, "has_levels": tool.has_levels(), "live": tool.live,
+            "level": l.name, "level_label": l.label, "example": l.example,
+            "mode": if self.auto { "auto" } else { "ask" },
+            "permission": self.permission, "grant_id": self.grant,
+            "from": from, "group_id": group_id, "group": group, "through": through, "origin": self.from.words(),
+            "until": self.until,
+            "target": names.target(&self.target),
         })
     }
 }
@@ -255,11 +342,9 @@ impl Book {
         self.reached(Holder::Group(group)).iter().any(|r| r.group == in_group)
     }
 
-    /// What counts for these holders together (a person and the chat they write in): for each
-    /// tool the highest level on its own, and the highest after a tap when that's higher. Among
-    /// equals the nearest wins (their own, then the chat's, then the closest group).
-    pub fn effective(&self, holders: &[Holder]) -> Vec<Eff> {
-        // (the grant, its permission, where from, how far, until)
+    /// Every permission on the way from these holders: (the grant, its permission, where from,
+    /// how far, until).
+    fn found(&self, holders: &[Holder]) -> Vec<(&Grant, Permission, From, usize, Option<DateTime<Utc>>)> {
         let mut found: Vec<(&Grant, Permission, From, usize, Option<DateTime<Utc>>)> = Vec::new();
         for (i, h) in holders.iter().enumerate() {
             let from = if matches!(h, Holder::Conversation(_)) { From::Chat } else { From::Direct };
@@ -277,8 +362,48 @@ impl Book {
                 }
             }
         }
+        found
+    }
+
+    /// The notes and folders these holders may be told from: each once, on its own when any way
+    /// says so, and among equals the nearest.
+    pub fn notes(&self, holders: &[Holder]) -> Vec<NoteEff> {
+        let Some(tool) = offer::find(NOTES) else { return Vec::new() };
+        let mut out: Vec<(usize, NoteEff)> = Vec::new();
+        for (g, p, from, far, until) in self.found(holders) {
+            let (Some(target), Some((_, auto))) = (g.target(), p.reach(tool)) else { continue };
+            let e = NoteEff { target, auto, grant: g.id, permission: p.name(), from, until };
+            match out.iter_mut().find(|(_, o)| o.target == e.target) {
+                Some((f, o)) => {
+                    if (e.auto, std::cmp::Reverse(far)) > (o.auto, std::cmp::Reverse(*f)) {
+                        (*f, *o) = (far, e);
+                    }
+                }
+                None => out.push((far, e)),
+            }
+        }
+        out.into_iter().map(|(_, e)| e).collect()
+    }
+
+    /// Every note and folder anyone holds, each once (what the user has shared with someone).
+    pub fn shared(&self) -> Vec<Target> {
+        let mut out: Vec<Target> = Vec::new();
+        for t in self.grants.iter().filter(|g| g.permission.as_deref().and_then(Permission::read).is_some_and(|p| p.tool == NOTES)).filter_map(Grant::target) {
+            if !out.contains(&t) {
+                out.push(t);
+            }
+        }
+        out
+    }
+
+    /// What counts for these holders together (a person and the chat they write in): for each
+    /// tool the highest level on its own, and the highest after a tap when that's higher. Among
+    /// equals the nearest wins (their own, then the chat's, then the closest group). Not the
+    /// tools given on one thing (Notes): `notes`.
+    pub fn effective(&self, holders: &[Holder]) -> Vec<Eff> {
+        let found = self.found(holders);
         let mut out = Vec::new();
-        for tool in offer::TOOLS {
+        for tool in offer::TOOLS.iter().filter(|t| !t.targets) {
             // the best: the highest level, then the nearest
             let best = |auto_only: bool| {
                 found
@@ -339,6 +464,8 @@ pub async fn for_chat(st: &State, conv: &Conversation) -> anyhow::Result<Vec<Eff
 struct Names {
     contacts: HashMap<Uuid, (String, Option<String>, Option<String>)>,
     chats: HashMap<Uuid, (String, String)>,
+    /// the notes grants are on: title, folder, in the trash
+    notes: HashMap<Uuid, (String, String, bool)>,
 }
 
 impl Names {
@@ -365,7 +492,33 @@ impl Names {
                 names.chats.insert(id, (name.or(title).unwrap_or_else(|| "a chat".into()), connector));
             }
         }
+        let notes: Vec<Uuid> = book.grants.iter().filter_map(|g| g.note_id).collect();
+        if !notes.is_empty() {
+            let rows: Vec<(Uuid, String, Option<String>, bool)> =
+                sqlx::query_as("SELECT id, title, folder, deleted_at IS NOT NULL FROM notes WHERE id = ANY($1)").bind(&notes).fetch_all(pool).await?;
+            for (id, title, folder, trashed) in rows {
+                names.notes.insert(id, (title, folder.unwrap_or_else(|| "/".into()), trashed));
+            }
+        }
         Ok(names)
+    }
+
+    /// What a Notes grant is on, for the screens.
+    fn target(&self, t: &Target) -> Json {
+        match t {
+            Target::Note(id) => {
+                let (title, folder, trashed) = self.notes.get(id).cloned().unwrap_or_else(|| ("a note".into(), "/".into(), false));
+                json!({ "kind": "note", "note_id": id, "title": title, "folder": folder, "trashed": trashed })
+            }
+            Target::Folder(f) => json!({ "kind": "folder", "folder": f }),
+        }
+    }
+
+    fn words(&self, t: &Target) -> String {
+        match t {
+            Target::Note(id) => t.words(self.notes.get(id).map(|n| n.0.as_str())),
+            Target::Folder(_) => t.words(None),
+        }
     }
 
     fn holder(&self, book: &Book, h: Holder) -> Json {
@@ -395,6 +548,9 @@ fn grant_view(g: &Grant, book: &Book, names: &Names) -> Json {
     if let Some(m) = g.member_of {
         v["member_of"] = json!({ "id": m, "name": book.group_name(m) });
     }
+    if let Some(t) = g.target() {
+        v["target"] = names.target(&t);
+    }
     v
 }
 
@@ -410,8 +566,11 @@ fn memberships(book: &Book, h: Holder) -> Vec<Json> {
         .collect()
 }
 
-fn eff_views(effs: &[Eff]) -> Vec<Json> {
-    effs.iter().map(Eff::view).collect()
+/// Everything that counts for these holders: each tool at its level, then each note and folder.
+fn eff_views(book: &Book, names: &Names, holders: &[Holder]) -> Vec<Json> {
+    let mut out: Vec<Json> = book.effective(holders).iter().map(Eff::view).collect();
+    out.extend(book.notes(holders).iter().map(|e| e.view(names)));
+    out
 }
 
 // ── reading ──────────────────────────────────────────────────────────────
@@ -477,7 +636,7 @@ pub async fn of_contact(st: &State, user: &str, contact: Uuid) -> anyhow::Result
         "name": c.name,
         "groups": memberships(&book, h),
         "own": own_views(&book, &names, h),
-        "effective": eff_views(&book.effective(&[h])),
+        "effective": eff_views(&book, &names, &[h]),
         "passons": facts::views(&st.pool, &facts::left_for(&st.pool, user, contact).await?).await?,
     }))
 }
@@ -493,7 +652,7 @@ pub async fn of_conversation(st: &State, user: &str, conversation: Uuid) -> anyh
         "contact_id": conv.contact_id,
         "group_chat": conv.contact_id.is_none(),
         "own": own_views(&book, &names, Holder::Conversation(conversation)),
-        "effective": eff_views(&book.effective(&holders_of(&conv))),
+        "effective": eff_views(&book, &names, &holders_of(&conv)),
         "passons": facts::views(&st.pool, &facts::passons(&st.pool, user, conv.contact_id, Some(conversation)).await?).await?,
     }))
 }
@@ -526,8 +685,70 @@ pub async fn of_group(st: &State, user: &str, group: Uuid) -> anyhow::Result<Jso
         "groups": inside,
         "people": people,
         "permissions": own_views(&book, &names, h),
-        "effective": eff_views(&book.effective(&[h])),
+        "effective": eff_views(&book, &names, &[h]),
     }))
+}
+
+/// Whether a grant's target reaches a note at `at` (its folder): the note itself, or a folder
+/// it is in or under.
+fn reaches(t: &Target, note: Option<Uuid>, at: &str) -> bool {
+    match t {
+        Target::Note(id) => note == Some(*id),
+        Target::Folder(f) => at == f || at.starts_with(&format!("{f}/")),
+    }
+}
+
+/// Who may be told from one note or one folder, for the vault's own screens: every grant that
+/// reaches it, its own and (`through`) the ones on a folder it is in. With no target: every
+/// note and folder shared, each with who holds it.
+pub async fn of_target(st: &State, user: &str, target: Option<&Target>) -> anyhow::Result<Json> {
+    let book = Book::load(&st.pool, user).await?;
+    let names = Names::load(&st.pool, &book).await?;
+    let Some(target) = target else {
+        let shared: Vec<Json> = book
+            .shared()
+            .iter()
+            .map(|t| {
+                let holders: Vec<Json> = book.grants.iter().filter(|g| g.target().as_ref() == Some(t)).map(|g| grant_view(g, &book, &names)).collect();
+                json!({ "target": names.target(t), "holders": holders })
+            })
+            .collect();
+        return Ok(json!({ "shared": shared }));
+    };
+    let (view, note, at, trashed) = match target {
+        Target::Note(id) => {
+            let row: Option<(String, Option<String>, bool)> =
+                sqlx::query_as("SELECT title, folder, deleted_at IS NOT NULL FROM notes WHERE id = $1 AND user_id = $2").bind(id).bind(user).fetch_optional(&st.pool).await?;
+            let (title, at, trashed) = row.ok_or_else(|| anyhow::anyhow!("no such note: {id}"))?;
+            let at = at.unwrap_or_else(|| "/".into());
+            (json!({ "kind": "note", "note_id": id, "title": title, "folder": at, "trashed": trashed }), Some(*id), at, trashed)
+        }
+        Target::Folder(f) => {
+            let f = if f.trim() == "/" { "/".to_string() } else { f.trim().trim_end_matches('/').to_string() };
+            (json!({ "kind": "folder", "folder": f }), None, f, false)
+        }
+    };
+    let holders: Vec<Json> = book
+        .grants
+        .iter()
+        .filter_map(|g| {
+            let t = g.target().filter(|t| reaches(t, note, &at))?;
+            let mut v = grant_view(g, &book, &names);
+            // not on this very note or folder: it comes with a folder above
+            if let Target::Folder(f) = &t {
+                if note.is_some() || *f != at {
+                    v["through"] = json!(f);
+                }
+            }
+            Some(v)
+        })
+        .collect();
+    // what could be given here: nothing of /contacts or of the trash, and never the whole vault
+    let shareable = match target {
+        Target::Note(_) => !trashed && !folder::private(&at),
+        Target::Folder(_) => shareable(&at).is_ok(),
+    };
+    Ok(json!({ "target": view, "shareable": shareable, "holders": holders }))
 }
 
 pub async fn groups(st: &State, user: &str) -> anyhow::Result<Vec<Group>> {
@@ -627,10 +848,39 @@ async fn own_holder(st: &State, user: &str, h: Holder) -> anyhow::Result<()> {
     }
 }
 
+/// A note or folder a Notes grant may be on, as it is stored: the user's own, not in the trash,
+/// and nothing of `/contacts`.
+async fn own_target(st: &State, user: &str, t: &Target) -> anyhow::Result<Target> {
+    match t {
+        Target::Note(id) => {
+            let at: Option<Option<String>> = sqlx::query_scalar("SELECT folder FROM notes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL").bind(id).bind(user).fetch_optional(&st.pool).await?;
+            let at = at.ok_or_else(|| anyhow::anyhow!("no such note: {id}"))?.unwrap_or_else(|| "/".into());
+            if folder::private(&at) {
+                anyhow::bail!("that note is in {}, which is private: what you and Pigeon keep on people is never told. Move it, or share another", folder::ROOT);
+            }
+            Ok(Target::Note(*id))
+        }
+        Target::Folder(f) => {
+            let f = shareable(f)?;
+            let there: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM notes WHERE user_id = $1 AND deleted_at IS NULL AND (folder = $2 OR folder LIKE $3))")
+                .bind(user)
+                .bind(&f)
+                .bind(folder::under(&f))
+                .fetch_one(&st.pool)
+                .await?;
+            if !there {
+                anyhow::bail!("no notes in {f}: a folder is there once a note is in it");
+            }
+            Ok(Target::Folder(f))
+        }
+    }
+}
+
 /// Give a holder a permission, or put them in a group. A permission replaces the holder's own
-/// for the same tool (one say per tool: "Place: city, on its own"); a membership given again
-/// only changes its end. Returns the grant, as the screens show it.
-pub async fn grant(st: &State, user: &str, h: Holder, what: &What, until: Option<DateTime<Utc>>, said: Option<&str>) -> anyhow::Result<Json> {
+/// for the same tool (one say per tool: "Place: city, on its own"), and for Notes the one on the
+/// same note or folder (`target`: Notes needs one, nothing else takes one); a membership given
+/// again only changes its end. Returns the grant, as the screens show it.
+pub async fn grant(st: &State, user: &str, h: Holder, what: &What, target: Option<&Target>, until: Option<DateTime<Utc>>, said: Option<&str>) -> anyhow::Result<Json> {
     own_holder(st, user, h).await?;
     if until.is_some_and(|u| u <= Utc::now()) {
         anyhow::bail!("the end is already past");
@@ -641,19 +891,38 @@ pub async fn grant(st: &State, user: &str, h: Holder, what: &What, until: Option
         Holder::Conversation(c) => (None, Some(c), None),
         Holder::Group(g) => (None, None, Some(g)),
     };
+    let on = match (what, target) {
+        (What::Permission(name), t) => match (offer::find(&Permission::parse(name)?.tool).is_some_and(|t| t.targets), t) {
+            (true, Some(t)) => Some(own_target(st, user, t).await?),
+            (true, None) => anyhow::bail!("which note or folder: Notes is given on one note (note_id) or one folder (folder)"),
+            (false, Some(_)) => anyhow::bail!("only Notes is given on a note or a folder"),
+            (false, None) => None,
+        },
+        (What::MemberOf(_), Some(_)) => anyhow::bail!("a place in a group isn't on a note or a folder"),
+        (What::MemberOf(_), None) => None,
+    };
+    let (note, at) = match &on {
+        Some(Target::Note(n)) => (Some(*n), None),
+        Some(Target::Folder(f)) => (None, Some(f.clone())),
+        None => (None, None),
+    };
     let mut tx = st.pool.begin().await?;
     let (permission, member_of) = match what {
         What::Permission(name) => {
             let p = Permission::parse(name)?;
-            // the holder's say on this tool so far goes
-            let own: Vec<(Uuid, String)> = sqlx::query_as(
-                "SELECT id, permission FROM db_pigeon_grants WHERE user_id = $1 AND permission IS NOT NULL AND COALESCE(contact_id, conversation_id, group_id) = $2",
+            // the holder's say on this tool so far goes (Notes: on this note or folder)
+            let own: Vec<(Uuid, String, Option<Uuid>, Option<String>)> = sqlx::query_as(
+                "SELECT id, permission, note_id, folder FROM db_pigeon_grants WHERE user_id = $1 AND permission IS NOT NULL AND COALESCE(contact_id, conversation_id, group_id) = $2",
             )
             .bind(user)
             .bind(h.id())
             .fetch_all(&mut *tx)
             .await?;
-            let gone: Vec<Uuid> = own.into_iter().filter(|(_, raw)| Permission::read(raw).is_none_or(|o| o.tool == p.tool)).map(|(id, _)| id).collect();
+            let gone: Vec<Uuid> = own
+                .into_iter()
+                .filter(|(_, raw, n, f)| Permission::read(raw).is_none_or(|o| o.tool == p.tool && (*n, f) == (note, &at)))
+                .map(|(id, ..)| id)
+                .collect();
             sqlx::query("DELETE FROM db_pigeon_grants WHERE id = ANY($1)").bind(&gone).execute(&mut *tx).await?;
             (Some(p.name()), None)
         }
@@ -678,8 +947,8 @@ pub async fn grant(st: &State, user: &str, h: Holder, what: &What, until: Option
         }
     };
     let id: Uuid = sqlx::query_scalar(
-        "INSERT INTO db_pigeon_grants (user_id, contact_id, conversation_id, group_id, permission, member_of, until, said)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+        "INSERT INTO db_pigeon_grants (user_id, contact_id, conversation_id, group_id, permission, member_of, until, said, note_id, folder)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id",
     )
     .bind(user)
     .bind(contact)
@@ -689,11 +958,19 @@ pub async fn grant(st: &State, user: &str, h: Holder, what: &What, until: Option
     .bind(member_of)
     .bind(until)
     .bind(&said)
+    .bind(note)
+    .bind(&at)
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
     changed(st, user, h).await;
-    log::info!("pigeon access: {user} gave {} {} {}", h.kind(), h.id(), permission.unwrap_or_else(|| format!("a place in {}", member_of.unwrap_or_default())));
+    log::info!(
+        "pigeon access: {user} gave {} {} {}{}",
+        h.kind(),
+        h.id(),
+        permission.unwrap_or_else(|| format!("a place in {}", member_of.unwrap_or_default())),
+        on.map(|t| format!(" on {t:?}")).unwrap_or_default()
+    );
     grant_of(st, user, id).await
 }
 
@@ -709,19 +986,30 @@ pub async fn revoke(st: &State, user: &str, id: Uuid) -> anyhow::Result<Json> {
     Ok(view)
 }
 
-/// The holder's grant of this, when the id isn't known: a permission's name, or a group.
-pub async fn find_grant(st: &State, user: &str, h: Holder, what: &What) -> anyhow::Result<Uuid> {
+/// The holder's grant of this, when the id isn't known: a permission's name (for Notes, on
+/// which note or folder), or a group.
+pub async fn find_grant(st: &State, user: &str, h: Holder, what: &What, target: Option<&Target>) -> anyhow::Result<Uuid> {
     let book = Book::load(&st.pool, user).await?;
-    let found = book.own(h).find(|g| match what {
-        What::Permission(name) => g.permission.as_deref().and_then(Permission::read).map(|p| p.name()) == Permission::read(&name.to_lowercase()).map(|p| p.name()),
-        What::MemberOf(m) => g.member_of == Some(*m),
-    });
-    found.map(|g| g.id).ok_or_else(|| anyhow::anyhow!("they don't hold that"))
+    let found: Vec<&Grant> = book
+        .own(h)
+        .filter(|g| match what {
+            What::Permission(name) => {
+                g.permission.as_deref().and_then(Permission::read).map(|p| p.name()) == Permission::read(&name.to_lowercase()).map(|p| p.name())
+                    && target.is_none_or(|t| g.target().as_ref() == Some(t))
+            }
+            What::MemberOf(m) => g.member_of == Some(*m),
+        })
+        .collect();
+    match found.as_slice() {
+        [one] => Ok(one.id),
+        [] => anyhow::bail!("they don't hold that"),
+        _ => anyhow::bail!("they hold that on several notes: say which (note_id or folder), or give the grant_id"),
+    }
 }
 
 /// What a grant would let Pigeon do on its own from then on, in words for the user's tap; none:
 /// nothing new happens by itself (it only asks).
-pub async fn on_its_own(st: &State, user: &str, h: Holder, what: &What) -> anyhow::Result<Option<String>> {
+pub async fn on_its_own(st: &State, user: &str, h: Holder, what: &What, target: Option<&Target>) -> anyhow::Result<Option<String>> {
     let book = Book::load(&st.pool, user).await?;
     let who = match h {
         Holder::Contact(c) => people::mine(st, user, c).await?.name.unwrap_or_else(|| "this person".into()),
@@ -731,19 +1019,29 @@ pub async fn on_its_own(st: &State, user: &str, h: Holder, what: &What) -> anyho
     Ok(match what {
         What::Permission(name) => {
             let p = Permission::parse(name)?;
-            let tools: Vec<String> = offer::TOOLS
+            let mut tools: Vec<String> = offer::TOOLS
                 .iter()
+                .filter(|t| !t.targets)
                 .filter_map(|t| p.reach(t).filter(|(_, auto)| *auto).map(|(level, _)| if t.has_levels() { format!("{} ({})", t.gives, t.levels[level].label.to_lowercase()) } else { t.gives.to_string() }))
                 .collect();
+            if let (Some(t), true) = (target, p.tool == NOTES && p.auto()) {
+                let title: Option<String> = match t {
+                    Target::Note(id) => sqlx::query_scalar("SELECT title FROM notes WHERE id = $1 AND user_id = $2").bind(id).bind(user).fetch_optional(&st.pool).await?,
+                    Target::Folder(_) => None,
+                };
+                tools.push(t.words(title.as_deref()));
+            }
             (!tools.is_empty()).then(|| format!("Let Pigeon tell {who} {} on its own", tools.join(", ")))
         }
         What::MemberOf(m) => {
-            let autos: Vec<String> = book
+            let mut autos: Vec<String> = book
                 .effective(&[Holder::Group(*m)])
                 .iter()
                 .filter(|e| e.auto)
                 .map(|e| if e.tool.has_levels() { format!("{} ({})", e.tool.gives, e.tool.levels[e.level].label.to_lowercase()) } else { e.tool.gives.to_string() })
                 .collect();
+            let names = Names::load(&st.pool, &book).await?;
+            autos.extend(book.notes(&[Holder::Group(*m)]).iter().filter(|e| e.auto).map(|e| names.words(&e.target)));
             (!autos.is_empty()).then(|| format!("Put {who} in {}: Pigeon then tells them {} on its own", book.group_name(*m), autos.join(", ")))
         }
     })
@@ -865,7 +1163,17 @@ mod tests {
             until,
             said: None,
             created_at: Utc::now(),
+            note_id: None,
+            folder: None,
         }
+    }
+
+    fn on(mut g: Grant, t: Target) -> Grant {
+        match t {
+            Target::Note(n) => g.note_id = Some(n),
+            Target::Folder(f) => g.folder = Some(f),
+        }
+        g
     }
 
     const FRIENDS: u128 = 1;
@@ -941,9 +1249,53 @@ mod tests {
             ],
         };
         let effs = b.effective(&[person()]);
-        assert_eq!(effs.len(), offer::TOOLS.len());
+        // every tool but the ones given on one thing: "everything" is never the user's notes
+        assert_eq!(effs.len(), offer::TOOLS.iter().filter(|t| !t.targets).count());
         assert!(effs.iter().all(|e| !e.auto && e.until == Some(soon)));
         assert_eq!(held(&effs, "location").ask.unwrap().name(), "location.exact.ask");
+        assert!(b.notes(&[person()]).is_empty());
+    }
+
+    #[test]
+    fn notes_are_held_one_by_one_and_auto_wins_over_ask() {
+        let (wifi, trip) = (Target::Note(Uuid::from_u128(70)), Target::Folder("/shared/trip".into()));
+        let b = book(vec![
+            row(10, person(), None, Some(FAMILY), None),
+            // the wifi note: asking through Friends, on its own for the person; the trip folder: Family's
+            on(row(11, Holder::Group(Uuid::from_u128(FRIENDS)), Some("notes.use.ask"), None, None), wifi.clone()),
+            on(row(12, person(), Some("notes.use.auto"), None, None), wifi.clone()),
+            on(row(13, Holder::Group(Uuid::from_u128(FAMILY)), Some("notes.use.ask"), None, None), trip.clone()),
+            // the chat's own
+            on(row(14, chat(), Some("notes.use.auto"), None, None), trip.clone()),
+        ]);
+        let notes = b.notes(&[person()]);
+        assert_eq!(notes.len(), 2);
+        let w = notes.iter().find(|n| n.target == wifi).unwrap();
+        assert!(w.auto && w.from == From::Direct);
+        let t = notes.iter().find(|n| n.target == trip).unwrap();
+        assert!(!t.auto);
+        assert_eq!(t.from.words(), "from Family");
+        // in their chat, the chat's auto on the folder counts; a group chat has only its own
+        assert!(b.notes(&[person(), chat()]).iter().find(|n| n.target == trip).unwrap().auto);
+        let alone = b.notes(&[chat()]);
+        assert_eq!(alone.len(), 1);
+        assert_eq!(alone[0].from, From::Chat);
+        // and the tools' list doesn't carry them
+        assert!(b.effective(&[person(), chat()]).iter().all(|e| e.tool.name != NOTES));
+        assert_eq!(b.shared().len(), 2);
+    }
+
+    #[test]
+    fn nothing_of_contacts_is_shared_nor_the_whole_vault() {
+        assert_eq!(shareable("/shared/trip/").unwrap(), "/shared/trip");
+        assert_eq!(shareable(" /shared ").unwrap(), "/shared");
+        assert!(shareable("/").is_err());
+        assert!(shareable("shared").is_err());
+        assert!(shareable("/contacts").is_err());
+        assert!(shareable("/contacts/ada-rossi").is_err());
+        assert!(shareable("/contacts/ada-rossi/").is_err());
+        // a folder that only looks like it is fine
+        assert_eq!(shareable("/contacts-list").unwrap(), "/contacts-list");
     }
 
     #[test]

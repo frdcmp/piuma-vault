@@ -11,6 +11,13 @@
 //!   - they don't: a 🔑 card to the user (answer this once, allow it from now on, or no); nothing
 //!     is told
 //!
+//! Notes (`shared`) are held one by one: asked for something the user may have written down,
+//! Pigeon looks only among the notes the chat holds, Jev says which one answers (or none), and
+//! that whole note is what the reply is written from, one note a reply. On its own only when,
+//! besides the above, Jev is sure of the note and it is neither cut for its length nor holds
+//! bank details. A note that answers but that only others hold is the 🔑 card; a note shared
+//! with nobody is never looked at.
+//!
 //! What was used stays on the reply (`args.used`, the record: the tool, the level, the permission
 //! and where it came from, how sure Jev was), shown beside the message; "this was wrong" on it
 //! sets the grants behind it back to ask. Pigeon never gives itself more: after three drafts
@@ -24,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value as Json};
 use uuid::Uuid;
 
-use crate::apps::pigeon::access::{self, Book, Holder, What};
+use crate::apps::pigeon::access::{self, Book, Holder, NoteEff, Target, What};
 use crate::apps::pigeon::actions::{self, ActionRow};
 use crate::apps::pigeon::ai::jev::{self, Answers};
 use crate::apps::pigeon::confirm::{self, Tap};
@@ -34,7 +41,7 @@ use crate::apps::pigeon::offer::{self, Permission, Tool};
 use crate::apps::pigeon::owner::{self, Owner};
 use crate::apps::pigeon::state::{AppState, State};
 use crate::apps::pigeon::triage::{Signals, HOLD_AT};
-use crate::apps::pigeon::{cards, events, people, tools};
+use crate::apps::pigeon::{cards, events, people, shared, tools};
 use crate::apps::telemetry::{Event, Severity};
 use crate::db::db::DbPool;
 
@@ -50,11 +57,14 @@ const SUGGEST_AFTER: i64 = 3;
 const CALENDAR_DAYS: i32 = 7;
 /// What was told, kept on the record, at most.
 const MAX_TOLD: usize = 600;
-/// Flights: how far ahead, and what reads as one in an event's title.
+/// The events a calendar answer is written from, at most.
 const CALENDAR_EVENTS: i64 = 40;
-const FLIGHT_DAYS: i32 = 30;
-const FLIGHT_WORDS: &str = r"\m(flight|flights|volo|voli|flug|vuelo)\M|✈|🛫|🛬";
-const FLIGHT_ROUTE: &str = r"\m[A-Z]{3} ?(-|–|→|>|to) ?[A-Z]{3}\M";
+/// Notes: how many of the chat's Jev picks among (and as many that only others hold).
+const NOTE_PICKS: i64 = 3;
+/// A note a reply is written from, at most: a longer one is cut, and never told on its own.
+const NOTE_MAX: usize = 8000;
+/// Of each note, what Jev reads to say which one answers.
+const NOTE_PEEK: usize = 3000;
 
 /// One tool used in one reply: what Pigeon was given, by which permission, and how sure Jev was.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +90,9 @@ pub struct Use {
     /// the pass-on told (gone once the reply is sent)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fact_id: Option<Uuid>,
+    /// the note told from
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note_id: Option<Uuid>,
     /// the user marked it wrong
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub wrong: bool,
@@ -93,12 +106,17 @@ pub struct Use {
     /// whole, to answer "free or busy" from
     #[serde(skip)]
     pub only: Option<String>,
+    /// all it was given, where `told` is only its start (never kept): a note
+    #[serde(skip)]
+    pub whole: Option<String>,
 }
 
 /// Something asked that they don't hold.
 pub struct Uncovered {
     pub tool: &'static Tool,
     pub jev: f64,
+    /// Notes: the note that answers, which others hold (its id, its title)
+    pub note: Option<(Uuid, String)>,
 }
 
 #[derive(Default)]
@@ -149,7 +167,6 @@ async fn say(st: &State, user: &str, me: &Owner, tool: &Tool, level: usize) -> a
     match tool.name {
         "location" => place(st, user, me, tool, level).await,
         "calendar" => calendar(st, user, me, level).await,
-        "flights" => flights(st, user, me).await,
         _ => Ok(None),
     }
 }
@@ -219,49 +236,6 @@ async fn calendar(st: &State, user: &str, me: &Owner, level: usize) -> anyhow::R
     Ok(Some(Said { level, told, how, beyond, only, at: None, stale: repeats || rows.len() as i64 >= CALENDAR_EVENTS }))
 }
 
-/// The user's flights: what's in the calendar, the next weeks, that reads as one (the word in
-/// a few languages, a plane, or two airports: "NRT-BKK"). None in there: nothing known.
-async fn flights(st: &State, user: &str, me: &Owner) -> anyhow::Result<Option<Said>> {
-    let rows: Vec<(String, DateTime<Utc>, Option<DateTime<Utc>>, Option<String>)> = sqlx::query_as(
-        "SELECT title, starts_at, ends_at, location FROM db_calendar_events
-          WHERE user_id = $1 AND NOT all_day AND starts_at < NOW() + make_interval(days => $2)
-            AND COALESCE(ends_at, starts_at + INTERVAL '3 hours') > NOW() - INTERVAL '3 hours'
-            AND (title ~* $3 OR title ~ $4)
-          ORDER BY starts_at LIMIT 12",
-    )
-    .bind(user)
-    .bind(FLIGHT_DAYS)
-    .bind(FLIGHT_WORDS)
-    .bind(FLIGHT_ROUTE)
-    .fetch_all(&st.pool)
-    .await?;
-    if rows.is_empty() {
-        return Ok(None);
-    }
-    let name = &me.name;
-    let lines: Vec<String> = rows
-        .iter()
-        .map(|(title, starts, ends, place)| {
-            let s = me.local(*starts);
-            let span = match ends.map(|e| me.local(e)) {
-                Some(e) if e.date_naive() == s.date_naive() => format!("{}–{}", s.format("%H:%M"), e.format("%H:%M")),
-                Some(e) => format!("{}–{}", s.format("%H:%M"), e.format("%a %-d %b %H:%M")),
-                None => s.format("%H:%M").to_string(),
-            };
-            let place = place.as_deref().map(str::trim).filter(|p| !p.is_empty()).map(|p| format!(" ({p})")).unwrap_or_default();
-            format!("{} {span}: {}{place}", s.format("%a %-d %b"), title.trim())
-        })
-        .collect();
-    let told = lines.join("\n");
-    let how = format!(
-        "{name}'s flights in the calendar, the next {FLIGHT_DAYS} days (times in {}, {}; now it's {}):\n{told}\nSay only what they ask about a flight: its day, its times, from where to where. Nothing else about the trip, and no promise to meet or be picked up.",
-        me.tz,
-        me.now().format("UTC%:z"),
-        me.now().format("%a %-d %b %H:%M"),
-    );
-    Ok(Some(Said { level: 0, told, how, beyond: Vec::new(), only: None, at: None, stale: false }))
-}
-
 fn put(u: &mut Use, tool: &Tool, s: Said) {
     let l = &tool.levels[s.level.min(tool.levels.len() - 1)];
     u.level = l.name.to_string();
@@ -290,31 +264,127 @@ fn blank(tool: &Tool, permission: String, grant: Option<Uuid>, via: String, p: f
         at: None,
         stale: false,
         fact_id: None,
+        note_id: None,
         wrong: false,
         beyond: Vec::new(),
         how: String::new(),
         only: None,
+        whole: None,
     }
 }
 
-/// What the new messages ask for, against what the chat holds: the uses the responder is given,
-/// and what's asked without leave. Nothing at all while sharing is paused.
-pub async fn round(st: &State, conv: &Conversation, me: &Owner, answers: &Answers, passons: &[Fact]) -> anyhow::Result<Round> {
+/// A use filled from a note: all of it is what the reply is written from. False: it waits for
+/// the user whatever the grant says (cut for its length, or it holds bank details).
+fn of_note(u: &mut Use, tool: &Tool, n: &shared::Note, me: &Owner) -> bool {
+    let long = n.content.chars().count() > NOTE_MAX;
+    let text: String = n.content.chars().take(NOTE_MAX).collect();
+    let (name, title) = (&me.name, conversations::clip(&n.title, 80));
+    u.label = format!("{} · {title}", tool.label);
+    u.level = tool.levels[0].name.to_string();
+    u.level_label = tool.levels[0].label.to_string();
+    u.note_id = Some(n.id);
+    u.told = conversations::clip(&text, MAX_TOLD);
+    u.how = format!(
+        "{name}'s note «{title}»{}:\n«\n{}\n»\nAnswer what they ask with what this note says, and only that: nothing from it they didn't ask for, nothing that isn't in it, and no promise for {name}. If it doesn't answer them, don't guess: say {name} will get back to them.",
+        if long { " (its start: the rest is cut)" } else { "" },
+        text.trim(),
+    );
+    u.whole = Some(text);
+    !long && !shared::bank(&n.content)
+}
+
+/// Where a note's leave comes from, in words: "from Family, in /shared/trip".
+fn via_of(e: &NoteEff) -> String {
+    match &e.target {
+        Target::Folder(f) => format!("{}, in {f}", e.from.words()),
+        Target::Note(_) => e.from.words(),
+    }
+}
+
+/// Which of these notes holds what was asked, and how sure Jev is; none: no note answers, or
+/// Jev can't be asked.
+async fn pick(st: &State, conv: &Conversation, me: &Owner, asked: &str, notes: &[shared::Note]) -> Option<(usize, f64)> {
+    let jev = st.jev.as_ref()?;
+    let keys: Vec<String> = (0..notes.len()).map(|i| format!("n{i}")).collect();
+    let peeks: Map<String, Json> =
+        keys.iter().zip(notes).map(|(k, n)| (k.clone(), json!({ "title": n.title, "text": n.content.chars().take(NOTE_PEEK).collect::<String>() }))).collect();
+    let state = json!({ "channel": conv.connector, "the_user": me.name, "new_messages": conversations::clip(asked, 3000), "notes": peeks });
+    let mut options: Vec<(&str, Option<&str>)> = keys.iter().zip(notes).map(|(k, n)| (k.as_str(), Some(n.title.as_str()))).collect();
+    options.push(("none", Some("none of them holds it")));
+    let mut q = Map::new();
+    q.insert("note".into(), jev::choice("Which of `notes` ({me}'s own notes) holds what the new messages ask {me} for? `none` when no note answers it.", &options));
+    jev::for_user(&mut q, &me.name);
+    match jev.ask(&state, q).await {
+        Ok(a) => a.choice("note").and_then(|(k, p)| keys.iter().position(|x| *x == k).map(|i| (i, p))).filter(|(_, p)| *p >= ASKED_AT),
+        Err(e) => {
+            log::warn!("pigeon tell: which note on {}: {e:#}", conv.id);
+            None
+        }
+    }
+}
+
+/// Notes: of the notes the user shares, the one that holds what they ask (`asked`: the new
+/// messages' words), if any. One the chat holds: a use. One only others hold: a 🔑 card. None,
+/// or nothing shared with anyone: nothing.
+async fn from_notes(st: &State, conv: &Conversation, me: &Owner, book: &Book, tool: &'static Tool, p: f64, asked: &str, out: &mut Round) -> anyhow::Result<()> {
+    let user = conv.user_id.as_str();
+    let everyones = book.shared();
+    if everyones.is_empty() || asked.trim().is_empty() {
+        return Ok(());
+    }
+    let held = book.notes(&access::holders_of(conv));
+    let theirs: Vec<Target> = held.iter().map(|e| e.target.clone()).collect();
+    let mut notes = shared::search(st, user, &theirs, asked, NOTE_PICKS).await?;
+    // and what only others hold: the user is asked before any of it is told
+    for n in shared::search(st, user, &everyones, asked, 2 * NOTE_PICKS).await? {
+        if notes.len() < 2 * NOTE_PICKS as usize && !theirs.iter().any(|t| shared::covers(t, &n)) {
+            notes.push(n);
+        }
+    }
+    let Some((i, sure)) = (if notes.is_empty() { None } else { pick(st, conv, me, asked, &notes).await }) else {
+        asked_event(conv, tool.name, p, "no note");
+        return Ok(());
+    };
+    let note = &notes[i];
+    // shared on its own and through a folder: on its own counts
+    let mut covering = held.iter().filter(|e| shared::covers(&e.target, note));
+    let Some(first) = covering.next() else {
+        asked_event(conv, tool.name, p, "uncovered");
+        out.uncovered.push(Uncovered { tool, jev: p.min(sure), note: Some((note.id, note.title.clone())) });
+        return Ok(());
+    };
+    let eff = if first.auto { first } else { covering.find(|e| e.auto).unwrap_or(first) };
+    let mut u = blank(tool, eff.permission.clone(), Some(eff.grant), via_of(eff), p.min(sure), false);
+    let plain = of_note(&mut u, tool, note, me);
+    u.auto = eff.auto && p >= SURE_AT && sure >= SURE_AT && plain;
+    asked_event(conv, tool.name, p, if u.auto { "auto" } else { "ask" });
+    out.uses.push(u);
+    Ok(())
+}
+
+/// What the new messages (`asked`: their words) ask for, against what the chat holds: the uses
+/// the responder is given, and what's asked without leave. Nothing at all while sharing is paused.
+pub async fn round(st: &State, conv: &Conversation, me: &Owner, answers: &Answers, passons: &[Fact], asked: &str) -> anyhow::Result<Round> {
     let user = conv.user_id.as_str();
     let mut out = Round::default();
     if access::paused(&st.pool, user).await?.is_some() {
         return Ok(out);
     }
-    let effs = access::for_chat(st, conv).await?;
+    let book = Book::load(&st.pool, user).await?;
+    let effs = book.effective(&access::holders_of(conv));
     for tool in offer::TOOLS.iter().filter(|t| t.live && !t.asks.is_empty()) {
         let p = answers.yes(&format!("tool_{}", tool.name)).unwrap_or(0.0);
         if p < ASKED_AT {
             continue;
         }
+        if tool.targets {
+            from_notes(st, conv, me, &book, tool, p, asked, &mut out).await?;
+            continue;
+        }
         let held = access::held(&effs, tool.name);
         let Some(ask) = held.ask else {
             asked_event(conv, tool.name, p, "uncovered");
-            out.uncovered.push(Uncovered { tool, jev: p });
+            out.uncovered.push(Uncovered { tool, jev: p, note: None });
             continue;
         };
         // on its own only up to where auto reaches; with the user's tap, up to where ask does
@@ -360,7 +430,7 @@ pub async fn round(st: &State, conv: &Conversation, me: &Owner, answers: &Answer
 
 /// What a tool gives, said of the user by name: "where Anna is right now".
 pub fn gives(tool: &Tool, name: &str) -> String {
-    tool.gives.replace("you're", &format!("{name} is")).replace("you are", &format!("{name} is")).replace("you ", &format!("{name} "))
+    tool.gives.replace("you're", &format!("{name} is")).replace("you are", &format!("{name} is")).replace("you ", &format!("{name} ")).replace(" of yours", &format!(" of {name}'s"))
 }
 
 fn asked_event(conv: &Conversation, tool: &str, p: f64, outcome: &str) {
@@ -517,7 +587,7 @@ pub async fn leaks(st: &State, conv: &Conversation, me: &Owner, uses: &[Use], al
                 .iter()
                 .map(|u| match &u.only {
                     Some(only) => json!({ "about": u.label, "knows": u.told, "may_say_only": only }),
-                    None => json!({ "about": u.label, "may_say": u.told }),
+                    None => json!({ "about": u.label, "may_say": u.whole.as_deref().unwrap_or(&u.told) }),
                 })
                 .collect();
             if let Some(a) = also {
@@ -528,7 +598,7 @@ pub async fn leaks(st: &State, conv: &Conversation, me: &Owner, uses: &[Use], al
             q.insert(
                 "beyond".into(),
                 jev::noul(
-                    "Does `reply` state a fact about {me} (where {me} is, what {me} is doing, {me}'s schedule or plans, who {me} is with) that `allowed` doesn't contain, more precisely than `allowed` has it, or, where an entry has `may_say_only`, anything of its `knows` beyond that?",
+                    "Does `reply` state a fact about {me} or of {me}'s (where {me} is, what {me} is doing, {me}'s schedule or plans, who {me} is with, an address, a code, a number, a detail) that `allowed` doesn't contain, more precisely than `allowed` has it, or, where an entry has `may_say_only`, anything of its `knows` beyond that?",
                 ),
             );
             q.insert("promises".into(), jev::noul("Does `reply` agree to, accept, promise or decline something on {me}'s behalf (a meeting, a call, a time, a favour, a plan)? Saying {me} will see their message is no."));
@@ -594,19 +664,26 @@ fn holder_of(conv: &Conversation) -> Holder {
 /// The card: kept with the questions (`options.uncovered` says what it is), drawn by `cards`.
 pub async fn uncovered_card(st: &State, conv: &Conversation, them: &str, u: &Uncovered) -> anyhow::Result<Uuid> {
     let h = holder_of(conv);
-    let data = json!({ "tool": u.tool.name, "label": u.tool.label, "gives": u.tool.gives, "jev": u.jev, "holder": { "kind": h.kind(), "id": h.id(), "name": them } });
+    let mut data = json!({ "tool": u.tool.name, "label": u.tool.label, "gives": u.tool.gives, "jev": u.jev, "holder": { "kind": h.kind(), "id": h.id(), "name": them } });
+    let question = match &u.note {
+        Some((id, title)) => {
+            data["note"] = json!({ "id": id, "title": title });
+            format!("{them} asks for something that is in your note «{title}». Pigeon may not tell them.")
+        }
+        None => format!("{them} asks {}. Pigeon may not tell them.", u.tool.gives),
+    };
     Ok(sqlx::query_scalar("INSERT INTO db_pigeon_questions (conversation_id, question, options) VALUES ($1, $2, $3) RETURNING id")
         .bind(conv.id)
-        .bind(format!("{them} asks {}. Pigeon may not tell them.", u.tool.gives))
+        .bind(question)
         .bind(json!({ "uncovered": data }))
         .fetch_one(&st.pool)
         .await?)
 }
 
 /// The card pressed. `once`: answer with it this time (`text`: up to which level; else what
-/// answers the question); `allow` with `text` a permission: grant it to them, then answer;
-/// `granted`: the app granted it itself, answer by what they now hold; `x`: no. The reply comes
-/// as a draft.
+/// answers the question); `allow` with `text` a permission: grant it to them, then answer (a
+/// note's card: that note); `granted`: the app granted it itself, answer by what they now hold;
+/// `x`: no. The reply comes as a draft.
 pub async fn press(st: &AppState, user: &str, id: Uuid, button: &str, text: Option<&str>) -> anyhow::Result<String> {
     let row: Option<(Uuid, Json)> = sqlx::query_as(
         "SELECT q.conversation_id, q.options FROM db_pigeon_questions q JOIN db_pigeon_conversations c ON c.id = q.conversation_id
@@ -628,6 +705,9 @@ pub async fn press(st: &AppState, user: &str, id: Uuid, button: &str, text: Opti
     }
     let conv = tools::own_conversation(st, user, conversation).await?;
     let me = owner::get(&st.pool, user).await;
+    if tool.targets {
+        return press_note(st, user, id, &conv, &me, tool, &options["uncovered"], button, text).await;
+    }
     let (mut u, answer) = match button {
         "once" => {
             let top = match text {
@@ -645,7 +725,7 @@ pub async fn press(st: &AppState, user: &str, id: Uuid, button: &str, text: Opti
                 if perm.reach(tool).is_none() {
                     anyhow::bail!("{name} isn't about {}", tool.label.to_lowercase());
                 }
-                access::grant(st, user, holder_of(&conv), &What::Permission(perm.name()), None, Some("allowed from the card")).await?;
+                access::grant(st, user, holder_of(&conv), &What::Permission(perm.name()), None, None, Some("allowed from the card")).await?;
             }
             let held = access::held(&access::for_chat(st, &conv).await?, tool.name);
             let eff = held.ask.ok_or_else(|| anyhow::anyhow!("they still don't hold it"))?;
@@ -691,6 +771,45 @@ pub async fn press(st: &AppState, user: &str, id: Uuid, button: &str, text: Opti
         }
     }
     cards::act_on(st, conversation, cards::Said::Tell(uses));
+    Ok("Got it: Pigeon is writing it.".into())
+}
+
+/// A note's 🔑 card pressed: `once` answers from that note this time; `allow` (`text`:
+/// notes.use.ask or notes.use.auto) shares the note with them, then answers; `granted`: the app
+/// shared it (the note, or a folder it is in). Always a draft.
+#[allow(clippy::too_many_arguments)]
+async fn press_note(st: &AppState, user: &str, id: Uuid, conv: &Conversation, me: &Owner, tool: &'static Tool, card: &Json, button: &str, text: Option<&str>) -> anyhow::Result<String> {
+    let note = card["note"]["id"].as_str().and_then(|s| Uuid::parse_str(s).ok()).ok_or_else(|| anyhow::anyhow!("that card is gone"))?;
+    let p = card["jev"].as_f64().unwrap_or(0.0);
+    let Some(n) = shared::read(st, user, note).await? else { anyhow::bail!("that note is gone, or it is in {} now: nothing to tell", crate::apps::pigeon::folder::ROOT) };
+    let (mut u, answer) = match button {
+        "once" => (blank(tool, format!("{}.{}.ask", tool.name, tool.levels[0].name), None, "this once".into(), p, false), "Tell them, this once".to_string()),
+        "allow" | "granted" => {
+            if button == "allow" {
+                let perm = Permission::parse(text.ok_or_else(|| anyhow::anyhow!("choose what to allow"))?)?;
+                if perm.reach(tool).is_none() {
+                    anyhow::bail!("{} isn't about {}", perm.name(), tool.label.to_lowercase());
+                }
+                access::grant(st, user, holder_of(conv), &What::Permission(perm.name()), Some(&Target::Note(note)), None, Some("allowed from the card")).await?;
+            }
+            let held = Book::load(&st.pool, user).await?.notes(&access::holders_of(conv));
+            let eff = held.iter().find(|e| shared::covers(&e.target, &n)).ok_or_else(|| anyhow::anyhow!("they still don't hold it"))?;
+            (blank(tool, eff.permission.clone(), Some(eff.grant), via_of(eff), p, false), format!("Allowed: {}", eff.permission))
+        }
+        _ => anyhow::bail!("not a choice: {button}"),
+    };
+    // pressed twice at once: the first one writes
+    let taken = sqlx::query("UPDATE db_pigeon_questions SET status = 'answered', answer = $2, answered_by = 'user (Inbox)', answered_at = NOW() WHERE id = $1 AND status = 'open'")
+        .bind(id)
+        .bind(&answer)
+        .execute(&st.pool)
+        .await?;
+    if taken.rows_affected() == 0 {
+        anyhow::bail!("that card is gone");
+    }
+    events::conversation(&st.pool, conv.id).await;
+    of_note(&mut u, tool, &n, me);
+    cards::act_on(st, conv.id, cards::Said::Tell(vec![u]));
     Ok("Got it: Pigeon is writing it.".into())
 }
 
@@ -755,8 +874,14 @@ async fn suggest_auto(st: &State, row: &ActionRow, u: &Use) -> anyhow::Result<()
     let auto = Permission { mode: "auto".into(), ..perm };
     let h = g.holder();
     let what = What::Permission(auto.name());
-    let Some(summary) = access::on_its_own(st, &row.user_id, h, &what).await? else { return Ok(()) };
-    let args = json!({ format!("{}_id", h.kind()): h.id(), "permission": auto.name(), "said": "suggested after three sent as written" });
+    let target = g.target();
+    let Some(summary) = access::on_its_own(st, &row.user_id, h, &what, target.as_ref()).await? else { return Ok(()) };
+    let mut args = json!({ format!("{}_id", h.kind()): h.id(), "permission": auto.name(), "said": "suggested after three sent as written" });
+    match &target {
+        Some(Target::Note(n)) => args["note_id"] = json!(n),
+        Some(Target::Folder(f)) => args["folder"] = json!(f),
+        None => {}
+    }
     let conversation = match h {
         Holder::Group(_) => None,
         _ => row.conversation_id,
@@ -786,7 +911,16 @@ pub async fn wrong(st: &State, user: &str, action: Uuid, tool: Option<&str>) -> 
         let Some(g) = u.grant_id.filter(|g| seen.insert(*g)).and_then(|id| book.grants.iter().find(|g| g.id == id)) else { continue };
         let Some(perm) = g.permission.as_deref().and_then(Permission::read).filter(|p| p.auto()) else { continue };
         let ask = Permission { mode: "ask".into(), ..perm };
-        changed.push(access::grant(st, user, g.holder(), &What::Permission(ask.name()), g.until, Some("back to ask: marked wrong")).await?);
+        let target = g.target();
+        match access::grant(st, user, g.holder(), &What::Permission(ask.name()), target.as_ref(), g.until, Some("back to ask: marked wrong")).await {
+            Ok(v) => changed.push(v),
+            // a note that can't be given again as it stands (in the trash, moved): no leave at all
+            Err(e) if target.is_some() => {
+                log::warn!("pigeon tell: back to ask on {}: {e:#}; taken back", g.id);
+                changed.push(access::revoke(st, user, g.id).await?);
+            }
+            Err(e) => return Err(e),
+        }
     }
     sqlx::query("UPDATE db_pigeon_actions SET args = jsonb_set(args, '{used}', $2), updated_at = NOW() WHERE id = $1").bind(action).bind(record(&uses)).execute(&st.pool).await?;
     if let Some(c) = row.conversation_id {
@@ -873,6 +1007,9 @@ pub async fn try_on_past(st: &State, user: &str, h: Holder, permission: &str, li
     let tool = offer::find(&perm.tool).ok_or_else(|| anyhow::anyhow!("try one tool at a time: location.city.auto"))?;
     if tool.asks.is_empty() {
         anyhow::bail!("{} can't be tried: it's told when they ask for what you left", tool.label);
+    }
+    if tool.targets {
+        anyhow::bail!("{} can't be tried: whether a note answers depends on the note", tool.label);
     }
     let auto = perm.reach(tool).is_some_and(|(_, auto)| auto);
     let jev = st.jev.as_ref().ok_or_else(|| anyhow::anyhow!("Jev isn't configured"))?;
@@ -1010,5 +1147,45 @@ mod tests {
         assert_eq!(line(&back), "Place · City (from Friends)");
         assert_eq!(line(&[a_use("passon", "Yes", "left for them")]), "Pass-ons (left for them)");
         assert!(used(&json!({ "text": "hi" })).is_empty());
+    }
+
+    fn me() -> Owner {
+        Owner { name: "Ada".into(), tz: chrono_tz::UTC }
+    }
+
+    #[test]
+    fn a_note_is_told_whole_and_the_record_names_it() {
+        let tool = offer::find("notes").unwrap();
+        let n = shared::Note { id: Uuid::from_u128(9), title: "House in Lucca".into(), content: "Via delle Rose 4.\nDoor code 4821.\nWifi: casa-rose / limone2024".into(), folder: "/shared/house".into() };
+        let mut u = blank(tool, "notes.use.auto".into(), Some(Uuid::from_u128(1)), "from Family, in /shared/house".into(), 0.9, false);
+        assert!(of_note(&mut u, tool, &n, &me()));
+        assert_eq!(u.label, "Notes · House in Lucca");
+        assert!(u.how.contains("Door code 4821") && u.how.contains("Ada's note «House in Lucca»"));
+        // the reply is read back against all of it
+        assert_eq!(u.whole.as_deref(), Some(n.content.as_str()));
+        let kept = record(&[u]);
+        assert_eq!(kept[0]["note_id"], json!(n.id));
+        assert!(kept[0].get("whole").is_none() && kept[0].get("how").is_none());
+        let back = used(&json!({ "used": kept }));
+        assert_eq!(back[0].note_id, Some(n.id));
+        assert_eq!(line(&back), "Notes · House in Lucca (from Family, in /shared/house)");
+    }
+
+    #[test]
+    fn a_note_with_bank_details_or_cut_for_its_length_waits_for_the_user() {
+        let tool = offer::find("notes").unwrap();
+        let mut n = shared::Note { id: Uuid::from_u128(9), title: "Deposit".into(), content: "Pay the deposit to GB82 WEST 1234 5698 7654 32".into(), folder: "/shared".into() };
+        let mut u = blank(tool, "notes.use.auto".into(), None, "their own".into(), 0.9, false);
+        assert!(!of_note(&mut u, tool, &n, &me()));
+        n.content = "word ".repeat(NOTE_MAX);
+        assert!(!of_note(&mut u, tool, &n, &me()));
+        assert!(u.how.contains("the rest is cut"));
+        assert_eq!(u.whole.as_ref().unwrap().chars().count(), NOTE_MAX);
+    }
+
+    #[test]
+    fn what_a_tool_gives_said_of_the_user() {
+        assert_eq!(gives(offer::find("location").unwrap(), "Ada"), "where Ada is right now");
+        assert_eq!(gives(offer::find("notes").unwrap(), "Ada"), "what is in a note of Ada's");
     }
 }

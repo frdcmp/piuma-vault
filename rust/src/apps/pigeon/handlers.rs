@@ -754,6 +754,18 @@ pub async fn access_conversation(st: web::Data<AppState>, u: InboxReader, path: 
     access_tool(&st, &u.0.user_id, "pigeon_permissions", json!({ "conversation_id": path.into_inner() })).await
 }
 
+#[derive(Deserialize)]
+pub struct NotesQuery {
+    note_id: Option<Uuid>,
+    folder: Option<String>,
+}
+
+/// Who may be told from one note (`note_id`) or one folder (`folder`); neither: every note and
+/// folder shared, with who holds each.
+pub async fn access_notes(st: web::Data<AppState>, u: InboxReader, q: web::Query<NotesQuery>) -> HttpResponse {
+    access_tool(&st, &u.0.user_id, "pigeon_shared_notes", json!({ "note_id": q.note_id, "folder": q.folder })).await
+}
+
 /// One group: its people, what it holds, what it inherits.
 pub async fn access_group(st: web::Data<AppState>, u: InboxReader, path: web::Path<Uuid>) -> HttpResponse {
     access_tool(&st, &u.0.user_id, "pigeon_groups", json!({ "group_id": path.into_inner() })).await
@@ -770,7 +782,7 @@ pub async fn access_delete_group(st: web::Data<AppState>, u: InboxAccess, path: 
 }
 
 /// A permission given, or someone put in a group: {contact_id | conversation_id | group_id,
-/// permission | member_of, until?, minutes?, said?}.
+/// permission | member_of, note_id | folder (a notes permission), until?, minutes?, said?}.
 pub async fn access_grant(st: web::Data<AppState>, u: InboxAccess, body: web::Json<Json>) -> HttpResponse {
     access_tool(&st, &u.0.user_id, "pigeon_grant", body.into_inner()).await
 }

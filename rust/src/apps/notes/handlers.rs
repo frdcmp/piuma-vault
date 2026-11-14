@@ -895,6 +895,31 @@ pub async fn rename_folder(
             .bind(&from_like)
             .fetch_all(&mut *tx)
             .await?;
+        // Pigeon's leave to tell people from a folder (`apps::pigeon::access`) follows the
+        // folder: where the holder already has one on the new path, that one stays; and no
+        // leave survives a move into /contacts, which is never told.
+        sqlx::query(
+            "DELETE FROM db_pigeon_grants g WHERE g.user_id = $3 AND (g.folder = $4 OR g.folder LIKE $5) AND EXISTS (
+                 SELECT 1 FROM db_pigeon_grants k WHERE k.user_id = g.user_id AND k.id <> g.id AND k.permission IS NOT NULL
+                    AND COALESCE(k.contact_id, k.conversation_id, k.group_id) = COALESCE(g.contact_id, g.conversation_id, g.group_id)
+                    AND k.folder = $1 || substring(g.folder FROM $2))",
+        )
+        .bind(&to)
+        .bind(from_len + 1)
+        .bind(&user.user_id)
+        .bind(&from)
+        .bind(&from_like)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("UPDATE db_pigeon_grants SET folder = $1 || substring(folder FROM $2) WHERE user_id = $3 AND (folder = $4 OR folder LIKE $5)")
+            .bind(&to)
+            .bind(from_len + 1)
+            .bind(&user.user_id)
+            .bind(&from)
+            .bind(&from_like)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM db_pigeon_grants WHERE user_id = $1 AND (folder = '/contacts' OR folder LIKE '/contacts/%')").bind(&user.user_id).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(rows)
     }

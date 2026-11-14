@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import FtreeScene from "@/admin/components/notes/FtreeScene";
+import PigeonTell from "@/admin/components/notes/PigeonTell";
 import {
 	PvButton,
 	PvField,
@@ -438,6 +439,8 @@ export default function NotesListSidebar({
 
 	const [contextTarget, setContextTarget] = useState(null);
 	const [pendingDeleteId, setPendingDeleteId] = useState(null);
+	// "Pigeon can tell…" target: { noteId } | { folder }
+	const [tellTarget, setTellTarget] = useState(null);
 	// Rename dialog target: { type: "file"|"folder", id?, path?, value }
 	const [renameTarget, setRenameTarget] = useState(null);
 	// New-folder dialog target: { parent, value }
@@ -1048,6 +1051,10 @@ export default function NotesListSidebar({
 									onClick: () => requestRename(contextTarget),
 								},
 								{
+									label: "Pigeon can tell…",
+									onClick: () => setTellTarget({ noteId: contextTarget.id }),
+								},
+								{
 									label: "Delete",
 									danger: true,
 									onClick: () => setPendingDeleteId(contextTarget.id),
@@ -1065,11 +1072,20 @@ export default function NotesListSidebar({
 												label: "Rename",
 												onClick: () => requestRename(contextTarget),
 											},
+											{
+												label: "Pigeon can tell…",
+												onClick: () =>
+													setTellTarget({ folder: contextTarget.path }),
+											},
 										]
 									: []),
 							]
 				}
 			/>
+
+			{tellTarget ? (
+				<PigeonTell target={tellTarget} onClose={() => setTellTarget(null)} />
+			) : null}
 
 			<PvModal
 				open={pendingDeleteId != null}

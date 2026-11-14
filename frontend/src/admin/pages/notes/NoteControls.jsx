@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { PvIconButton, PvInput } from "@/ui";
 import useNoteControlsStore from "../../../store/noteControlsStore";
 import NoteHistoryPopover from "../../components/notes/NoteHistoryPopover";
+import PigeonTell from "../../components/notes/PigeonTell";
 import SharePopover from "../../components/notes/SharePopover";
 
 // Save-status pill — mirrors the icon the editor header used to show. Shared
@@ -98,6 +99,7 @@ export default function NoteControls({ onClose, compact }) {
 	const closeSearch = useNoteControlsStore((s) => s.closeSearch);
 
 	const [menuOpen, setMenuOpen] = useState(false);
+	const [telling, setTelling] = useState(false);
 	const menuRef = useRef(null);
 	const searchRef = useRef(null);
 
@@ -146,6 +148,11 @@ export default function NoteControls({ onClose, compact }) {
 		fn?.();
 	};
 
+	const tell =
+		telling && noteId ? (
+			<PigeonTell target={{ noteId }} onClose={() => setTelling(false)} />
+		) : null;
+
 	if (compact) {
 		return (
 			<div className="note-controls compact" ref={menuRef}>
@@ -178,6 +185,15 @@ export default function NoteControls({ onClose, compact }) {
 								<SharePopover noteId={noteId} />
 							</div>
 						) : null}
+						{noteId ? (
+							<button
+								type="button"
+								className="note-ctl-menu-item"
+								onClick={run(() => setTelling(true))}
+							>
+								🕊 Pigeon can tell…
+							</button>
+						) : null}
 						<button
 							type="button"
 							className="note-ctl-menu-item danger"
@@ -187,6 +203,7 @@ export default function NoteControls({ onClose, compact }) {
 						</button>
 					</div>
 				)}
+				{tell}
 			</div>
 		);
 	}
@@ -206,12 +223,20 @@ export default function NoteControls({ onClose, compact }) {
 			</span>
 			{noteId ? <NoteHistoryPopover noteId={noteId} /> : null}
 			{noteId ? <SharePopover noteId={noteId} iconOnly /> : null}
+			{noteId ? (
+				<PvIconButton
+					icon="🕊"
+					label="Pigeon can tell…"
+					onClick={() => setTelling(true)}
+				/>
+			) : null}
 			<PvIconButton
 				variant="danger"
 				icon="×"
 				label="Close note"
 				onClick={onClose}
 			/>
+			{tell}
 		</div>
 	);
 }

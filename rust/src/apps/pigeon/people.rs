@@ -1,14 +1,18 @@
-//! What Pigeon knows about a person, so a reply sounds like the user to them:
+//! What Pigeon knows about a person, so a reply sounds like the user to them: notes in the
+//! person's folder in the vault (`folder`), which the user reads and edits like any other:
 //!
 //!   memory  who they are to the user and what's going on between them: written by the LLM from
 //!           their conversations on every channel, rewritten as more comes in
 //!   styles  per channel, how the user writes to them there (an email to someone is not a
-//!           WhatsApp to them): from their own messages on that channel; a group, no one
-//!           person's, has its own (`group_style`), from the user's messages in it
+//!           WhatsApp to them): from their own messages on that channel, with their usual length
+//!           and a few of those messages as samples; a group, no one person's, has its own
+//!           (`group_style`), from the user's messages in it
 //!
-//! Both are written when a reply needs them and are due, or now by `learn`. Learning first
-//! gathers: each connector brings past conversations in as history (stored, never triaged or
-//! answered), so there is something to learn from.
+//! Both are written when a reply needs them and are due, or now by `learn`. A rewrite starts from
+//! the note as it stands. One the user edited is theirs: their words are true, added to and
+//! brought up to date, never dropped or contradicted unless the conversations show it's over.
+//! Learning first gathers: each connector brings past conversations in as history (stored, never
+//! triaged or answered), so there is something to learn from.
 
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -16,13 +20,13 @@ use std::sync::Mutex;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{json, Value as Json};
-use sqlx::FromRow;
 use uuid::Uuid;
 
 use crate::apps::pigeon::ai::llm;
 use crate::apps::pigeon::connectors;
 use crate::apps::pigeon::conversations::{self, Contact};
-use crate::apps::pigeon::owner;
+use crate::apps::pigeon::folder::{self, Kept, Whose};
+use crate::apps::pigeon::owner::{self, Owner};
 use crate::apps::pigeon::slugs;
 use crate::apps::pigeon::state::{AppState, State};
 
@@ -30,6 +34,10 @@ use crate::apps::pigeon::state::{AppState, State};
 pub const STYLE_MIN_MESSAGES: i64 = 3;
 /// Rewritten when they wrote this many more there, or, with any new one, after REFRESH_DAYS.
 const STYLE_EVERY: i64 = 5;
+/// What a style is written from: the user's latest messages there.
+const STYLE_FROM: i64 = 40;
+/// The user's real messages kept in a style as samples.
+const SAMPLES: usize = 8;
 /// The memory: written once there are this many items with the person, rewritten after this
 /// many more (or, with any new one, after REFRESH_DAYS).
 const MEMORY_MIN_ITEMS: i64 = 2;
@@ -42,62 +50,64 @@ const MEMORY_ITEMS_EACH: i64 = 12;
 const GATHER_ONE: usize = 40;
 const GATHER_ALL: usize = 400;
 
-#[derive(Debug, Clone, Serialize, FromRow)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Memory {
     pub memory: String,
     /// items with the person when it was written
     pub items: i32,
     pub updated_at: DateTime<Utc>,
+    /// the note it is, in the vault
+    pub note_id: Uuid,
 }
 
-#[derive(Debug, Clone, Serialize, FromRow)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Style {
     pub connector: String,
+    /// the note's words: how they write, their usual length, the samples
     pub profile: String,
     /// the user's messages to the person on the channel when it was written
     pub messages: i32,
     pub updated_at: DateTime<Utc>,
+    pub note_id: Uuid,
 }
 
+fn as_style(k: Kept, connector: &str) -> Style {
+    Style { connector: connector.to_string(), profile: k.body().to_string(), messages: k.items, updated_at: k.written_at, note_id: k.note_id }
+}
+
+/// What Pigeon knows about a person: their Memory note, as it stands in the vault.
 pub async fn memory(st: &State, contact: Uuid) -> anyhow::Result<Option<Memory>> {
-    Ok(sqlx::query_as("SELECT memory, items, updated_at FROM db_pigeon_contact_memories WHERE contact_id = $1")
-        .bind(contact)
-        .fetch_optional(&st.pool)
-        .await?)
+    Ok(folder::one(st, Whose::Person(contact), folder::MEMORY, None)
+        .await?
+        .map(|k| Memory { memory: k.body().to_string(), items: k.items, updated_at: k.written_at, note_id: k.note_id }))
 }
 
+/// How the user writes to a person, on each channel: their Style notes.
 pub async fn styles(st: &State, contact: Uuid) -> anyhow::Result<Vec<Style>> {
-    Ok(sqlx::query_as("SELECT connector, profile, messages, updated_at FROM db_pigeon_contact_styles WHERE contact_id = $1 ORDER BY connector")
-        .bind(contact)
-        .fetch_all(&st.pool)
-        .await?)
+    Ok(folder::kept(st, Whose::Person(contact))
+        .await?
+        .into_iter()
+        .filter(|k| k.kind == folder::STYLE)
+        .filter_map(|k| k.connector.clone().map(|c| as_style(k, &c)))
+        .collect())
 }
 
+/// How the user writes to a person on one channel, when written.
 pub async fn style(st: &State, contact: Uuid, connector: &str) -> anyhow::Result<Option<Style>> {
-    Ok(sqlx::query_as("SELECT connector, profile, messages, updated_at FROM db_pigeon_contact_styles WHERE contact_id = $1 AND connector = $2")
-        .bind(contact)
-        .bind(connector)
-        .fetch_optional(&st.pool)
-        .await?)
+    Ok(folder::one(st, Whose::Person(contact), folder::STYLE, Some(connector)).await?.map(|k| as_style(k, connector)))
+}
+
+/// How the user writes in a group (a chat that is no one person's), when written.
+pub async fn group_style(st: &State, conv: &conversations::Conversation) -> anyhow::Result<Option<Style>> {
+    Ok(folder::one(st, Whose::Chat(conv.id), folder::STYLE, None).await?.map(|k| as_style(k, &conv.connector)))
 }
 
 /// A message that is only an attachment's stand-in ("[image]") or a link says nothing of how
 /// the user writes.
 const WORDS_ONLY: &str = r"length(trim(i.body)) > 0 AND i.body !~ '^\s*\[[a-z_ ]+\]\s*$' AND i.body !~ '^\s*https?://\S+\s*$'";
 
-/// How the user writes in a group (a chat that is no one person's), when written.
-pub async fn group_style(st: &State, conversation: Uuid) -> anyhow::Result<Option<Style>> {
-    Ok(sqlx::query_as(
-        "SELECT c.connector, s.profile, s.messages, s.updated_at FROM db_pigeon_conversation_styles s
-           JOIN db_pigeon_conversations c ON c.id = s.conversation_id WHERE s.conversation_id = $1",
-    )
-    .bind(conversation)
-    .fetch_optional(&st.pool)
-    .await?)
-}
-
 /// The user's own latest messages in a conversation, newest first (words, not attachments).
-pub async fn chat_voice(st: &State, conversation: Uuid, n: i64) -> anyhow::Result<Vec<String>> {
+async fn mine_in(st: &State, conversation: Uuid, n: i64) -> anyhow::Result<Vec<String>> {
     Ok(sqlx::query_scalar(&format!(
         "SELECT i.body FROM db_pigeon_items i WHERE i.conversation_id = $1 AND i.author = 'me' AND {WORDS_ONLY}
           ORDER BY i.at DESC LIMIT $2"
@@ -108,23 +118,147 @@ pub async fn chat_voice(st: &State, conversation: Uuid, n: i64) -> anyhow::Resul
     .await?)
 }
 
-/// How long the user's messages usually are, in characters: the median of their latest ones to
-/// this person on the channel (`contact`), else in this conversation. None under
-/// STYLE_MIN_MESSAGES.
-pub async fn usual_length(st: &State, contact: Option<Uuid>, conversation: Uuid, connector: &str) -> anyhow::Result<Option<i64>> {
-    let (n, median): (i64, Option<f64>) = sqlx::query_as(&format!(
-        "SELECT COUNT(*), percentile_cont(0.5) WITHIN GROUP (ORDER BY len) FROM (
-           SELECT length(trim(i.body)) AS len FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
-            WHERE i.author = 'me' AND {WORDS_ONLY}
-              AND (($1::uuid IS NOT NULL AND c.contact_id = $1 AND i.connector = $3) OR ($1::uuid IS NULL AND c.id = $2))
-            ORDER BY i.at DESC LIMIT 40) mine"
+/// The user's own latest messages to a person on a channel, newest first (words, not attachments).
+async fn mine_to(st: &State, contact: Uuid, connector: &str, n: i64) -> anyhow::Result<Vec<String>> {
+    Ok(sqlx::query_scalar(&format!(
+        "SELECT i.body FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
+          WHERE c.contact_id = $1 AND i.connector = $2 AND i.author = 'me' AND {WORDS_ONLY}
+          ORDER BY i.at DESC LIMIT $3"
     ))
     .bind(contact)
-    .bind(conversation)
     .bind(connector)
-    .fetch_one(&st.pool)
+    .bind(n)
+    .fetch_all(&st.pool)
+    .await?)
+}
+
+/// A style note's parts, after the description: the usual length, then the samples.
+const LENGTH_LINE: &str = "**Usual length:**";
+const SAMPLES_HEAD: &str = "## Samples";
+
+/// How long the messages usually are, in characters: their median.
+fn usual_length(messages: &[String]) -> Option<i64> {
+    let mut lens: Vec<usize> = messages.iter().map(|m| m.trim().chars().count()).collect();
+    if (lens.len() as i64) < STYLE_MIN_MESSAGES {
+        return None;
+    }
+    lens.sort_unstable();
+    let mid = lens.len() / 2;
+    Some(if lens.len() % 2 == 0 { ((lens[mid - 1] + lens[mid]) as f64 / 2.0).round() as i64 } else { lens[mid] as i64 })
+}
+
+/// A message as a sample: on one line.
+fn sample(m: &str) -> String {
+    conversations::clip(m, 300)
+}
+
+/// The description in a style note: what comes before its length and samples.
+fn description_of(body: &str) -> &str {
+    let end = [LENGTH_LINE, SAMPLES_HEAD].iter().filter_map(|mark| body.find(mark)).min().unwrap_or(body.len());
+    body[..end].trim()
+}
+
+/// The samples in a style note.
+fn samples_of(body: &str) -> Vec<String> {
+    let Some(at) = body.find(SAMPLES_HEAD) else { return Vec::new() };
+    body[at..].lines().filter_map(|l| l.trim().strip_prefix("- ")).map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
+}
+
+/// A style note's words: the description, the usual length, the samples.
+fn style_text(me: &str, description: &str, length: Option<i64>, samples: &[String]) -> String {
+    let mut s = description.trim().to_string();
+    if let Some(n) = length {
+        s.push_str(&format!(
+            "\n\n{LENGTH_LINE} about {n} characters, half of the messages shorter. Pigeon's replies stay near that, never over {}.",
+            (n * 2).max(40)
+        ));
+    }
+    if !samples.is_empty() {
+        s.push_str(&format!("\n\n{SAMPLES_HEAD}\n\n{me}'s own messages, as sent:\n\n"));
+        for m in samples {
+            s.push_str(&format!("- {m}\n"));
+        }
+    }
+    s
+}
+
+/// What the writer answered: the description, and the samples it picked on its last line
+/// ("SAMPLES: 3, S1, 7": a number is one of the `latest` messages, S and a number one of the
+/// samples kept `so_far`). A sample is always one of the user's real messages, never the writer's
+/// words; with too few picked, the ones kept so far and the latest fill in.
+fn picked(answer: &str, so_far: &[String], latest: &[String]) -> (String, Vec<String>) {
+    let (description, picks) = match answer.to_ascii_uppercase().rfind("SAMPLES:") {
+        Some(at) => (answer[..at].trim(), &answer[at + "SAMPLES:".len()..]),
+        None => (answer.trim(), ""),
+    };
+    let mut out: Vec<String> = Vec::new();
+    let add = |m: Option<&String>, out: &mut Vec<String>| {
+        if let Some(m) = m.map(|m| sample(m)).filter(|m| !m.is_empty()) {
+            if out.len() < SAMPLES && !out.contains(&m) {
+                out.push(m);
+            }
+        }
+    };
+    for token in picks.split(|c: char| !c.is_ascii_alphanumeric()).filter(|t| !t.is_empty()) {
+        let (from, number) = match token.strip_prefix(['S', 's']) {
+            Some(n) => (so_far, n),
+            None => (latest, token),
+        };
+        if let Some(i) = number.parse::<usize>().ok().and_then(|n| n.checked_sub(1)) {
+            add(from.get(i), &mut out);
+        }
+    }
+    if out.len() < 3 {
+        for m in so_far.iter().chain(latest) {
+            add(Some(m), &mut out);
+        }
+    }
+    (description.to_string(), out)
+}
+
+/// What the writer is told of the note as it stands: the base of the rewrite, and whose words it is.
+fn base(me: &str, what: &str, before: Option<&Kept>, text: &str) -> String {
+    match before {
+        Some(b) if b.edited() && !text.is_empty() => format!(
+            "\n{what} as it stands, which {me} edited themselves: {me}'s words are true. Keep everything {me} wrote, in their \
+             words; add to it and bring it up to date, but never drop or contradict it unless what follows shows it's over:\n{text}\n"
+        ),
+        Some(_) if !text.is_empty() => format!("\n{what} as you wrote it before (update it; drop what no longer holds):\n{text}\n"),
+        _ => String::new(),
+    }
+}
+
+/// Write a style: the description and the picks from the LLM, the length and the samples
+/// themselves from the messages. `to`: "to Marta on whatsapp", "in the group \"…\" on whatsapp".
+async fn write_style(st: &State, me: &Owner, system: &str, to: &str, mine: &[String], before: Option<&Kept>) -> anyhow::Result<String> {
+    let name = &me.name;
+    let so_far = before.map(|b| samples_of(b.body())).unwrap_or_default();
+    let mut prompt = format!("Messages {name} wrote {to} (newest first):\n");
+    for (i, m) in mine.iter().enumerate() {
+        prompt.push_str(&format!("{}. {}\n", i + 1, conversations::clip(m, 500)));
+    }
+    if !so_far.is_empty() {
+        prompt.push_str("\nThe samples kept so far:\n");
+        for (i, m) in so_far.iter().enumerate() {
+            prompt.push_str(&format!("S{}. {m}\n", i + 1));
+        }
+    }
+    prompt.push_str(&base(name, "The description", before, before.map(|b| description_of(b.body())).unwrap_or_default()));
+    let answer = llm::text_of(
+        &st.pool,
+        "style",
+        &format!(
+            "{system} Describe; don't quote whole messages.\n\
+             Then, on a last line, write SAMPLES: and the numbers of up to {SAMPLES} of the messages given that best show \
+             how they write there (typical ones, of different kinds: a greeting, an answer, a question, a thanks), separated by \
+             commas. Keep the samples kept so far (S1, S2, …) that still show it; take a newer message in place of one only \
+             when it shows it better."
+        ),
+        &prompt,
+    )
     .await?;
-    Ok(median.filter(|_| n >= STYLE_MIN_MESSAGES).map(|m| m.round() as i64))
+    let (description, samples) = picked(&answer, &so_far, mine);
+    Ok(style_text(name, &description, usual_length(mine), &samples))
 }
 
 /// Write how the user writes in a group, when due (or `force`). True when written.
@@ -138,9 +272,11 @@ pub async fn ensure_group_style(st: &State, conv: &conversations::Conversation, 
     if n < STYLE_MIN_MESSAGES {
         return Ok(false);
     }
+    let whose = Whose::Chat(conv.id);
+    let before = folder::one(st, whose, folder::STYLE, None).await?;
     if !force {
-        if let Some(s) = group_style(st, conv.id).await? {
-            if !due(n, s.messages, s.updated_at, STYLE_EVERY) {
+        if let Some(b) = &before {
+            if !due(n, b.items, b.written_at, STYLE_EVERY) {
                 return Ok(false);
             }
         }
@@ -148,52 +284,30 @@ pub async fn ensure_group_style(st: &State, conv: &conversations::Conversation, 
     if !llm::available(&st.pool).await {
         return Ok(false);
     }
-    let me = owner::get(&st.pool, &conv.user_id).await.name;
-    let mine = chat_voice(st, conv.id, 40).await?;
-    let examples: String = mine.iter().map(|m| format!("- {}\n", conversations::clip(m, 500))).collect();
+    let me = owner::get(&st.pool, &conv.user_id).await;
+    let mine = mine_in(st, conv.id, STYLE_FROM).await?;
     let group = conv.title.as_deref().filter(|t| !t.is_empty()).unwrap_or("a group");
-    let profile = llm::text_of(
-        &st.pool,
-        "style",
+    let text = write_style(
+        st,
+        &me,
         "You describe how a person writes in one group chat (WhatsApp, …), so someone else can write there exactly like \
          them. Answer with 3 to 6 short bullet points in English: language(s) and dialect, length, formality, emoji and \
-         punctuation habits, how they address the others, nicknames, slang or recurring phrases, what they leave out. \
-         Describe; don't quote whole messages.",
-        &format!("Messages {me} wrote in the group \"{group}\" on {} (newest first):\n{examples}", conv.connector),
+         punctuation habits, how they address the others, nicknames, slang or recurring phrases, what they leave out.",
+        &format!("in the group \"{group}\" on {}", conv.connector),
+        &mine,
+        before.as_ref(),
     )
     .await?;
-    sqlx::query(
-        "INSERT INTO db_pigeon_conversation_styles (conversation_id, profile, messages) VALUES ($1, $2, $3)
-         ON CONFLICT (conversation_id) DO UPDATE SET profile = EXCLUDED.profile, messages = EXCLUDED.messages, updated_at = NOW()",
-    )
-    .bind(conv.id)
-    .bind(&profile)
-    .bind(n as i32)
-    .execute(&st.pool)
-    .await?;
-    Ok(true)
-}
-
-/// The user's own latest messages to this person (on `connector` when given), newest first,
-/// with the channel each was on.
-pub async fn voice_examples(st: &State, contact: Uuid, connector: Option<&str>, n: i64) -> anyhow::Result<Vec<(String, String)>> {
-    Ok(sqlx::query_as(
-        "SELECT i.connector, i.body FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
-          WHERE c.contact_id = $1 AND i.author = 'me' AND length(trim(i.body)) > 0 AND ($2::text IS NULL OR i.connector = $2)
-          ORDER BY i.at DESC LIMIT $3",
-    )
-    .bind(contact)
-    .bind(connector)
-    .bind(n)
-    .fetch_all(&st.pool)
-    .await?)
+    let (title, place) = (folder::style_title(None), folder::of_chat(st, conv).await?);
+    let note = folder::Note { user: &conv.user_id, whose, kind: folder::STYLE, connector: None, title: &title, folder: &place, items: n, at: None };
+    Ok(folder::write(st, &me, &note, &text, before.as_ref()).await?.is_some())
 }
 
 async fn count_mine(st: &State, contact: Uuid, connector: &str) -> anyhow::Result<i64> {
-    Ok(sqlx::query_scalar(
+    Ok(sqlx::query_scalar(&format!(
         "SELECT COUNT(*) FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
-          WHERE c.contact_id = $1 AND i.connector = $2 AND i.author = 'me' AND length(trim(i.body)) > 0",
-    )
+          WHERE c.contact_id = $1 AND i.connector = $2 AND i.author = 'me' AND {WORDS_ONLY}"
+    ))
     .bind(contact)
     .bind(connector)
     .fetch_one(&st.pool)
@@ -220,9 +334,11 @@ pub async fn ensure_style(st: &State, c: &Contact, connector: &str, force: bool)
     if n < STYLE_MIN_MESSAGES {
         return Ok(false);
     }
+    let whose = Whose::Person(c.id);
+    let before = folder::one(st, whose, folder::STYLE, Some(connector)).await?;
     if !force {
-        if let Some(s) = style(st, c.id, connector).await? {
-            if !due(n, s.messages, s.updated_at, STYLE_EVERY) {
+        if let Some(b) = &before {
+            if !due(n, b.items, b.written_at, STYLE_EVERY) {
                 return Ok(false);
             }
         }
@@ -230,30 +346,22 @@ pub async fn ensure_style(st: &State, c: &Contact, connector: &str, force: bool)
     if !llm::available(&st.pool).await {
         return Ok(false);
     }
-    let me = owner::get(&st.pool, &c.user_id).await.name;
-    let mine = voice_examples(st, c.id, Some(connector), 40).await?;
-    let examples: String = mine.iter().map(|(_, m)| format!("- {}\n", conversations::clip(m, 500))).collect();
-    let profile = llm::text_of(
-            &st.pool,
-            "style",
-            "You describe how a person writes to one specific contact on one channel (email, WhatsApp, …), so someone else \
-             can write there exactly like them. Answer with 3 to 6 short bullet points in English: language(s), length, \
-             formality, greetings and sign-offs, emoji and punctuation habits, nicknames or recurring phrases. Describe; \
-             don't quote whole messages.",
-            &format!("Messages {me} wrote to {} on {connector} (newest first):\n{examples}", c.name.as_deref().unwrap_or("this person")),
-        )
-        .await?;
-    sqlx::query(
-        "INSERT INTO db_pigeon_contact_styles (contact_id, connector, profile, messages) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (contact_id, connector) DO UPDATE SET profile = EXCLUDED.profile, messages = EXCLUDED.messages, updated_at = NOW()",
+    let me = owner::get(&st.pool, &c.user_id).await;
+    let mine = mine_to(st, c.id, connector, STYLE_FROM).await?;
+    let text = write_style(
+        st,
+        &me,
+        "You describe how a person writes to one specific contact on one channel (email, WhatsApp, …), so someone else \
+         can write there exactly like them. Answer with 3 to 6 short bullet points in English: language(s), length, \
+         formality, greetings and sign-offs, emoji and punctuation habits, nicknames or recurring phrases.",
+        &format!("to {} on {connector}", c.name.as_deref().unwrap_or("this person")),
+        &mine,
+        before.as_ref(),
     )
-    .bind(c.id)
-    .bind(connector)
-    .bind(&profile)
-    .bind(n as i32)
-    .execute(&st.pool)
     .await?;
-    Ok(true)
+    let (title, place) = (folder::style_title(Some(connector)), folder::of_person(st, c).await?);
+    let note = folder::Note { user: &c.user_id, whose, kind: folder::STYLE, connector: Some(connector), title: &title, folder: &place, items: n, at: None };
+    Ok(folder::write(st, &me, &note, &text, before.as_ref()).await?.is_some())
 }
 
 /// The people and groups being brought up to date behind a draft: one task each at a time.
@@ -262,8 +370,8 @@ static CATCHING_UP: Mutex<Option<HashSet<Uuid>>> = Mutex::new(None);
 /// For a reply the user waits for (the draft button): what Pigeon knows is used as it stands, and
 /// brought up to date behind, in a task of its own. Waited for, the memory and the style (each
 /// rewritten every few messages, each a long call) came before a word of the reply: in a busy
-/// chat most drafts took the better part of a minute. The reply has the conversation and the
-/// user's own messages there either way.
+/// chat most drafts took the better part of a minute. The reply has the conversation, with the
+/// user's own messages in it, either way.
 pub fn catch_up_later(st: &State, contact: Option<&Contact>, conv: &conversations::Conversation) {
     let key = contact.map(|c| c.id).unwrap_or(conv.id);
     if !CATCHING_UP.lock().unwrap().get_or_insert_with(HashSet::new).insert(key) {
@@ -295,14 +403,21 @@ pub fn catch_up_later(st: &State, contact: Option<&Contact>, conv: &conversation
 
 /// Write what Pigeon knows about this person, when due (or `force`). True when written.
 pub async fn ensure_memory(st: &State, c: &Contact, force: bool) -> anyhow::Result<bool> {
+    write_memory(st, c, force, None).await
+}
+
+/// The same; `also`: what Pigeon knew about them under another contact, now merged into this
+/// one, to fold in.
+async fn write_memory(st: &State, c: &Contact, force: bool, also: Option<&str>) -> anyhow::Result<bool> {
     let n = count_items(st, c.id).await?;
     if n < MEMORY_MIN_ITEMS {
         return Ok(false);
     }
-    let before = memory(st, c.id).await?;
+    let whose = Whose::Person(c.id);
+    let before = folder::one(st, whose, folder::MEMORY, None).await?;
     if !force {
-        if let Some(m) = &before {
-            if !due(n, m.items, m.updated_at, MEMORY_EVERY) {
+        if let Some(b) = &before {
+            if !due(n, b.items, b.written_at, MEMORY_EVERY) {
                 return Ok(false);
             }
         }
@@ -310,7 +425,8 @@ pub async fn ensure_memory(st: &State, c: &Contact, force: bool) -> anyhow::Resu
     if !llm::available(&st.pool).await {
         return Ok(false);
     }
-    let name = owner::get(&st.pool, &c.user_id).await.name;
+    let owner = owner::get(&st.pool, &c.user_id).await;
+    let name = owner.name.clone();
     let handles = conversations::my_handles(&st.pool, &c.user_id).await?;
     let me = (name.as_str(), handles.as_slice());
     let them = c.name.clone().unwrap_or_else(|| "this person".into());
@@ -336,8 +452,9 @@ pub async fn ensure_memory(st: &State, c: &Contact, force: bool) -> anyhow::Resu
     if let Some(note) = c.note.as_deref().filter(|n| !n.trim().is_empty()) {
         prompt.push_str(&format!("{name}'s own note on them (true, keep it in mind): {note}\n"));
     }
-    if let Some(m) = &before {
-        prompt.push_str(&format!("\nWhat you remembered before (update it; drop what the conversations show is over):\n{}\n", m.memory));
+    prompt.push_str(&base(&name, "The memory", before.as_ref(), before.as_ref().map(|b| b.body()).unwrap_or_default()));
+    if let Some(also) = also.map(str::trim).filter(|a| !a.is_empty()) {
+        prompt.push_str(&format!("\nWhat you remembered about the same person under another contact, now merged into this one (fold it in):\n{also}\n"));
     }
     prompt.push_str(&format!("\nTheir conversations with {name}, latest first, each oldest message first:\n{text}"));
     let written = llm::text_of(
@@ -347,20 +464,13 @@ pub async fn ensure_memory(st: &State, c: &Contact, force: bool) -> anyhow::Resu
              bullet points in English: who they are to {name} (friend, family, client, colleague, a company), what they \
              talk about, facts worth remembering (names, places, dates, preferences, the language they use), and what is \
              open between them (questions waiting, promises, plans). Only what the messages show: never guess. No quotes, \
-             no preamble."),
+             no preamble. Answer with the whole memory as it should now read."),
             &prompt,
         )
         .await?;
-    sqlx::query(
-        "INSERT INTO db_pigeon_contact_memories (contact_id, memory, items) VALUES ($1, $2, $3)
-         ON CONFLICT (contact_id) DO UPDATE SET memory = EXCLUDED.memory, items = EXCLUDED.items, updated_at = NOW()",
-    )
-    .bind(c.id)
-    .bind(&written)
-    .bind(n as i32)
-    .execute(&st.pool)
-    .await?;
-    Ok(true)
+    let place = folder::of_person(st, c).await?;
+    let note = folder::Note { user: &c.user_id, whose, kind: folder::MEMORY, connector: None, title: folder::MEMORY_TITLE, folder: &place, items: n, at: None };
+    Ok(folder::write(st, &owner, &note, &written, before.as_ref()).await?.is_some())
 }
 
 /// The channels the person has conversations on.
@@ -409,8 +519,11 @@ pub async fn learn(st: &State, user: &str, contact: Uuid, days: i64) -> anyhow::
 /// Two contacts that are one person (their email and their Instagram): `other` folds into `keep`,
 /// whose handles, conversations and rules it takes. What both have: `keep`'s name, slug and
 /// per-kind policies win (a name that's only a number or a handle doesn't: the other's real one
-/// does), the notes are joined, a channel's style stays `keep`'s; the memory is written again from
-/// everything, after the answer (best effort: the merge stands without it).
+/// does), the notes are joined. In the vault, the other's folder goes into `keep`'s: the user's
+/// notes there move, Pigeon's too where `keep` has none of that kind; where both have one, the
+/// other's goes to the trash and `keep`'s is written again from everything (the memory with the
+/// other's folded in, a channel's style from the messages of both), after the answer (best
+/// effort: the merge stands without it).
 pub async fn merge(st: &AppState, user: &str, keep: Uuid, other: Uuid) -> anyhow::Result<Json> {
     if keep == other {
         anyhow::bail!("that's the same contact");
@@ -428,20 +541,53 @@ pub async fn merge(st: &AppState, user: &str, keep: Uuid, other: Uuid) -> anyhow
         (x, y) => x.clone().or_else(|| y.clone()),
     };
     let (keep_s, other_s) = (keep.to_string(), other.to_string());
+    // their folders in the vault: the kept one's when it has one, else the other's stays as it is
+    let from = folder::existing(st, &b).await?;
+    let into = match folder::existing(st, &a).await? {
+        Some(f) => Some(f),
+        None => from.clone(),
+    };
+    let (kept_a, kept_b) = (folder::kept(st, Whose::Person(keep)).await?, folder::kept(st, Whose::Person(other)).await?);
     let mut tx = st.pool.begin().await?;
+    crate::apps::notes::versions::set_change_source(&mut tx, "pigeon").await?;
     let moved = |sql: &'static str| sqlx::query(sql).bind(keep).bind(other);
     let handles = moved("UPDATE db_pigeon_contact_handles SET contact_id = $1 WHERE contact_id = $2").execute(&mut *tx).await?.rows_affected();
     let convs = moved("UPDATE db_pigeon_conversations SET contact_id = $1 WHERE contact_id = $2").execute(&mut *tx).await?.rows_affected();
     let rules = moved("UPDATE db_pigeon_rules SET contact_id = $1 WHERE contact_id = $2").execute(&mut *tx).await?.rows_affected();
-    moved(
-        "UPDATE db_pigeon_contact_styles SET contact_id = $1 WHERE contact_id = $2
-            AND connector NOT IN (SELECT connector FROM db_pigeon_contact_styles WHERE contact_id = $1)",
-    )
-    .execute(&mut *tx)
-    .await?;
-    moved("UPDATE db_pigeon_contact_memories SET contact_id = $1 WHERE contact_id = $2 AND NOT EXISTS (SELECT 1 FROM db_pigeon_contact_memories WHERE contact_id = $1)")
-        .execute(&mut *tx)
-        .await?;
+    // Pigeon's notes on the other: the kept one's where it has none of that kind, else to the
+    // trash, the kept one's written again from both (below)
+    let (mut also, mut again, mut gone): (Option<String>, Vec<String>, Vec<Uuid>) = (None, Vec::new(), Vec::new());
+    for k in &kept_b {
+        if !kept_a.iter().any(|x| x.kind == k.kind && x.connector == k.connector) {
+            sqlx::query("UPDATE db_pigeon_person_notes SET contact_id = $1 WHERE note_id = $2").bind(keep).bind(k.note_id).execute(&mut *tx).await?;
+            continue;
+        }
+        match &k.connector {
+            Some(channel) => again.push(channel.clone()),
+            None => also = Some(k.body().to_string()),
+        }
+        gone.push(k.note_id);
+    }
+    if !gone.is_empty() {
+        sqlx::query("DELETE FROM db_pigeon_person_notes WHERE note_id = ANY($1)").bind(&gone).execute(&mut *tx).await?;
+        sqlx::query("UPDATE notes SET deleted_at = NOW() WHERE id = ANY($1)").bind(&gone).execute(&mut *tx).await?;
+    }
+    // what is in the other's folder (the user's notes, Pigeon's that stay) moves to the kept one's
+    if let (Some(from), Some(into)) = (from.as_deref().filter(|f| folder::someones(f)), into.as_deref()) {
+        if from != into {
+            sqlx::query(
+                "UPDATE notes SET folder = $1 || substring(folder FROM $2)
+                  WHERE user_id = $3 AND deleted_at IS NULL AND (folder = $4 OR folder LIKE $5)",
+            )
+            .bind(into)
+            .bind(from.chars().count() as i32 + 1)
+            .bind(user)
+            .bind(from)
+            .bind(folder::under(from))
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
     sqlx::query(
         "UPDATE db_pigeon_policies SET scope_id = $2, updated_at = NOW() WHERE user_id = $1 AND scope = 'contact' AND scope_id = $3
             AND kind NOT IN (SELECT kind FROM db_pigeon_policies WHERE user_id = $1 AND scope = 'contact' AND scope_id = $2)",
@@ -463,10 +609,12 @@ pub async fn merge(st: &AppState, user: &str, keep: Uuid, other: Uuid) -> anyhow
     .execute(&mut *tx)
     .await?;
     // what the other may be told and their groups, where the kept one has no say on the same
-    // tool (or isn't in that group); what was left for the other to hear
+    // tool (for notes: on the same note or folder), or isn't in that group; what was left for
+    // the other to hear
     moved(
         "UPDATE db_pigeon_grants g SET contact_id = $1 WHERE g.contact_id = $2 AND NOT EXISTS (SELECT 1 FROM db_pigeon_grants k WHERE k.contact_id = $1
-            AND COALESCE(split_part(k.permission, '.', 1), k.member_of::text) = COALESCE(split_part(g.permission, '.', 1), g.member_of::text))",
+            AND COALESCE(split_part(k.permission, '.', 1), k.member_of::text) = COALESCE(split_part(g.permission, '.', 1), g.member_of::text)
+            AND COALESCE(k.note_id::text, k.folder, '') = COALESCE(g.note_id::text, g.folder, ''))",
     )
     .execute(&mut *tx)
     .await?;
@@ -491,8 +639,13 @@ pub async fn merge(st: &AppState, user: &str, keep: Uuid, other: Uuid) -> anyhow
     let c = mine(st, user, keep).await?;
     let (st2, c2) = (st.clone(), c.clone());
     actix_web::rt::spawn(async move {
-        if let Err(e) = ensure_memory(&st2, &c2, true).await {
+        if let Err(e) = write_memory(&st2, &c2, true, also.as_deref()).await {
             log::warn!("merge: the memory of {}: {e:#}", c2.id);
+        }
+        for channel in again {
+            if let Err(e) = ensure_style(&st2, &c2, &channel, true).await {
+                log::warn!("merge: the {channel} style of {}: {e:#}", c2.id);
+            }
         }
     });
     Ok(json!({
@@ -822,6 +975,8 @@ pub async fn view(st: &State, user: &str, id: Uuid) -> anyhow::Result<Json> {
         .bind(id)
         .fetch_optional(&st.pool)
         .await?;
+    // what Pigeon knows: its notes in their folder in the vault
+    let (mem, written) = (memory(st, id).await?, styles(st, id).await?);
     let mut out = json!({
         "contact_id": c.id, "slug": slug.map(|s| format!("@{s}")), "name": c.name, "relationship": c.relationship, "language": c.language,
         "note_id": c.note_id, "note": c.note,
@@ -829,8 +984,10 @@ pub async fn view(st: &State, user: &str, id: Uuid) -> anyhow::Result<Json> {
         "replies": crate::apps::pigeon::policy::resolve(&st.pool, user, connectors::Kind::Reply, Some(id), None).await?.as_str(),
         "replies_own": replies_own, "alerts_own": alerts_own,
         "handles": handles.into_iter().map(|(ch, h, d)| json!({ "channel": ch, "handle": h, "shown_as": d })).collect::<Vec<_>>(),
-        "memory": memory(st, id).await?.map(|m| m.memory),
-        "styles": styles(st, id).await?.into_iter().map(|s| (s.connector, json!(s.profile))).collect::<serde_json::Map<_, _>>(),
+        "memory": mem.as_ref().map(|m| &m.memory), "memory_note_id": mem.as_ref().map(|m| m.note_id),
+        "styles": written.iter().map(|s| (s.connector.clone(), json!(s.profile))).collect::<serde_json::Map<_, _>>(),
+        "style_notes": written.iter().map(|s| (s.connector.clone(), json!(s.note_id))).collect::<serde_json::Map<_, _>>(),
+        "folder": folder::of_person(st, &c).await?,
     });
     crate::apps::pigeon::avatars::Links::new(&st.pool).await.add(&st.pool, c.avatar_key.as_deref(), &mut out).await;
     Ok(out)
@@ -893,9 +1050,87 @@ async fn learn_all_now(st: &State, user: &str, days: i64) -> anyhow::Result<()> 
     Ok(())
 }
 
+/// One-off (`pigeon-worker to-notes`): what Pigeon knew about people before it kept it in the
+/// vault (the three tables it was in) written as notes in their folders. Someone who already has
+/// the note isn't touched, so it can be run again. No model is asked: a memory and a style's
+/// description are copied as they are, a style's length and samples come from the user's latest
+/// messages.
+pub async fn to_notes(st: &State) -> anyhow::Result<Json> {
+    let (mut memories, mut styles_copied, mut groups) = (0, 0, 0);
+    let rows: Vec<(Uuid, String, i32, DateTime<Utc>)> = sqlx::query_as(
+        "SELECT m.contact_id, m.memory, m.items, m.updated_at FROM db_pigeon_contact_memories m
+          WHERE NOT EXISTS (SELECT 1 FROM db_pigeon_person_notes p WHERE p.contact_id = m.contact_id AND p.kind = 'memory')
+          ORDER BY m.updated_at",
+    )
+    .fetch_all(&st.pool)
+    .await?;
+    for (id, memory, items, at) in rows {
+        let Some(c) = conversations::contact(&st.pool, Some(id)).await? else { continue };
+        let me = owner::get(&st.pool, &c.user_id).await;
+        let place = folder::of_person(st, &c).await?;
+        let note = folder::Note {
+            user: &c.user_id,
+            whose: Whose::Person(id),
+            kind: folder::MEMORY,
+            connector: None,
+            title: folder::MEMORY_TITLE,
+            folder: &place,
+            items: items as i64,
+            at: Some(at),
+        };
+        folder::write(st, &me, &note, &memory, None).await?;
+        memories += 1;
+    }
+    let rows: Vec<(Uuid, String, String, i32, DateTime<Utc>)> = sqlx::query_as(
+        "SELECT s.contact_id, s.connector, s.profile, s.messages, s.updated_at FROM db_pigeon_contact_styles s
+          WHERE NOT EXISTS (SELECT 1 FROM db_pigeon_person_notes p WHERE p.contact_id = s.contact_id AND p.kind = 'style' AND p.connector = s.connector)
+          ORDER BY s.updated_at",
+    )
+    .fetch_all(&st.pool)
+    .await?;
+    for (id, connector, profile, messages, at) in rows {
+        let Some(c) = conversations::contact(&st.pool, Some(id)).await? else { continue };
+        let me = owner::get(&st.pool, &c.user_id).await;
+        let mine = mine_to(st, id, &connector, STYLE_FROM).await?;
+        let text = style_text(&me.name, &profile, usual_length(&mine), &picked("", &[], &mine).1);
+        let (title, place) = (folder::style_title(Some(&connector)), folder::of_person(st, &c).await?);
+        let note = folder::Note {
+            user: &c.user_id,
+            whose: Whose::Person(id),
+            kind: folder::STYLE,
+            connector: Some(&connector),
+            title: &title,
+            folder: &place,
+            // the count as it's made now (words only), so it comes due as before
+            items: (messages as i64).min(count_mine(st, id, &connector).await?),
+            at: Some(at),
+        };
+        folder::write(st, &me, &note, &text, None).await?;
+        styles_copied += 1;
+    }
+    let rows: Vec<(Uuid, String, i32, DateTime<Utc>)> = sqlx::query_as(
+        "SELECT s.conversation_id, s.profile, s.messages, s.updated_at FROM db_pigeon_conversation_styles s
+          WHERE NOT EXISTS (SELECT 1 FROM db_pigeon_person_notes p WHERE p.conversation_id = s.conversation_id AND p.kind = 'style')
+          ORDER BY s.updated_at",
+    )
+    .fetch_all(&st.pool)
+    .await?;
+    for (id, profile, messages, at) in rows {
+        let Some(conv) = conversations::get(&st.pool, id).await? else { continue };
+        let me = owner::get(&st.pool, &conv.user_id).await;
+        let mine = mine_in(st, id, STYLE_FROM).await?;
+        let text = style_text(&me.name, &profile, usual_length(&mine), &picked("", &[], &mine).1);
+        let (title, place) = (folder::style_title(None), folder::of_chat(st, &conv).await?);
+        let note = folder::Note { user: &conv.user_id, whose: Whose::Chat(id), kind: folder::STYLE, connector: None, title: &title, folder: &place, items: messages as i64, at: Some(at) };
+        folder::write(st, &me, &note, &text, None).await?;
+        groups += 1;
+    }
+    Ok(json!({ "memories": memories, "styles": styles_copied, "group_styles": groups }))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{phone_handle, stand_in};
+    use super::*;
 
     #[test]
     fn a_phone_number_as_a_handle() {
@@ -914,5 +1149,52 @@ mod tests {
         assert!(stand_in("Valeriomorini", &["valeriomorini".into()]));
         assert!(!stand_in("Valerio De Campo", &["+393896033144".into()]));
         assert!(!stand_in("@papa", &["+393896033144".into()]));
+    }
+
+    #[test]
+    fn a_styles_samples_are_the_users_real_messages() {
+        let latest: Vec<String> = ["ok grazie", "arrivo tra 10 min", "ci sentiamo dopo", "va bene"].iter().map(|m| m.to_string()).collect();
+        let so_far = vec!["buongiorno!".to_string(), "a dopo".to_string()];
+        // the writer's picks, by number: never its own words
+        let (description, samples) = picked("- Italian, short\n- No emoji\nSAMPLES: S1, 2, 4, 9, S7, 2", &so_far, &latest);
+        assert_eq!(description, "- Italian, short\n- No emoji");
+        assert_eq!(samples, vec!["buongiorno!", "arrivo tra 10 min", "va bene"]);
+        // none picked: the ones kept so far, then the latest
+        let (description, samples) = picked("- Italian, short", &so_far, &latest);
+        assert_eq!(description, "- Italian, short");
+        assert_eq!(samples, vec!["buongiorno!", "a dopo", "ok grazie", "arrivo tra 10 min", "ci sentiamo dopo", "va bene"]);
+        // the note reads back as it was written
+        let text = style_text("Marta", &description, usual_length(&latest), &samples);
+        assert_eq!(description_of(&text), "- Italian, short");
+        assert_eq!(samples_of(&text), samples);
+        assert!(text.contains("**Usual length:** about 13 characters"), "{text}");
+    }
+
+    #[test]
+    fn the_usual_length_is_the_median_and_needs_a_few_messages() {
+        let m = |n: usize| "x".repeat(n);
+        assert_eq!(usual_length(&[m(4), m(10)]), None);
+        assert_eq!(usual_length(&[m(4), m(100), m(10)]), Some(10));
+        assert_eq!(usual_length(&[m(4), m(100), m(10), m(20)]), Some(15));
+    }
+
+    #[test]
+    fn a_note_the_user_edited_is_theirs() {
+        let kept = |content: &str, written: &str| Kept {
+            note_id: Uuid::nil(),
+            kind: folder::MEMORY.into(),
+            connector: None,
+            written_hash: folder::hash(written),
+            written_at: Utc::now(),
+            items: 4,
+            content: content.into(),
+            folder: "/contacts/elena-bruni".into(),
+        };
+        let as_written = kept("- A colleague", "- A colleague");
+        assert!(base("Marta", "The memory", Some(&as_written), as_written.body()).contains("as you wrote it before"));
+        let edited = kept("- A colleague, and a friend", "- A colleague");
+        let told = base("Marta", "The memory", Some(&edited), edited.body());
+        assert!(told.contains("Marta's words are true") && told.contains("- A colleague, and a friend"), "{told}");
+        assert_eq!(base("Marta", "The memory", None, ""), "");
     }
 }

@@ -1160,20 +1160,6 @@ const TABLES: &[TableDefinition] = &[
         "#,
         indices: &[],
     },
-    // How the user writes in a chat that is no one person's (a group), from their own
-    // messages there; `messages`: how many there were when it was written.
-    TableDefinition {
-        name: "db_pigeon_conversation_styles",
-        sql: r#"
-            CREATE TABLE db_pigeon_conversation_styles (
-                conversation_id UUID PRIMARY KEY REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
-                profile TEXT NOT NULL,
-                messages INTEGER NOT NULL,
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-        "#,
-        indices: &[],
-    },
     // How the user writes to a person on one channel, from their own messages there.
     TableDefinition {
         name: "db_pigeon_contact_styles",
@@ -1228,6 +1214,20 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_pigeon_conversations_user ON db_pigeon_conversations (user_id, last_item_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_pigeon_conversations_contact ON db_pigeon_conversations (contact_id)",
         ],
+    },
+    // How the user writes in a chat that is no one person's (a group), from their own
+    // messages there; `messages`: how many there were when it was written.
+    TableDefinition {
+        name: "db_pigeon_conversation_styles",
+        sql: r#"
+            CREATE TABLE db_pigeon_conversation_styles (
+                conversation_id UUID PRIMARY KEY REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                profile TEXT NOT NULL,
+                messages INTEGER NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        "#,
+        indices: &[],
     },
     // One message, either way. author: them, me (the user, from their phone or
     // mail client, or the Inbox), pigeon (sent by an action). `raw` is the
@@ -1537,10 +1537,40 @@ const TABLES: &[TableDefinition] = &[
         "#,
         indices: &["CREATE UNIQUE INDEX IF NOT EXISTS idx_pigeon_groups_name ON db_pigeon_groups (user_id, lower(name))"],
     },
+    // The notes Pigeon keeps in the vault on a person (`contact_id`) or a group chat
+    // (`conversation_id`), in their folder in /contacts (`apps::pigeon::folder`):
+    // the memory, and a style per channel (`connector`; a group chat's has none).
+    // `written_hash`: what Pigeon last wrote (a note that differs was edited by the
+    // user); `items`: how many items or messages it was written from.
+    TableDefinition {
+        name: "db_pigeon_person_notes",
+        sql: r#"
+            CREATE TABLE db_pigeon_person_notes (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                user_id TEXT NOT NULL,
+                contact_id UUID REFERENCES db_pigeon_contacts(id) ON DELETE CASCADE,
+                conversation_id UUID REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL CHECK (kind IN ('memory', 'style')),
+                connector TEXT,
+                note_id UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+                written_hash TEXT NOT NULL,
+                written_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                items INTEGER NOT NULL DEFAULT 0,
+                CHECK (num_nonnulls(contact_id, conversation_id) = 1)
+            )
+        "#,
+        indices: &[
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pigeon_person_notes_one ON db_pigeon_person_notes (COALESCE(contact_id, conversation_id), kind, COALESCE(connector, ''))",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pigeon_person_notes_note ON db_pigeon_person_notes (note_id)",
+        ],
+    },
     // Who holds what, one row each. Who: a person, a chat or a group. What: a
     // permission (`tool.level.mode`, wildcards allowed: the names are the tools'
     // own, `apps::pigeon::offer`) or being in a group (`member_of`; a group in a
-    // group inherits what it holds). `until`: when it ends (none: it doesn't; the
+    // group inherits what it holds). A Notes permission names what it is on: one
+    // note (`note_id`: the grant goes with the note) or a folder with what is
+    // under it (`folder`; a renamed folder's grants are rewritten with it), so a
+    // holder may have several. `until`: when it ends (none: it doesn't; the
     // worker sweeps the ended ones); `said`: the user's words when they gave it.
     // Allow only: someone who must hear nothing holds nothing.
     TableDefinition {
@@ -1557,14 +1587,17 @@ const TABLES: &[TableDefinition] = &[
                 until TIMESTAMPTZ,
                 said TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                note_id UUID REFERENCES notes(id) ON DELETE CASCADE,
+                folder TEXT,
                 CHECK (num_nonnulls(contact_id, conversation_id, group_id) = 1),
                 CHECK (num_nonnulls(permission, member_of) = 1),
                 CHECK (conversation_id IS NULL OR member_of IS NULL),
-                CHECK (group_id IS NULL OR member_of IS NULL OR group_id <> member_of)
+                CHECK (group_id IS NULL OR member_of IS NULL OR group_id <> member_of),
+                CHECK (num_nonnulls(note_id, folder) = 0 OR (permission IS NOT NULL AND num_nonnulls(note_id, folder) = 1))
             )
         "#,
         indices: &[
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pigeon_grants_one ON db_pigeon_grants (COALESCE(contact_id, conversation_id, group_id), COALESCE(permission, member_of::text))",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pigeon_grants_one ON db_pigeon_grants (COALESCE(contact_id, conversation_id, group_id), COALESCE(permission, member_of::text), COALESCE(note_id::text, folder, ''))",
             "CREATE INDEX IF NOT EXISTS idx_pigeon_grants_user ON db_pigeon_grants (user_id)",
             "CREATE INDEX IF NOT EXISTS idx_pigeon_grants_member_of ON db_pigeon_grants (member_of) WHERE member_of IS NOT NULL",
             "CREATE INDEX IF NOT EXISTS idx_pigeon_grants_until ON db_pigeon_grants (until) WHERE until IS NOT NULL",

@@ -22,8 +22,8 @@ const VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-0
 const INSTRUCTIONS: &str = "Pigeon is the user's Inbox: their WhatsApp, Instagram and Gmail in one place, with an agent that sorts what \
 comes in and answers where they let it. Start with pigeon_inbox (what needs them) or pigeon_pending (what waits for their yes). A message \
 to someone goes only in words the user has seen: draft it (pigeon_draft_reply), show them the full text, send on their word. Who may be \
-told what (the user's place, their calendar) is pigeon_access, pigeon_permissions, pigeon_grant, pigeon_revoke and the groups: grant only \
-what the user asked, for whom they said; never let Pigeon answer on its own (mode auto, a policy to auto) unless they ask, and then it \
+told what (the user's place, their calendar, a note of theirs) is pigeon_access, pigeon_permissions, pigeon_grant, pigeon_revoke and the \
+groups: grant only what the user asked, for whom they said; never let Pigeon answer on its own (mode auto, a policy to auto) unless they ask, and then it \
 still waits for their tap in the Inbox.";
 
 fn result(id: &Json, result: Json) -> Json {

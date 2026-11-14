@@ -22,8 +22,10 @@ import {
 	useLearnPigeonContact,
 	useMergePigeonContacts,
 	usePigeonContact,
+	usePigeonContactAccess,
 	usePigeonContacts,
 	usePigeonSettings,
+	useRevokePigeonAccess,
 	useSetPigeonContact,
 	useSetPigeonContactNote,
 	useSetPigeonContactSwitches,
@@ -40,9 +42,56 @@ import SwitchInfo from "./SwitchInfo";
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
+// The notes and folders Pigeon may answer a person from (their own, and what
+// their groups hold); their own can be taken away here. Given from a note's or
+// a folder's menu in Notes ("Pigeon can tell…"), or in the app.
+function TheirNotes({ id }) {
+	const { data } = usePigeonContactAccess(id);
+	const revoke = useRevokePigeonAccess();
+	const held = (data?.effective ?? []).filter((e) => e.target);
+	if (!held.length) return null;
+	return (
+		<PvField label="Pigeon can tell them from" as="div">
+			<ul className="inbox-contact-notes">
+				{held.map((e) => (
+					<li key={e.grant_id}>
+						{e.target.kind === "note" ? (
+							<Link to={`/notes/${e.target.note_id}`}>
+								{e.target.title || "Untitled"}
+							</Link>
+						) : (
+							<span>{e.target.folder}</span>
+						)}
+						<span className="inbox-muted">
+							{e.mode === "auto" ? "Auto" : "Ask me"}
+							{e.target.trashed ? " · in the trash" : ""}
+							{e.from === "direct" ? "" : ` · ${e.origin}`}
+						</span>
+						{e.from === "direct" ? (
+							<PvButton
+								size="sm"
+								variant="text"
+								disabled={revoke.isPending}
+								onClick={() =>
+									revoke.mutate(e.grant_id, {
+										onError: (err) => pvMessage.error(errorText(err)),
+									})
+								}
+							>
+								Take away
+							</PvButton>
+						) : null}
+					</li>
+				))}
+			</ul>
+		</PvField>
+	);
+}
+
 // One person: who they are, the vault note about them, what Pigeon should know,
-// their switches; merge them into who they also are (the one picked stays), or
-// learn them from past chats. onOpen(id): another person in the drawer.
+// their switches, what Pigeon keeps on them (notes in their folder of the
+// vault); merge them into who they also are (the one picked stays), or learn
+// them from past chats. onOpen(id): another person in the drawer.
 function ContactDrawer({ id, people, onClose, onOpen }) {
 	const { data: c, isLoading, error } = usePigeonContact(id);
 	const { data: settings } = usePigeonSettings();
@@ -236,9 +285,33 @@ function ContactDrawer({ id, people, onClose, onOpen }) {
 						/>
 					</PvField>
 
+					<TheirNotes id={id} />
+
 					{c.memory ? (
-						<PvField label="What Pigeon learnt" as="div">
+						<PvField
+							label="What Pigeon learnt"
+							as="div"
+							hint={
+								<>
+									A note in {c.folder}, yours to change:{" "}
+									<Link to={`/notes/${c.memory_note_id}`}>
+										Open in the vault
+									</Link>
+								</>
+							}
+						>
 							<div className="inbox-contact-memory">{c.memory}</div>
+						</PvField>
+					) : null}
+					{Object.keys(c.style_notes ?? {}).length ? (
+						<PvField label="How you write to them" as="div">
+							<div className="inbox-contact-styles">
+								{Object.entries(c.style_notes).map(([channel, noteId]) => (
+									<Link key={channel} to={`/notes/${noteId}`}>
+										{channelLabel(channel)}
+									</Link>
+								))}
+							</div>
 						</PvField>
 					) : null}
 					<PvButton

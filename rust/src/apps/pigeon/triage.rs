@@ -364,7 +364,8 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
     // them themselves, is writing there, or they doubt who writes
     let mut told = tell::Round::default();
     if attention == Some("reply") && !replies_off && paused.is_none() && held != Some(DOUBTS) {
-        match tell::round(st, &conv, &owner, &answers, &passons).await {
+        let asked = new_owned.iter().filter(|i| i.direction == "in").map(|i| i.body.trim()).filter(|b| !b.is_empty()).collect::<Vec<_>>().join("\n");
+        match tell::round(st, &conv, &owner, &answers, &passons, &asked).await {
             Ok(r) => told = r,
             Err(e) => log::warn!("triage {id}: what to tell them: {e:#}"),
         }

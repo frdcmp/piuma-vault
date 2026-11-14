@@ -1,0 +1,45 @@
+/* "Pigeon can tell…" on a note or a folder (PigeonTell). */
+
+.pigeon-tell {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.pigeon-tell-help,
+.pigeon-tell-none {
+	margin: 0;
+	color: var(--vp-muted);
+}
+.pigeon-tell-holders {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.pigeon-tell-holder {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.pigeon-tell-who {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.pigeon-tell-how {
+	color: var(--vp-muted);
+	font-size: 9.5pt;
+}
+.pigeon-tell-add {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.pigeon-tell-add .vp-select {
+	flex: 1;
+	min-width: 0;
+}

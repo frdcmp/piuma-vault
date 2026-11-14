@@ -604,6 +604,31 @@ a.inbox-mention:hover {
 	font-size: 9.5pt;
 	color: var(--vp-muted);
 }
+.inbox-contact-styles {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+.inbox-contact-notes {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.inbox-contact-notes li {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.inbox-contact-notes li > :first-child {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
 .inbox-contact-merge {
 	display: flex;
 	gap: 6px;
