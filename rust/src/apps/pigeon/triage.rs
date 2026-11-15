@@ -411,8 +411,17 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
             Err(e) => log::warn!("triage {id}: the card for {}: {e:#}", u.tool.name),
         }
     }
-    let put = (!put.is_empty())
-        .then(|| format!("Pigeon already put a card to {} about whether to tell them {}: don't ask about that.", owner.name, put.join(", ")));
+    let mut put: Vec<String> = (!put.is_empty())
+        .then(|| format!("Pigeon already put a card to {} about whether to tell them {}: don't ask about that.", owner.name, put.join(", ")))
+        .into_iter()
+        .collect();
+    // asked with leave, and nothing to say (no place from the phone): the user reads why, and
+    // the intaker doesn't ask what to tell them
+    for tool in &told.unknown {
+        cards::news(st, &conv.user_id, Some(id), &tell::unknown(tool, &them), None, false).await;
+        put.push(format!("Pigeon already told {} that they ask {} and that it knows nothing to tell them: don't ask about that.", owner.name, tell::gives(tool, &owner.name)));
+    }
+    let put = (!put.is_empty()).then(|| put.join("\n"));
     let intake = if paused.is_some() || replies_off {
         sig.actionable >= ACTION_AT
     } else {

@@ -10,6 +10,8 @@
 //!     read back, says nothing beyond it (`leaks`). Anything less: a draft, the user sends it
 //!   - they don't: a 🔑 card to the user (answer this once, allow it from now on, or no); nothing
 //!     is told
+//!   - they hold it and Pigeon knows nothing to say (no place: the phone's switch is off): nothing
+//!     is told, and the user reads why in the chat (`unknown`), with nothing to answer
 //!
 //! Notes (`shared`) are held one by one: asked for something the user may have written down,
 //! Pigeon looks only among the notes the chat holds, Jev says which one answers (or none), and
@@ -126,6 +128,8 @@ pub struct Uncovered {
 pub struct Round {
     pub uses: Vec<Use>,
     pub uncovered: Vec<Uncovered>,
+    /// asked and held, with nothing to say (no place from the phone)
+    pub unknown: Vec<&'static Tool>,
 }
 
 /// Jev's questions in triage: one per tool that has one, one per pass-on left for them.
@@ -399,6 +403,7 @@ pub async fn round(st: &State, conv: &Conversation, me: &Owner, answers: &Answer
         let eff = sure.unwrap_or(&ask);
         let Some(said) = say(st, user, me, tool, eff.level).await? else {
             asked_event(conv, tool.name, p, "nothing known");
+            out.unknown.push(tool);
             continue;
         };
         let mut u = blank(tool, eff.permission.clone(), Some(eff.grant), eff.from.words(), p, sure.is_some() && !said.stale);
@@ -438,6 +443,14 @@ pub async fn round(st: &State, conv: &Conversation, me: &Owner, answers: &Answer
 /// What a tool gives, said of the user by name: "where Anna is right now".
 pub fn gives(tool: &Tool, name: &str) -> String {
     tool.gives.replace("you're", &format!("{name} is")).replace("you are", &format!("{name} is")).replace("you ", &format!("{name} ")).replace(" of yours", &format!(" of {name}'s"))
+}
+
+/// What the user reads when they ask for something they hold and Pigeon knows nothing to say.
+pub fn unknown(tool: &Tool, them: &str) -> String {
+    match tool.name {
+        "location" => format!("📍 {them} asks where you are and may know it, but Pigeon can't tell them: your phone hasn't told it. Switch your place on in the app (Settings > Access)."),
+        _ => format!("{them} asks {} and may know it, but Pigeon knows nothing to tell them.", tool.gives),
+    }
 }
 
 fn asked_event(conv: &Conversation, tool: &str, p: f64, outcome: &str) {
