@@ -11,6 +11,7 @@ fn main() {
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("build current-thread runtime");
     let local = tokio::task::LocalSet::new();
     local.block_on(&rt, async {
+        backend::apps::telemetry::init();
         let pool = match db::db::create_pool().await {
             Ok(p) => p,
             Err(e) => {

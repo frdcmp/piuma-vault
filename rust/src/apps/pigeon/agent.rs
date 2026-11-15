@@ -387,7 +387,8 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
                         Some(why) => hold = Some(format!("uses your {labels}: {why}")),
                     }
                 } else {
-                    hold = Some(format!("uses your {labels}: yours to send"));
+                    let why = tells.iter().find_map(|u| u.waits.as_deref()).unwrap_or("yours to send");
+                    hold = Some(format!("uses your {labels}: {why}"));
                 }
             }
         }

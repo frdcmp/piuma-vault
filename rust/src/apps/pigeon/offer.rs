@@ -95,7 +95,7 @@ pub static TOOLS: &[Tool] = &[
         name: "notes",
         label: "Notes",
         gives: "what is in a note of yours",
-        asks: "Do the new messages ask for something {me} may have written down: an address, a code, instructions, the details of a plan?",
+        asks: "Do the new messages ask {me} for something {me} may have written down: an address, a number, an account, a code, instructions, the details of a plan?",
         levels: USE,
         ask_only: false,
         live: true,

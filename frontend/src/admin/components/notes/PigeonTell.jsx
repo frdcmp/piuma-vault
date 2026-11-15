@@ -123,7 +123,7 @@ export default function PigeonTell({ target, onClose }) {
 								as="div"
 								hint={
 									mode === "auto"
-										? "Pigeon tells them on its own when it's sure that's what they ask, and says so after. Never bank details."
+										? "Pigeon tells them on its own when it's sure that's what they ask, and says so after. A reply with a card number in it always waits for you."
 										: "Pigeon writes the reply; it goes when you send it."
 								}
 							>

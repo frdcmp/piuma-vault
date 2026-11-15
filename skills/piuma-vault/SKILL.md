@@ -238,10 +238,10 @@ pigeon.py mark_wrong action_id=<uuid>   # that reply told too much: its auto goe
 - Notes: Pigeon searches only the notes that chat holds, Jev picks one or none, and the reply
   answers from that one note (its text, never its attachments). On its own (`auto`) only when
   Jev is sure of the question and of the note, the note fits whole (8000 characters) and
-  holds no bank details (an IBAN, a card number): otherwise a draft. A note in the trash or
-  moved to `/contacts` is no longer read; a renamed folder keeps its grants; a 🔑 card for a
-  note names it (`note`), and allowing it grants that one note. `try_permission` doesn't
-  take Notes.
+  the reply holds no card number (an account number or an IBAN goes): otherwise a draft,
+  and its card says why. A note in the trash or moved to `/contacts` is no longer read; a
+  renamed folder keeps its grants; a 🔑 card for a note names it (`note`), and allowing it
+  grants that one note. `try_permission` doesn't take Notes.
 - What Pigeon knows about a person is notes in their folder of the vault,
   `/contacts/<person>/` (a group chat has one too): `Pigeon · Memory` and
   `Pigeon · Style · <Channel>`, tagged `pigeon`, beside the user's own notes there, which

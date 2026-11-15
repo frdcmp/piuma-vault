@@ -7,7 +7,7 @@
 //!   - never a note in the trash, and never one of `/contacts`, whatever a grant says (a note
 //!     moved there after it was shared, a folder renamed into it): what the user and Pigeon keep
 //!     on people is not told
-//!   - a note with bank details (`bank`: an IBAN, a card number) is never told on its own
+//!   - a card number (`card`) is never told on its own: a reply that holds one waits for the user
 //!
 //! Only the text: a note's attachments are neither read nor sent.
 
@@ -138,20 +138,7 @@ pub async fn search(st: &State, user: &str, targets: &[Target], query: &str, lim
         .await?)
 }
 
-// ── bank details: never told on its own ──────────────────────────────────
-
-/// An IBAN's check: the first four moved to the end, letters as numbers, mod 97 is 1.
-fn iban(s: &str) -> bool {
-    if !(15..=34).contains(&s.len()) {
-        return false;
-    }
-    let mut rest: u32 = 0;
-    for c in s[4..].chars().chain(s[..4].chars()) {
-        let Some(d) = c.to_digit(36) else { return false };
-        rest = if d < 10 { (rest * 10 + d) % 97 } else { (rest * 100 + d) % 97 };
-    }
-    rest == 1
-}
+// ── a card number: never told on its own ─────────────────────────────────
 
 /// A card number's check (Luhn): from the right, every second digit doubled.
 fn luhn(digits: &[u32]) -> bool {
@@ -168,47 +155,27 @@ fn luhn(digits: &[u32]) -> bool {
     sum % 10 == 0
 }
 
-/// Whether a text holds what reads as bank details: an IBAN (two letters, two digits, then its
-/// account, in a run or in groups, that passes its check) or a card number (13 to 19 digits, in a
-/// run or in groups, that passes Luhn).
-pub fn bank(text: &str) -> bool {
+/// Whether a text holds what reads as a card number: 13 to 19 digits, in a run or in groups,
+/// that pass Luhn. An account number or an IBAN is not one: those are given to be paid.
+pub fn card(text: &str) -> bool {
     let chars: Vec<char> = text.chars().collect();
     let sep = |c: char| c == ' ' || c == '-' || c == '\u{a0}';
     for i in 0..chars.len() {
-        if i > 0 && chars[i - 1].is_ascii_alphanumeric() {
+        if !chars[i].is_ascii_digit() || (i > 0 && chars[i - 1].is_ascii_alphanumeric()) {
             continue;
         }
-        // an IBAN from here: every length it could have
-        if i + 4 <= chars.len() && chars[i].is_ascii_alphabetic() && chars[i + 1].is_ascii_alphabetic() && chars[i + 2].is_ascii_digit() && chars[i + 3].is_ascii_digit() {
-            let mut run = String::new();
-            let mut j = i;
-            while j < chars.len() && run.len() < 34 {
-                match chars[j] {
-                    c if c.is_ascii_alphanumeric() => run.push(c.to_ascii_uppercase()),
-                    c if sep(c) && j + 1 < chars.len() && chars[j + 1].is_ascii_alphanumeric() => {}
-                    _ => break,
-                }
-                j += 1;
-                if run.len() >= 15 && iban(&run) && !chars.get(j).is_some_and(|c| c.is_ascii_alphanumeric()) {
-                    return true;
-                }
+        let mut digits: Vec<u32> = Vec::new();
+        let mut j = i;
+        while j < chars.len() && digits.len() <= 19 {
+            match chars[j] {
+                c if c.is_ascii_digit() => digits.extend(c.to_digit(10)),
+                c if sep(c) && j + 1 < chars.len() && chars[j + 1].is_ascii_digit() => {}
+                _ => break,
             }
+            j += 1;
         }
-        // a card number from here
-        if chars[i].is_ascii_digit() {
-            let mut digits: Vec<u32> = Vec::new();
-            let mut j = i;
-            while j < chars.len() && digits.len() <= 19 {
-                match chars[j] {
-                    c if c.is_ascii_digit() => digits.extend(c.to_digit(10)),
-                    c if sep(c) && j + 1 < chars.len() && chars[j + 1].is_ascii_digit() => {}
-                    _ => break,
-                }
-                j += 1;
-            }
-            if (13..=19).contains(&digits.len()) && luhn(&digits) {
-                return true;
-            }
+        if (13..=19).contains(&digits.len()) && luhn(&digits) {
+            return true;
         }
     }
     false
@@ -242,18 +209,18 @@ mod tests {
     }
 
     #[test]
-    fn bank_details_are_found_by_their_checks() {
-        // made-up numbers that pass their checks (the standard examples)
-        assert!(bank("Send it to GB82 WEST 1234 5698 7654 32, thanks"));
-        assert!(bank("iban: DE89370400440532013000"));
-        assert!(bank("card 4111 1111 1111 1111 exp 12/30"));
-        assert!(bank("4111-1111-1111-1111"));
-        // one digit off: not an IBAN, not a card
-        assert!(!bank("GB82 WEST 1234 5698 7654 33"));
-        assert!(!bank("4111 1111 1111 1112"));
-        // what a note usually holds
-        assert!(!bank("Door code 4821, wifi Casa-5G, password limone2024"));
-        assert!(!bank("Call me on +39 333 1234567 after 18:00, flight AZ1234 on 2026-12-01"));
-        assert!(!bank("Via Roma 12, 20121 Milano. Check-in from 15:00"));
+    fn a_card_number_is_found_by_its_check() {
+        // a made-up number that passes its check (the standard example)
+        assert!(card("card 4111 1111 1111 1111 exp 12/30"));
+        assert!(card("4111-1111-1111-1111"));
+        assert!(card("il numero è 4111111111111111."));
+        // one digit off: not a card
+        assert!(!card("4111 1111 1111 1112"));
+        // what is given to be paid, and what a note usually holds
+        assert!(!card("Send it to GB82 WEST 1234 5698 7654 32, thanks"));
+        assert!(!card("iban: DE89370400440532013000"));
+        assert!(!card("l'account è 1463318227"));
+        assert!(!card("Door code 4821, wifi Casa-5G, password limone2024"));
+        assert!(!card("Call me on +39 333 1234567 after 18:00, flight AZ1234 on 2026-12-01"));
     }
 }

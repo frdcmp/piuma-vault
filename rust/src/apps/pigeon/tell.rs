@@ -14,9 +14,9 @@
 //! Notes (`shared`) are held one by one: asked for something the user may have written down,
 //! Pigeon looks only among the notes the chat holds, Jev says which one answers (or none), and
 //! that whole note is what the reply is written from, one note a reply. On its own only when,
-//! besides the above, Jev is sure of the note and it is neither cut for its length nor holds
-//! bank details. A note that answers but that only others hold is the 🔑 card; a note shared
-//! with nobody is never looked at.
+//! besides the above, Jev is sure of the note, it isn't cut for its length, and the reply holds
+//! no card number (an account number or an IBAN goes: those are given to be paid). A note that
+//! answers but that only others hold is the 🔑 card; a note shared with nobody is never looked at.
 //!
 //! What was used stays on the reply (`args.used`, the record: the tool, the level, the permission
 //! and where it came from, how sure Jev was), shown beside the message; "this was wrong" on it
@@ -109,6 +109,9 @@ pub struct Use {
     /// all it was given, where `told` is only its start (never kept): a note
     #[serde(skip)]
     pub whole: Option<String>,
+    /// why it waits for the user though they hold it on auto (never kept)
+    #[serde(skip)]
+    pub waits: Option<String>,
 }
 
 /// Something asked that they don't hold.
@@ -270,11 +273,12 @@ fn blank(tool: &Tool, permission: String, grant: Option<Uuid>, via: String, p: f
         how: String::new(),
         only: None,
         whole: None,
+        waits: None,
     }
 }
 
 /// A use filled from a note: all of it is what the reply is written from. False: it waits for
-/// the user whatever the grant says (cut for its length, or it holds bank details).
+/// the user whatever the grant says (it is cut for its length).
 fn of_note(u: &mut Use, tool: &Tool, n: &shared::Note, me: &Owner) -> bool {
     let long = n.content.chars().count() > NOTE_MAX;
     let text: String = n.content.chars().take(NOTE_MAX).collect();
@@ -290,7 +294,7 @@ fn of_note(u: &mut Use, tool: &Tool, n: &shared::Note, me: &Owner) -> bool {
         text.trim(),
     );
     u.whole = Some(text);
-    !long && !shared::bank(&n.content)
+    !long
 }
 
 /// Where a note's leave comes from, in words: "from Family, in /shared/trip".
@@ -355,8 +359,11 @@ async fn from_notes(st: &State, conv: &Conversation, me: &Owner, book: &Book, to
     };
     let eff = if first.auto { first } else { covering.find(|e| e.auto).unwrap_or(first) };
     let mut u = blank(tool, eff.permission.clone(), Some(eff.grant), via_of(eff), p.min(sure), false);
-    let plain = of_note(&mut u, tool, note, me);
-    u.auto = eff.auto && p >= SURE_AT && sure >= SURE_AT && plain;
+    let whole = of_note(&mut u, tool, note, me);
+    u.auto = eff.auto && p >= SURE_AT && sure >= SURE_AT && whole;
+    if eff.auto && !u.auto {
+        u.waits = Some(if whole { format!("Jev was {:.0}% sure, under the {:.0}% to send it by itself", p.min(sure) * 100.0, SURE_AT * 100.0) } else { "the note is too long to be given whole".to_string() });
+    }
     asked_event(conv, tool.name, p, if u.auto { "auto" } else { "ask" });
     out.uses.push(u);
     Ok(())
@@ -574,14 +581,15 @@ pub fn line(uses: &[Use]) -> String {
         .join(", ")
 }
 
-/// Why a reply written with these must wait for the user, if it must: it says something finer
-/// than they hold, something about the user it wasn't given, or it promises. Jev reads it back;
-/// when it can't, the reply waits. `also`: what else the reply may say of the user (that they're
-/// away).
+/// Why a reply written with these must wait for the user, if it must: it gives a card number
+/// from a note, it says something finer than they hold, something about the user it wasn't
+/// given, or it promises. Jev reads it back; when it can't, the reply waits. `also`: what else
+/// the reply may say of the user (that they're away).
 pub async fn leaks(st: &State, conv: &Conversation, me: &Owner, uses: &[Use], also: Option<&str>, text: &str) -> Option<String> {
     let low = text.to_lowercase();
     let why = match uses.iter().find(|u| u.beyond.iter().any(|b| low.contains(b.as_str()))) {
         Some(u) => Some(format!("it says more than {} allows", u.label.to_lowercase())),
+        None if uses.iter().any(|u| u.note_id.is_some()) && shared::card(text) => Some("it gives a card number".to_string()),
         None => {
             let mut allowed: Vec<Json> = uses
                 .iter()
@@ -1172,11 +1180,11 @@ mod tests {
     }
 
     #[test]
-    fn a_note_with_bank_details_or_cut_for_its_length_waits_for_the_user() {
+    fn a_note_cut_for_its_length_waits_for_the_user() {
         let tool = offer::find("notes").unwrap();
         let mut n = shared::Note { id: Uuid::from_u128(9), title: "Deposit".into(), content: "Pay the deposit to GB82 WEST 1234 5698 7654 32".into(), folder: "/shared".into() };
         let mut u = blank(tool, "notes.use.auto".into(), None, "their own".into(), 0.9, false);
-        assert!(!of_note(&mut u, tool, &n, &me()));
+        assert!(of_note(&mut u, tool, &n, &me()));
         n.content = "word ".repeat(NOTE_MAX);
         assert!(!of_note(&mut u, tool, &n, &me()));
         assert!(u.how.contains("the rest is cut"));
