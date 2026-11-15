@@ -230,7 +230,10 @@ pigeon.py mark_wrong action_id=<uuid>   # that reply told too much: its auto goe
   the Inbox (answer this once, allow, no); with `ask` the answer is a draft that says what it
   uses; with `auto` it goes out only when Jev is sure they asked, for themselves and nothing
   else, and the reply read back says no more than their level. A place older than 30 minutes
-  and a calendar with repeating events are never told on Pigeon's own.
+  and a calendar with repeating events are never told on Pigeon's own. Asked for the place
+  by someone who may know it while the phone has sent none (its switch is off): nothing is
+  told, the chat says so (a news line: switch your place on in the app), and Pigeon asks no
+  question about it.
 - In `pending` a 🔑 card is kind `uncovered` (`asks_for`: the tool). `answer` on it takes
   `once` (Pigeon drafts the answer for this time, with the least that answers), `granted`
   (after a `grant`: Pigeon drafts with it) or `no`. While telling is paused (`access`:
