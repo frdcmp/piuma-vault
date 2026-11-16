@@ -27,5 +27,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route(
             "/storage/app-update-manifest",
             web::get().to(handlers::app_update_manifest),
+        )
+        // no sign-in: a public app's update manifest and a link to its APK
+        .route(
+            "/public/app-update/{app}",
+            web::get().to(handlers::public_app_update),
         );
 }

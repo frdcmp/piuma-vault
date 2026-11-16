@@ -161,42 +161,101 @@ pub async fn app_update_manifest(
     if !UPDATE_APPS.contains(&app) {
         return err(actix_web::http::StatusCode::BAD_REQUEST, "app: piuma or pigeon");
     }
-    let manifest_key = format!("expo/{app}/apk/latest.json");
-    let (client, bucket) = match s3_client(pool.get_ref()).await {
+    match read_update_manifest(pool.get_ref(), app).await {
+        Ok((json, _, _)) => HttpResponse::Ok().json(json),
+        Err(res) => res,
+    }
+}
+
+// The phone apps whose users have no vault account (Tankō, a friend's manga shelf):
+// their update manifest is read with no sign-in, at /public/app-update/<app>.
+const PUBLIC_UPDATE_APPS: [&str; 1] = ["tanko"];
+
+// How long the APK link in a public manifest is good for.
+const PUBLIC_APK_LINK_SECS: i64 = 3600;
+
+// GET /public/app-update/{app} — a public app's update manifest, with no sign-in:
+// `{version, buildTime, apkFilename, notes, url}`, `url` a link to the APK good for
+// an hour. Only the apps in PUBLIC_UPDATE_APPS, and only an APK under that app's own
+// folder (`expo/<app>/apk/`) is ever linked: whatever the manifest says, this route
+// signs nothing else in storage. 404 until a build has published a manifest.
+pub async fn public_app_update(
+    pool: web::Data<DbPool>,
+    path: web::Path<String>,
+) -> impl Responder {
+    let app = path.into_inner();
+    if !PUBLIC_UPDATE_APPS.contains(&app.as_str()) {
+        return err(actix_web::http::StatusCode::NOT_FOUND, "no such app");
+    }
+    let (mut json, client, bucket) = match read_update_manifest(pool.get_ref(), &app).await {
         Ok(v) => v,
+        Err(res) => return res,
+    };
+    let apk_key = json
+        .get("apkKey")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim_start_matches('/')
+        .to_string();
+    if !apk_key.starts_with(&format!("expo/{app}/apk/")) || !apk_key.ends_with(".apk") {
+        return err(
+            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "manifest names no APK of this app",
+        );
+    }
+    let url = match download_url(pool.get_ref(), &client, &bucket, &apk_key, PUBLIC_APK_LINK_SECS).await {
+        Ok((url, _)) => url,
         Err(e) => return err(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, e),
     };
-    let obj = match client
+    if let Some(obj) = json.as_object_mut() {
+        // where the APK is in storage is nobody's business out there: the link is enough
+        obj.remove("apkKey");
+        obj.insert("url".to_string(), serde_json::Value::String(url));
+    }
+    HttpResponse::Ok().json(json)
+}
+
+// An app's update manifest (`expo/<app>/apk/latest.json`) read from storage, with the
+// client and bucket it was read with. Err: the response to give instead (404 before
+// the first build).
+async fn read_update_manifest(
+    pool: &DbPool,
+    app: &str,
+) -> Result<(serde_json::Value, Client, String), HttpResponse> {
+    let manifest_key = format!("expo/{app}/apk/latest.json");
+    let (client, bucket) = s3_client(pool)
+        .await
+        .map_err(|e| err(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let obj = client
         .get_object()
         .bucket(&bucket)
         .key(&manifest_key)
         .send()
         .await
-    {
-        Ok(o) => o,
-        Err(_) => {
-            return err(
+        .map_err(|_| {
+            err(
                 actix_web::http::StatusCode::NOT_FOUND,
                 "no update manifest published",
             )
-        }
-    };
-    let bytes = match obj.body.collect().await {
-        Ok(b) => b.into_bytes(),
-        Err(e) => {
-            return err(
+        })?;
+    let bytes = obj
+        .body
+        .collect()
+        .await
+        .map_err(|e| {
+            err(
                 actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
                 format!("read manifest: {e}"),
             )
-        }
-    };
-    match serde_json::from_slice::<serde_json::Value>(&bytes) {
-        Ok(json) => HttpResponse::Ok().json(json),
-        Err(e) => err(
+        })?
+        .into_bytes();
+    let json = serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|e| {
+        err(
             actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
             format!("manifest is not valid JSON: {e}"),
-        ),
-    }
+        )
+    })?;
+    Ok((json, client, bucket))
 }
 
 pub(crate) fn is_dir_marker(o: &aws_sdk_s3::types::Object) -> bool {
