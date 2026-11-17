@@ -392,7 +392,12 @@ pub fn reply_message(
 
 /// A new email, its own thread.
 pub fn new_raw(from: &str, to: &str, subject: &str, body: &Body) -> String {
-    URL_SAFE.encode(message(from, to, subject, "", body, &[]))
+    URL_SAFE.encode(new_message(from, to, subject, body, &[]))
+}
+
+/// A new email with files attached, as the whole message (RFC 822).
+pub fn new_message(from: &str, to: &str, subject: &str, body: &Body, files: &[OutFile]) -> String {
+    message(from, to, subject, "", body, files)
 }
 
 /// The whole message: its text, or its text and HTML (multipart/alternative); with files, that
@@ -451,6 +456,17 @@ mod tests {
     fn a_quote_header_wrapped_onto_two_lines_is_cut() {
         let s = "Ciao come stai?\n\nOn Sun, 1 Nov 2026, 23:14 Alex Doe,\n<alex.doe@example.com> wrote:\n> Hi, could you reply";
         assert_eq!(strip_quoted(s), "Ciao come stai?");
+    }
+
+    #[test]
+    fn a_new_email_with_files_is_multipart_in_no_thread() {
+        let a = OutFile { name: "report.pdf".into(), mime: "application/pdf".into(), data: b"%PDF-1".to_vec() };
+        let b = OutFile { name: "map.png".into(), mime: "image/png".into(), data: vec![0x89, 0x50] };
+        let m = new_message("me@x.it", "a@b.it", "The report", &Body::plain("here it is"), &[a, b]);
+        assert!(m.contains("Content-Type: multipart/mixed; boundary=\"pigeon-"), "{m}");
+        assert!(m.contains("filename=\"report.pdf\"") && m.contains("filename=\"map.png\""), "both files: {m}");
+        assert!(m.contains("Subject: The report") && !m.contains("Re: "), "a new subject: {m}");
+        assert!(!m.contains("In-Reply-To"), "not a reply");
     }
 
     #[test]

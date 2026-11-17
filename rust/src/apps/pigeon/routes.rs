@@ -23,6 +23,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/admin/pigeon/conversations/{id}/composed", web::post().to(h::composed))
         .route("/admin/pigeon/conversations/{id}/summary", web::get().to(h::summary))
         .route("/admin/pigeon/conversations/{id}/switches", web::put().to(h::conversation_switches))
+        .route("/admin/pigeon/files", web::post().to(h::upload))
         .route("/admin/pigeon/general", web::get().to(h::general))
         .route("/admin/pigeon/cards/{kind}/{id}", web::post().to(h::press))
         .route("/admin/pigeon/contacts", web::get().to(h::list_contacts))

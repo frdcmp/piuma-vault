@@ -33,6 +33,15 @@ fn id(d: &str) -> Json {
     json!({ "type": "string", "description": d })
 }
 
+/// Files an email attaches: each one the user (or their assistant, for them) uploaded.
+fn files_param() -> Json {
+    json!({
+        "type": "array",
+        "items": { "type": "object" },
+        "description": "Files to attach (email only): each the `file` object the upload returned (POST /admin/pigeon/files, or `pigeon.py upload <path>`), as it is. At most 10, 25 MB in all.",
+    })
+}
+
 /// (name, description, JSON schema): the agent tools' shape.
 pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
     vec![
@@ -80,6 +89,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
                 "conversation_id": id("The conversation"),
                 "text": { "type": "string", "description": "The reply's exact words, when the user gave them" },
                 "instructions": { "type": "string", "description": "What the reply should say, for Pigeon to write" },
+                "files": files_param(),
             }, "required": ["conversation_id"] }),
         ),
         (
@@ -88,6 +98,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
             json!({ "type": "object", "properties": {
                 "conversation_id": id("The conversation"),
                 "text": { "type": "string", "description": "The message's exact words, as the user saw them" },
+                "files": files_param(),
             }, "required": ["conversation_id", "text"] }),
         ),
         (
@@ -98,6 +109,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
                 "subject": { "type": "string" },
                 "text": { "type": "string", "description": "The email's text, plain" },
                 "from": { "type": "string", "description": "Which connected Gmail account, when there's more than one" },
+                "files": files_param(),
             }, "required": ["to", "subject", "text"] }),
         ),
         (
@@ -608,10 +620,14 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
         "pigeon_draft_reply" => {
             let id = uuid_arg(args, "conversation_id")?;
             let conv = own_conversation(st, user, id).await?;
+            let files = attached(user, &conv, args)?;
             if let Some(words) = text(args, "text") {
-                let aid = actions::queue(st, user, &conv.connector, "send_reply", json!({ "text": words }), Some(id), "drafted with Piuma").await?;
+                let aid = actions::queue(st, user, &conv.connector, "send_reply", with_attached(json!({ "text": words }), files), Some(id), "drafted with Piuma").await?;
                 let row = actions::get(st, aid).await?.ok_or_else(|| anyhow::anyhow!("the draft vanished"))?;
                 return Ok(json!({ "draft": actions::view(&row), "note": "A draft in the Inbox: the user sends it from there." }));
+            }
+            if files.is_some() {
+                anyhow::bail!("`files` go with `text`: the reply's exact words");
             }
             let out = agent::draft_reply(st, id, text(args, "instructions")).await?;
             let mut drafts = Vec::new();
@@ -628,15 +644,18 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
             Ok(json!({ "drafts": drafts, "note": "Drafts in the Inbox: the user sends them from there." }))
         }
         "pigeon_draft_email" => {
-            let args = json!({ "to": text(args, "to"), "subject": text(args, "subject"), "text": text(args, "text"), "from": text(args, "from") });
+            media::own_files(user, args)?;
+            let files = args.get("files").filter(|f| f.as_array().is_some_and(|l| !l.is_empty())).cloned();
+            let args = with_attached(json!({ "to": text(args, "to"), "subject": text(args, "subject"), "text": text(args, "text"), "from": text(args, "from") }), files);
             draft_email(st, user, args).await
         }
         "pigeon_send_reply" => {
             let id = uuid_arg(args, "conversation_id")?;
             let conv = own_conversation(st, user, id).await?;
             let words = text(args, "text").ok_or_else(|| anyhow::anyhow!("`text` is required: the exact words the user saw"))?;
+            let files = attached(user, &conv, args)?;
             let by = CALLER.try_with(String::clone).unwrap_or_else(|_| "an assistant".into());
-            let aid = actions::queue(st, user, &conv.connector, "send_reply", json!({ "text": words }), Some(id), &format!("sent by {by}, on the user's word")).await?;
+            let aid = actions::queue(st, user, &conv.connector, "send_reply", with_attached(json!({ "text": words }), files), Some(id), &format!("sent by {by}, on the user's word")).await?;
             let row = actions::approve(st, aid, None, BY).await?;
             // the user's words, an assistant's hand: theirs, marked as its
             if row.status == "done" {
@@ -918,6 +937,26 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
         "pigeon_connectors" => connectors_view(st, user).await,
         other => anyhow::bail!("unknown tool: {other}"),
     }
+}
+
+/// The files a reply attaches (`args.files`): only on an email conversation, only the user's own
+/// uploads. None: no files.
+fn attached(user: &str, conv: &Conversation, args: &Json) -> anyhow::Result<Option<Json>> {
+    if media::own_files(user, args)?.is_empty() {
+        return Ok(None);
+    }
+    if conv.connector != "gmail" {
+        anyhow::bail!("files go only on email: this is a {} conversation", conv.connector);
+    }
+    Ok(args.get("files").cloned())
+}
+
+/// A message's arguments, with its files when it has some.
+fn with_attached(mut args: Json, files: Option<Json>) -> Json {
+    if let Some(f) = files {
+        args["files"] = f;
+    }
+    args
 }
 
 /// A new email as a draft: the user's Send in the Inbox sends it.

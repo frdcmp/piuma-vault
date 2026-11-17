@@ -242,11 +242,36 @@ pub async fn remove(pool: &DbPool, key: &str) {
 /// user's own, whoever asks.
 pub fn own_file<'a>(user: &str, args: &'a Json) -> anyhow::Result<&'a Json> {
     let f = &args["file"];
-    let key = f["key"].as_str().unwrap_or_default();
-    if f["status"] != "stored" || !key.starts_with(&format!("pigeon/{user}/media/")) || key.contains("..") {
+    if !is_own(user, f) {
         anyhow::bail!("file: one the user uploaded to send");
     }
     Ok(f)
+}
+
+/// The most files one email carries.
+pub const MAX_FILES: usize = 10;
+
+/// The files an email carries (`args.files`, each as the upload returned it): only stored ones
+/// of this user's own, at most MAX_FILES. None given: none.
+pub fn own_files<'a>(user: &str, args: &'a Json) -> anyhow::Result<Vec<&'a Json>> {
+    let list = match args.get("files") {
+        None | Some(Json::Null) => return Ok(vec![]),
+        Some(Json::Array(list)) => list,
+        Some(_) => anyhow::bail!("files: a list of the files the upload returned"),
+    };
+    if list.len() > MAX_FILES {
+        anyhow::bail!("at most {MAX_FILES} files on one email");
+    }
+    if let Some(bad) = list.iter().find(|f| !is_own(user, f)) {
+        anyhow::bail!("files: each one a file the user uploaded to send, as the upload returned it (not {})", crate::apps::pigeon::conversations::clip(&bad.to_string(), 80));
+    }
+    Ok(list.iter().collect())
+}
+
+/// A stored file of this user's own, to send.
+fn is_own(user: &str, f: &Json) -> bool {
+    let key = f["key"].as_str().unwrap_or_default();
+    f["status"] == "stored" && key.starts_with(&format!("pigeon/{user}/media/")) && !key.contains("..")
 }
 
 /// A stored file's bytes.
@@ -540,6 +565,23 @@ pub async fn sign(pool: &DbPool, items: &mut [Json]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_email_carries_only_the_users_own_stored_files() {
+        let mine = json!({ "id": "f1", "status": "stored", "name": "a.pdf", "key": "pigeon/u1/media/outbox/2026/11/f1.pdf" });
+        assert!(own_files("u1", &json!({})).unwrap().is_empty(), "none given");
+        let one = json!({ "files": [mine] });
+        assert_eq!(own_files("u1", &one).unwrap().len(), 1);
+        let theirs = json!({ "status": "stored", "key": "pigeon/u2/media/outbox/2026/11/f2.pdf" });
+        assert!(own_files("u1", &json!({ "files": [theirs] })).is_err(), "another user's");
+        let pending = json!({ "status": "pending", "key": "pigeon/u1/media/outbox/2026/11/f3.pdf" });
+        assert!(own_files("u1", &json!({ "files": [pending] })).is_err(), "not stored");
+        let climbing = json!({ "status": "stored", "key": "pigeon/u1/media/../../u2/x.pdf" });
+        assert!(own_files("u1", &json!({ "files": [climbing] })).is_err(), "a path out");
+        assert!(own_files("u1", &json!({ "files": "a.pdf" })).is_err(), "not a list");
+        let many: Vec<Json> = (0..=MAX_FILES).map(|_| mine.clone()).collect();
+        assert!(own_files("u1", &json!({ "files": many })).is_err(), "too many");
+    }
 
     #[test]
     fn each_try_waits_longer_up_to_an_hour() {

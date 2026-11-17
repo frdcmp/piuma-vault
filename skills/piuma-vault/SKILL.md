@@ -168,6 +168,8 @@ pigeon.py names_from_whatsapp contact_id=<uuid|@slug>   # name one from WhatsApp
 pigeon.py set_contact contact_id=@alex relationship=friend slug=alex-r
 pigeon.py draft_reply conversation_id=<uuid> instructions="say I'll be late, sweetly"
 pigeon.py send_reply conversation_id=<uuid> text="…"   # only on the user's word, words they saw
+pigeon.py draft_email to=alex@example.com subject="The report" text=- attach=~/report.pdf < body.txt
+pigeon.py upload ~/report.pdf           # store a file to attach: prints its `file` object
 pigeon.py set_alerts contact_id=@alex level=all
 pigeon.py access                        # who may be told what: the catalogue, groups, grants
 pigeon.py permissions contact_id=@alex  # what counts for one person (or conversation_id=, group=)
@@ -226,6 +228,12 @@ pigeon.py mark_wrong action_id=<uuid>   # that reply told too much: its auto goe
   document, `pigeon.py file item=… file=…` saves it under `~/.cache/piuma-vault/files`
   (`to=` for elsewhere) and prints the path. Only a `stored` file can be had: `expired`
   and `gone` ones are no longer kept. `file` is the script's own, not one of the tools.
+- **Files on an email**: `attach=<path>` (once per file) on `draft_email`, or on `draft_reply`
+  and `send_reply` in an email conversation, uploads each and attaches it. `upload <path>` does
+  the upload alone and prints the `file` object; `files='[<object>, …]'` takes those as they
+  are. At most 10 files and 25 MB in all; email only (WhatsApp and Instagram replies take
+  none); a draft's card in the Inbox lists them, so say which files go when you show the text.
+  Over the API: `POST /admin/pigeon/files` (multipart `file`, `inbox.write`) → `{"file": …}`.
 - When someone asks for something they hold no permission for, the user gets a 🔑 card in
   the Inbox (answer this once, allow, no); with `ask` the answer is a draft that says what it
   uses; with `auto` it goes out only when Jev is sure they asked, for themselves and nothing

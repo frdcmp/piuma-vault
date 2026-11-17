@@ -265,63 +265,96 @@ pub async fn send(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>
     reply(r)
 }
 
+/// A file sent up (multipart: `file`, and `caption`, `width`, `height`, `seconds`), its bytes at
+/// a temporary path.
+struct Upload {
+    mime: String,
+    filename: Option<String>,
+    size: i64,
+    caption: String,
+    dims: Vec<(&'static str, u64)>,
+}
+
+/// Reads an upload's fields, the file into `tmp`: up to MAX_SEND_BYTES, not empty.
+async fn receive(form: &mut actix_multipart::Multipart, tmp: &std::path::Path) -> anyhow::Result<Upload> {
+    use futures_util::TryStreamExt;
+    use tokio::io::AsyncWriteExt;
+    let (mut caption, mut file): (String, Option<(String, Option<String>, i64)>) = (String::new(), None);
+    let mut dims: Vec<(&'static str, u64)> = Vec::new();
+    while let Some(mut field) = form.try_next().await.map_err(|e| anyhow::anyhow!("the upload: {e}"))? {
+        let name = field.name().to_string();
+        if name == "file" {
+            let filename = field.content_disposition().get_filename().map(str::to_string).filter(|n| !n.trim().is_empty());
+            let mime = field.content_type().map(|m| m.essence_str().to_string());
+            let mut out = tokio::fs::File::create(tmp).await?;
+            let mut size: i64 = 0;
+            while let Some(chunk) = field.try_next().await.map_err(|e| anyhow::anyhow!("the upload: {e}"))? {
+                size += chunk.len() as i64;
+                if size > media::MAX_SEND_BYTES {
+                    anyhow::bail!("the file is over {} MB", media::MAX_SEND_BYTES >> 20);
+                }
+                out.write_all(&chunk).await?;
+            }
+            out.flush().await?;
+            file = Some((mime.unwrap_or_else(|| "application/octet-stream".into()), filename, size));
+        } else {
+            let mut value = Vec::new();
+            while let Some(chunk) = field.try_next().await.map_err(|e| anyhow::anyhow!("the upload: {e}"))? {
+                value.extend_from_slice(&chunk);
+                if value.len() > 8192 {
+                    anyhow::bail!("{name} is too long");
+                }
+            }
+            let value = String::from_utf8_lossy(&value).to_string();
+            let dim = match name.as_str() {
+                "caption" => {
+                    caption = value;
+                    continue;
+                }
+                "width" => "width",
+                "height" => "height",
+                "seconds" => "seconds",
+                _ => continue,
+            };
+            if let Ok(n) = value.trim().parse::<f64>() {
+                dims.push((dim, n.round().max(0.0) as u64));
+            }
+        }
+    }
+    let (mime, filename, size) = file.ok_or_else(|| anyhow::anyhow!("no file in the upload"))?;
+    if size == 0 {
+        anyhow::bail!("the file is empty");
+    }
+    Ok(Upload { mime, filename, size, caption, dims })
+}
+
+/// A file to attach to an email, sent up (multipart `file`): stored as the user's, not sent. The
+/// answer's `file` goes as it is into `files` on pigeon_draft_email, pigeon_draft_reply or
+/// pigeon_send_reply.
+pub async fn upload(st: web::Data<AppState>, u: InboxWriter, mut form: actix_multipart::Multipart) -> HttpResponse {
+    let user = &u.0.user_id;
+    let tmp = std::env::temp_dir().join(format!("pigeon-upload-{}", Uuid::new_v4()));
+    let r: anyhow::Result<Json> = async {
+        let up = receive(&mut form, &tmp).await?;
+        let entry = media::put_outgoing(&st.pool, user, "outbox", &up.mime, up.filename.as_deref(), &tmp, up.size, &up.dims).await?;
+        Ok(json!({ "file": entry }))
+    }
+    .await;
+    let _ = tokio::fs::remove_file(&tmp).await;
+    reply(r)
+}
+
 /// The user's photo, video, audio or file, from the Inbox (multipart: `file`, and `caption`,
 /// `width`, `height`, `seconds`): stored, then sent at once on the chat's channel, as theirs.
 pub async fn send_file(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>, mut form: actix_multipart::Multipart) -> HttpResponse {
-    use futures_util::TryStreamExt;
-    use tokio::io::AsyncWriteExt;
     let user = &u.0.user_id;
     let id = path.into_inner();
     let tmp = std::env::temp_dir().join(format!("pigeon-send-{}", Uuid::new_v4()));
     let r: anyhow::Result<Json> = async {
         let conv = tools::own_conversation(&st, user, id).await?;
-        let (mut caption, mut file): (String, Option<(String, Option<String>, i64)>) = (String::new(), None);
-        let mut dims: Vec<(&str, u64)> = Vec::new();
-        while let Some(mut field) = form.try_next().await.map_err(|e| anyhow::anyhow!("the upload: {e}"))? {
-            let name = field.name().to_string();
-            if name == "file" {
-                let filename = field.content_disposition().get_filename().map(str::to_string).filter(|n| !n.trim().is_empty());
-                let mime = field.content_type().map(|m| m.essence_str().to_string());
-                let mut out = tokio::fs::File::create(&tmp).await?;
-                let mut size: i64 = 0;
-                while let Some(chunk) = field.try_next().await.map_err(|e| anyhow::anyhow!("the upload: {e}"))? {
-                    size += chunk.len() as i64;
-                    if size > media::MAX_SEND_BYTES {
-                        anyhow::bail!("the file is over {} MB", media::MAX_SEND_BYTES >> 20);
-                    }
-                    out.write_all(&chunk).await?;
-                }
-                out.flush().await?;
-                file = Some((mime.unwrap_or_else(|| "application/octet-stream".into()), filename, size));
-            } else {
-                let mut value = Vec::new();
-                while let Some(chunk) = field.try_next().await.map_err(|e| anyhow::anyhow!("the upload: {e}"))? {
-                    value.extend_from_slice(&chunk);
-                    if value.len() > 8192 {
-                        anyhow::bail!("{name} is too long");
-                    }
-                }
-                let value = String::from_utf8_lossy(&value).to_string();
-                let dim = match name.as_str() {
-                    "caption" => {
-                        caption = value;
-                        continue;
-                    }
-                    "width" => "width",
-                    "height" => "height",
-                    "seconds" => "seconds",
-                    _ => continue,
-                };
-                if let Ok(n) = value.trim().parse::<f64>() {
-                    dims.push((dim, n.round().max(0.0) as u64));
-                }
-            }
-        }
-        let (mime, filename, size) = file.ok_or_else(|| anyhow::anyhow!("no file to send"))?;
-        if size == 0 {
-            anyhow::bail!("the file is empty");
-        }
-        let entry = media::put_outgoing(&st.pool, user, &conv.connector, &mime, filename.as_deref(), &tmp, size, &dims).await?;
+        let up = receive(&mut form, &tmp).await?;
+        let (caption, dims) = (up.caption, up.dims);
+        let entry = media::put_outgoing(&st.pool, user, &conv.connector, &up.mime, up.filename.as_deref(), &tmp, up.size, &dims).await?;
         let key = entry["key"].as_str().unwrap_or_default().to_string();
         let row = actions::direct(&st, user, &conv.connector, "send_file", json!({ "file": entry, "caption": caption.trim() }), Some(id), "user (Inbox)").await;
         let row = match row {

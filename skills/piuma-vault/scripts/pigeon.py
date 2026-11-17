@@ -11,17 +11,24 @@ one's arguments. A value is JSON when it parses (numbers, true, [..], {..}),
 else text; `-` reads it from stdin. Where a contact is expected (contact_id,
 merge_id), `@slug` works too.
 
-One command is not a tool: `pigeon.py file item=<message id> file=<file id>
+Two commands are not tools: `pigeon.py file item=<message id> file=<file id>
 [to=<folder or path>]` saves a message's photo, video, voice note or document
 (the ids are in `conversation` and `search`, under each message's `files`) and
-prints where it is.
+prints where it is; `pigeon.py upload <path>` stores a file of this machine to
+attach to an email and prints its `file` object.
+
+To attach files to an email (draft_email, draft_reply or send_reply on an email
+conversation), give `attach=<path>` once per file: each is uploaded and goes in
+`files`. Or pass the objects `upload` printed: `files='[{...}, {...}]'`.
 """
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import re
 import sys
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -69,6 +76,36 @@ def call(method: str, path: str, body=None):
         with urllib.request.urlopen(req, timeout=180) as r:
             raw = r.read()
             return json.loads(raw) if raw else None
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace")
+        try:
+            detail = json.loads(detail).get("error", detail)
+        except ValueError:
+            pass
+        die(f"{e.code}: {detail}")
+    except urllib.error.URLError as e:
+        die(f"can't reach the vault: {e.reason}")
+
+
+def upload(path: str) -> dict:
+    """A file of this machine, stored in the vault to attach to an email: its `file` object."""
+    p = Path(path).expanduser()
+    if not p.is_file():
+        die(f"no file {p}")
+    mime = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
+    boundary = f"pigeon-{uuid.uuid4().hex}"
+    name = p.name.replace('"', "_").replace("\r", "").replace("\n", "")
+    head = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\n"
+            f"Content-Type: {mime}\r\n\r\n").encode()
+    body = head + p.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
+    req = urllib.request.Request(API + "/admin/pigeon/files", data=body, method="POST", headers={
+        "x-api-key": KEY,
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+        "User-Agent": "piuma-vault-skill/1.0 (+claude-code)",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=600) as r:
+            return json.loads(r.read())["file"]
     except urllib.error.HTTPError as e:
         detail = e.read().decode(errors="replace")
         try:
@@ -170,12 +207,19 @@ def main(argv: list[str]):
         print(__doc__.strip())
         print("\nUsage: pigeon.py tools [name] | pigeon.py <tool> [key=value ...] [--json '{...}']")
         print("       pigeon.py file item=<message id> file=<file id> [to=<folder or path>]")
+        print("       pigeon.py upload <path>")
         return
     API, KEY = load_creds()
     if argv[0] == "tools":
         show_tools(argv[1] if len(argv) > 1 else None)
         return
+    if argv[0] == "upload":
+        if len(argv) != 2:
+            die("upload <path>")
+        print(json.dumps(upload(argv[1]), ensure_ascii=False))
+        return
     name, args, rest = tool_name(argv[0]), {}, argv[1:]
+    attach: list[str] = []
     while rest:
         a = rest.pop(0)
         if a == "--json":
@@ -185,6 +229,8 @@ def main(argv: list[str]):
             if not isinstance(extra, dict):
                 die("--json takes a JSON object")
             args.update(extra)
+        elif a.startswith("attach="):
+            attach.append(a.split("=", 1)[1])
         elif "=" in a:
             k, v = a.split("=", 1)
             args[k] = value(v)
@@ -196,6 +242,11 @@ def main(argv: list[str]):
     if argv[0] == "file":
         save_file(args)
         return
+    if attach:
+        missing = [a for a in attach if not Path(a).expanduser().is_file()]
+        if missing:
+            die(f"no file {', '.join(missing)}")
+        args["files"] = list(args.get("files") or []) + [upload(a) for a in attach]
     out = call("POST", f"/admin/pigeon/tools/{name}", args)
     print(json.dumps(out, indent=2, ensure_ascii=False))
 

@@ -122,11 +122,17 @@ pub async fn gmail(token: &str, method: &str, path: &str, query: &[(&str, String
     Ok(Got::Ok(serde_json::from_str(&text).unwrap_or_else(|_| json!({}))))
 }
 
-/// Send a whole message (RFC 822, attachments and all) in `thread`, through the upload endpoint:
+/// Send a whole message (RFC 822, attachments and all), in `thread` or as a new one, through the
+/// upload endpoint:
 /// a message with files is larger than a JSON body takes.
-pub async fn send_upload(token: &str, thread: &str, message: String) -> anyhow::Result<Json> {
+pub async fn send_upload(token: &str, thread: Option<&str>, message: String) -> anyhow::Result<Json> {
     let boundary = format!("pigeon-{}", uuid::Uuid::new_v4().simple());
-    let mut body = format!("--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{}\r\n", json!({ "threadId": thread }));
+    // a reply goes in its thread; a new email starts its own
+    let meta = match thread {
+        Some(t) => json!({ "threadId": t }),
+        None => json!({}),
+    };
+    let mut body = format!("--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{meta}\r\n");
     body.push_str(&format!("--{boundary}\r\nContent-Type: message/rfc822\r\n\r\n"));
     body.push_str(&message);
     body.push_str(&format!("\r\n--{boundary}--\r\n"));

@@ -14,7 +14,13 @@ import {
 } from "@/ui";
 import { usePigeonAccess, usePressPigeonCard } from "../../../queries";
 import { formatTime, timeAgo } from "../../../utils/dateTime";
-import { errorText, placePoint, placeUrl, usesLine } from "./inboxText";
+import {
+	errorText,
+	fileSize,
+	placePoint,
+	placeUrl,
+	usesLine,
+} from "./inboxText";
 
 const MODES = [
 	{ value: "ask", label: "Ask me" },
@@ -106,6 +112,7 @@ function PigeonCard({ card, conversationId }) {
 	const [allowing, setAllowing] = useState(false);
 	const uses = card.kind === "draft" ? usesLine(card.data?.used) : "";
 	const place = card.kind === "draft" ? card.data?.place : null;
+	const files = card.kind === "draft" ? (card.data?.files ?? []) : [];
 
 	const send = (button, text) =>
 		press.mutate(
@@ -164,6 +171,16 @@ function PigeonCard({ card, conversationId }) {
 							</a>
 							{place.at ? ` (${formatTime(place.at)})` : ""}. The latest your
 							phone told goes.
+						</div>
+					) : null}
+					{files.length ? (
+						<div className="pigeon-card-label">
+							📎 With{" "}
+							{files
+								.map((f) =>
+									[f.name, fileSize(f.size)].filter(Boolean).join(" · "),
+								)
+								.join(", ")}
 						</div>
 					) : null}
 					{uses ? (

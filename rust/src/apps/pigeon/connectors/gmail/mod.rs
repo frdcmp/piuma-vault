@@ -198,23 +198,18 @@ impl Connector for Gmail {
         let connection = connection.ok_or_else(|| anyhow::anyhow!("the conversation has no Gmail account"))?;
         let token = api::access_token(st, connection).await?;
         match action {
-            "send_reply" => send_reply(st, user, connection, &token, conv, &thread, need_str(args, "text")?, None).await,
+            "send_reply" => {
+                let files = attachments(st, user, args).await?;
+                send_reply(st, user, connection, &token, conv, &thread, need_str(args, "text")?, files).await
+            }
             "send_file" => {
                 let f = media::own_file(user, args)?;
                 if f["size"].as_i64().unwrap_or(0) > MAX_ATTACHMENT {
                     anyhow::bail!("Gmail takes files up to {} MB", MAX_ATTACHMENT >> 20);
                 }
-                let data = media::bytes(&st.pool, f["key"].as_str().unwrap_or_default()).await?;
-                let file = parse::OutFile {
-                    name: f["name"].as_str().map(str::to_string).unwrap_or_else(|| {
-                        let key = f["key"].as_str().unwrap_or_default();
-                        key.rsplit('/').next().unwrap_or("file").to_string()
-                    }),
-                    mime: f["mime"].as_str().unwrap_or("application/octet-stream").to_string(),
-                    data,
-                };
+                let file = out_file(st, f).await?;
                 let caption = args["caption"].as_str().unwrap_or_default().trim();
-                send_reply(st, user, connection, &token, conv, &thread, caption, Some((file, f))).await
+                send_reply(st, user, connection, &token, conv, &thread, caption, vec![(file, f.clone())]).await
             }
             "archive" | "mark_read" | "trash" => {
                 // one message of the thread, when named (and it is of this thread), or all of it
@@ -552,10 +547,44 @@ async fn store(st: &State, c: &Conn<'_>, msg: &Json, triage: bool) -> anyhow::Re
 
 /// A new email to one address, from the connected account (`from` picks one when there are more).
 /// Stored as Pigeon's item of the new thread, with the address as who the conversation is with.
+/// The files an email attaches (`args.files`, ones the user uploaded), read from storage: up to
+/// Gmail's size, all together.
+async fn attachments(st: &State, user: &str, args: &Json) -> anyhow::Result<Vec<(parse::OutFile, Json)>> {
+    let files = media::own_files(user, args)?;
+    let too_big = |total: i64| total > MAX_ATTACHMENT;
+    if too_big(files.iter().map(|f| f["size"].as_i64().unwrap_or(0)).sum()) {
+        anyhow::bail!("Gmail takes up to {} MB of files on one email", MAX_ATTACHMENT >> 20);
+    }
+    let mut out = Vec::with_capacity(files.len());
+    for f in files {
+        out.push((out_file(st, f).await?, f.clone()));
+    }
+    if too_big(out.iter().map(|(o, _)| o.data.len() as i64).sum()) {
+        anyhow::bail!("Gmail takes up to {} MB of files on one email", MAX_ATTACHMENT >> 20);
+    }
+    Ok(out)
+}
+
+/// A stored file, as an attachment: its name (else its key's), its type, its bytes.
+async fn out_file(st: &State, f: &Json) -> anyhow::Result<parse::OutFile> {
+    let key = f["key"].as_str().unwrap_or_default();
+    Ok(parse::OutFile {
+        name: f["name"].as_str().map(str::to_string).unwrap_or_else(|| key.rsplit('/').next().unwrap_or("file").to_string()),
+        mime: f["mime"].as_str().unwrap_or("application/octet-stream").to_string(),
+        data: media::bytes(&st.pool, key).await?,
+    })
+}
+
+/// The text a sent email is kept with: its words, then each file in words.
+fn kept_body(text: &str, entries: &[Json]) -> (String, Json) {
+    (entries.iter().fold(text.to_string(), |b, entry| media::body_with(&b, entry)), json!(entries))
+}
+
 async fn send_new(st: &State, user: &str, args: &Json) -> anyhow::Result<Json> {
     let to = need_str(args, "to")?.to_lowercase();
     let subject = need_str(args, "subject")?;
     let text = need_str(args, "text")?;
+    let (attached, entries): (Vec<parse::OutFile>, Vec<Json>) = attachments(st, user, args).await?.into_iter().unzip();
     let one_line = |v: &str| !v.contains(['\r', '\n']);
     if !one_line(&to) || !one_line(subject) || to.contains([',', ';', '<', '>', ' ']) || to.split('@').filter(|p| !p.is_empty()).count() != 2 {
         anyhow::bail!("`to` must be one email address and `subject` one line");
@@ -576,8 +605,13 @@ async fn send_new(st: &State, user: &str, args: &Json) -> anyhow::Result<Json> {
     };
     let token = api::access_token(st, connection).await?;
     let sig = signature(&token, &account).await;
-    let mime = parse::new_raw(&account, &to, subject, &parse::compose(text, sig.as_deref(), None));
-    let sent = api::gmail_ok(&token, "POST", "/messages/send", &[], Some(&json!({ "raw": mime }))).await?;
+    let out = parse::compose(text, sig.as_deref(), None);
+    let sent = if attached.is_empty() {
+        api::gmail_ok(&token, "POST", "/messages/send", &[], Some(&json!({ "raw": parse::new_raw(&account, &to, subject, &out) }))).await?
+    } else {
+        api::send_upload(&token, None, parse::new_message(&account, &to, subject, &out, &attached)).await?
+    };
+    let (body, media) = kept_body(text, &entries);
     let mid = sent["id"].as_str().unwrap_or_default().to_string();
     let thread = sent["threadId"].as_str().unwrap_or(&mid).to_string();
     let inc = Incoming {
@@ -592,8 +626,8 @@ async fn send_new(st: &State, user: &str, args: &Json) -> anyhow::Result<Json> {
         sender: Some(account.clone()),
         sender_name: None,
         subject: Some(subject.to_string()),
-        body: text.to_string(),
-        media: json!([]),
+        body,
+        media,
         raw: json!({ "labels": ["SENT"], "to": [to] }),
         at: Utc::now(),
         counterpart: Some((to.clone(), None)),
@@ -637,7 +671,8 @@ async fn signature(token: &str, account: &str) -> Option<String> {
 
 /// Reply to the last message from them in the thread, threaded (In-Reply-To, References,
 /// threadId); stored at once as sent by Pigeon, so the next poll finds it there.
-/// `file`: one the user uploaded (`media::put_outgoing`), attached, and its entry for the message.
+/// `files`: ones the user uploaded (`media::put_outgoing`), attached, each with its entry for the
+/// message.
 #[allow(clippy::too_many_arguments)]
 async fn send_reply(
     st: &State,
@@ -647,7 +682,7 @@ async fn send_reply(
     conv: Uuid,
     thread: &str,
     text: &str,
-    file: Option<(parse::OutFile, &Json)>,
+    files: Vec<(parse::OutFile, Json)>,
 ) -> anyhow::Result<Json> {
     let account: String = sqlx::query_scalar("SELECT account FROM db_pigeon_connections WHERE id = $1").bind(connection).fetch_one(&st.pool).await?;
     #[allow(clippy::type_complexity)]
@@ -679,28 +714,23 @@ async fn send_reply(
     let quote = parse::Quote { said: format!("On {when}, {who} wrote:"), html: their_page.as_deref(), text: &their_text };
     let sig = signature(token, &account).await;
     let out = parse::compose(text, sig.as_deref(), Some(&quote));
-    let (body, media) = match &file {
-        Some((_, entry)) => (media::body_with(text, entry), json!([entry])),
-        None => (text.to_string(), json!([])),
-    };
-    let sent = match file {
-        None => {
-            let mime = parse::reply_raw(&account, &to, &cc, subject.as_deref().unwrap_or(""), raw["message_id"].as_str(), raw["references"].as_str(), &out);
-            api::gmail_ok(token, "POST", "/messages/send", &[], Some(&json!({ "raw": mime, "threadId": thread }))).await?
-        }
-        Some((attachment, _)) => {
-            let message = parse::reply_message(
-                &account,
-                &to,
-                &cc,
-                subject.as_deref().unwrap_or(""),
-                raw["message_id"].as_str(),
-                raw["references"].as_str(),
-                &out,
-                &[attachment],
-            );
-            api::send_upload(token, thread, message).await?
-        }
+    let (attached, entries): (Vec<parse::OutFile>, Vec<Json>) = files.into_iter().unzip();
+    let (body, media) = kept_body(text, &entries);
+    let sent = if attached.is_empty() {
+        let mime = parse::reply_raw(&account, &to, &cc, subject.as_deref().unwrap_or(""), raw["message_id"].as_str(), raw["references"].as_str(), &out);
+        api::gmail_ok(token, "POST", "/messages/send", &[], Some(&json!({ "raw": mime, "threadId": thread }))).await?
+    } else {
+        let message = parse::reply_message(
+            &account,
+            &to,
+            &cc,
+            subject.as_deref().unwrap_or(""),
+            raw["message_id"].as_str(),
+            raw["references"].as_str(),
+            &out,
+            &attached,
+        );
+        api::send_upload(token, Some(thread), message).await?
     };
     let mid = sent["id"].as_str().unwrap_or_default().to_string();
     let inc = Incoming {

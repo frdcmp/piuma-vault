@@ -86,7 +86,7 @@ pub fn describe(row: &actions::ActionRow) -> String {
             "" => "📍 your place, as a pin".to_string(),
             text => format!("«{text}» 📍"),
         },
-        ("reply", _) => format!("«{}»", s("text")),
+        ("reply", _) => format!("«{}»{}", s("text"), attached_line(a)),
         (_, "create_task") => {
             let due = a["due"].as_str().map(|d| format!(" · {}", short_when(d))).unwrap_or_default();
             format!("📌 {}{due}", s("title"))
@@ -171,6 +171,26 @@ async fn press_tidy(st: &AppState, user: &str, row: actions::ActionRow, button: 
     Ok(outcome)
 }
 
+/// The files a draft attaches, in words (" 📎 a.pdf, b.png"); none: nothing.
+fn attached_line(args: &Json) -> String {
+    let names: Vec<String> = attached(args).iter().map(|f| f["name"].as_str().unwrap_or("file").to_string()).collect();
+    if names.is_empty() {
+        String::new()
+    } else {
+        format!(" 📎 {}", names.join(", "))
+    }
+}
+
+/// The files a draft attaches, as its card shows them: name, type, size.
+fn attached(args: &Json) -> Vec<Json> {
+    args["files"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|f| json!({ "name": f["name"].as_str().unwrap_or("file"), "mime": f["mime"], "size": f["size"] }))
+        .collect()
+}
+
 /// An action as a card: ✍ a reply to send, 💡 something to add.
 fn action_card(row: &actions::ActionRow) -> Card {
     if row.kind == "reply" {
@@ -185,9 +205,9 @@ fn action_card(row: &actions::ActionRow) -> Card {
             free_text: false,
             buttons: vec![button("✅ Send", "y"), button("🗑 Drop", "n")],
             created_at: row.created_at,
-            data: match (used.is_empty(), row.args.get("place").filter(|p| p.is_object())) {
-                (true, None) => None,
-                (_, place) => Some(json!({ "used": used, "place": place })),
+            data: match (used.is_empty(), row.args.get("place").filter(|p| p.is_object()), attached(&row.args)) {
+                (true, None, files) if files.is_empty() => None,
+                (_, place, files) => Some(json!({ "used": used, "place": place, "files": files })),
             },
         };
     }
