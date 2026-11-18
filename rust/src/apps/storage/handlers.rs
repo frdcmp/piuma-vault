@@ -167,9 +167,10 @@ pub async fn app_update_manifest(
     }
 }
 
-// The phone apps whose users have no vault account (Tankō, a friend's manga shelf):
-// their update manifest is read with no sign-in, at /public/app-update/<app>.
-const PUBLIC_UPDATE_APPS: [&str; 1] = ["tanko"];
+// The phone apps whose users have no vault account (Tankō, a friend's manga shelf; Family
+// Tree, the family's): their update manifest is read with no sign-in, at
+// /public/app-update/<app>.
+const PUBLIC_UPDATE_APPS: [&str; 2] = ["tanko", "family-tree"];
 
 // How long the APK link in a public manifest is good for.
 const PUBLIC_APK_LINK_SECS: i64 = 3600;
