@@ -71,6 +71,8 @@ png = "0.17"
 # Pigeon's profile pictures, pixelated (apps/pigeon/avatars.rs)
 # Pigeon's emails shown as sent, made safe (apps/pigeon/connectors/gmail/parse.rs)
 ammonia = "4"
+scraper = { version = "0.29", default-features = false }
+ego-tree = "0.11"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 chacha20poly1305 = "0.10"
 pgvector = { version = "0.4", features = ["sqlx"] }

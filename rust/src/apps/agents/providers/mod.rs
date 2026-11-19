@@ -50,7 +50,7 @@ fn image_unavailable(url: &str) -> Value {
 async fn inline_images(messages: &[Value]) -> Vec<Value> {
     // SSRF guard: the image URL is model/content-controlled, so reject any
     // private/loopback/metadata target and never follow redirects (a 3xx could
-    // bounce to an internal host after the check). Mirrors `web_fetch`.
+    // bounce to an internal host after the check).
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(12))
         .redirect(reqwest::redirect::Policy::none())
@@ -82,7 +82,7 @@ async fn inline_images(messages: &[Value]) -> Vec<Value> {
                         continue;
                     }
                 };
-                if let Err(e) = crate::apps::agents::tools::web::guard_public_url(&parsed).await {
+                if let Err(e) = crate::apps::web_page::guard_public_url(&parsed).await {
                     log::warn!("inline_images: refusing {url}: {e}");
                     *b = image_unavailable(url);
                     continue;

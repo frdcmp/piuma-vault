@@ -21,6 +21,7 @@ pub mod sprites;
 pub mod transcription;
 pub mod recorder;
 pub mod web_search;
+pub mod web_page;
 pub mod db_dump;
 pub mod image_gen;
 pub mod voice;
