@@ -11,10 +11,13 @@
 //!     the user is `cards`, on the phone by `alerts`
 //!   - what Pigeon may tell the people who write: the catalogue of tools and levels (`offer`), who
 //!     holds which permission, alone or through the user's groups (`access`), what Pigeon knows
-//!     right now (`facts`: the user's place, pass-ons), and the telling itself (`tell`: Jev says
+//!     right now (`facts`: the user's place), and the telling itself (`tell`: Jev says
 //!     what's asked, the responder is given only what the chat's permission reaches, a reply that
 //!     went out on its own is read back first); one of the tools is the user's own notes, given
 //!     note by note or folder by folder (`shared`: reading them, and only them)
+//!   - the user's instructions (`instructions`): their own words on how Pigeon writes and what it
+//!     does, for every chat, on one person (their note on them) and for one chat; the most
+//!     specific wins
 //!   - what Pigeon knows about a person is notes in the vault, in their folder in `/contacts`
 //!     (`folder`: Pigeon's memory and styles next to the user's own notes, which it reads too;
 //!     `people` writes them). Nothing there is ever told
@@ -46,6 +49,7 @@ pub mod facts;
 pub mod folder;
 pub mod handlers;
 pub mod health;
+pub mod instructions;
 pub mod items;
 pub mod listen;
 pub mod mcp_server;

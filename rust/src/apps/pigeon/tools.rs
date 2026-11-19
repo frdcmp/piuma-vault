@@ -19,7 +19,7 @@ use crate::apps::pigeon::conversations::{self, Conversation};
 use crate::apps::pigeon::policy::Policy;
 use crate::apps::pigeon::state::{AppState, State};
 use crate::apps::pigeon::access::{self, Holder, Target, What};
-use crate::apps::pigeon::{actions, agent, alerts, away, cards, confirm, facts, items, media, people, policy, rules, tell};
+use crate::apps::pigeon::{actions, agent, alerts, away, cards, confirm, facts, instructions, items, media, people, policy, rules, tell};
 
 /// Who Piuma's decisions are logged as.
 const BY: &str = "piuma";
@@ -66,7 +66,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
         ),
         (
             "pigeon_conversation",
-            "One Inbox conversation: its recent messages, a summary, the person (the user's note, what Pigeon knows, how the user writes to them), its policies and what waits there. A message's photos, videos, voice notes and documents are its `files`: what each is, a voice note's words, and its id (the file itself is fetched by the message's id and the file's).",
+            "One Inbox conversation: its recent messages, a summary, the user's instructions for it, the person (the user's note, what Pigeon knows, how the user writes to them), its policies and what waits there. A message's photos, videos, voice notes and documents are its `files`: what each is, a voice note's words, and its id (the file itself is fetched by the message's id and the file's).",
             json!({ "type": "object", "properties": {
                 "conversation_id": id("From pigeon_inbox or pigeon_search"),
                 "items": { "type": "integer", "description": "How many recent messages, default 20" },
@@ -221,8 +221,27 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
         ),
         (
             "pigeon_set_note",
-            "The user's own note on a person (who they are, how to write to them, what never to agree to). Pigeon's replies follow it above everything. Empty clears it.",
+            "The user's own note on a person (who they are, how to write to them, what never to agree to): their instructions for Pigeon at the person's level (pigeon_instructions), followed in every chat with them. Empty clears it.",
             json!({ "type": "object", "properties": { "contact_id": id("From pigeon_contacts or pigeon_conversation"), "note": { "type": "string" } }, "required": ["contact_id", "note"] }),
+        ),
+        (
+            "pigeon_instructions",
+            "The user's instructions for Pigeon: their own words on how it writes and what it does, read every time it works in a chat (a reply, \
+             a draft, what needs the user). `general`: for every chat. With `conversation_id`, also what counts in that chat: `person` (the \
+             user's note on its person, pigeon_set_note) and `chat` (its own). Where they disagree the most specific wins: the chat's, then \
+             the person's, then the general ones; a group chat has the general ones and its own.",
+            json!({ "type": "object", "properties": { "conversation_id": id("A chat, to read what counts in it") } }),
+        ),
+        (
+            "pigeon_set_instructions",
+            "Set the user's instructions for Pigeon, in their own words (\"always answer in English\", \"keep it short and warm\"): for one chat \
+             or group chat (`conversation_id`), or for every chat (no id). `text` replaces what was there; empty clears it. For one person in \
+             every chat with them, it's their note: pigeon_set_note. Instructions never let Pigeon tell more about the user (their place, \
+             calendar, notes): that is a permission, pigeon_grant. Only on the user's word.",
+            json!({ "type": "object", "properties": {
+                "conversation_id": id("Only in this chat; none: for every chat"),
+                "text": { "type": "string", "description": "The instructions, whole" },
+            }, "required": ["text"] }),
         ),
         (
             "pigeon_merge_contacts",
@@ -416,8 +435,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
         (
             "pigeon_facts",
             "What Pigeon knows about the user right now: `facts` (their place, written by the phone, or anything said about themselves: told \
-             to whoever holds the tool's permission, at their level) and `passons` (what the user left for one person or one chat to hear \
-             when they ask).",
+             to whoever holds the tool's permission, at their level).",
             json!({ "type": "object", "properties": {} }),
         ),
         (
@@ -425,29 +443,16 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
             "Write what Pigeon knows about the user for a key (the latest replaces the one before): `location` is their place, said at each \
              level it's known at (`levels`: {\"country\": \"Japan\", \"city\": \"Tokyo\", \"area\": \"Shibuya, Tokyo\", \"exact\": \"…\"}: \
              people are told it only up to the level they hold, so leave out what the user didn't say). `until` or `minutes` makes it end by \
-             itself. Or forget one: `fact_id` with `delete: true` (a fact or a pass-on, from pigeon_facts). Only on the user's word.",
+             itself. Or forget one: `fact_id` with `delete: true` (from pigeon_facts). Only on the user's word.",
             json!({ "type": "object", "properties": {
                 "key": { "type": "string", "description": "The tool it's for (pigeon_access's catalogue): location" },
                 "levels": { "type": "object", "description": "It, said at each level: the tool's level names to words" },
                 "value": { "type": "object", "description": "Anything more to keep with it (a place's lat, lon)" },
                 "until": { "type": "string", "description": "When it stops being true, ISO 8601 with the offset" },
                 "minutes": { "type": "integer", "description": "Or: true for this many minutes" },
-                "fact_id": id("With delete: the fact or pass-on to forget"),
+                "fact_id": id("With delete: the fact to forget"),
                 "delete": { "type": "boolean" },
             } }),
-        ),
-        (
-            "pigeon_passon",
-            "Leave something for one person (contact_id) or one chat (conversation_id) to hear when they ask (\"if Marco asks tonight, we're \
-             at the ramen place\"): `text` in the user's words. When they ask, Pigeon writes the reply with it as a draft for the user (on \
-             its own only for who holds passon.use.auto); once told it's gone, and `until` or `minutes` ends it unsaid. Only on the user's word.",
-            json!({ "type": "object", "properties": {
-                "contact_id": id("For this person"),
-                "conversation_id": id("Or for this chat"),
-                "text": { "type": "string", "description": "What they should hear" },
-                "until": { "type": "string", "description": "Until when it holds, ISO 8601 with the offset" },
-                "minutes": { "type": "integer", "description": "Or: for this many minutes" },
-            }, "required": ["text"] }),
         ),
         (
             "pigeon_try_permission",
@@ -484,7 +489,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
 const READS: &[&str] = &[
     "pigeon_inbox", "pigeon_search", "pigeon_conversation", "pigeon_pending", "pigeon_rules", "pigeon_rule_runs",
     "pigeon_actions", "pigeon_contacts", "pigeon_policies", "pigeon_connectors", "pigeon_access", "pigeon_permissions", "pigeon_shared_notes", "pigeon_groups",
-    "pigeon_tool_uses", "pigeon_facts", "pigeon_try_permission",
+    "pigeon_tool_uses", "pigeon_facts", "pigeon_try_permission", "pigeon_instructions",
 ];
 
 /// The tools that decide who may be told what: their own scope, `inbox.access`.
@@ -768,6 +773,14 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
             let input: people::ContactInput = serde_json::from_value(args.clone()).map_err(|e| anyhow::anyhow!("arguments: {e}"))?;
             people::set_contact(st, user, input).await
         }
+        "pigeon_instructions" => instructions::view(st, user, opt_uuid(args, "conversation_id")?).await,
+        "pigeon_set_instructions" => {
+            let words = args.get("text").and_then(Json::as_str).ok_or_else(|| anyhow::anyhow!("`text` is required (empty: none)"))?;
+            match opt_uuid(args, "conversation_id")? {
+                Some(id) => Ok(json!({ "conversation_id": id, "instructions": instructions::set_chat(st, user, id, words).await? })),
+                None => Ok(json!({ "instructions": instructions::set_general(st, user, words).await? })),
+            }
+        }
         "pigeon_set_note" => {
             let id = uuid_arg(args, "contact_id")?;
             let note = text(args, "note");
@@ -920,13 +933,7 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
             let key = text(args, "key").ok_or_else(|| anyhow::anyhow!("`key` is required: location"))?;
             let (value, levels) = (args.get("value").unwrap_or(&Json::Null), args.get("levels").unwrap_or(&Json::Null));
             let f = facts::set(st, user, key, value, levels, text(args, "source").unwrap_or("user"), until_arg(args)?).await?;
-            Ok(json!({ "fact": facts::views(&st.pool, &[f]).await?.pop() }))
-        }
-        "pigeon_passon" => {
-            let h = holder_arg(st, user, args).await?;
-            let words = text(args, "text").ok_or_else(|| anyhow::anyhow!("`text` is required: what they should hear"))?;
-            let f = facts::leave(st, user, h, words, until_arg(args)?).await?;
-            Ok(json!({ "fact": facts::views(&st.pool, &[f]).await?.pop() }))
+            Ok(json!({ "fact": facts::views(&[f]).pop() }))
         }
         "pigeon_try_permission" => {
             let h = holder_arg(st, user, args).await?;

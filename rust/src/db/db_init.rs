@@ -1178,7 +1178,8 @@ const TABLES: &[TableDefinition] = &[
     // A thread on a channel. `attention` is what the last triage said it needs
     // (reply / action / fyi), cleared when handled; `needs_note` why it needs the
     // user when nothing else says it (the ✋ card); `triage_due_at` queues the next
-    // triage (debounced); `window_until` is a channel's reply window.
+    // triage (debounced); `window_until` is a channel's reply window; `instructions`
+    // the user's own words for Pigeon in this chat (`apps::pigeon::instructions`).
     TableDefinition {
         name: "db_pigeon_conversations",
         sql: r#"
@@ -1204,6 +1205,7 @@ const TABLES: &[TableDefinition] = &[
                 read_at TIMESTAMPTZ,
                 summary TEXT,
                 summary_at TIMESTAMPTZ,
+                instructions TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE (user_id, connector, external_id)
@@ -1604,11 +1606,10 @@ const TABLES: &[TableDefinition] = &[
         ],
     },
     // What Pigeon knows about the user right now, for the tools that tell people
-    // (`apps::pigeon::facts`): `key` (location, passon, anything a tool reads),
-    // `value` (JSON) and `levels` (the same fact said at each of the tool's levels:
-    // {"country": "Japan", "city": "Tokyo", …}). `for_contact` / `for_chat`: only for
-    // them (a pass-on); none: for whoever holds the permission, the latest only,
-    // never a history. `source`: the phone, the user, a tool.
+    // (`apps::pigeon::facts`): `key` (location, anything a tool reads), `value`
+    // (JSON) and `levels` (the same fact said at each of the tool's levels:
+    // {"country": "Japan", "city": "Tokyo", …}). One per key, for whoever holds the
+    // permission: the latest only, never a history. `source`: the phone, the user, a tool.
     TableDefinition {
         name: "db_pigeon_facts",
         sql: r#"
@@ -1616,19 +1617,15 @@ const TABLES: &[TableDefinition] = &[
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 user_id TEXT NOT NULL,
                 key TEXT NOT NULL,
-                for_contact UUID REFERENCES db_pigeon_contacts(id) ON DELETE CASCADE,
-                for_chat UUID REFERENCES db_pigeon_conversations(id) ON DELETE CASCADE,
                 value JSONB NOT NULL DEFAULT '{}',
                 levels JSONB NOT NULL DEFAULT '{}',
                 source TEXT NOT NULL DEFAULT 'user',
                 at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                expires_at TIMESTAMPTZ,
-                CHECK (for_contact IS NULL OR for_chat IS NULL)
+                expires_at TIMESTAMPTZ
             )
         "#,
         indices: &[
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pigeon_facts_latest ON db_pigeon_facts (user_id, key) WHERE for_contact IS NULL AND for_chat IS NULL",
-            "CREATE INDEX IF NOT EXISTS idx_pigeon_facts_user ON db_pigeon_facts (user_id, key)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_pigeon_facts_latest ON db_pigeon_facts (user_id, key)",
         ],
     },
 ];

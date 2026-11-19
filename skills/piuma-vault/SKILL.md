@@ -171,6 +171,11 @@ pigeon.py send_reply conversation_id=<uuid> text="…"   # only on the user's wo
 pigeon.py draft_email to=alex@example.com subject="The report" text=- attach=~/report.pdf < body.txt
 pigeon.py upload ~/report.pdf           # store a file to attach: prints its `file` object
 pigeon.py set_alerts contact_id=@alex level=all
+pigeon.py instructions                  # the user's instructions for Pigeon: for every chat
+pigeon.py instructions conversation_id=<uuid>   # and what counts in one chat: the person's note, its own
+pigeon.py set_instructions text="short and warm, never formal"            # for every chat
+pigeon.py set_instructions conversation_id=<uuid> text="always in English"   # for one chat or group chat
+pigeon.py set_note contact_id=@alex note="never agree to a call"          # for one person, in every chat
 pigeon.py access                        # who may be told what: the catalogue, groups, grants
 pigeon.py permissions contact_id=@alex  # what counts for one person (or conversation_id=, group=)
 pigeon.py set_group name=Friends        # a group; rename: group=Friends name=Mates
@@ -183,9 +188,8 @@ pigeon.py shared_notes                  # every note and folder someone may be t
 pigeon.py shared_notes folder=/shared/trip   # who holds this one (or note_id=), also through a folder above
 pigeon.py revoke grant_id=<uuid>
 pigeon.py try_permission group=Friends permission=location.city.auto   # what it would have done lately
-pigeon.py facts                         # what Pigeon knows now: the user's place, pass-ons
+pigeon.py facts                         # what Pigeon knows now: the user's place
 pigeon.py set_fact key=location levels='{"country":"Japan","city":"Tokyo"}' minutes=180
-pigeon.py passon contact_id=@alex text="we're at the ramen place" minutes=240
 pigeon.py tool_uses contact_id=@alex    # what Pigeon told them, with which permission
 pigeon.py mark_wrong action_id=<uuid>   # that reply told too much: its auto goes back to ask
 ```
@@ -209,10 +213,14 @@ pigeon.py mark_wrong action_id=<uuid>   # that reply told too much: its auto goe
   for what is in it. `/contacts` (what the user and Pigeon keep on people) and `/` are
   refused: what is shared lives elsewhere, e.g. `/shared/…`. Say which note or folder and
   to whom before granting, and never move a note into a shared folder without the user's word.
-- **What Pigeon knows** (`facts`, `set_fact`, `passon`): the user's place (their phone writes
-  it; `set_fact` only when they say where they are, with just the levels they said) and what
-  they left for one person to hear when they ask (`passon`, their words). Both are told to
-  other people: only on the user's word.
+- **What Pigeon knows** (`facts`, `set_fact`): the user's place (their phone writes it;
+  `set_fact` only when they say where they are, with just the levels they said). It is told
+  to other people: only on the user's word.
+- **Instructions** (`instructions`, `set_instructions`, `set_note`): the user's own words on
+  how Pigeon writes and what it does, read every time it works in a chat. Three levels: for
+  every chat, on one person (their note), for one chat or group chat; the most specific wins.
+  `text` replaces what was there, so read first and write the whole. They never let Pigeon
+  tell more about the user: that is a permission (`grant`). Only on the user's word.
 - Messages are the user's private conversations: quote only what the task needs, and never
   into a commit, an issue or anywhere public.
 - Find people by `contacts` before changing them; a handle that is someone else's is

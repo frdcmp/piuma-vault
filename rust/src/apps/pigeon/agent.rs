@@ -1,9 +1,10 @@
 //! The agent: the LLM, offered the connectors' actions as tools, proposes what to do about a
 //! conversation. It never acts: each tool call becomes a proposal that goes through its policy
 //! (`actions`). Replies are written in the user's voice for that person on that channel: their
-//! own past messages to them there are the examples, their note on them outranks everything, and
-//! what Pigeon knows about them (`people`: their memory, the user's style with them on the
-//! channel) carries the rest. The prompts call the user by their name (`owner`).
+//! own past messages to them there are the examples, their instructions (`instructions`: for
+//! every chat, on the person, for this chat) outrank everything, and what Pigeon knows about them
+//! (`people`: their memory, the user's style with them on the channel) carries the rest. The
+//! prompts call the user by their name (`owner`).
 //!
 //! A triage's round has two parts. The responder writes the reply to them (only that), unless
 //! Jev's gate (`triage::gate`) keeps it for the user: the answer is theirs to give, or they ask
@@ -13,7 +14,7 @@
 //! the user said. What a round leaves for the user is cards in the Inbox (`cards::round`).
 //!
 //! What the user lets Pigeon tell the person (`tell`: where they are, whether they're free, what
-//! they left for them) comes to the responder as the round's `tells`: it answers with them, the
+//! is in a note of theirs) comes to the responder as the round's `tells`: it answers with them, the
 //! reply carries their record (`args.used`), and goes on its own only when each was allowed on
 //! its own and the reply, read back, says nothing more (`tell::leaks`).
 //!
@@ -37,6 +38,7 @@ use crate::apps::pigeon::connectors::{self, ActionDef, Connector, Kind};
 use crate::apps::pigeon::conversations::{self, Contact, Conversation};
 use crate::apps::pigeon::facts;
 use crate::apps::pigeon::folder;
+use crate::apps::pigeon::instructions;
 use crate::apps::pigeon::owner::{self, Owner};
 use crate::apps::pigeon::people;
 use crate::apps::pigeon::policy::{self, Policy};
@@ -529,7 +531,7 @@ fn system_prompt(me: &Owner, mode: &Mode<'_>, asking: bool, replies_off: bool, p
     let replying = format!(
         "\n- A reply is written as {name}, in the first person, to this person (or this group): match the language, \
          dialect, length, tone, greetings and emoji use of {name}'s own messages there (the style and its samples below, \
-         and {name}'s messages in the conversation), and follow {name}'s note on them above all. One reply at most.\n\
+         and {name}'s messages in the conversation), and follow {name}'s instructions for Pigeon below, when there are some, above all. One reply at most.\n\
          - Write it the way {name} would, not better: as long as {name}'s messages there usually are (the usual length \
          in the style below; never twice it), one thing only, the answer to the newest messages. No joke, pun or callback added on top, \
          no 'Ahah'/'Haha' opener, no exclamation runs, no summary or restating of the plan, no facts nobody asked about. \
@@ -595,10 +597,10 @@ fn system_prompt(me: &Owner, mode: &Mode<'_>, asking: bool, replies_off: bool, p
                 "\n- {name} asked for a reply now: propose exactly one reply.\n\
                  - You are Pigeon's drafter: {name} reads your reply before it goes. Look things up in {name}'s vault (their \
                  notes, tasks and calendar, with the read tools: {reads}) only when the newest messages ask for a fact (when, \
-                 where, what was agreed, an address) or {name}'s instructions ask you to; otherwise write straight away. Put in \
+                 where, what was agreed, an address) or {name}'s instructions for this reply ask you to; otherwise write straight away. Put in \
                  the reply only the fact that was asked, never the rest of what you found. Use only what this person should \
                  know: never pass on other people's private matters, credentials, money or health details unless {name}'s \
-                 instructions ask for exactly that.",
+                 instructions for this reply ask for exactly that.",
                 reads = llm::VAULT_READS.join(", ")
             ));
         }
@@ -669,11 +671,12 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
         s.push_str(&format!("Subject/title: {t}\n"));
     }
     let away_mode = matches!(mode, Mode::Away { .. });
+    // the user's own words for Pigeon: for every chat, on the person, for this chat
+    let general = instructions::general(&st.pool, &conv.user_id).await?;
+    let told = instructions::brief(name, &them, general.as_deref(), contact.and_then(|c| c.note.as_deref()), conv.instructions.as_deref());
     if let Some(c) = contact {
         s.push_str(&c.facts(name));
-        if let Some(note) = c.note.as_deref().filter(|n| !n.trim().is_empty()) {
-            s.push_str(&format!("\n{name}'s note on {them} (follow it):\n{note}\n"));
-        }
+        s.push_str(&told);
         // what Pigeon knows about them: its notes in their folder in the vault
         let kept = folder::kept(st, folder::Whose::Person(c.id)).await?;
         if let Some(m) = kept.iter().find(|k| k.kind == folder::MEMORY).filter(|k| !k.body().is_empty()) {
@@ -702,10 +705,13 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
                 }
             }
         }
-    } else if !away_mode {
+    } else {
+        s.push_str(&told);
         // a group: how the user writes in it
-        if let Some(p) = people::group_style(st, conv).await?.filter(|p| !p.profile.is_empty()) {
-            s.push_str(&format!("\nHow {name} writes in this group (the style, the usual length, and {name}'s own messages as samples):\n{}\n", p.profile));
+        if !away_mode {
+            if let Some(p) = people::group_style(st, conv).await?.filter(|p| !p.profile.is_empty()) {
+                s.push_str(&format!("\nHow {name} writes in this group (the style, the usual length, and {name}'s own messages as samples):\n{}\n", p.profile));
+            }
         }
     }
     // the user's own notes on them, in the same folder: not when Pigeon writes as itself (away),
@@ -719,7 +725,7 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
         if !notes.is_empty() {
             s.push_str(&format!(
                 "\n{name}'s own notes on {them}, from {name}'s vault (to understand who they are and what is going on; private: \
-                 never quote them or pass on what they say unless {name}'s note above asks for it):\n"
+                 never quote them or pass on what they say unless {name}'s instructions above ask for it):\n"
             ));
             for (title, text) in notes {
                 s.push_str(&format!("--- {title}\n{text}\n"));
@@ -827,7 +833,7 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
         Mode::Draft { instructions, .. } => {
             s.push_str(&format!("\n{name} asks for a reply to this conversation now."));
             if let Some(i) = instructions.filter(|i| !i.trim().is_empty()) {
-                s.push_str(&format!(" Their instructions: {i}"));
+                s.push_str(&format!(" Their instructions for this reply: {i}"));
             }
             s.push('\n');
         }

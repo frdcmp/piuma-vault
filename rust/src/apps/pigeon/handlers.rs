@@ -16,7 +16,7 @@ use crate::apps::pigeon::ai::llm;
 use crate::apps::pigeon::connectors::{self, console, Kind};
 use crate::apps::pigeon::policy::{self, Policy};
 use crate::apps::pigeon::state::AppState;
-use crate::apps::pigeon::{actions, agent, alerts, avatars, cards, composing, connect, conversations, events, items, media, people, rules, tell, tools, triage};
+use crate::apps::pigeon::{actions, agent, alerts, avatars, cards, composing, connect, conversations, events, instructions, items, media, people, rules, tell, tools, triage};
 use crate::apps::settings::store;
 
 pub struct InboxReader(pub AuthenticatedUser);
@@ -655,6 +655,17 @@ pub async fn set_contact_note(st: web::Data<AppState>, u: InboxWriter, path: web
 }
 
 #[derive(Deserialize)]
+pub struct InstructionsBody {
+    instructions: Option<String>,
+}
+
+/// The user's instructions for one chat (`instructions`); empty: none.
+pub async fn set_conversation_instructions(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>, body: web::Json<InstructionsBody>) -> HttpResponse {
+    let args = json!({ "conversation_id": path.into_inner().to_string(), "text": body.instructions.clone().unwrap_or_default() });
+    reply(tools::run(&st, &u.0.user_id, "pigeon_set_instructions", &args).await)
+}
+
+#[derive(Deserialize)]
 pub struct MergeBody {
     merge_id: Uuid,
 }
@@ -834,7 +845,7 @@ pub async fn access_resume(st: web::Data<AppState>, u: InboxWriter) -> HttpRespo
     access_tool(&st, &u.0.user_id, "pigeon_pause_sharing", json!({ "end": true })).await
 }
 
-/// What Pigeon knows right now: `facts` about the user, `passons` left for someone.
+/// What Pigeon knows about the user right now: `facts`.
 pub async fn list_facts(st: web::Data<AppState>, u: InboxReader) -> HttpResponse {
     access_tool(&st, &u.0.user_id, "pigeon_facts", json!({})).await
 }
@@ -850,15 +861,9 @@ pub async fn set_fact(st: web::Data<AppState>, u: InboxWriter, body: web::Json<J
     access_tool(&st, &u.0.user_id, "pigeon_set_fact", args).await
 }
 
-/// A fact or a pass-on, forgotten.
+/// A fact, forgotten.
 pub async fn delete_fact(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>) -> HttpResponse {
     access_tool(&st, &u.0.user_id, "pigeon_set_fact", json!({ "fact_id": path.into_inner(), "delete": true })).await
-}
-
-/// Something left for one person or one chat to hear when they ask: {contact_id | conversation_id,
-/// text, until?, minutes?}.
-pub async fn leave_passon(st: web::Data<AppState>, u: InboxWriter, body: web::Json<Json>) -> HttpResponse {
-    access_tool(&st, &u.0.user_id, "pigeon_passon", body.into_inner()).await
 }
 
 #[derive(Deserialize)]
@@ -980,8 +985,8 @@ pub async fn rule_runs(st: web::Data<AppState>, u: InboxReader, path: web::Path<
 
 // ── settings and connections ─────────────────────────────────────────────
 
-/// The user's defaults (reply / record / organize, alerts), the auto switch, the model Pigeon
-/// writes with, and the channels.
+/// The user's defaults (reply / record / organize, alerts), the auto switch, their instructions
+/// for every chat, the model Pigeon writes with, and the channels.
 pub async fn get_settings(st: web::Data<AppState>, u: InboxReader) -> HttpResponse {
     let user = &u.0.user_id;
     let r: anyhow::Result<Json> = async {
@@ -993,6 +998,7 @@ pub async fn get_settings(st: web::Data<AppState>, u: InboxReader) -> HttpRespon
             "auto_enabled": policy::auto_enabled(&st.pool, user).await?,
             "defaults": defaults,
             "alerts": alerts::resolve(&st.pool, user, None, None).await?.as_str(),
+            "instructions": instructions::general(&st.pool, user).await?,
             "media_days": media::keep_days(&st.pool, user).await?,
             "model_id": store::get(&st.pool, llm::MODEL_SETTING).await,
             "reply_model_id": store::get(&st.pool, llm::REPLY_MODEL_SETTING).await,
@@ -1013,6 +1019,8 @@ pub struct SettingsBody {
     record: Option<String>,
     organize: Option<String>,
     alerts: Option<String>,
+    /// the user's instructions for every chat ("" for none)
+    instructions: Option<String>,
     /// how long files are kept: 30, 90, 180 or 365 days
     media_days: Option<i64>,
     /// the model Pigeon writes with (a vault model's id; "" for the default): admins only
@@ -1036,6 +1044,9 @@ pub async fn set_settings(st: web::Data<AppState>, u: InboxWriter, body: web::Js
         if let Some(l) = body.alerts.as_deref() {
             let level = alerts::Level::parse(l).ok_or_else(|| anyhow::anyhow!("alerts: all, smart, quiet or off"))?;
             alerts::set(&st.pool, user, None, None, Some(level)).await?;
+        }
+        if let Some(t) = body.instructions.as_deref() {
+            instructions::set_general(&st, user, t).await?;
         }
         if let Some(d) = body.media_days {
             media::set_keep_days(&st.pool, user, d).await?;

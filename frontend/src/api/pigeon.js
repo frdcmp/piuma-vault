@@ -370,7 +370,7 @@ export const resumePigeonSharing = async () => {
 };
 
 // What a person holds: { own: [grant], effective: [{ permission, from, target?, … }],
-// groups, passons }.
+// groups }.
 export const fetchPigeonContactAccess = async (id) => {
 	const { data } = await axiosInstance.get(`${BASE}/access/contacts/${id}`);
 	return data;

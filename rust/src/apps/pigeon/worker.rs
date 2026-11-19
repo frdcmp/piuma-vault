@@ -94,7 +94,7 @@ async fn sweeps(st: AppState) {
             Ok(_) => {}
             Err(e) => log::warn!("pigeon: ending grants: {e:#}"),
         }
-        // what Pigeon knew until now: facts and pass-ons past their end
+        // what Pigeon knew until now: facts past their end
         match facts::sweep(&st).await {
             Ok(n) if n > 0 => log::info!("pigeon: {n} fact(s) ended"),
             Ok(_) => {}

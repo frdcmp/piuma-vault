@@ -1,7 +1,6 @@
 //! What Pigeon tells the people who write, by what they hold (`access`). In triage Jev is asked,
 //! with the rest, whether the new messages ask for what a tool gives (`offer`: the user's place,
-//! whether they're free) or for something the user left for them (a pass-on, `facts`). Then, for
-//! each thing asked:
+//! whether they're free, what is in a note of theirs). Then, for each thing asked:
 //!
 //!   - they hold it: the responder is given what the tool says at their level (a `Use`), and
 //!     writes the reply with it. It goes on its own only when everything agrees: the permission
@@ -38,7 +37,7 @@ use crate::apps::pigeon::actions::{self, ActionRow};
 use crate::apps::pigeon::ai::jev::{self, Answers};
 use crate::apps::pigeon::confirm::{self, Tap};
 use crate::apps::pigeon::conversations::{self, Conversation};
-use crate::apps::pigeon::facts::{self, Fact};
+use crate::apps::pigeon::facts;
 use crate::apps::pigeon::offer::{self, Permission, Tool};
 use crate::apps::pigeon::owner::{self, Owner};
 use crate::apps::pigeon::state::{AppState, State};
@@ -89,9 +88,6 @@ pub struct Use {
     /// the fact's time
     pub at: Option<DateTime<Utc>>,
     pub stale: bool,
-    /// the pass-on told (gone once the reply is sent)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fact_id: Option<Uuid>,
     /// the note told from
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note_id: Option<Uuid>,
@@ -132,16 +128,10 @@ pub struct Round {
     pub unknown: Vec<&'static Tool>,
 }
 
-/// Jev's questions in triage: one per tool that has one, one per pass-on left for them.
-pub fn questions(q: &mut Map<String, Json>, passons: &[Fact]) {
-    for t in offer::TOOLS.iter().filter(|t| t.live && !t.asks.is_empty()) {
+/// Jev's questions in triage: one per tool.
+pub fn questions(q: &mut Map<String, Json>) {
+    for t in offer::TOOLS.iter().filter(|t| t.live) {
         q.insert(format!("tool_{}", t.name), jev::noul(t.asks));
-    }
-    for (i, f) in passons.iter().enumerate() {
-        q.insert(
-            format!("passon_{i}"),
-            jev::noul(&format!("{{me}} left this to pass on to them when they ask: «{}». Do the new messages ask for what it answers?", f.text())),
-        );
     }
 }
 
@@ -270,7 +260,6 @@ fn blank(tool: &Tool, permission: String, grant: Option<Uuid>, via: String, p: f
         auto,
         at: None,
         stale: false,
-        fact_id: None,
         note_id: None,
         wrong: false,
         beyond: Vec::new(),
@@ -375,7 +364,7 @@ async fn from_notes(st: &State, conv: &Conversation, me: &Owner, book: &Book, to
 
 /// What the new messages (`asked`: their words) ask for, against what the chat holds: the uses
 /// the responder is given, and what's asked without leave. Nothing at all while sharing is paused.
-pub async fn round(st: &State, conv: &Conversation, me: &Owner, answers: &Answers, passons: &[Fact], asked: &str) -> anyhow::Result<Round> {
+pub async fn round(st: &State, conv: &Conversation, me: &Owner, answers: &Answers, asked: &str) -> anyhow::Result<Round> {
     let user = conv.user_id.as_str();
     let mut out = Round::default();
     if access::paused(&st.pool, user).await?.is_some() {
@@ -383,7 +372,7 @@ pub async fn round(st: &State, conv: &Conversation, me: &Owner, answers: &Answer
     }
     let book = Book::load(&st.pool, user).await?;
     let effs = book.effective(&access::holders_of(conv));
-    for tool in offer::TOOLS.iter().filter(|t| t.live && !t.asks.is_empty()) {
+    for tool in offer::TOOLS.iter().filter(|t| t.live) {
         let p = answers.yes(&format!("tool_{}", tool.name)).unwrap_or(0.0);
         if p < ASKED_AT {
             continue;
@@ -408,32 +397,6 @@ pub async fn round(st: &State, conv: &Conversation, me: &Owner, answers: &Answer
         };
         let mut u = blank(tool, eff.permission.clone(), Some(eff.grant), eff.from.words(), p, sure.is_some() && !said.stale);
         put(&mut u, tool, said);
-        asked_event(conv, tool.name, p, if u.auto { "auto" } else { "ask" });
-        out.uses.push(u);
-    }
-    // a pass-on is its own leave, as a draft; on its own for who holds `passon.use.auto`
-    let passon = offer::find(facts::PASSON);
-    for (i, f) in passons.iter().enumerate() {
-        let (Some(tool), p) = (passon, answers.yes(&format!("passon_{i}")).unwrap_or(0.0)) else { continue };
-        if p < ASKED_AT {
-            continue;
-        }
-        let auto = access::held(&effs, tool.name).auto.filter(|_| p >= SURE_AT);
-        let text = f.text();
-        let mut u = blank(
-            tool,
-            auto.as_ref().map(|e| e.permission.clone()).unwrap_or_else(|| format!("{}.{}.ask", tool.name, tool.levels[0].name)),
-            auto.as_ref().map(|e| e.grant),
-            "left for them".into(),
-            p,
-            auto.is_some(),
-        );
-        u.level = tool.levels[0].name.to_string();
-        u.level_label = tool.levels[0].label.to_string();
-        u.how = format!("{} left this for them to hear when they ask: «{text}». Tell them that, and nothing more.", me.name);
-        u.told = conversations::clip(&text, MAX_TOLD);
-        u.at = Some(f.at);
-        u.fact_id = Some(f.id);
         asked_event(conv, tool.name, p, if u.auto { "auto" } else { "ask" });
         out.uses.push(u);
     }
@@ -483,7 +446,7 @@ async fn newest(st: &State, conv: &Conversation, me: &Owner) -> anyhow::Result<J
 pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig: Option<&Signals>, uses: &mut [Use]) -> bool {
     let autos = uses.iter().any(|u| u.auto);
     let mut q = Map::new();
-    for u in uses.iter().filter(|u| u.has_levels && u.fact_id.is_none()) {
+    for u in uses.iter().filter(|u| u.has_levels) {
         let Some(tool) = offer::find(&u.tool) else { continue };
         let top = tool.level(&u.level).unwrap_or(0);
         if top == 0 {
@@ -531,7 +494,7 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
         let Some(tool) = offer::find(&u.tool) else { continue };
         let Some((pick, p)) = answers.choice(&format!("level_{}", tool.name)) else { continue };
         let (Some(least), Some(now)) = (tool.level(&pick), tool.level(&u.level)) else { continue };
-        if p < 0.5 || least >= now || u.fact_id.is_some() {
+        if p < 0.5 || least >= now {
             continue;
         }
         match say(st, &conv.user_id, me, tool, least).await {
@@ -843,9 +806,8 @@ pub fn as_written(row: &ActionRow, edits: Option<&Json>) -> bool {
     row.kind == "reply" && row.args.get("used").is_some() && !changed && row.args.get("edited").and_then(Json::as_bool) != Some(true)
 }
 
-/// A reply that used something went out: the pass-ons it told are gone, and when the user sent
-/// it as Pigeon wrote it for the third time through one ask grant, Pigeon proposes auto for it
-/// (a card: the user's tap decides).
+/// A reply that used something went out: when the user sent it as Pigeon wrote it for the third
+/// time through one ask grant, Pigeon proposes auto for it (a card: the user's tap decides).
 pub async fn sent(st: &State, row: &ActionRow) {
     let uses = used(&row.args);
     if uses.is_empty() {
@@ -859,12 +821,8 @@ pub async fn sent(st: &State, row: &ActionRow) {
             .attrs(json!({ "tool": u.tool, "level": u.level, "auto": row.policy == "auto", "as_written": as_written, "via": u.via, "p": u.jev, "stale": u.stale }))
             .emit();
     }
-    let told: Vec<Uuid> = uses.iter().filter_map(|u| u.fact_id).collect();
-    if let Err(e) = facts::said(st, &row.user_id, &told).await {
-        log::warn!("pigeon tell: pass-ons of {}: {e:#}", row.id);
-    }
     if as_written {
-        for u in uses.iter().filter(|u| u.grant_id.is_some() && u.fact_id.is_none()) {
+        for u in uses.iter().filter(|u| u.grant_id.is_some()) {
             if let Err(e) = suggest_auto(st, row, u).await {
                 log::warn!("pigeon tell: suggesting auto after {}: {e:#}", row.id);
             }
@@ -1026,9 +984,6 @@ fn people_of(book: &Book, group: Uuid, seen: &mut HashSet<Uuid>, out: &mut Vec<U
 pub async fn try_on_past(st: &State, user: &str, h: Holder, permission: &str, limit: i64) -> anyhow::Result<Json> {
     let perm = Permission::parse(permission)?;
     let tool = offer::find(&perm.tool).ok_or_else(|| anyhow::anyhow!("try one tool at a time: location.city.auto"))?;
-    if tool.asks.is_empty() {
-        anyhow::bail!("{} can't be tried: it's told when they ask for what you left", tool.label);
-    }
     if tool.targets {
         anyhow::bail!("{} can't be tried: whether a note answers depends on the note", tool.label);
     }
@@ -1166,7 +1121,7 @@ mod tests {
         let back = used(&json!({ "text": "in Tokyo", "used": kept }));
         assert_eq!(back.len(), 1);
         assert_eq!(line(&back), "Place · City (from Friends)");
-        assert_eq!(line(&[a_use("passon", "Yes", "left for them")]), "Pass-ons (left for them)");
+        assert_eq!(line(&[a_use("notes", "Yes", "theirs")]), "Notes (theirs)");
         assert!(used(&json!({ "text": "hi" })).is_empty());
     }
 

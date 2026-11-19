@@ -31,6 +31,8 @@ pub struct Conversation {
     pub read_at: Option<DateTime<Utc>>,
     pub summary: Option<String>,
     pub summary_at: Option<DateTime<Utc>>,
+    /// the user's instructions for this chat (`instructions`)
+    pub instructions: Option<String>,
 }
 
 /// How many of the user's chats have something unread (a message in since they last read them):
@@ -45,7 +47,7 @@ pub async fn unread_count(pool: &DbPool, user: &str) -> anyhow::Result<i64> {
 }
 
 pub const CONVERSATION_COLS: &str = "id, user_id, connection_id, connector, external_id, contact_id, title, last_in_at, last_out_at, last_item_at, \
-     window_until, attention, needs_note, importance, kind, triaged_at, handled_at, read_at, summary, summary_at";
+     window_until, attention, needs_note, importance, kind, triaged_at, handled_at, read_at, summary, summary_at, instructions";
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Item {

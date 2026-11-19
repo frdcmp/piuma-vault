@@ -440,7 +440,7 @@ pub async fn execute(st: &State, id: Uuid, by: &str) -> anyhow::Result<ActionRow
         crate::apps::pigeon::events::conversation(&st.pool, c).await;
     }
     let row = get(st, id).await?.expect("the row just updated");
-    // a reply that told something of the user's went out: its pass-ons are said, and the like (`tell`)
+    // a reply that told something of the user's went out: `tell` takes note
     if status == "done" && row.kind == "reply" && row.args.get("used").is_some() {
         super::tell::sent(st, &row).await;
     }

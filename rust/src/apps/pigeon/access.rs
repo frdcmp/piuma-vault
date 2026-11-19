@@ -610,7 +610,7 @@ pub async fn overview(st: &State, user: &str) -> anyhow::Result<Json> {
     direct.sort_by_key(|v| v["name"].as_str().unwrap_or_default().to_lowercase());
     // where the user is, as Pigeon knows it: null when nothing wrote it (the phone's switch is off)
     let place = match facts::latest(&st.pool, user, PLACE).await? {
-        Some(f) => facts::views(&st.pool, &[f]).await?.pop().unwrap_or(Json::Null),
+        Some(f) => facts::views(&[f]).pop().unwrap_or(Json::Null),
         None => Json::Null,
     };
     Ok(json!({
@@ -637,12 +637,11 @@ pub async fn of_contact(st: &State, user: &str, contact: Uuid) -> anyhow::Result
         "groups": memberships(&book, h),
         "own": own_views(&book, &names, h),
         "effective": eff_views(&book, &names, &[h]),
-        "passons": facts::views(&st.pool, &facts::left_for(&st.pool, user, contact).await?).await?,
     }))
 }
 
-/// One chat: its own grants, and what counts in it (its person's too; in a group chat, only
-/// the chat's own).
+/// One chat: its own grants, what counts in it (its person's too; in a group chat, only the
+/// chat's own), and the user's instructions for it.
 pub async fn of_conversation(st: &State, user: &str, conversation: Uuid) -> anyhow::Result<Json> {
     let conv = tools::own_conversation(st, user, conversation).await?;
     let book = Book::load(&st.pool, user).await?;
@@ -653,7 +652,7 @@ pub async fn of_conversation(st: &State, user: &str, conversation: Uuid) -> anyh
         "group_chat": conv.contact_id.is_none(),
         "own": own_views(&book, &names, Holder::Conversation(conversation)),
         "effective": eff_views(&book, &names, &holders_of(&conv)),
-        "passons": facts::views(&st.pool, &facts::passons(&st.pool, user, conv.contact_id, Some(conversation)).await?).await?,
+        "instructions": conv.instructions,
     }))
 }
 

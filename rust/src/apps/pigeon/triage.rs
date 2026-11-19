@@ -8,7 +8,7 @@ use serde_json::{json, Map};
 use uuid::Uuid;
 
 use crate::apps::pigeon::ai::jev;
-use crate::apps::pigeon::{actions, agent, away, cards, conversations, facts, owner, people, policy, rules, tell};
+use crate::apps::pigeon::{actions, agent, away, cards, conversations, instructions, owner, people, policy, rules, tell};
 use crate::apps::pigeon::state::{AppState, State};
 
 pub const REPLY_AT: f64 = 0.6;
@@ -197,7 +197,9 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
         "with": them,
         "the_user": owner.name,
         "who_they_are_to_the_user": contact.as_ref().and_then(|c| c.relationship.clone()).unwrap_or_default(),
+        "the_users_instructions_for_every_chat": instructions::general(&st.pool, &conv.user_id).await?.unwrap_or_default(),
         "the_users_note_on_them": contact.as_ref().and_then(|c| c.note.clone()).unwrap_or_default(),
+        "the_users_instructions_for_this_chat": conv.instructions.clone().unwrap_or_default(),
         "what_pigeon_knows_about_them": known.unwrap_or_default(),
         "earlier_in_the_conversation": conversations::transcript(&earlier, &them, me, 600),
         "new_messages": conversations::transcript(&new_owned, &them, me, 3000),
@@ -254,11 +256,7 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
     }
     // what the user lets Pigeon tell people (`tell`): does someone ask for it? Whether they hold
     // it is looked up after, never told to Jev
-    let passons = facts::passons(&st.pool, &conv.user_id, conv.contact_id, Some(conv.id)).await.unwrap_or_else(|e| {
-        log::warn!("triage {id}: pass-ons: {e:#}");
-        Vec::new()
-    });
-    tell::questions(&mut q, &passons);
+    tell::questions(&mut q);
     jev::for_user(&mut q, &owner.name);
     let answers = jev.ask(&state, q).await?;
 
@@ -365,7 +363,7 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
     let mut told = tell::Round::default();
     if attention == Some("reply") && !replies_off && paused.is_none() && held != Some(DOUBTS) {
         let asked = new_owned.iter().filter(|i| i.direction == "in").map(|i| i.body.trim()).filter(|b| !b.is_empty()).collect::<Vec<_>>().join("\n");
-        match tell::round(st, &conv, &owner, &answers, &passons, &asked).await {
+        match tell::round(st, &conv, &owner, &answers, &asked).await {
             Ok(r) => told = r,
             Err(e) => log::warn!("triage {id}: what to tell them: {e:#}"),
         }

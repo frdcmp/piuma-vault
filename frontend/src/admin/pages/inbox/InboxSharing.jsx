@@ -9,10 +9,9 @@ import { formatTime } from "../../../utils/dateTime";
 import { errorText } from "./inboxText";
 
 // What Pigeon may tell the people who write (the user's place, their calendar,
-// something left for someone, a note of theirs) is set per person, chat or
-// group: in the phone's app, or by asking Claude (a note or a folder: also from
-// its menu in Notes, and a person's are in their drawer). Here: the pause, a
-// quick stop for all of it.
+// a note of theirs) is set per person, chat or group: in the phone's app, or by
+// asking Claude (a note or a folder: also from its menu in Notes, and a person's
+// are in their drawer). Here: the pause, a quick stop for all of it.
 
 const fail = (e) => pvMessage.error(errorText(e));
 
@@ -51,7 +50,7 @@ export function SharingField() {
 		<PvField
 			label="Telling people"
 			as="div"
-			hint="Where you are, whether you're free, what you left for someone, what is in a note you shared: only to who you allowed (per person, in the app or by asking Claude). Off: Pigeon tells nobody any of it."
+			hint="Where you are, whether you're free, what is in a note you shared: only to who you allowed (per person, in the app or by asking Claude). Off: Pigeon tells nobody any of it."
 		>
 			<PvSwitch
 				checked={!paused}
