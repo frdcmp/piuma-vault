@@ -8,8 +8,9 @@
 //! the shared secret and tagged with the user: theirs as items to triage, the user's own from the
 //! phone as theirs (the conversation handled), on pairing the latest of each chat as history; and
 //! that they're typing, so the triage waits. Out: a reply (no reply window: WhatsApp has none for
-//! a person's own account), "typing…", and read receipts once the user (or Pigeon, before an
-//! auto reply) read it. Connected in the Inbox's settings: the server's QR code,
+//! a person's own account), which can answer one message (WhatsApp's quote; one that comes in
+//! keeps what it answers in `raw.reply_to`), "typing…", and read receipts once the user (or
+//! Pigeon, before an auto reply) read it. Connected in the Inbox's settings: the server's QR code,
 //! scanned from the phone (Linked devices). A chat is keyed by its JID; a person's handle is their
 //! phone number (+<country><number>).
 
@@ -23,7 +24,7 @@ use serde_json::{json, Value as Json};
 use uuid::Uuid;
 
 use crate::apps::pigeon::config::WhatsappConf;
-use crate::apps::pigeon::connectors::{arg_str, need_str, ActionDef, Connector, Kind, Pairing, Reacted};
+use crate::apps::pigeon::connectors::{arg_str, need_str, ActionDef, Connector, Kind, Pairing, Quoted, Reacted};
 use crate::apps::pigeon::items::{self, Author, Direction, Incoming};
 use crate::apps::pigeon::media;
 use crate::apps::pigeon::owner;
@@ -103,7 +104,7 @@ pub(crate) fn send_file_def() -> ActionDef {
 
 /// A file the user uploaded, sent in `chat` through the bridge (its own message, the caption on
 /// it), and stored with it.
-async fn send_file(st: &State, user: &str, chat: &str, args: &Json) -> anyhow::Result<Json> {
+async fn send_file(st: &State, user: &str, chat: &str, args: &Json, quoted: Option<&Quoted>) -> anyhow::Result<Json> {
     let f = media::own_file(user, args)?;
     let caption = args["caption"].as_str().unwrap_or_default().trim();
     if caption.len() > MAX_TEXT {
@@ -123,6 +124,9 @@ async fn send_file(st: &State, user: &str, chat: &str, args: &Json) -> anyhow::R
             form = form.text(k, n.to_string());
         }
     }
+    if let Some(q) = quoted {
+        form = form.text("reply", reply_of(q).to_string());
+    }
     form = form.part("file", reqwest::multipart::Part::bytes(data).file_name(name).mime_str(&mime)?);
     let c = conf(st)?;
     let url = format!("{}/u/{}/send-file", c.bridge_url, urlencoding::encode(user));
@@ -140,14 +144,30 @@ async fn send_file(st: &State, user: &str, chat: &str, args: &Json) -> anyhow::R
     if !status.is_success() {
         anyhow::bail!("pigeon-whatsapp /send-file: {status} {}", sent["error"].as_str().unwrap_or_default());
     }
-    let id = store_sent(st, user, chat, &sent, media::body_with(caption, f), json!([f])).await?;
+    let id = store_sent(st, user, chat, &sent, media::body_with(caption, f), json!([f]), quoted).await?;
     Ok(json!({ "sent": true, "to": handle_of_chat(chat), "message_id": id }))
 }
 
+/// The message a sent one answers, as the bridge takes it (`reply`): its id, whose it is, and
+/// what it said: its words (a file's caption), and for a file what it is.
+fn reply_of(q: &Quoted) -> Json {
+    let mut reply = json!({ "message": q.external_id, "from_me": q.mine, "sender": q.sender, "text": q.body });
+    if let Some(f) = q.media.as_array().into_iter().flatten().find(|m| m.is_object()) {
+        reply["text"] = json!(media::words(&q.body, &q.media));
+        reply["kind"] = f["kind"].clone();
+        reply["name"] = f["name"].clone();
+    }
+    reply
+}
+
 /// What the bridge sent (`sent`: its id and time) stored as Pigeon's, as a reply's is: the
-/// message's id.
-async fn store_sent(st: &State, user: &str, chat: &str, sent: &Json, body: String, media: Json) -> anyhow::Result<String> {
+/// message's id. `quoted`: the message it answers.
+async fn store_sent(st: &State, user: &str, chat: &str, sent: &Json, body: String, media: Json, quoted: Option<&Quoted>) -> anyhow::Result<String> {
     let id = sent["id"].as_str().unwrap_or_default().to_string();
+    let mut raw = json!({ "id": id });
+    if let Some(q) = quoted {
+        raw["reply_to"] = q.kept();
+    }
     let at = sent["at"].as_i64().and_then(|ms| Utc.timestamp_millis_opt(ms).single()).unwrap_or_else(Utc::now);
     let me = sqlx::query_scalar::<_, String>("SELECT account FROM db_pigeon_connections WHERE connector = $1 AND user_id = $2 AND status = 'connected' LIMIT 1")
         .bind(ID)
@@ -168,7 +188,7 @@ async fn store_sent(st: &State, user: &str, chat: &str, sent: &Json, body: Strin
         subject: None,
         body,
         media,
-        raw: json!({ "id": id }),
+        raw,
         at,
         counterpart: None,
         window: None,
@@ -209,6 +229,26 @@ pub struct Message {
     /// who it tags
     #[serde(default)]
     pub mentions: Vec<Mention>,
+    /// the message it answers
+    #[serde(default)]
+    pub quoted: Option<Quote>,
+}
+
+/// The message a message answers, as WhatsApp carries it along with the reply.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Quote {
+    /// as a message's `id`; none: it's from somewhere else (a status, a group answered in private)
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub from_me: bool,
+    /// "+<number>"
+    #[serde(default)]
+    pub sender: Option<String>,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub kinds: Vec<String>,
 }
 
 /// Someone a message tags. The text has "@<id>" where they are: WhatsApp's id for them, their
@@ -287,12 +327,22 @@ fn place_kind(lat: f64, lon: f64) -> String {
 
 /// A message's text as an item's body: the text (its tags as names: `named`), and what's attached.
 fn body_of(m: &Message, tags: &[Json]) -> String {
+    worded(&named(&m.text, tags), &m.kinds)
+}
+
+/// Words and what's attached as a body: the words, then each thing attached in brackets.
+fn worded(text: &str, kinds: &[String]) -> String {
     let mut parts: Vec<String> = Vec::new();
-    if !m.text.trim().is_empty() {
-        parts.push(named(&m.text, tags));
+    if !text.trim().is_empty() {
+        parts.push(text.to_string());
     }
-    parts.extend(m.kinds.iter().map(|k| format!("[{k}]")));
+    parts.extend(kinds.iter().map(|k| format!("[{k}]")));
     parts.join("\n")
+}
+
+/// What a message keeps of the one it answers (an item's `raw.reply_to`, as `Quoted::kept`).
+fn kept_quote(q: &Quote) -> Json {
+    json!({ "id": q.id, "mine": q.from_me, "sender": q.sender, "body": worded(&q.text, &q.kinds) })
 }
 
 /// Who a message tags, as the Inbox keeps them (an item's `raw.mentions`): `{id, name, phone,
@@ -421,6 +471,9 @@ async fn store(st: &State, user: &str, connection: Option<i32>, m: &Message, tri
     let mut raw = json!({ "id": m.id });
     if !tags.is_empty() {
         raw["mentions"] = json!(tags);
+    }
+    if let Some(q) = &m.quoted {
+        raw["reply_to"] = kept_quote(q);
     }
     let inc = Incoming {
         user_id: user.to_string(),
@@ -551,8 +604,9 @@ impl Connector for Whatsapp {
         if owner != user {
             anyhow::bail!("{conv} is not a WhatsApp conversation");
         }
+        let quoted = super::quoted(st, args, conv).await?;
         if action == "send_file" {
-            return send_file(st, user, &chat, args).await;
+            return send_file(st, user, &chat, args, quoted.as_ref()).await;
         }
         // a place rides along (`args.place`): the words first, when there are any, then the pin
         let place = place_of(args)?;
@@ -565,8 +619,12 @@ impl Connector for Whatsapp {
         }
         let mut id = None;
         if let Some(text) = text {
-            let sent = bridge(st, user, reqwest::Method::POST, "/send", Some(&json!({ "chat": chat, "text": text }))).await?;
-            id = Some(store_sent(st, user, &chat, &sent, text.to_string(), json!([])).await?);
+            let mut message = json!({ "chat": chat, "text": text });
+            if let Some(q) = &quoted {
+                message["reply"] = reply_of(q);
+            }
+            let sent = bridge(st, user, reqwest::Method::POST, "/send", Some(&message)).await?;
+            id = Some(store_sent(st, user, &chat, &sent, text.to_string(), json!([]), quoted.as_ref()).await?);
         }
         let mut out = json!({ "sent": true, "to": handle_of_chat(&chat) });
         if let Some((lat, lon)) = place {
@@ -582,7 +640,7 @@ impl Connector for Whatsapp {
                 Err(e) => return Err(e),
             };
             let kind = place_kind(lat, lon);
-            let pin = store_sent(st, user, &chat, &pin, format!("[{kind}]"), json!([kind])).await?;
+            let pin = store_sent(st, user, &chat, &pin, format!("[{kind}]"), json!([kind]), None).await?;
             out["pin"] = json!(pin);
             id.get_or_insert(pin);
         }
@@ -591,6 +649,10 @@ impl Connector for Whatsapp {
     }
 
     fn sends_places(&self) -> bool {
+        true
+    }
+
+    fn quotes(&self) -> bool {
         true
     }
 
@@ -712,7 +774,36 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(body_of(&m, &[]), "look\n[image]");
-        assert!(!m.from_me && !m.group && m.mentions.is_empty());
+        assert!(!m.from_me && !m.group && m.mentions.is_empty() && m.quoted.is_none());
+    }
+
+    #[test]
+    fn a_reply_keeps_what_it_answers() {
+        let m: Message = serde_json::from_value(json!({
+            "id": "1@s.whatsapp.net/DEF", "chat": "1@s.whatsapp.net", "text": "nice", "at": 0,
+            "quoted": { "id": "1@s.whatsapp.net/ABC", "from_me": true, "sender": "+393331234567", "text": "look", "kinds": ["image"] }
+        }))
+        .unwrap();
+        assert_eq!(
+            kept_quote(m.quoted.as_ref().unwrap()),
+            json!({ "id": "1@s.whatsapp.net/ABC", "mine": true, "sender": "+393331234567", "body": "look\n[image]" })
+        );
+        // a status has no id here
+        let status: Quote = serde_json::from_value(json!({ "from_me": true, "kinds": ["video"] })).unwrap();
+        assert_eq!(kept_quote(&status), json!({ "id": null, "mine": true, "sender": null, "body": "[video]" }));
+    }
+
+    #[test]
+    fn a_reply_tells_the_bridge_what_it_answers() {
+        let q = |body: &str, media: Json| Quoted { external_id: "1@s.whatsapp.net/ABC".into(), mine: false, sender: Some("+393331234567".into()), body: body.into(), media };
+        assert_eq!(
+            reply_of(&q("at 8?", json!([]))),
+            json!({ "message": "1@s.whatsapp.net/ABC", "from_me": false, "sender": "+393331234567", "text": "at 8?" })
+        );
+        let file = reply_of(&q("the plan\n[document: Plan.pdf]", json!([{ "kind": "document", "label": "document: Plan.pdf", "name": "Plan.pdf" }])));
+        assert_eq!((file["text"].as_str(), file["kind"].as_str(), file["name"].as_str()), (Some("the plan"), Some("document"), Some("Plan.pdf")));
+        // what isn't a file goes in words
+        assert_eq!(reply_of(&q("[location: 45.00000,9.00000]", json!(["location: 45.00000,9.00000"])))["text"], "[location: 45.00000,9.00000]");
     }
 
     #[test]

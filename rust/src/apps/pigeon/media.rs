@@ -201,6 +201,12 @@ pub fn body_with(caption: &str, file: &Json) -> String {
     }
 }
 
+/// A message's own words: its body without the lines that say what's attached ("[image]").
+pub fn words(body: &str, media: &Json) -> String {
+    let tags: Vec<String> = media.as_array().into_iter().flatten().filter_map(|m| m["label"].as_str().or(m.as_str())).map(|l| format!("[{l}]")).collect();
+    body.lines().filter(|l| !tags.iter().any(|t| t == l.trim())).collect::<Vec<_>>().join("\n").trim().to_string()
+}
+
 /// A file the user sends from the Inbox (at `path`, a temporary file), into storage: its entry,
 /// stored. `dims`: its width, height and seconds, where known.
 #[allow(clippy::too_many_arguments)]
@@ -535,26 +541,30 @@ fn http() -> &'static reqwest::Client {
     C.get_or_init(|| reqwest::Client::builder().timeout(Duration::from_secs(30 * 60)).build().expect("http client"))
 }
 
-/// Messages (JSON, each with `media`) as the apps get them: every stored file with a signed link
-/// (`url`, and `thumb_url` for its preview), the fetch details left out.
+/// Messages (JSON, each with `media`, and the `media` of the message it answers: its `quote`) as
+/// the apps get them: every stored file with a signed link (`url`, and `thumb_url` for its
+/// preview), the fetch details left out.
 pub async fn sign(pool: &DbPool, items: &mut [Json]) {
-    let any = items.iter().any(|i| i["media"].as_array().is_some_and(|a| a.iter().any(|m| m.is_object())));
+    const LISTS: [&str; 2] = ["/media", "/quote/media"];
+    let any = items.iter().any(|i| LISTS.iter().any(|at| i.pointer(at).and_then(Json::as_array).is_some_and(|a| a.iter().any(|m| m.is_object()))));
     if !any {
         return;
     }
     let s3 = s3_client(pool).await.ok();
     for i in items.iter_mut() {
-        let Some(list) = i["media"].as_array_mut() else { continue };
-        for m in list.iter_mut().filter(|m| m.is_object()) {
-            if let Some(o) = m.as_object_mut() {
-                o.remove("source");
-            }
-            let Some((client, bucket)) = &s3 else { continue };
-            for (field, link) in [("key", "url"), ("thumb", "thumb_url")] {
-                let stored = field == "thumb" || m["status"] == "stored";
-                if let (true, Some(key)) = (stored, m[field].as_str().map(str::to_string)) {
-                    if let Ok((url, _)) = download_url(pool, client, bucket, &key, LINK_SECS).await {
-                        m[link] = json!(url);
+        for at in LISTS {
+            let Some(list) = i.pointer_mut(at).and_then(Json::as_array_mut) else { continue };
+            for m in list.iter_mut().filter(|m| m.is_object()) {
+                if let Some(o) = m.as_object_mut() {
+                    o.remove("source");
+                }
+                let Some((client, bucket)) = &s3 else { continue };
+                for (field, link) in [("key", "url"), ("thumb", "thumb_url")] {
+                    let stored = field == "thumb" || m["status"] == "stored";
+                    if let (true, Some(key)) = (stored, m[field].as_str().map(str::to_string)) {
+                        if let Ok((url, _)) = download_url(pool, client, bucket, &key, LINK_SECS).await {
+                            m[link] = json!(url);
+                        }
                     }
                 }
             }
@@ -630,6 +640,14 @@ mod tests {
         let file = json!({ "label": "image" });
         assert_eq!(body_with("", &file), "[image]");
         assert_eq!(body_with(" look ", &file), "look\n[image]");
+    }
+
+    #[test]
+    fn a_messages_own_words() {
+        let media = json!([{ "kind": "image", "label": "image" }, "location: 45.00000,9.00000"]);
+        assert_eq!(words("see this\n[image]\n[location: 45.00000,9.00000]", &media), "see this");
+        assert_eq!(words("[image]", &media), "");
+        assert_eq!(words("[not a file] really", &json!([])), "[not a file] really");
     }
 
     #[test]

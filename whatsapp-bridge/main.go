@@ -12,7 +12,8 @@
 //
 //	GET  /u/{user}/status   {state, phone, name}
 //	GET  /u/{user}/pair     the QR code to scan (pairing starts if it isn't), or connected
-//	POST /u/{user}/send     {chat, text} → {id, at}
+//	POST /u/{user}/send     {chat, text, reply} → {id, at}; reply: the message it answers
+//	                        ({message, from_me, sender, text, kind, name}), sent as WhatsApp's quote
 //	POST /u/{user}/send-location {chat, lat, lon} → {id, at}: a place, as WhatsApp's own pin
 //	POST /u/{user}/typing   {chat, on}
 //	POST /u/{user}/read     {chat, messages: [{id, sender}]}: read receipts (Pigeon's ids, "+<number>")
@@ -330,6 +331,18 @@ type message struct {
 	Kinds      []string  `json:"kinds,omitempty"`
 	Files      []file    `json:"files,omitempty"`
 	Mentions   []mention `json:"mentions,omitempty"`
+	Quoted     *quoted   `json:"quoted,omitempty"`
+}
+
+// quoted: the message a message answers (a reply), as WhatsApp carries it along: its id as
+// `message` gives it (none when it is from somewhere else: a status, a group answered in
+// private), who wrote it, and what it said.
+type quoted struct {
+	ID     string   `json:"id,omitempty"`
+	FromMe bool     `json:"from_me"`
+	Sender string   `json:"sender,omitempty"` // "+<number>" (or a JID)
+	Text   string   `json:"text,omitempty"`
+	Kinds  []string `json:"kinds,omitempty"`
 }
 
 // mention: someone tagged in a message. The text has "@<ID>" where they are: WhatsApp's own id
@@ -514,7 +527,43 @@ func (s *session) message(ctx context.Context, e *events.Message) *message {
 		m.ChatName = m.SenderName
 	}
 	m.Mentions = s.mentions(ctx, chat, e.Info.IsGroup, e.Message)
+	m.Quoted = s.quoted(ctx, chat, e.Message)
 	return m
+}
+
+// contexts: where a message says what it tags and what it answers: on a text, or on a file.
+func contexts(msg *waE2E.Message) []*waE2E.ContextInfo {
+	return []*waE2E.ContextInfo{
+		msg.GetExtendedTextMessage().GetContextInfo(),
+		msg.GetImageMessage().GetContextInfo(),
+		msg.GetVideoMessage().GetContextInfo(),
+		msg.GetAudioMessage().GetContextInfo(),
+		msg.GetDocumentMessage().GetContextInfo(),
+		msg.GetStickerMessage().GetContextInfo(),
+	}
+}
+
+// quoted: the message this one answers, none when it answers none.
+func (s *session) quoted(ctx context.Context, chat types.JID, msg *waE2E.Message) *quoted {
+	for _, c := range contexts(msg) {
+		if c.GetStanzaID() == "" {
+			continue
+		}
+		q := &quoted{}
+		q.Text, q.Kinds, _ = content(c.GetQuotedMessage())
+		if c.GetRemoteJID() == "" {
+			q.ID = chat.String() + "/" + c.GetStanzaID()
+		}
+		if j, err := types.ParseJID(c.GetParticipant()); err == nil && j.User != "" {
+			cli := s.client()
+			me, myLID := cli.Store.GetJID().ToNonAD(), cli.Store.GetLID().ToNonAD()
+			p := s.pn(ctx, j)
+			q.FromMe = (!me.IsEmpty() && p == me) || (!myLID.IsEmpty() && j.ToNonAD() == myLID)
+			q.Sender = phone(p)
+		}
+		return q
+	}
+	return nil
 }
 
 // How often a group's members are asked for again, for a tag nobody can be put to.
@@ -558,12 +607,7 @@ func (s *session) mentions(ctx context.Context, chat types.JID, group bool, msg 
 // mentioned: the ids a message tags, as WhatsApp writes them ("<number>@s.whatsapp.net",
 // "<hidden id>@lid"): on a text, or on a photo's, a video's or a document's caption.
 func mentioned(msg *waE2E.Message) []string {
-	for _, c := range []*waE2E.ContextInfo{
-		msg.GetExtendedTextMessage().GetContextInfo(),
-		msg.GetImageMessage().GetContextInfo(),
-		msg.GetVideoMessage().GetContextInfo(),
-		msg.GetDocumentMessage().GetContextInfo(),
-	} {
+	for _, c := range contexts(msg) {
 		if ids := c.GetMentionedJID(); len(ids) > 0 {
 			return ids
 		}
@@ -941,11 +985,57 @@ func (s *session) goOnline(ctx context.Context, cli *whatsmeow.Client) {
 }
 
 type sendReq struct {
-	Chat string   `json:"chat"`
-	Text string   `json:"text"`
-	On   bool     `json:"on"`
-	Lat  *float64 `json:"lat"`
-	Lon  *float64 `json:"lon"`
+	Chat  string   `json:"chat"`
+	Text  string   `json:"text"`
+	On    bool     `json:"on"`
+	Lat   *float64 `json:"lat"`
+	Lon   *float64 `json:"lon"`
+	Reply *replyTo `json:"reply"`
+}
+
+// replyTo: the message a sent one answers. Message: its id as `message` gave it
+// ("<chat>/<WhatsApp's id>"); from_me: the user's own; sender: who wrote it ("+<number>" or a
+// JID), for a group's. What it said, for the quote the other side draws: its text (a file's
+// caption), and for a file its kind (image, video, voice, audio, document, sticker) and, a
+// document's, its name.
+type replyTo struct {
+	Message string `json:"message"`
+	FromMe  bool   `json:"from_me"`
+	Sender  string `json:"sender"`
+	Text    string `json:"text"`
+	Kind    string `json:"kind"`
+	Name    string `json:"name"`
+}
+
+// answering: what makes a sent message a reply to another (none: it answers none).
+func (s *session) answering(cli *whatsmeow.Client, chat types.JID, to *replyTo) (*waE2E.ContextInfo, error) {
+	if to == nil {
+		return nil, nil
+	}
+	id := types.MessageID(to.Message[strings.LastIndex(to.Message, "/")+1:])
+	if id == "" {
+		return nil, errors.New("reply: message is empty")
+	}
+	who := cli.Store.ID.ToNonAD()
+	if !to.FromMe {
+		_, who = s.source(chat, id, to.Sender)
+	}
+	var said waE2E.Message
+	switch to.Kind {
+	case "image":
+		said.ImageMessage = &waE2E.ImageMessage{Caption: optional(to.Text)}
+	case "video":
+		said.VideoMessage = &waE2E.VideoMessage{Caption: optional(to.Text)}
+	case "voice", "audio":
+		said.AudioMessage = &waE2E.AudioMessage{PTT: proto.Bool(to.Kind == "voice")}
+	case "document":
+		said.DocumentMessage = &waE2E.DocumentMessage{Caption: optional(to.Text), FileName: optional(to.Name), Title: optional(to.Name)}
+	case "sticker":
+		said.StickerMessage = &waE2E.StickerMessage{}
+	default:
+		said.Conversation = proto.String(to.Text)
+	}
+	return &waE2E.ContextInfo{StanzaID: proto.String(string(id)), Participant: proto.String(who.String()), QuotedMessage: &said}, nil
 }
 
 func readReq(w http.ResponseWriter, r *http.Request) (*sendReq, types.JID, bool) {
@@ -975,7 +1065,16 @@ func (s *session) send(w http.ResponseWriter, r *http.Request) {
 	if cli == nil {
 		return
 	}
-	resp, err := cli.SendMessage(r.Context(), jid, &waE2E.Message{Conversation: proto.String(req.Text)})
+	msg := &waE2E.Message{Conversation: proto.String(req.Text)}
+	answers, err := s.answering(cli, jid, req.Reply)
+	if err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	if answers != nil {
+		msg = &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{Text: proto.String(req.Text), ContextInfo: answers}}
+	}
+	resp, err := cli.SendMessage(r.Context(), jid, msg)
 	if err != nil {
 		fail(w, http.StatusBadGateway, err)
 		return
@@ -1014,7 +1113,8 @@ func (s *session) sendLocation(w http.ResponseWriter, r *http.Request) {
 const maxSendFile = 100 << 20
 
 // sendFile: a photo, video, audio or document from the user (multipart: chat, kind, mime, name,
-// caption, width, height, seconds, file), uploaded to WhatsApp and sent as its own message.
+// caption, width, height, seconds, file; reply: the message it answers, as /send's, in JSON),
+// uploaded to WhatsApp and sent as its own message.
 func (s *session) sendFile(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxSendFile+1<<20)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
@@ -1051,6 +1151,18 @@ func (s *session) sendFile(w http.ResponseWriter, r *http.Request) {
 	if cli == nil {
 		return
 	}
+	var to *replyTo
+	if v := r.FormValue("reply"); v != "" {
+		if err := json.Unmarshal([]byte(v), &to); err != nil {
+			fail(w, http.StatusBadRequest, fmt.Errorf("reply: %w", err))
+			return
+		}
+	}
+	answers, err := s.answering(cli, jid, to)
+	if err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
 	mediaType := map[string]whatsmeow.MediaType{"image": whatsmeow.MediaImage, "video": whatsmeow.MediaVideo, "audio": whatsmeow.MediaAudio}[kind]
 	if mediaType == "" {
 		kind, mediaType = "document", whatsmeow.MediaDocument
@@ -1070,19 +1182,19 @@ func (s *session) sendFile(w http.ResponseWriter, r *http.Request) {
 		msg.ImageMessage = &waE2E.ImageMessage{
 			Caption: optional(caption), Mimetype: proto.String(mime), URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
 			MediaKey: up.MediaKey, FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256, FileLength: proto.Uint64(up.FileLength),
-			Width: optionalN(width), Height: optionalN(height), JPEGThumbnail: thumb,
+			Width: optionalN(width), Height: optionalN(height), JPEGThumbnail: thumb, ContextInfo: answers,
 		}
 	case "video":
 		msg.VideoMessage = &waE2E.VideoMessage{
 			Caption: optional(caption), Mimetype: proto.String(mime), URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
 			MediaKey: up.MediaKey, FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256, FileLength: proto.Uint64(up.FileLength),
-			Width: optionalN(num("width")), Height: optionalN(num("height")), Seconds: optionalN(num("seconds")),
+			Width: optionalN(num("width")), Height: optionalN(num("height")), Seconds: optionalN(num("seconds")), ContextInfo: answers,
 		}
 	case "audio":
 		msg.AudioMessage = &waE2E.AudioMessage{
 			Mimetype: proto.String(mime), URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
 			MediaKey: up.MediaKey, FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256, FileLength: proto.Uint64(up.FileLength),
-			Seconds: optionalN(num("seconds")),
+			Seconds: optionalN(num("seconds")), ContextInfo: answers,
 		}
 	default:
 		name := r.FormValue("name")
@@ -1093,6 +1205,7 @@ func (s *session) sendFile(w http.ResponseWriter, r *http.Request) {
 			Caption: optional(caption), FileName: proto.String(name), Title: proto.String(name), Mimetype: proto.String(mime),
 			URL: proto.String(up.URL), DirectPath: proto.String(up.DirectPath),
 			MediaKey: up.MediaKey, FileEncSHA256: up.FileEncSHA256, FileSHA256: up.FileSHA256, FileLength: proto.Uint64(up.FileLength),
+			ContextInfo: answers,
 		}
 	}
 	resp, err := cli.SendMessage(r.Context(), jid, &msg)
@@ -1282,25 +1395,32 @@ func (s *session) react(w http.ResponseWriter, r *http.Request) {
 	if cli == nil {
 		return
 	}
-	// who wrote it: none for the user's own (the key says from me); theirs as it came in, else
-	// the chat (one to one) or the sender given (a group)
+	// who wrote it: none for the user's own (the key says from me)
 	var sender types.JID
 	if !req.FromMe {
-		sender = chat
-		s.mu.Lock()
-		o, ok := s.origins[id]
-		s.mu.Unlock()
-		if ok {
-			chat, sender = o.chat, o.sender
-		} else if chat.Server == types.GroupServer {
-			sender = jidOf(req.Sender)
-		}
+		chat, sender = s.source(chat, id, req.Sender)
 	}
 	if _, err := cli.SendMessage(r.Context(), chat, cli.BuildReaction(chat, sender, id, req.Emoji)); err != nil {
 		fail(w, http.StatusBadGateway, err)
 		return
 	}
 	reply(w, http.StatusOK, map[string]any{"reacted": req.Emoji})
+}
+
+// source: the chat and the writer of a message someone else sent, as WhatsApp addresses them: as
+// it came in, else the chat as Pigeon knows it and, as its writer, the chat (one to one) or the
+// sender given (a group).
+func (s *session) source(chat types.JID, id types.MessageID, sender string) (types.JID, types.JID) {
+	s.mu.Lock()
+	o, ok := s.origins[id]
+	s.mu.Unlock()
+	switch {
+	case ok:
+		return o.chat, o.sender
+	case chat.Server == types.GroupServer:
+		return chat, jidOf(sender)
+	}
+	return chat, chat
 }
 
 // jidOf: "+<number>" as its JID, else the JID it is.

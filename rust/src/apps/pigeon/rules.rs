@@ -622,6 +622,7 @@ mod tests {
             archived: false,
             mentions: json!([]),
             place: None,
+            quote: None,
         }
     }
 

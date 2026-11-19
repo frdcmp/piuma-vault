@@ -241,6 +241,19 @@ pub async fn conversation_items(st: web::Data<AppState>, u: InboxReader, path: w
 #[derive(Deserialize)]
 pub struct SendBody {
     text: String,
+    /// the message it answers (an item of the conversation), on a channel that quotes
+    reply_to: Option<Uuid>,
+}
+
+/// A send's arguments with the message it answers (`reply_to`), on a channel that has that.
+fn answering(st: &AppState, connector: &str, mut args: Json, reply_to: Option<Uuid>) -> anyhow::Result<Json> {
+    let Some(item) = reply_to else { return Ok(args) };
+    let c = connectors::find(st, connector).ok_or_else(|| anyhow::anyhow!("{connector} isn't here"))?;
+    if !c.quotes() {
+        anyhow::bail!("{} has no replies to one message", c.title());
+    }
+    args["reply_to"] = json!(item);
+    Ok(args)
 }
 
 /// The user's own message, written in the Inbox: sent at once, as theirs.
@@ -253,7 +266,8 @@ pub async fn send(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>
         if text.is_empty() {
             anyhow::bail!("nothing to send");
         }
-        let row = actions::direct(&st, user, &conv.connector, "send_reply", json!({ "text": text }), Some(id), "user (Inbox)").await?;
+        let args = answering(&st, &conv.connector, json!({ "text": text }), body.reply_to)?;
+        let row = actions::direct(&st, user, &conv.connector, "send_reply", args, Some(id), "user (Inbox)").await?;
         if row.status != "done" {
             anyhow::bail!("{}", row.error.unwrap_or_else(|| format!("not sent ({})", row.status)));
         }
@@ -265,14 +279,16 @@ pub async fn send(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>
     reply(r)
 }
 
-/// A file sent up (multipart: `file`, and `caption`, `width`, `height`, `seconds`), its bytes at
-/// a temporary path.
+/// A file sent up (multipart: `file`, and `caption`, `width`, `height`, `seconds`, `reply_to`),
+/// its bytes at a temporary path.
 struct Upload {
     mime: String,
     filename: Option<String>,
     size: i64,
     caption: String,
     dims: Vec<(&'static str, u64)>,
+    /// the message it answers
+    reply_to: Option<Uuid>,
 }
 
 /// Reads an upload's fields, the file into `tmp`: up to MAX_SEND_BYTES, not empty.
@@ -281,6 +297,7 @@ async fn receive(form: &mut actix_multipart::Multipart, tmp: &std::path::Path) -
     use tokio::io::AsyncWriteExt;
     let (mut caption, mut file): (String, Option<(String, Option<String>, i64)>) = (String::new(), None);
     let mut dims: Vec<(&'static str, u64)> = Vec::new();
+    let mut reply_to: Option<Uuid> = None;
     while let Some(mut field) = form.try_next().await.map_err(|e| anyhow::anyhow!("the upload: {e}"))? {
         let name = field.name().to_string();
         if name == "file" {
@@ -311,6 +328,10 @@ async fn receive(form: &mut actix_multipart::Multipart, tmp: &std::path::Path) -
                     caption = value;
                     continue;
                 }
+                "reply_to" => {
+                    reply_to = Some(value.trim().parse().map_err(|_| anyhow::anyhow!("reply_to is a message's id"))?);
+                    continue;
+                }
                 "width" => "width",
                 "height" => "height",
                 "seconds" => "seconds",
@@ -325,7 +346,7 @@ async fn receive(form: &mut actix_multipart::Multipart, tmp: &std::path::Path) -
     if size == 0 {
         anyhow::bail!("the file is empty");
     }
-    Ok(Upload { mime, filename, size, caption, dims })
+    Ok(Upload { mime, filename, size, caption, dims, reply_to })
 }
 
 /// A file to attach to an email, sent up (multipart `file`): stored as the user's, not sent. The
@@ -345,7 +366,8 @@ pub async fn upload(st: web::Data<AppState>, u: InboxWriter, mut form: actix_mul
 }
 
 /// The user's photo, video, audio or file, from the Inbox (multipart: `file`, and `caption`,
-/// `width`, `height`, `seconds`): stored, then sent at once on the chat's channel, as theirs.
+/// `width`, `height`, `seconds`, and `reply_to`: the message it answers): stored, then sent at
+/// once on the chat's channel, as theirs.
 pub async fn send_file(st: web::Data<AppState>, u: InboxWriter, path: web::Path<Uuid>, mut form: actix_multipart::Multipart) -> HttpResponse {
     let user = &u.0.user_id;
     let id = path.into_inner();
@@ -354,9 +376,12 @@ pub async fn send_file(st: web::Data<AppState>, u: InboxWriter, path: web::Path<
         let conv = tools::own_conversation(&st, user, id).await?;
         let up = receive(&mut form, &tmp).await?;
         let (caption, dims) = (up.caption, up.dims);
+        // refused before the file is stored
+        let mut args = answering(&st, &conv.connector, json!({ "caption": caption.trim() }), up.reply_to)?;
         let entry = media::put_outgoing(&st.pool, user, &conv.connector, &up.mime, up.filename.as_deref(), &tmp, up.size, &dims).await?;
         let key = entry["key"].as_str().unwrap_or_default().to_string();
-        let row = actions::direct(&st, user, &conv.connector, "send_file", json!({ "file": entry, "caption": caption.trim() }), Some(id), "user (Inbox)").await;
+        args["file"] = entry;
+        let row = actions::direct(&st, user, &conv.connector, "send_file", args, Some(id), "user (Inbox)").await;
         let row = match row {
             Ok(r) if r.status == "done" => r,
             Ok(r) => {

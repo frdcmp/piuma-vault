@@ -81,6 +81,9 @@ pub struct Item {
     pub mentions: Json,
     /// a place it carries (a WhatsApp pin): `{lat, lon, name}`, read from the body's "[location: …]"
     pub place: Option<Json>,
+    /// the message it answers (a reply): `{id, mine, sender, sender_name, body, media}` when the
+    /// conversation has it, else what the channel carried of it (`{mine, sender, body}`)
+    pub quote: Option<Json>,
 }
 
 impl Item {
@@ -98,7 +101,10 @@ pub const ITEM_COLS: &str = "id, direction, author, sender, sender_name, subject
        WHERE v.id = db_pigeon_items.conversation_id AND db_pigeon_items.connector = 'gmail') AS open_url, \
      (connector = 'gmail' AND direction = 'in' AND jsonb_typeof(raw->'labels') = 'array' AND NOT (raw->'labels') ? 'INBOX') AS archived, \
      (SELECT jsonb_build_object('name', NULLIF(btrim(m[1]), ''), 'lat', m[2]::float8, 'lon', m[3]::float8) \
-        FROM regexp_match(body, '\\[(?:live )?location:\\s*(.*\\s)?(-?[0-9]+\\.[0-9]+),(-?[0-9]+\\.[0-9]+)\\]') AS m WHERE m IS NOT NULL) AS place";
+        FROM regexp_match(body, '\\[(?:live )?location:\\s*(.*\\s)?(-?[0-9]+\\.[0-9]+),(-?[0-9]+\\.[0-9]+)\\]') AS m WHERE m IS NOT NULL) AS place, \
+     COALESCE((SELECT jsonb_build_object('id', q.id, 'mine', q.direction = 'out', 'sender', q.sender, 'sender_name', q.sender_name, 'body', q.body, 'media', q.media) \
+       FROM db_pigeon_items q WHERE q.conversation_id = db_pigeon_items.conversation_id AND q.external_id = db_pigeon_items.raw->'reply_to'->>'id'), \
+       NULLIF((db_pigeon_items.raw->'reply_to') - 'id', '{}'::jsonb)) AS quote";
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Contact {
@@ -227,7 +233,14 @@ pub fn transcript(items: &[Item], them: &str, me: (&str, &[String]), max_body: u
                 subject = Some(s);
             }
         }
-        out.push_str(&format!("[{}] {who}{}: {}{}\n", it.at.format("%Y-%m-%d %H:%M UTC"), recipients(it, me), clip(&said(it), max_body), reacted(it, me.0)));
+        out.push_str(&format!(
+            "[{}] {who}{}{}: {}{}\n",
+            it.at.format("%Y-%m-%d %H:%M UTC"),
+            recipients(it, me),
+            answering(it, them, me.0),
+            clip(&said(it), max_body),
+            reacted(it, me.0)
+        ));
     }
     out
 }
@@ -244,6 +257,16 @@ pub fn said(it: &Item) -> String {
     }
     body
 }
+
+/// The message a reply answers, as the transcript shows it: ` (replying to Anna: "at 8?")`.
+fn answering(it: &Item, them: &str, me: &str) -> String {
+    let Some(q) = it.quote.as_ref() else { return String::new() };
+    let who = if q["mine"] == true { me } else { q["sender_name"].as_str().or(q["sender"].as_str()).unwrap_or(them) };
+    format!(" (replying to {who}: \"{}\")", clip(q["body"].as_str().unwrap_or_default(), QUOTE_CHARS))
+}
+
+/// How much of the message a reply answers a transcript shows.
+const QUOTE_CHARS: usize = 120;
 
 /// A message's reactions, as the transcript shows them: " (reactions: ❤️ Anna, 👍 Marco)".
 fn reacted(it: &Item, me: &str) -> String {
@@ -288,6 +311,7 @@ mod tests {
             archived: false,
             mentions: serde_json::json!([]),
             place: None,
+            quote: None,
         }
     }
 
@@ -315,6 +339,20 @@ mod tests {
         assert_eq!(
             t,
             "[2026-11-01 14:05 UTC] Marco <marco@example.com> (to: luca@example.com, Alex; cc: boss@example.com): Can you two sort it out?\n"
+        );
+    }
+
+    #[test]
+    fn a_reply_says_what_it_answers() {
+        let mut theirs = item("them", None, "Yes");
+        theirs.to_addrs = serde_json::json!([]);
+        theirs.quote = Some(serde_json::json!({ "mine": true, "body": "Are you\ncoming?" }));
+        let mut mine = item("me", None, "Good");
+        mine.quote = Some(serde_json::json!({ "mine": false, "sender": "marco@example.com", "sender_name": "Marco", "body": "[image]" }));
+        let t = transcript(&[theirs, mine], "Marco", ("Alex", &[]), 100);
+        assert_eq!(
+            t,
+            "[2026-11-01 14:05 UTC] Marco <marco@example.com> (replying to Alex: \"Are you coming?\"): Yes\n[2026-11-01 14:05 UTC] Alex (replying to Marco: \"[image]\"): Good\n"
         );
     }
 }

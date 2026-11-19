@@ -8,7 +8,8 @@
 //! graph.facebook.com/<the account's id>. In: Meta pushes each message to
 //! `/pigeon/webhooks/instagram` (signed with the app secret): theirs as items to triage, the
 //! user's own from the phone (echoes) as theirs.
-//! Out: a reply, within Instagram's 24-hour window after their last message; "typing…", and
+//! Out: a reply, within Instagram's 24-hour window after their last message, which can answer one
+//! message (`reply_to`; one that comes in keeps what it answers in `raw.reply_to`); "typing…", and
 //! "Seen" once the user (or Pigeon, before an auto reply) read it. The API can't archive or
 //! delete a DM. `gather` brings recent conversations in as history (Meta
 //! gives the 20 latest messages of each).
@@ -23,7 +24,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde_json::{json, Value as Json};
 use uuid::Uuid;
 
-use crate::apps::pigeon::connectors::{need_str, ActionDef, Connector, Kind, Reacted};
+use crate::apps::pigeon::connectors::{need_str, ActionDef, Connector, Kind, Quoted, Reacted};
 use crate::apps::pigeon::items::{self, Author, Direction, Incoming};
 use crate::apps::pigeon::media;
 use crate::apps::pigeon::sign;
@@ -54,6 +55,15 @@ pub struct Event {
     pub attachments: Vec<Json>,
     /// milliseconds since the epoch
     pub at_ms: i64,
+    /// what it answers
+    pub answers: Option<Answered>,
+}
+
+/// What a message answers: one of the conversation's messages (its mid), or a story.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Answered {
+    Message(String),
+    Story,
 }
 
 /// The message events of a delivery; the rest (reads, reactions, deletions, edits) are counted
@@ -87,6 +97,11 @@ pub fn events(body: &Json) -> (Vec<Event>, usize) {
                 text: msg["text"].as_str().unwrap_or_default().to_string(),
                 attachments: msg["attachments"].as_array().cloned().unwrap_or_default(),
                 at_ms: m["timestamp"].as_i64().unwrap_or_else(|| Utc::now().timestamp_millis()),
+                answers: match (msg["reply_to"]["mid"].as_str(), msg["reply_to"]["story"].is_object()) {
+                    (Some(mid), _) => Some(Answered::Message(mid.to_string())),
+                    (None, true) => Some(Answered::Story),
+                    (None, false) => None,
+                },
             });
         }
     }
@@ -251,8 +266,9 @@ async fn pigeon_sent(st: &State, user: &str, other: &str, body: &str) -> anyhow:
 }
 
 /// A file the user uploaded, sent to `other`: Instagram fetches it from a link (for an hour), and
-/// a caption follows as its own message, as Instagram shows them. Both stored as Pigeon's.
-async fn send_file(st: &State, user: &str, connection: i32, other: &str, args: &Json) -> anyhow::Result<Json> {
+/// a caption follows as its own message, as Instagram shows them. Both stored as Pigeon's. The
+/// file is what answers `quoted`.
+async fn send_file(st: &State, user: &str, connection: i32, other: &str, args: &Json, quoted: Option<&Quoted>) -> anyhow::Result<Json> {
     let f = media::own_file(user, args)?;
     let caption = args["caption"].as_str().unwrap_or_default().trim();
     if caption.len() > MAX_TEXT {
@@ -275,8 +291,9 @@ async fn send_file(st: &State, user: &str, connection: i32, other: &str, args: &
     if !caption.is_empty() {
         parts.push((json!({ "text": caption }), caption.to_string(), json!([])));
     }
-    for (message, body, media) in parts {
-        let sent = match api::graph(&token, "POST", &format!("/{my_id}/messages"), &[], Some(&json!({ "recipient": { "id": other }, "message": message }))).await {
+    for (n, (message, body, media)) in parts.into_iter().enumerate() {
+        let quoted = quoted.filter(|_| n == 0);
+        let sent = match api::graph(&token, "POST", &format!("/{my_id}/messages"), &[], Some(&to_send(other, message, quoted))).await {
             Ok(s) => s,
             Err(e) => {
                 note_dead_token(st, connection, &e).await;
@@ -298,7 +315,7 @@ async fn send_file(st: &State, user: &str, connection: i32, other: &str, args: &
             subject: None,
             body,
             media,
-            raw: json!({ "mid": mid }),
+            raw: raw_of(&mid, quoted.map(Quoted::kept)),
             at: Utc::now(),
             counterpart: None,
             window: None,
@@ -311,7 +328,49 @@ async fn send_file(st: &State, user: &str, connection: i32, other: &str, args: &
     Ok(json!({ "sent": true, "to": other, "message_id": ids.first(), "message_ids": ids }))
 }
 
-/// One message as an item: its conversation, None when stored already.
+/// What goes to the Send API: a message for `other`, which can answer one of the conversation's
+/// (`reply_to`, by the mid the Graph API knows it by).
+fn to_send(other: &str, message: Json, quoted: Option<&Quoted>) -> Json {
+    let mut body = json!({ "recipient": { "id": other }, "message": message });
+    if let Some(q) = quoted {
+        body["reply_to"] = json!({ "mid": api::api_mid(&q.external_id) });
+    }
+    body
+}
+
+/// An item's `raw`: its mid, and what it keeps of the message it answers (`reply_to`).
+fn raw_of(mid: &str, reply_to: Option<Json>) -> Json {
+    let mut raw = json!({ "mid": mid });
+    if let Some(r) = reply_to {
+        raw["reply_to"] = r;
+    }
+    raw
+}
+
+/// What a message that came in keeps of what it answers (`raw.reply_to`): a message by its id as
+/// the conversation has it (Meta writes a mid two ways), a story as whose it is.
+async fn kept_answer(st: &State, user: &str, other: &str, mine: bool, a: &Answered) -> anyhow::Result<Json> {
+    let mid = match a {
+        // their answer is to the user's story, the user's to theirs
+        Answered::Story => return Ok(json!({ "mine": !mine, "body": "[story]" })),
+        Answered::Message(mid) => mid,
+    };
+    let forms: Vec<String> = [Some(mid.clone()), api::other_mid(mid)].into_iter().flatten().collect();
+    let known: Option<String> = sqlx::query_scalar(
+        "SELECT i.external_id FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id
+          WHERE c.user_id = $1 AND c.connector = $2 AND c.external_id = $3 AND i.external_id = ANY($4) LIMIT 1",
+    )
+    .bind(user)
+    .bind(ID)
+    .bind(other)
+    .bind(&forms)
+    .fetch_optional(&st.pool)
+    .await?;
+    Ok(json!({ "id": known.as_ref().unwrap_or(mid) }))
+}
+
+/// One message as an item: its conversation, None when stored already. `reply_to`: what it keeps
+/// of the message it answers.
 #[allow(clippy::too_many_arguments)]
 async fn store(
     st: &State,
@@ -325,6 +384,7 @@ async fn store(
     body: String,
     attachments: Vec<Json>,
     at: DateTime<Utc>,
+    reply_to: Option<Json>,
     triage: bool,
 ) -> anyhow::Result<Option<Uuid>> {
     if mine && pigeon_sent(st, user, other, &body).await? {
@@ -344,7 +404,7 @@ async fn store(
         subject: None,
         body,
         media: media_of(user, &attachments, at),
-        raw: json!({ "mid": mid }),
+        raw: raw_of(mid, reply_to),
         at,
         counterpart: Some((other.to_string(), name)),
         window: (!mine).then_some(WINDOW),
@@ -363,7 +423,11 @@ async fn take_in(st: &State, events: Vec<Event>) {
             let token = api::token(st, connection).await?;
             let name = name_of(st, &user, &token, &e.other).await;
             let at = Utc.timestamp_millis_opt(e.at_ms).single().unwrap_or_else(Utc::now);
-            store(st, &user, connection, &e.account, &e.other, name, e.mine, &e.mid, body_of(&e.text, &e.attachments), e.attachments.clone(), at, true).await?;
+            let reply_to = match &e.answers {
+                Some(a) => Some(kept_answer(st, &user, &e.other, e.mine, a).await?),
+                None => None,
+            };
+            store(st, &user, connection, &e.account, &e.other, name, e.mine, &e.mid, body_of(&e.text, &e.attachments), e.attachments.clone(), at, reply_to, true).await?;
             Ok(())
         }
         .await;
@@ -467,7 +531,7 @@ async fn gather_conversation(st: &State, user: &str, connection: i32, token: &ap
         let name = name_of(st, user, token, &other).await.or(name);
         let text = d["message"].as_str().unwrap_or_default();
         let body = if text.trim().is_empty() { "[attachment]".to_string() } else { text.to_string() };
-        if store(st, user, connection, my_id, &other, name, mine, mid, body, Vec::new(), at, false).await?.is_some() {
+        if store(st, user, connection, my_id, &other, name, mine, mid, body, Vec::new(), at, None, false).await?.is_some() {
             n += 1;
         }
     }
@@ -521,8 +585,9 @@ impl Connector for Instagram {
         if window.is_none_or(|w| w < Utc::now()) {
             anyhow::bail!("Instagram's 24-hour reply window is closed: they have to write again first");
         }
+        let quoted = super::quoted(st, args, conv).await?;
         if action == "send_file" {
-            return send_file(st, user, connection, &other, args).await;
+            return send_file(st, user, connection, &other, args, quoted.as_ref()).await;
         }
         let text = need_str(args, "text")?;
         if text.len() > MAX_TEXT {
@@ -530,7 +595,7 @@ impl Connector for Instagram {
         }
         let token = api::token(st, connection).await?;
         let my_id = ig_id(st, connection).await?;
-        let message = json!({ "recipient": { "id": other }, "message": { "text": text } });
+        let message = to_send(&other, json!({ "text": text }), quoted.as_ref());
         let sent = match api::graph(&token, "POST", &format!("/{my_id}/messages"), &[], Some(&message)).await {
             Ok(s) => s,
             Err(e) => {
@@ -553,15 +618,15 @@ impl Connector for Instagram {
             subject: None,
             body: text.to_string(),
             media: json!([]),
-            raw: json!({ "mid": mid }),
+            raw: raw_of(&mid, quoted.as_ref().map(Quoted::kept)),
             at: Utc::now(),
             counterpart: None,
             window: None,
             triage: false,
         };
-        // its echo may have come in first, as the user's: it becomes Pigeon's
+        // its echo may have come in first, as the user's: it becomes Pigeon's, with what it answers
         let echoed = sqlx::query(&format!(
-            "UPDATE db_pigeon_items i SET author = 'pigeon' FROM db_pigeon_conversations c
+            "UPDATE db_pigeon_items i SET author = 'pigeon', raw = COALESCE(i.raw, '{{}}'::jsonb) || $5 FROM db_pigeon_conversations c
               WHERE c.id = i.conversation_id AND c.user_id = $4 AND c.connector = $1 AND c.external_id = $2 AND i.author = 'me' AND i.body = $3
                 AND i.at > NOW() - INTERVAL '{ECHO_WITHIN}'"
         ))
@@ -569,6 +634,7 @@ impl Connector for Instagram {
         .bind(&other)
         .bind(text)
         .bind(user)
+        .bind(quoted.as_ref().map_or_else(|| json!({}), |q| json!({ "reply_to": q.kept() })))
         .execute(&st.pool)
         .await?
         .rows_affected();
@@ -576,6 +642,10 @@ impl Connector for Instagram {
             items::ingest(&st.pool, &inc, st.cfg.triage_debounce).await?;
         }
         Ok(json!({ "sent": true, "to": other, "message_id": mid }))
+    }
+
+    fn quotes(&self) -> bool {
+        true
     }
 
     fn shows_typing(&self) -> bool {
@@ -816,6 +886,7 @@ mod tests {
         assert_eq!(evs[0].account, "17841400000000001");
         assert_eq!((evs[1].other.as_str(), evs[1].mine), ("900", true), "an echo is the user's, with them");
         assert_eq!(body_of(&evs[2].text, &evs[2].attachments), "[image]");
+        assert!(evs.iter().all(|e| e.answers.is_none()));
         assert!(events(&json!({ "object": "page", "entry": [] })).0.is_empty(), "not Instagram's");
         let rs = reactions(&json!({ "object": "instagram", "entry": [{ "id": "acc", "messaging": [
             { "sender": { "id": "u1" }, "recipient": { "id": "acc" }, "timestamp": 5, "reaction": { "mid": "m1", "action": "react", "reaction": "love", "emoji": "❤️" } },
@@ -823,5 +894,25 @@ mod tests {
         assert_eq!(rs.len(), 2);
         assert_eq!((rs[0].mid.as_str(), rs[0].emoji.as_deref(), rs[0].mine), ("m1", Some("❤️"), false));
         assert_eq!((rs[1].emoji.as_deref(), rs[1].mine), (None, true));
+    }
+
+    #[test]
+    fn a_reply_names_what_it_answers() {
+        let delivery = |message: Json| {
+            json!({ "object": "instagram", "entry": [{ "id": "acc", "messaging": [
+                { "sender": { "id": "900" }, "recipient": { "id": "acc" }, "timestamp": 5, "message": message } ] }] })
+        };
+        let to_message = events(&delivery(json!({ "mid": "m9", "text": "yes", "reply_to": { "mid": "m2" } }))).0;
+        assert_eq!(to_message[0].answers, Some(Answered::Message("m2".into())));
+        let to_story = events(&delivery(json!({ "mid": "m10", "text": "wow", "reply_to": { "story": { "url": "https://x/s.jpg", "id": "s1" } } }))).0;
+        assert_eq!(to_story[0].answers, Some(Answered::Story));
+        // sent: the message it answers rides beside the message
+        let q = Quoted { external_id: "m2".into(), mine: false, sender: Some("900".into()), body: "at 8?".into(), media: json!([]) };
+        assert_eq!(
+            to_send("900", json!({ "text": "yes" }), Some(&q)),
+            json!({ "recipient": { "id": "900" }, "message": { "text": "yes" }, "reply_to": { "mid": "m2" } })
+        );
+        assert_eq!(to_send("900", json!({ "text": "yes" }), None), json!({ "recipient": { "id": "900" }, "message": { "text": "yes" } }));
+        assert_eq!(raw_of("m9", Some(q.kept())), json!({ "mid": "m9", "reply_to": { "id": "m2", "mine": false, "sender": "900", "body": "at 8?" } }));
     }
 }

@@ -89,6 +89,38 @@ pub struct Reacted {
     pub sender: Option<String>,
 }
 
+/// The message a sent one answers (`quoted`): what the channel names it by, and what it said.
+pub struct Quoted {
+    pub external_id: String,
+    pub mine: bool,
+    pub sender: Option<String>,
+    pub body: String,
+    pub media: Json,
+}
+
+impl Quoted {
+    /// What the message that answers it keeps (its `raw.reply_to`): the Inbox draws the quote
+    /// from the stored message (found by `id`), and from the rest when it isn't stored.
+    pub fn kept(&self) -> Json {
+        json!({ "id": self.external_id, "mine": self.mine, "sender": self.sender, "body": self.body })
+    }
+}
+
+/// The message a send answers (`args.reply_to`: its item's id, set by the Inbox from the one the
+/// user chose, never by a model), which is one of the conversation's; none: it answers none.
+pub async fn quoted(st: &State, args: &Json, conversation: Uuid) -> anyhow::Result<Option<Quoted>> {
+    let Some(id) = args.get("reply_to").filter(|v| !v.is_null()) else { return Ok(None) };
+    let id: Uuid = id.as_str().and_then(|s| s.parse().ok()).ok_or_else(|| anyhow::anyhow!("`reply_to` is a message's id"))?;
+    let q: Option<(String, bool, Option<String>, String, Json)> =
+        sqlx::query_as("SELECT external_id, direction = 'out', sender, body, media FROM db_pigeon_items WHERE id = $1 AND conversation_id = $2")
+            .bind(id)
+            .bind(conversation)
+            .fetch_optional(&st.pool)
+            .await?;
+    let (external_id, mine, sender, body, media) = q.ok_or_else(|| anyhow::anyhow!("the message it answers isn't in this conversation"))?;
+    Ok(Some(Quoted { external_id, mine, sender, body, media }))
+}
+
 #[async_trait]
 pub trait Connector: Send + Sync {
     fn id(&self) -> &'static str;
@@ -102,6 +134,11 @@ pub trait Connector: Send + Sync {
     /// `{lat, lon}`, set by Pigeon's code from the user's phone, never by a model). Elsewhere the
     /// place goes as a link in the text.
     fn sends_places(&self) -> bool {
+        false
+    }
+    /// Whether a message sent here can answer one message of the chat, shown quoted over it
+    /// (`args.reply_to`: `quoted`).
+    fn quotes(&self) -> bool {
         false
     }
     /// Whether the other person sees "typing…" here (`typing`): an auto reply then goes out paced
