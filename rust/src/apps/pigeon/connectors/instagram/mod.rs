@@ -9,7 +9,7 @@
 //! `/pigeon/webhooks/instagram` (signed with the app secret): theirs as items to triage, the
 //! user's own from the phone (echoes) as theirs.
 //! Out: a reply, within Instagram's 24-hour window after their last message, which can answer one
-//! message (`reply_to`; one that comes in keeps what it answers in `raw.reply_to`); "typing…", and
+//! message (`reply_to`; one that comes in keeps what it answers in `raw.answers`); "typing…", and
 //! "Seen" once the user (or Pigeon, before an auto reply) read it. The API can't archive or
 //! delete a DM. `gather` brings recent conversations in as history (Meta
 //! gives the 20 latest messages of each).
@@ -338,16 +338,16 @@ fn to_send(other: &str, message: Json, quoted: Option<&Quoted>) -> Json {
     body
 }
 
-/// An item's `raw`: its mid, and what it keeps of the message it answers (`reply_to`).
-fn raw_of(mid: &str, reply_to: Option<Json>) -> Json {
+/// An item's `raw`: its mid, and what it keeps of the message it answers (`answers`).
+fn raw_of(mid: &str, answers: Option<Json>) -> Json {
     let mut raw = json!({ "mid": mid });
-    if let Some(r) = reply_to {
-        raw["reply_to"] = r;
+    if let Some(a) = answers {
+        raw["answers"] = a;
     }
     raw
 }
 
-/// What a message that came in keeps of what it answers (`raw.reply_to`): a message by its id as
+/// What a message that came in keeps of what it answers (`raw.answers`): a message by its id as
 /// the conversation has it (Meta writes a mid two ways), a story as whose it is.
 async fn kept_answer(st: &State, user: &str, other: &str, mine: bool, a: &Answered) -> anyhow::Result<Json> {
     let mid = match a {
@@ -369,7 +369,7 @@ async fn kept_answer(st: &State, user: &str, other: &str, mine: bool, a: &Answer
     Ok(json!({ "id": known.as_ref().unwrap_or(mid) }))
 }
 
-/// One message as an item: its conversation, None when stored already. `reply_to`: what it keeps
+/// One message as an item: its conversation, None when stored already. `answers`: what it keeps
 /// of the message it answers.
 #[allow(clippy::too_many_arguments)]
 async fn store(
@@ -384,7 +384,7 @@ async fn store(
     body: String,
     attachments: Vec<Json>,
     at: DateTime<Utc>,
-    reply_to: Option<Json>,
+    answers: Option<Json>,
     triage: bool,
 ) -> anyhow::Result<Option<Uuid>> {
     if mine && pigeon_sent(st, user, other, &body).await? {
@@ -404,7 +404,7 @@ async fn store(
         subject: None,
         body,
         media: media_of(user, &attachments, at),
-        raw: raw_of(mid, reply_to),
+        raw: raw_of(mid, answers),
         at,
         counterpart: Some((other.to_string(), name)),
         window: (!mine).then_some(WINDOW),
@@ -423,11 +423,11 @@ async fn take_in(st: &State, events: Vec<Event>) {
             let token = api::token(st, connection).await?;
             let name = name_of(st, &user, &token, &e.other).await;
             let at = Utc.timestamp_millis_opt(e.at_ms).single().unwrap_or_else(Utc::now);
-            let reply_to = match &e.answers {
+            let answers = match &e.answers {
                 Some(a) => Some(kept_answer(st, &user, &e.other, e.mine, a).await?),
                 None => None,
             };
-            store(st, &user, connection, &e.account, &e.other, name, e.mine, &e.mid, body_of(&e.text, &e.attachments), e.attachments.clone(), at, reply_to, true).await?;
+            store(st, &user, connection, &e.account, &e.other, name, e.mine, &e.mid, body_of(&e.text, &e.attachments), e.attachments.clone(), at, answers, true).await?;
             Ok(())
         }
         .await;
@@ -634,7 +634,7 @@ impl Connector for Instagram {
         .bind(&other)
         .bind(text)
         .bind(user)
-        .bind(quoted.as_ref().map_or_else(|| json!({}), |q| json!({ "reply_to": q.kept() })))
+        .bind(quoted.as_ref().map_or_else(|| json!({}), |q| json!({ "answers": q.kept() })))
         .execute(&st.pool)
         .await?
         .rows_affected();
@@ -913,6 +913,6 @@ mod tests {
             json!({ "recipient": { "id": "900" }, "message": { "text": "yes" }, "reply_to": { "mid": "m2" } })
         );
         assert_eq!(to_send("900", json!({ "text": "yes" }), None), json!({ "recipient": { "id": "900" }, "message": { "text": "yes" } }));
-        assert_eq!(raw_of("m9", Some(q.kept())), json!({ "mid": "m9", "reply_to": { "id": "m2", "mine": false, "sender": "900", "body": "at 8?" } }));
+        assert_eq!(raw_of("m9", Some(q.kept())), json!({ "mid": "m9", "answers": { "id": "m2", "mine": false, "sender": "900", "body": "at 8?" } }));
     }
 }

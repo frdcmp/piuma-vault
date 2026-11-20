@@ -9,7 +9,7 @@
 //! phone as theirs (the conversation handled), on pairing the latest of each chat as history; and
 //! that they're typing, so the triage waits. Out: a reply (no reply window: WhatsApp has none for
 //! a person's own account), which can answer one message (WhatsApp's quote; one that comes in
-//! keeps what it answers in `raw.reply_to`), "typing…", and read receipts once the user (or
+//! keeps what it answers in `raw.answers`), "typing…", and read receipts once the user (or
 //! Pigeon, before an auto reply) read it. Connected in the Inbox's settings: the server's QR code,
 //! scanned from the phone (Linked devices). A chat is keyed by its JID; a person's handle is their
 //! phone number (+<country><number>).
@@ -166,7 +166,7 @@ async fn store_sent(st: &State, user: &str, chat: &str, sent: &Json, body: Strin
     let id = sent["id"].as_str().unwrap_or_default().to_string();
     let mut raw = json!({ "id": id });
     if let Some(q) = quoted {
-        raw["reply_to"] = q.kept();
+        raw["answers"] = q.kept();
     }
     let at = sent["at"].as_i64().and_then(|ms| Utc.timestamp_millis_opt(ms).single()).unwrap_or_else(Utc::now);
     let me = sqlx::query_scalar::<_, String>("SELECT account FROM db_pigeon_connections WHERE connector = $1 AND user_id = $2 AND status = 'connected' LIMIT 1")
@@ -340,7 +340,7 @@ fn worded(text: &str, kinds: &[String]) -> String {
     parts.join("\n")
 }
 
-/// What a message keeps of the one it answers (an item's `raw.reply_to`, as `Quoted::kept`).
+/// What a message keeps of the one it answers (an item's `raw.answers`, as `Quoted::kept`).
 fn kept_quote(q: &Quote) -> Json {
     json!({ "id": q.id, "mine": q.from_me, "sender": q.sender, "body": worded(&q.text, &q.kinds) })
 }
@@ -473,7 +473,7 @@ async fn store(st: &State, user: &str, connection: Option<i32>, m: &Message, tri
         raw["mentions"] = json!(tags);
     }
     if let Some(q) = &m.quoted {
-        raw["reply_to"] = kept_quote(q);
+        raw["answers"] = kept_quote(q);
     }
     let inc = Incoming {
         user_id: user.to_string(),

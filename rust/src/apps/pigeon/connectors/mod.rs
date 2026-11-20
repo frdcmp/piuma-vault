@@ -99,7 +99,7 @@ pub struct Quoted {
 }
 
 impl Quoted {
-    /// What the message that answers it keeps (its `raw.reply_to`): the Inbox draws the quote
+    /// What the message that answers it keeps (its `raw.answers`): the Inbox draws the quote
     /// from the stored message (found by `id`), and from the rest when it isn't stored.
     pub fn kept(&self) -> Json {
         json!({ "id": self.external_id, "mine": self.mine, "sender": self.sender, "body": self.body })

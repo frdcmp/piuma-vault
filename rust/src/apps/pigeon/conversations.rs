@@ -82,7 +82,8 @@ pub struct Item {
     /// a place it carries (a WhatsApp pin): `{lat, lon, name}`, read from the body's "[location: …]"
     pub place: Option<Json>,
     /// the message it answers (a reply): `{id, mine, sender, sender_name, body, media}` when the
-    /// conversation has it, else what the channel carried of it (`{mine, sender, body}`)
+    /// conversation has it, else what the channel carried of it (`{mine, sender, body}`); kept in
+    /// `raw.answers` (an email's `raw.reply_to` is its Reply-To address)
     pub quote: Option<Json>,
 }
 
@@ -103,8 +104,8 @@ pub const ITEM_COLS: &str = "id, direction, author, sender, sender_name, subject
      (SELECT jsonb_build_object('name', NULLIF(btrim(m[1]), ''), 'lat', m[2]::float8, 'lon', m[3]::float8) \
         FROM regexp_match(body, '\\[(?:live )?location:\\s*(.*\\s)?(-?[0-9]+\\.[0-9]+),(-?[0-9]+\\.[0-9]+)\\]') AS m WHERE m IS NOT NULL) AS place, \
      COALESCE((SELECT jsonb_build_object('id', q.id, 'mine', q.direction = 'out', 'sender', q.sender, 'sender_name', q.sender_name, 'body', q.body, 'media', q.media) \
-       FROM db_pigeon_items q WHERE q.conversation_id = db_pigeon_items.conversation_id AND q.external_id = db_pigeon_items.raw->'reply_to'->>'id'), \
-       NULLIF((db_pigeon_items.raw->'reply_to') - 'id', '{}'::jsonb)) AS quote";
+       FROM db_pigeon_items q WHERE q.conversation_id = db_pigeon_items.conversation_id AND q.external_id = db_pigeon_items.raw->'answers'->>'id'), \
+       NULLIF((db_pigeon_items.raw->'answers') - 'id', '{}'::jsonb)) AS quote";
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Contact {
