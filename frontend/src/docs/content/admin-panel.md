@@ -8,7 +8,7 @@ the `admin_access` permission. It is where the vault is configured and operated.
 The **Services** dashboard configures the external services that are **not** env
 vars, with a test button for each:
 
-- **Embeddings** — Azure OpenAI endpoint / key / deployment
+- **Embeddings** — an OpenAI-compatible embeddings URL and its key
 - **Chat gateway** — the external LLM chat gateway
 - **Storage** — the S3-compatible store and CDN host
 - **Web search** — the active search provider

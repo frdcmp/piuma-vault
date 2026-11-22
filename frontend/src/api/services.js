@@ -1,6 +1,6 @@
 import axiosInstance from "./axiosInstance";
 
-// Service connection config (Azure embeddings, S3 storage, web search) stored in
+// Service connection config (embeddings, S3 storage, web search) stored in
 // the DB. Secrets are write-only: GET returns `*_set` booleans, never the value.
 
 export const getServices = async () => {

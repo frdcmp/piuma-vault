@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 /// is stored.
 #[derive(Debug, Serialize)]
 pub struct ServiceConfigResponse {
-    pub azure_embedding_url: String,
-    pub azure_embedding_api_key_set: bool,
+    pub embedding_url: String,
+    pub embedding_api_key_set: bool,
     // Generic S3 / AWS object storage. Endpoint/region/bucket/access-key-id are
     // identifiers (returned plain); the secret access key and CDN token-auth key
     // are secrets, masked behind `*_set` flags.
@@ -56,8 +56,8 @@ pub struct ServiceConfigResponse {
 /// empty string clears it, a non-empty string replaces it.
 #[derive(Debug, Deserialize)]
 pub struct UpdateServiceConfig {
-    pub azure_embedding_url: Option<String>,
-    pub azure_embedding_api_key: Option<String>,
+    pub embedding_url: Option<String>,
+    pub embedding_api_key: Option<String>,
     pub s3_endpoint: Option<String>,
     pub s3_region: Option<String>,
     pub s3_bucket: Option<String>,
@@ -163,8 +163,8 @@ pub struct TestTranscriptionRequest {
 /// values can be tested without persisting. Blank fields fall back to saved config.
 #[derive(Debug, Default, Deserialize)]
 pub struct TestEmbeddingRequest {
-    pub azure_embedding_url: Option<String>,
-    pub azure_embedding_api_key: Option<String>,
+    pub embedding_url: Option<String>,
+    pub embedding_api_key: Option<String>,
 }
 
 /// Optional S3 field overrides for a "try now" check, so unsaved form values can

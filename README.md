@@ -178,7 +178,7 @@ flowchart TD
 
     %% Background workers poll the database for jobs and due alerts
     Worker[embedding-worker <br/> vector queue] -->|Polls embedding jobs| DB
-    Worker -.->|Generates 1536-Dim Vectors| AO[Azure OpenAI <br/> text-embedding-3-large]
+    Worker -.->|Generates 1536-Dim Vectors| AO[OpenAI-compatible endpoint <br/> text-embedding-3-large]
     NW[notification-worker <br/> Web Push + Expo] -->|Dispatches due alerts| DB
     CW[cron-worker <br/> scheduled agent jobs] -->|Runs RRULE schedules| DB
     PW[pigeon-worker <br/> the Inbox] -->|Polls channels, sorts, drafts| DB
@@ -237,7 +237,7 @@ flowchart TD
 
 You need Docker with Compose v2, and [Bun](https://bun.sh) to build the web frontend.
 
-> Keys for outside services are not set in `.env`. That covers AI providers, Azure OpenAI embeddings, S3 or Bunny storage and SMTP email. You add them after your first sign in, on the Services and Agents pages in Settings. The `.env` file only covers the core stack: compose, server, CORS, database and auth.
+> Keys for outside services are not set in `.env`. That covers AI providers, the embeddings endpoint, S3 or Bunny storage and SMTP email. You add them after your first sign in, on the Services and Agents pages in Settings. The `.env` file only covers the core stack: compose, server, CORS, database and auth.
 
 ### 1. Configure the environment
 

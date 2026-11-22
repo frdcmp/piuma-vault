@@ -30,8 +30,8 @@ import EmailAccounts from "./EmailAccounts";
 import McpServers from "./McpServers";
 
 const EMPTY = {
-	azure_embedding_url: "",
-	azure_embedding_api_key: "",
+	embedding_url: "",
+	embedding_api_key: "",
 	s3_endpoint: "",
 	s3_region: "",
 	s3_bucket: "",
@@ -324,7 +324,7 @@ const Services = () => {
 		if (data) {
 			setForm((f) => ({
 				...f,
-				azure_embedding_url: data.azure_embedding_url || "",
+				embedding_url: data.embedding_url || "",
 				s3_endpoint: data.s3_endpoint || "",
 				s3_region: data.s3_region || "",
 				s3_bucket: data.s3_bucket || "",
@@ -367,7 +367,7 @@ const Services = () => {
 		// URLs are always sent; secrets only when the admin typed a new value
 		// (blank = keep existing, since the field is never prefilled).
 		const payload = {
-			azure_embedding_url: form.azure_embedding_url.trim(),
+			embedding_url: form.embedding_url.trim(),
 			s3_endpoint: form.s3_endpoint.trim(),
 			s3_region: form.s3_region.trim(),
 			s3_bucket: form.s3_bucket.trim(),
@@ -389,8 +389,8 @@ const Services = () => {
 		}
 		if (form.github_token.trim())
 			payload.github_token = form.github_token.trim();
-		if (form.azure_embedding_api_key.trim())
-			payload.azure_embedding_api_key = form.azure_embedding_api_key.trim();
+		if (form.embedding_api_key.trim())
+			payload.embedding_api_key = form.embedding_api_key.trim();
 		if (form.s3_secret_access_key.trim())
 			payload.s3_secret_access_key = form.s3_secret_access_key.trim();
 		if (form.s3_cdn_token_key.trim())
@@ -416,7 +416,7 @@ const Services = () => {
 			await update.mutateAsync(payload);
 			setForm((f) => ({
 				...f,
-				azure_embedding_api_key: "",
+				embedding_api_key: "",
 				s3_secret_access_key: "",
 				s3_cdn_token_key: "",
 				websearch_brave_api_key: "",
@@ -485,7 +485,7 @@ const Services = () => {
 		}
 	};
 
-	const EMB_KEYS = ["azure_embedding_url", "azure_embedding_api_key"];
+	const EMB_KEYS = ["embedding_url", "embedding_api_key"];
 	const S3_KEYS = [
 		"s3_endpoint",
 		"s3_region",
@@ -499,9 +499,9 @@ const Services = () => {
 
 	// Current form values for a live test; blank secrets fall back to saved.
 	const embTestPayload = () => {
-		const p = { azure_embedding_url: form.azure_embedding_url.trim() };
-		if (form.azure_embedding_api_key.trim())
-			p.azure_embedding_api_key = form.azure_embedding_api_key.trim();
+		const p = { embedding_url: form.embedding_url.trim() };
+		if (form.embedding_api_key.trim())
+			p.embedding_api_key = form.embedding_api_key.trim();
 		return p;
 	};
 
@@ -649,7 +649,7 @@ const Services = () => {
 	// Which services have credentials saved — drives the tab status dots.
 	const configured = data
 		? {
-				embeddings: !!data.azure_embedding_api_key_set,
+				embeddings: !!data.embedding_api_key_set,
 				search: WEBSEARCH_PROVIDERS.some((p) => data[`${p.key}_set`]),
 				transcription: TRANSCRIPTION_PROVIDERS.some(
 					(p) => data[`${p.key}_set`],
@@ -665,41 +665,41 @@ const Services = () => {
 
 	const activePanel = data && (
 		<>
-			{/* Embeddings (Azure OpenAI) */}
+			{/* Embeddings (any OpenAI-compatible endpoint) */}
 			{activeTab === "embeddings" && (
-				<PvPanel title="embeddings · azure openai">
+				<PvPanel title="embeddings · openai-compatible">
 					<p className="vp-card-desc vp-svc-desc">
 						Used to generate note embeddings and embed search queries
-						(text-embedding-3-large, 1536 dims).
+						(text-embedding-3-large, 1536 dims). Any OpenAI-compatible
+						embeddings URL that serves that model, with its key (sent as a
+						Bearer token).
 					</p>
 					<PvField label="Embedding URL">
 						<PvInput
 							spellCheck={false}
-							placeholder="https://<resource>.openai.azure.com/openai/deployments/<deployment>/embeddings?api-version=2023-05-15"
-							value={form.azure_embedding_url}
-							onChange={set("azure_embedding_url")}
+							placeholder="https://<host>/v1/embeddings"
+							value={form.embedding_url}
+							onChange={set("embedding_url")}
 						/>
 					</PvField>
 					<PvField
 						className="vp-svc-field--last"
 						label={
 							<>
-								API Key <SetChip isSet={data.azure_embedding_api_key_set} />
+								API Key <SetChip isSet={data.embedding_api_key_set} />
 							</>
 						}
 					>
 						<SecretInput
-							isSet={data.azure_embedding_api_key_set}
-							value={form.azure_embedding_api_key}
-							onChange={set("azure_embedding_api_key")}
+							isSet={data.embedding_api_key_set}
+							value={form.embedding_api_key}
+							onChange={set("embedding_api_key")}
 						/>
 					</PvField>
 					<TestRow
 						pending={testEmb.isPending}
 						onTest={() => runTest(testEmb, setEmbResult, embTestPayload())}
-						onClear={() =>
-							requestClear(EMB_KEYS, setEmbResult, "Azure embedding")
-						}
+						onClear={() => requestClear(EMB_KEYS, setEmbResult, "embedding")}
 						result={embResult}
 					/>
 				</PvPanel>

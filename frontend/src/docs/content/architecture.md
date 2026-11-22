@@ -11,7 +11,7 @@ code through the `backend` library (`src/lib.rs` re-exports `db` and `apps`):
 - **`backend`** — the HTTP API.
 - **`embedding-worker`** — generates embeddings in the background for both notes
   and agent **memory entries**. It claims pending work atomically (so multiple
-  workers never double-process), calls Azure OpenAI to produce the vectors, stores
+  workers never double-process), calls the embeddings endpoint to produce the vectors, stores
   them on the row, and marks the job done. See **[Agent Memory](/docs/agent-memory)**.
 
 ## No `/api/v1/` prefix in code

@@ -1,5 +1,5 @@
 /// Embedding Worker — polls `embedding_jobs` via `FOR UPDATE SKIP LOCKED`,
-/// calls Azure OpenAI to generate 1536-dim embeddings, stores them in the
+/// calls the embedding endpoint to generate 1536-dim embeddings, stores them in the
 /// notes table, and removes completed jobs. Also handles periodic cleanup:
 /// expired pending memory entries and cross-conversation pattern detection.
 use std::time::{Duration, Instant};

@@ -45,8 +45,8 @@
                   │                          │    + CDN      │
    external ──────┼──────────────┬──────────└──────────────┘
                   ▼              ▼               ▼
-            Azure OpenAI     LLM chat         SMTP
-            (embeddings)     gateway        (transactional mail)
+            Embeddings       LLM chat         SMTP
+            endpoint         gateway        (transactional mail)
 ```
 
 ## Tech stack
@@ -59,7 +59,7 @@
 | Auth | JWT (RS256) + refresh, API keys, TOTP 2FA, argon2 hashing |
 | Database | PostgreSQL 15 with the pgvector extension |
 | Object storage | S3-compatible store via aws-sdk-s3, fronted by a CDN |
-| AI | Azure OpenAI (embeddings), multiple chat providers, a chat gateway |
+| AI | An OpenAI-compatible embeddings endpoint, multiple chat providers, a chat gateway |
 | Mobile | Expo / React Native, React Navigation, EAS builds + OTA updates |
 | Infra | Nginx, Docker Compose, Cloudflare |
 

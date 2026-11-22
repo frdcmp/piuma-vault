@@ -24,10 +24,11 @@ Notes carry a vector embedding for semantic search, backed by pgvector with an
 HNSW index. Embeddings are generated **asynchronously**:
 
 1. Saving a note enqueues an embedding job.
-2. The `embedding-worker` binary claims pending jobs, calls Azure OpenAI, writes
+2. The `embedding-worker` binary claims pending jobs, calls the embeddings endpoint, writes
    the vector back onto the note, and clears the job.
 
-Azure OpenAI credentials are configured at runtime in the **Services** dashboard,
+The embeddings endpoint (an OpenAI-compatible URL serving
+`text-embedding-3-large`) and its key are configured at runtime in the **Services** dashboard,
 not via env vars. See **Admin Panel**.
 
 ## Editors

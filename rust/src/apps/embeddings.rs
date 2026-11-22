@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::apps::settings::store;
 use crate::db::db::DbPool;
 
-/// Azure OpenAI Embedding API request body
+/// OpenAI embeddings API request body
 #[derive(Serialize)]
 struct EmbeddingRequest {
     input: String,
@@ -31,11 +31,12 @@ struct EmbeddingUsage {
     prompt_tokens: i64,
 }
 
-/// The Azure deployment used for all embeddings; logged as the `model` in the
-/// token-usage ledger so embedding spend is attributable per provider/model.
+/// The model used for all embeddings, asked of the endpoint by this name and
+/// logged as the `model` in the token-usage ledger. Every stored vector comes
+/// from it: a different model means re-embedding everything.
 pub const EMBED_MODEL: &str = "text-embedding-3-large";
 
-/// Fetch a text embedding from Azure OpenAI and record its token usage.
+/// Fetch a text embedding from the embedding endpoint and record its token usage.
 ///
 /// Endpoint URL and API key are resolved from the `app_settings` table (set via
 /// the Services dashboard). `source` tags the call site for the admin analytics
@@ -52,7 +53,7 @@ pub async fn embed(
     if tokens > 0 {
         let _ = sqlx::query(
             "INSERT INTO db_token_usage (kind, source, provider_kind, model, tokens_input) \
-             VALUES ('embedding', $1, 'azure', $2, $3)",
+             VALUES ('embedding', $1, 'openai', $2, $3)",
         )
         .bind(source)
         .bind(EMBED_MODEL)
@@ -75,7 +76,7 @@ pub async fn embed_with(
 ) -> Result<(Vec<f32>, i64), String> {
     let body = EmbeddingRequest {
         input: text.to_string(),
-        model: "text-embedding-3-large".to_string(),
+        model: EMBED_MODEL.to_string(),
         dimensions: Some(dimensions),
     };
 
@@ -84,7 +85,7 @@ pub async fn embed_with(
     let client = Client::new();
     let res = client
         .post(url)
-        .header("api-key", api_key)
+        .bearer_auth(api_key)
         .header("Content-Type", "application/json")
         .json(&body)
         .send()

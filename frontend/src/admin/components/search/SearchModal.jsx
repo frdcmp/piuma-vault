@@ -66,7 +66,7 @@ const COMMANDS = [
 		icon: <ApiOutlined />,
 		label: "Services",
 		to: "/settings/services",
-		keywords: "azure embeddings storage search config",
+		keywords: "embeddings storage search config",
 	},
 	{
 		group: "Resources",

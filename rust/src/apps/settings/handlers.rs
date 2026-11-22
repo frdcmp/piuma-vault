@@ -18,10 +18,10 @@ fn forbidden() -> HttpResponse {
 /// Build the masked service-config view (URLs in plain, secrets as `*_set`).
 async fn current_config(pool: &DbPool) -> ServiceConfigResponse {
     ServiceConfigResponse {
-        azure_embedding_url: store::get(pool, store::AZURE_EMBEDDING_URL)
+        embedding_url: store::get(pool, store::EMBEDDING_URL)
             .await
             .unwrap_or_default(),
-        azure_embedding_api_key_set: store::get(pool, store::AZURE_EMBEDDING_API_KEY)
+        embedding_api_key_set: store::get(pool, store::EMBEDDING_API_KEY)
             .await
             .is_some(),
         s3_endpoint: store::get(pool, store::S3_ENDPOINT).await.unwrap_or_default(),
@@ -120,8 +120,8 @@ pub async fn update_services(
         body.voice_gemini_price_audio_output.clone(),
     );
     let updates = [
-        (store::AZURE_EMBEDDING_URL, body.azure_embedding_url),
-        (store::AZURE_EMBEDDING_API_KEY, body.azure_embedding_api_key),
+        (store::EMBEDDING_URL, body.embedding_url),
+        (store::EMBEDDING_API_KEY, body.embedding_api_key),
         (store::S3_ENDPOINT, body.s3_endpoint),
         (store::S3_REGION, body.s3_region),
         (store::S3_BUCKET, body.s3_bucket),
@@ -193,7 +193,7 @@ fn test_result(ok: bool, message: impl Into<String>) -> HttpResponse {
     HttpResponse::Ok().json(serde_json::json!({ "ok": ok, "message": message.into() }))
 }
 
-/// POST /admin/settings/services/test/embedding — live-check the Azure config.
+/// POST /admin/settings/services/test/embedding — live-check the embedding endpoint.
 /// An optional body lets the dashboard test unsaved form values; blank fields
 /// fall back to the saved config.
 pub async fn test_embedding(
@@ -207,8 +207,8 @@ pub async fn test_embedding(
     let req = body.map(|b| b.into_inner()).unwrap_or_default();
     let (url, api_key) = match store::embedding_config_with(
         pool.get_ref(),
-        req.azure_embedding_url,
-        req.azure_embedding_api_key,
+        req.embedding_url,
+        req.embedding_api_key,
     )
     .await
     {

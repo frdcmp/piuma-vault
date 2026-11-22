@@ -1,13 +1,14 @@
 //! Read/write for the single-tenant `app_settings` key-value table, plus
-//! typed resolvers for the services whose config lives in the DB (Azure
-//! embeddings, S3 storage, web search). Config is sourced exclusively from the
+//! typed resolvers for the services whose config lives in the DB (embeddings,
+//! S3 storage, web search). Config is sourced exclusively from the
 //! DB — set it in the Services dashboard.
 
 use crate::db::db::DbPool;
 
 // Setting keys (single source of truth, shared by handlers + resolvers).
-pub const AZURE_EMBEDDING_URL: &str = "azure_embedding_url";
-pub const AZURE_EMBEDDING_API_KEY: &str = "azure_embedding_api_key";
+// Embeddings — any OpenAI-compatible `/v1/embeddings` URL and its Bearer key.
+pub const EMBEDDING_URL: &str = "embedding_url";
+pub const EMBEDDING_API_KEY: &str = "embedding_api_key";
 // Generic S3 / AWS object storage (works with AWS S3, Bunny, R2, MinIO, …).
 pub const S3_ENDPOINT: &str = "s3_endpoint";
 pub const S3_REGION: &str = "s3_region";
@@ -128,7 +129,7 @@ pub async fn github_api_base(pool: &DbPool) -> String {
         .unwrap_or_else(|| "https://api.github.com".to_string())
 }
 
-/// Resolve Azure embedding config as `(url, api_key)`. Errors if either is unset.
+/// Resolve the embedding endpoint as `(url, api_key)`. Errors if either is unset.
 pub async fn embedding_config(pool: &DbPool) -> Result<(String, String), String> {
     embedding_config_with(pool, None, None).await
 }
@@ -140,10 +141,10 @@ pub async fn embedding_config_with(
     url_ov: Option<String>,
     key_ov: Option<String>,
 ) -> Result<(String, String), String> {
-    let url = resolve(pool, url_ov, AZURE_EMBEDDING_URL)
+    let url = resolve(pool, url_ov, EMBEDDING_URL)
         .await
         .ok_or_else(|| "Embedding URL not configured (set it in Services settings)".to_string())?;
-    let api_key = resolve(pool, key_ov, AZURE_EMBEDDING_API_KEY)
+    let api_key = resolve(pool, key_ov, EMBEDDING_API_KEY)
         .await
         .ok_or_else(|| "Embedding API key not configured (set it in Services settings)".to_string())?;
     Ok((url, api_key))

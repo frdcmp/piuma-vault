@@ -4,7 +4,7 @@
 //! the embeddings module) and rolls it up three ways — per model, per source,
 //! and per day — with an estimated USD cost. Pricing comes from the per-model
 //! `price_*` columns on `db_llm_models` (USD per 1M tokens); embeddings use a
-//! fixed fallback rate since the Azure deployment isn't a `db_llm_models` row.
+//! fixed rate since the embedding model isn't a `db_llm_models` row.
 //! Voice (speech-to-speech) rows bill audio and text separately, from the
 //! voice rate card in admin → Services → Voice (`voice::config::prices`).
 
@@ -160,8 +160,8 @@ pub async fn usage(
         })
         .collect();
     pricing.push(json!({
-        "model": "text-embedding-3-large",
-        "provider_kind": "azure",
+        "model": crate::apps::embeddings::EMBED_MODEL,
+        "provider_kind": "openai",
         "price_input": EMBED_PRICE_PER_1M,
         "price_output": 0.0,
         "price_cached": 0.0,

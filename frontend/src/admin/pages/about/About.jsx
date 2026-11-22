@@ -32,7 +32,7 @@ const ARCHITECTURE = [
 	{
 		icon: <SearchOutlined />,
 		title: "Embedding worker",
-		body: "A separate binary polls the embedding_jobs queue (FOR UPDATE SKIP LOCKED), calls Azure OpenAI for vectors, and stores them on notes for vector search.",
+		body: "A separate binary polls the embedding_jobs queue (FOR UPDATE SKIP LOCKED), calls an OpenAI-compatible embeddings endpoint for vectors, and stores them on notes for vector search.",
 	},
 	{
 		icon: <CloudOutlined />,

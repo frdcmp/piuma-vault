@@ -8,8 +8,8 @@ Memory dashboard.
 
 The agent has a layered, persistent memory so it gets to know the user over time
 — their preferences, patterns, and ongoing work — instead of starting cold every
-chat. It runs entirely on the existing stack (PostgreSQL + pgvector + Azure
-OpenAI embeddings); no extra services.
+chat. It runs entirely on the existing stack (PostgreSQL + pgvector + an
+OpenAI-compatible embeddings endpoint); no extra services.
 
 ## 2. The mental model
 
@@ -115,8 +115,8 @@ normalized-string matching against the facts held.
 ### L2 — semantic long-term memory
 
 The agent's recall: a table of discrete, self-contained facts (e.g. *"User
-prefers Rust for backend work"*). Each row carries a 1536-dim `embedding` (Azure
-OpenAI `text-embedding-3-large`, HNSW cosine index) so facts are found by meaning,
+prefers Rust for backend work"*). Each row carries a 1536-dim `embedding`
+(`text-embedding-3-large`, HNSW cosine index) so facts are found by meaning,
 not keywords. Each turn the user's message is matched against these embeddings
 and the top-K relevant facts are injected, closest first (a confirmed fact counts a little closer),
 each tagged with its `[provenance]` so the agent treats guesses as claims to
@@ -332,4 +332,4 @@ The `/admin/memory` page maps directly onto everything above.
 Saving a fact embeds it inline (so it's dedup-checked and searchable at once); if
 the provider is down the row is inserted vectorless and a
 `db_memory_embedding_jobs` row is queued for backfill. Same pipeline as notes:
-Azure OpenAI `text-embedding-3-large`, 1536-dim, HNSW cosine.
+`text-embedding-3-large`, 1536-dim, HNSW cosine.
