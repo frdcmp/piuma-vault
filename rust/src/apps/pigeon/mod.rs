@@ -54,6 +54,7 @@ pub mod items;
 pub mod listen;
 pub mod mcp_server;
 pub mod media;
+pub mod oauth;
 pub mod offer;
 pub mod owner;
 pub mod pace;

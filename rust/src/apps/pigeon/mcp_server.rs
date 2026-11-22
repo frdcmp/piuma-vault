@@ -3,18 +3,22 @@
 //! key (`x-api-key`) or a sign-in. The same tools Piuma has, under the same two rules: a message
 //! goes only in words the user has seen, and a big change waits for their tap in the Inbox
 //! (`confirm`). A key sees and runs only what its scopes allow (`tools::scope`): `inbox.read`
-//! reads, `inbox.write` acts, `inbox.access` decides who may be told what.
+//! reads, `inbox.write` acts, `inbox.access` decides who may be told what. Here, and only here, a
+//! person signed in through the suite's gateway comes in too, with its access token (`oauth`).
 //!
 //! Streamable HTTP, stateless: each POST is one JSON-RPC message (or a batch) answered as JSON;
 //! there's no stream to open (GET is 405) and no session to keep.
 
-use actix_web::{web, HttpResponse};
+use std::future::Future;
+use std::pin::Pin;
+
+use actix_web::{dev::Payload, web, FromRequest, HttpRequest, HttpResponse};
 use serde_json::{json, Value as Json};
 
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::pigeon::state::AppState;
-use crate::apps::pigeon::tools;
+use crate::apps::pigeon::{oauth, tools};
 
 /// The protocol versions answered as asked, newest first; anything else gets the newest.
 const VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -25,6 +29,39 @@ to someone goes only in words the user has seen: draft it (pigeon_draft_reply), 
 told what (the user's place, their calendar, a note of theirs) is pigeon_access, pigeon_permissions, pigeon_grant, pigeon_revoke and the \
 groups: grant only what the user asked, for whom they said; never let Pigeon answer on its own (mode auto, a policy to auto) unless they ask, and then it \
 still waits for their tap in the Inbox.";
+
+/// Who calls: a vault key or sign-in, as everywhere in the vault, or a person signed in through
+/// the suite (`oauth`); and the assistant to mark what it sends as its (none: the user's own sign-in).
+pub struct Caller {
+    user: AuthenticatedUser,
+    by: Option<String>,
+}
+
+impl FromRequest for Caller {
+    type Error = actix_web::Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self, Self::Error>>>>;
+
+    fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
+        let ours = req.app_data::<web::Data<AppState>>().and_then(|st| {
+            let conf = st.cfg.mcp_auth.clone()?;
+            let token = oauth::ours(req, &conf)?;
+            Some((st.clone(), conf, token))
+        });
+        if let Some((st, conf, token)) = ours {
+            return Box::pin(async move {
+                match oauth::caller(&st.pool, &conf, &token).await {
+                    Ok((user, by)) => Ok(Caller { user, by: Some(by) }),
+                    Err(refused) => Err(refused.into_error(&conf)),
+                }
+            });
+        }
+        let user = AuthenticatedUser::from_request(req, payload);
+        Box::pin(async move {
+            let user = user.await?;
+            Ok(Caller { by: super::handlers::assistant(&user), user })
+        })
+    }
+}
 
 fn result(id: &Json, result: Json) -> Json {
     json!({ "jsonrpc": "2.0", "id": id, "result": result })
@@ -49,7 +86,8 @@ fn listed(user: &AuthenticatedUser) -> Vec<Json> {
 }
 
 /// One message; none: a notification (nothing to answer).
-async fn handle(st: &AppState, user: &AuthenticatedUser, msg: &Json) -> Option<Json> {
+async fn handle(st: &AppState, caller: &Caller, msg: &Json) -> Option<Json> {
+    let user = &caller.user;
     let id = msg.get("id").filter(|i| !i.is_null())?;
     let method = msg.get("method").and_then(Json::as_str).unwrap_or_default();
     let params = msg.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -79,7 +117,7 @@ async fn handle(st: &AppState, user: &AuthenticatedUser, msg: &Json) -> Option<J
                 return Some(result(id, json!({ "content": [{ "type": "text", "text": format!("This key can't: it needs the {need} scope.") }], "isError": true })));
             }
             let args = params.get("arguments").cloned().filter(Json::is_object).unwrap_or_else(|| json!({}));
-            let (text, failed) = match tools::call_as(st, &user.user_id, name, &args, super::handlers::assistant(user).unwrap_or_else(|| "an assistant".into())).await {
+            let (text, failed) = match tools::call_as(st, &user.user_id, name, &args, caller.by.clone().unwrap_or_else(|| "an assistant".into())).await {
                 Ok(v) => (serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string()), false),
                 Err(e) => (e, true),
             };
@@ -93,13 +131,13 @@ async fn handle(st: &AppState, user: &AuthenticatedUser, msg: &Json) -> Option<J
     })
 }
 
-pub async fn post(st: web::Data<AppState>, user: AuthenticatedUser, body: web::Json<Json>) -> HttpResponse {
+pub async fn post(st: web::Data<AppState>, caller: Caller, body: web::Json<Json>) -> HttpResponse {
     let body = body.into_inner();
     match &body {
         Json::Array(msgs) => {
             let mut out = Vec::new();
             for m in msgs {
-                out.extend(handle(&st, &user, m).await);
+                out.extend(handle(&st, &caller, m).await);
             }
             if out.is_empty() {
                 HttpResponse::Accepted().finish()
@@ -107,7 +145,7 @@ pub async fn post(st: web::Data<AppState>, user: AuthenticatedUser, body: web::J
                 HttpResponse::Ok().json(out)
             }
         }
-        msg => match handle(&st, &user, msg).await {
+        msg => match handle(&st, &caller, msg).await {
             Some(answer) => HttpResponse::Ok().json(answer),
             None => HttpResponse::Accepted().finish(),
         },

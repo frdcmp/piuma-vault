@@ -17,6 +17,8 @@ pub struct Config {
     /// How long after the last incoming message a conversation is triaged (a burst is one batch).
     pub triage_debounce: Duration,
     pub gmail_poll: Duration,
+    /// The suite's sign-in, whose access tokens the MCP takes too (`oauth`); none: only the vault's own.
+    pub mcp_auth: Option<McpAuthConf>,
 }
 
 /// Jev, the classifier: an endpoint that answers yes/no, choice and score questions about a
@@ -52,6 +54,19 @@ pub struct WhatsappConf {
     pub secret: String,
 }
 
+/// An OAuth authorization server whose access tokens the MCP takes (`oauth`): who signs them
+/// (`iss`), where its keys are fetched from (`{url}/.well-known/jwks.json`, the issuer itself
+/// unless it's reached another way), what the MCP is to it (`aud`), and its two scopes, the one
+/// that reads and the one that also writes.
+#[derive(Clone, Debug)]
+pub struct McpAuthConf {
+    pub issuer: String,
+    pub url: String,
+    pub resource: String,
+    pub read_scope: String,
+    pub write_scope: String,
+}
+
 fn var(k: &str) -> Option<String> {
     std::env::var(k).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
 }
@@ -80,8 +95,20 @@ impl Config {
             (Some(url), Some(secret)) => Some(WhatsappConf { bridge_url: url.trim_end_matches('/').into(), secret }),
             _ => None,
         };
+        let public_url: String = var("SITE_URL").unwrap_or_else(|| "http://localhost:8034".into()).trim_end_matches('/').into();
+        let scopes = var("MCP_AUTH_SCOPES").unwrap_or_default();
+        let mcp_auth = match (var("MCP_AUTH_ISSUER"), scopes.split_whitespace().collect::<Vec<_>>().as_slice()) {
+            (Some(issuer), [read, write]) => Some(McpAuthConf {
+                url: var("MCP_AUTH_URL").unwrap_or_else(|| issuer.clone()).trim_end_matches('/').into(),
+                resource: var("MCP_AUTH_RESOURCE").unwrap_or_else(|| format!("{public_url}/api/v1/mcp")),
+                read_scope: read.to_string(),
+                write_scope: write.to_string(),
+                issuer,
+            }),
+            _ => None,
+        };
         Config {
-            public_url: var("SITE_URL").unwrap_or_else(|| "http://localhost:8034".into()).trim_end_matches('/').into(),
+            public_url,
             jev,
             google,
             instagram,
@@ -89,6 +116,7 @@ impl Config {
             console: matches!(var("PIGEON_CONSOLE").as_deref(), Some("1" | "true")),
             triage_debounce: secs("PIGEON_TRIAGE_DEBOUNCE_SECS", 20),
             gmail_poll: secs("PIGEON_GMAIL_POLL_SECS", 60),
+            mcp_auth,
         }
     }
 
