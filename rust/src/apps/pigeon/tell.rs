@@ -1084,7 +1084,7 @@ pub async fn suggest_group(st: &State, user: &str, contact: Uuid) -> anyhow::Res
         "person": c.name,
         "who_they_are_to_the_user": c.relationship.clone().unwrap_or_default(),
         "the_users_note_on_them": c.note.clone().unwrap_or_default(),
-        "what_pigeon_knows_about_them": people::memory(st, c.id).await?.map(|m| m.memory).unwrap_or_default(),
+        "what_pigeon_knows_about_them": crate::apps::pigeon::known::told(&st.pool, c.id).await?.unwrap_or_default(),
     });
     let keys: Vec<String> = (0..book.groups.len()).map(|i| format!("g{i}")).collect();
     let says: Vec<String> = book.groups.iter().map(|g| format!("{}{}", g.name, g.description.as_deref().map(|d| format!(": {d}")).unwrap_or_default())).collect();

@@ -258,11 +258,20 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
         ),
         (
             "pigeon_learn",
-            "Learn about people from their past conversations: older conversations come in from the channels as history (never sorted or answered), then each person's memory and, per channel, how the user writes to them are written. With contact_id: that person, now (default the last 365 days). Without: everyone the user wrote to in the last `days` (default 90), in the background.",
+            "Learn about people from their past conversations: older conversations come in from the channels as history (never sorted or answered), then what is known about each person is learnt (facts) and, per channel, how the user writes to them is written. With contact_id: that person, now (default the last 365 days). Without: everyone the user wrote to in the last `days` (default 90), in the background.",
             json!({ "type": "object", "properties": {
                 "contact_id": id("Only this person (from pigeon_contacts)"),
                 "days": { "type": "integer", "description": "How far back to bring conversations in" },
             } }),
+        ),
+        (
+            "pigeon_judge_fact",
+            "The user's word on something Pigeon knows about a person (a fact from pigeon_contacts with contact_id: `facts`, each with its id, status confirmed or pending): confirm (it's true), reject (it isn't: no longer used) or delete. Only on the user's word.",
+            json!({ "type": "object", "properties": {
+                "contact_id": id("The person (from pigeon_contacts)"),
+                "fact_id": id("The fact (its id in `facts`)"),
+                "verdict": { "type": "string", "enum": ["confirm", "reject", "delete"] },
+            }, "required": ["contact_id", "fact_id", "verdict"] }),
         ),
         (
             "pigeon_policies",
@@ -798,6 +807,10 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
         }
         "pigeon_merge_contacts" => people::merge(st, user, uuid_arg(args, "contact_id")?, uuid_arg(args, "merge_id")?).await,
         "pigeon_names_from_whatsapp" => people::import_whatsapp(st, user, opt_uuid(args, "contact_id")?).await,
+        "pigeon_judge_fact" => {
+            let verdict = args.get("verdict").and_then(Json::as_str).ok_or_else(|| anyhow::anyhow!("`verdict` is required"))?;
+            crate::apps::pigeon::known::judge(st, user, uuid_arg(args, "contact_id")?, uuid_arg(args, "fact_id")?, verdict, "chat").await
+        }
         "pigeon_learn" => {
             let days = |d: i64| args.get("days").and_then(Json::as_i64).unwrap_or(d).clamp(1, 3650);
             match opt_uuid(args, "contact_id")? {
@@ -805,7 +818,7 @@ pub async fn run(st: &AppState, user: &str, name: &str, args: &Json) -> anyhow::
                 None => {
                     let d = days(90);
                     Ok(if people::learn_all(st.clone(), user.to_string(), d) {
-                        json!({ "started": true, "days": d, "note": "Bringing in the conversations the user wrote in, then writing each person's memory and styles. It takes minutes; pigeon_contacts shows them as they come." })
+                        json!({ "started": true, "days": d, "note": "Bringing in the conversations the user wrote in, then learning about each person and writing their styles. It takes minutes; pigeon_contacts shows them as they come." })
                     } else {
                         json!({ "started": false, "note": "A learning run is going already." })
                     })
@@ -1191,7 +1204,7 @@ async fn conversation(st: &State, user: &str, args: &Json) -> anyhow::Result<Jso
         "conversation": conv,
         "with": conversations::who(contact.as_ref(), &conv),
         "contact": contact,
-        "what_pigeon_knows_about_them": match &contact { Some(c) => people::memory(st, c.id).await?.map(|m| m.memory), None => None },
+        "what_pigeon_knows_about_them": match &contact { Some(c) => crate::apps::pigeon::known::told(&st.pool, c.id).await?, None => None },
         "how_the_user_writes_to_them_here": match &contact { Some(c) => people::style(st, c.id, &conv.connector).await?.map(|s| s.profile), None => None },
         "summary": summary,
         "policies": pols,

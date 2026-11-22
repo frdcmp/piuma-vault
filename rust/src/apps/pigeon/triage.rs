@@ -8,7 +8,7 @@ use serde_json::{json, Map};
 use uuid::Uuid;
 
 use crate::apps::pigeon::ai::jev;
-use crate::apps::pigeon::{actions, agent, away, cards, conversations, instructions, owner, people, policy, rules, tell};
+use crate::apps::pigeon::{actions, agent, away, cards, conversations, instructions, owner, policy, rules, tell};
 use crate::apps::pigeon::state::{AppState, State};
 
 pub const REPLY_AT: f64 = 0.6;
@@ -186,7 +186,7 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
     let handles = conversations::my_handles(&st.pool, &conv.user_id).await?;
     let me = (owner.name.as_str(), handles.as_slice());
     let known = match &contact {
-        Some(c) => people::memory(st, c.id).await?.map(|m| m.memory),
+        Some(c) => crate::apps::pigeon::known::told(&st.pool, c.id).await?,
         None => None,
     };
     let new_ids: Vec<Uuid> = new.iter().map(|i| i.id).collect();

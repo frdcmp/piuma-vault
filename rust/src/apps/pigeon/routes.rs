@@ -77,6 +77,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/admin/pigeon/contacts/{id}/merge", web::post().to(h::merge_contacts))
         .route("/admin/pigeon/contacts/{id}/switches", web::put().to(h::contact_switches))
         .route("/admin/pigeon/contacts/{id}/learn", web::post().to(h::learn_contact))
+        .route("/admin/pigeon/contacts/{id}/facts/{fact}", web::post().to(h::judge_fact))
         .route("/admin/pigeon/rules", web::get().to(h::list_rules))
         .route("/admin/pigeon/rules", web::put().to(h::set_rule))
         .route("/admin/pigeon/rules/{id}", web::delete().to(h::delete_rule))

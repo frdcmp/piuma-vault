@@ -806,6 +806,10 @@ const TABLES: &[TableDefinition] = &[
             CREATE TABLE db_memory_entries (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 agent TEXT NOT NULL REFERENCES db_agent_profiles(agent) ON DELETE CASCADE,
+                -- whom it is about when not the user: one of their contacts (apps/pigeon/known.rs;
+                -- no reference, db_pigeon_contacts comes later here: a contact's facts go with it)
+                user_id TEXT,
+                contact_id UUID,
                 content TEXT NOT NULL,
                 embedding vector(1536),
                 category TEXT,
@@ -830,6 +834,7 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_memory_agent ON db_memory_entries USING btree (agent, status, is_active)",
             "CREATE INDEX IF NOT EXISTS idx_memory_category ON db_memory_entries USING btree (agent, category)",
             "CREATE INDEX IF NOT EXISTS idx_memory_embedding ON db_memory_entries USING hnsw (embedding vector_cosine_ops)",
+            "CREATE INDEX IF NOT EXISTS idx_memory_contact ON db_memory_entries (contact_id) WHERE contact_id IS NOT NULL",
         ],
     },
     // Embedding queue for memory entries — same pattern as `embedding_jobs`.
@@ -1121,6 +1126,10 @@ const TABLES: &[TableDefinition] = &[
                 relationship TEXT,
                 language TEXT,
                 note_id UUID REFERENCES notes(id) ON DELETE SET NULL,
+                -- what Pigeon knows about them was last learnt (apps/pigeon/known.rs): the items
+                -- with them then, and when
+                learned_items INTEGER,
+                learned_at TIMESTAMPTZ,
                 -- their profile picture in storage (apps/pigeon/avatars.rs: the photo; beside it
                 -- `.px.png`, pixelated), and when it was last looked for (NULL: never)
                 avatar_key TEXT,

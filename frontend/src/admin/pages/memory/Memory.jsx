@@ -48,12 +48,16 @@ const SOURCE_TONE = {
 	agent_observed: "green",
 	dialectic_derived: "purple",
 	imported: "blue",
+	person_stated: "green",
+	pigeon_derived: "purple",
 };
 const SOURCE_LABEL = {
 	user_stated: "user-stated",
 	agent_observed: "observed",
 	dialectic_derived: "derived",
 	imported: "imported",
+	person_stated: "said by them",
+	pigeon_derived: "Pigeon's guess",
 };
 
 const MemTag = ({ tone, children }) => (
@@ -466,6 +470,8 @@ const Memory = () => {
 	const [status, setStatus] = useState("all");
 	const [source, setSource] = useState();
 	const [category, setCategory] = useState();
+	// whom the facts are about: you (Piuma's), or the people you talk to (Pigeon's)
+	const [about, setAbout] = useState("user");
 	const [search, setSearch] = useState("");
 	const [convQuery, setConvQuery] = useState("");
 
@@ -475,9 +481,10 @@ const Memory = () => {
 		if (status !== "all") f.status = status;
 		if (source) f.source = source;
 		if (category) f.category = category;
+		if (about !== "all") f.about = about;
 		if (search.trim()) f.q = search.trim();
 		return f;
-	}, [status, source, category, search]);
+	}, [status, source, category, about, search]);
 	const entries = useMemoryEntries(entryFilters);
 	const turnLogs = useTurnLogs(
 		{ agent: AGENT },
@@ -526,6 +533,9 @@ const Memory = () => {
 			key: "content",
 			render: (text, row) => (
 				<div className="mem-cell-content">
+					{row.contact_name ? (
+						<MemTag tone="gold">{row.contact_name}</MemTag>
+					) : null}
 					<span>{text}</span>
 					{!row.embedded && (
 						<PvTooltip title="No embedding yet (queued / provider down)">
@@ -820,6 +830,19 @@ const Memory = () => {
 									<div className="mem-filters">
 										<PvSegmented
 											size="sm"
+											value={about}
+											onChange={setAbout}
+											options={[
+												{ label: "About you", value: "user" },
+												{
+													label: `People${overview.data?.people ? ` (${overview.data.people.facts})` : ""}`,
+													value: "people",
+												},
+												{ label: "Both", value: "all" },
+											]}
+										/>
+										<PvSegmented
+											size="sm"
 											value={status}
 											onChange={setStatus}
 											options={[
@@ -842,6 +865,8 @@ const Memory = () => {
 												{ label: "Observed", value: "agent_observed" },
 												{ label: "Derived", value: "dialectic_derived" },
 												{ label: "Imported", value: "imported" },
+												{ label: "Said by them", value: "person_stated" },
+												{ label: "Pigeon's guess", value: "pigeon_derived" },
 											]}
 										/>
 										<PvSelect

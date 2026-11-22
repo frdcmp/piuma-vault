@@ -255,7 +255,7 @@ async fn cross_conversation_patterns(pool: &backend::db::db::DbPool) {
     let rows: Vec<CategoryCount> = match sqlx::query_as(
         "SELECT agent, category, COUNT(*) AS cnt \
          FROM db_memory_entries \
-         WHERE source = 'dialectic_derived' AND status = 'confirmed' AND is_active \
+         WHERE source = 'dialectic_derived' AND contact_id IS NULL AND status = 'confirmed' AND is_active \
          GROUP BY agent, category \
          ORDER BY cnt DESC LIMIT 20",
     )

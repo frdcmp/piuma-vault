@@ -202,6 +202,15 @@ export const learnPigeonContact = async ({ id, days }) => {
 	return data;
 };
 
+// The user's word on something Pigeon knows about a person: confirm, reject or delete.
+export const judgePigeonFact = async ({ id, factId, verdict }) => {
+	const { data } = await axiosInstance.post(
+		`${BASE}/contacts/${id}/facts/${factId}`,
+		{ verdict },
+	);
+	return data;
+};
+
 export const learnAllPigeonContacts = async ({ days } = {}) => {
 	const { data } = await axiosInstance.post(`${BASE}/contacts/learn`, {
 		days,

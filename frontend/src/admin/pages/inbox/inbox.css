@@ -599,10 +599,29 @@ a.inbox-mention:hover {
 	flex-wrap: wrap;
 	gap: 4px;
 }
-.inbox-contact-memory {
-	white-space: pre-wrap;
-	font-size: 9.5pt;
+.inbox-contact-facts {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.inbox-contact-facts-head {
+	font-size: 8.5pt;
 	color: var(--vp-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-bottom: 2px;
+}
+.inbox-contact-fact {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 9.5pt;
+}
+.inbox-contact-fact-actions {
+	margin-left: auto;
+	display: flex;
+	gap: 2px;
+	flex-shrink: 0;
 }
 .inbox-contact-styles {
 	display: flex;

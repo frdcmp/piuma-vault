@@ -218,14 +218,22 @@ description says what it takes.
   and its card says why. A note in the trash or moved to `/contacts` is no longer read; a
   renamed folder keeps its grants; a 🔑 card for a note names it (`note`), and allowing it
   grants that one note. `pigeon_try_permission` doesn't take Notes.
-- What Pigeon knows about a person is notes in their folder of the vault,
-  `/contacts/<person>/` (a group chat has one too): `Pigeon · Memory` and
-  `Pigeon · Style · <Channel>`, tagged `pigeon`, beside the user's own notes there, which
-  Pigeon also reads before writing to them. They are the user's to edit (the notes tools):
-  an edit wins, the next rewrite keeps it. Don't delete them or rename them.
+- What Pigeon knows about a person is facts in the vault's memory, the same store and rules
+  as Piuma's facts about the user: `pigeon_contacts` with `contact_id` lists them (`facts`:
+  id, category who|fact|preference|goal, status confirmed|pending, source). What the person
+  said about themselves is confirmed; Pigeon's guesses are pending until the user confirms
+  them or new messages show them again; what's open between them (category goal) expires 60
+  days after it last came up. `pigeon_judge_fact` confirms, rejects or deletes one, on the
+  user's word. Piuma reads them with `memory_search` and `person`. They are only ever used in
+  that person's chats.
+- How the user writes to a person is notes in their folder of the vault,
+  `/contacts/<person>/` (a group chat has one too): `Pigeon · Style · <Channel>`, tagged
+  `pigeon`, beside the user's own notes there, which Pigeon also reads before writing to
+  them. They are the user's to edit (the notes tools): an edit wins, the next rewrite keeps
+  it. Don't delete them or rename them.
 - A person known only by a number takes the name their next message carries on its own;
   `pigeon_names_from_whatsapp` does it now from the phone's address book (and gives the slug).
-- `pigeon_learn` brings old conversations in and writes what Pigeon knows about people: slow,
+- `pigeon_learn` brings old conversations in, learns about people and writes their styles: slow,
   it runs in the background without `contact_id`.
 
 ---

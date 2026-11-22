@@ -9,6 +9,11 @@
 //! confirmed facts at distance < FLOOR_CONFIRMED, pending at the tighter
 //! FLOOR_PENDING).
 //!
+//! A fact is about the user (`contact_id` NULL: what Piuma knows and retrieves each turn) or
+//! about one of the people they talk to (`user_id`, `contact_id`: what Pigeon learns from their
+//! conversations, `pigeon::known`), under the same rules; Piuma reads those only when asked
+//! (`memory_search` with `person`).
+//!
 //! A pending fact earns trust only from the user or from independent evidence:
 //! the user confirms it (`confirm`, `confirmed_by` user or chat), or the
 //! dialectic derives it again from another conversation at least a day later
@@ -69,11 +74,12 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         (
             "memory_search",
-            "Search your long-term memory for facts/preferences relevant to a query. Returns the closest entries with their similarity, category, status, and provenance. Includes both confirmed facts and unconfirmed (derived) hypotheses.",
+            "Search your long-term memory for facts/preferences relevant to a query. Returns the closest entries with their similarity, category, status, and provenance. Includes both confirmed facts and unconfirmed (derived) hypotheses. About the user by default; with `person`, what Pigeon knows about one of the people they talk to (learnt from their conversations).",
             json!({
                 "type": "object",
                 "properties": {
                     "query": { "type": "string" },
+                    "person": { "type": "string", "description": "a contact's name or @slug: search what is known about them instead of about the user" },
                     "limit": { "type": "integer", "description": "max results (default 5)" }
                 },
                 "required": ["query"]
@@ -191,7 +197,7 @@ pub async fn retrieve_for_turn(
     let rows: Vec<(Uuid, String, String, String, f64)> = sqlx::query_as(
         "SELECT id, content, status, source, (embedding <=> $2) AS dist \
          FROM db_memory_entries \
-         WHERE agent = $1 AND is_active AND embedding IS NOT NULL \
+         WHERE agent = $1 AND contact_id IS NULL AND is_active AND embedding IS NOT NULL \
            AND status IN ('confirmed', 'pending') \
            AND (expires_at IS NULL OR expires_at > NOW()) \
            AND (embedding <=> $2) < CASE WHEN status = 'confirmed' THEN $3 ELSE $4 END \
@@ -323,32 +329,64 @@ async fn link_related(pool: &DbPool, entry_id: Uuid, new_id: Uuid) {
     .await;
 }
 
-/// Insert a dialectic-derived row (`status=pending`, 60-day TTL), optionally
-/// recording which entry it supersedes via `contradicts_id`.
-async fn insert_pending(
-    pool: &DbPool,
-    agent: &str,
-    content: &str,
-    vec: &pgvector::Vector,
-    category: Option<&str>,
+/// Whom a fact is about, when it isn't the user: one of their contacts (Pigeon's facts about
+/// the people they talk to). Piuma's facts about the user have no contact.
+#[derive(Clone, Copy, Debug)]
+pub struct Person<'a> {
+    pub user: &'a str,
+    pub contact: Uuid,
+}
+
+/// A fact to write, derived from conversations: Piuma's dialectic (about the user, from a chat)
+/// or Pigeon (about a person, `stated` when they said it about themselves).
+struct Derived<'a> {
+    agent: &'a str,
+    content: &'a str,
+    category: Option<&'a str>,
+    /// the Piuma chat it came from
     conversation_id: Option<Uuid>,
-    contradicts_id: Option<Uuid>,
-) -> Result<Uuid, String> {
-    sqlx::query_scalar(
+    about: Option<Person<'a>>,
+    stated: bool,
+}
+
+/// Insert a derived fact. A guess is pending for 60 days (`dialectic_derived` about the user,
+/// `pigeon_derived` about a person); what a person said about themselves (`person_stated`) is
+/// confirmed at once, unless it contradicts a confirmed fact (`contradicts_id`), which only the
+/// user settles. No embedding (the provider is down): one is queued.
+async fn insert_derived(pool: &DbPool, d: &Derived<'_>, vec: Option<&pgvector::Vector>, contradicts_id: Option<Uuid>, waits: bool) -> Result<Uuid, String> {
+    let confirmed = d.stated && !waits;
+    let source = match (d.about, d.stated) {
+        (None, _) => "dialectic_derived",
+        (Some(_), true) => "person_stated",
+        (Some(_), false) => "pigeon_derived",
+    };
+    let id: Uuid = sqlx::query_scalar(
         "INSERT INTO db_memory_entries \
-           (agent, content, embedding, category, confidence, source, status, source_conversation_id, contradicts_id, expires_at) \
-         VALUES ($1, $2, $3, $4, 'medium', 'dialectic_derived', 'pending', $5, $6, NOW() + INTERVAL '60 days') \
+           (agent, user_id, contact_id, content, embedding, category, confidence, source, status, source_conversation_id, contradicts_id, \
+            confirmed_by, confirmed_at, expires_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $9 THEN 'high' ELSE 'medium' END, $7, CASE WHEN $9 THEN 'confirmed' ELSE 'pending' END, $8, $10, \
+                 CASE WHEN $9 THEN 'stated' END, CASE WHEN $9 THEN NOW() END, \
+                 CASE WHEN NOT $9 THEN NOW() + INTERVAL '60 days' WHEN $6 = 'goal' THEN NOW() + make_interval(days => $11) END) \
          RETURNING id",
     )
-    .bind(agent)
-    .bind(content)
+    .bind(d.agent)
+    .bind(d.about.map(|p| p.user))
+    .bind(d.about.map(|p| p.contact))
+    .bind(d.content)
     .bind(vec)
-    .bind(category)
-    .bind(conversation_id)
+    .bind(d.category)
+    .bind(source)
+    .bind(d.conversation_id)
+    .bind(confirmed)
     .bind(contradicts_id)
+    .bind(GOAL_DAYS)
     .fetch_one(pool)
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    if vec.is_none() {
+        let _ = sqlx::query("INSERT INTO db_memory_embedding_jobs (memory_entry_id, content) VALUES ($1, $2)").bind(id).bind(d.content).execute(pool).await;
+    }
+    Ok(id)
 }
 
 /// Confirm an entry: trusted, high confidence, and `by` says how: `user` (on
@@ -382,7 +420,7 @@ pub async fn confirm(pool: &DbPool, id: Uuid, agent: Option<&str>, by: &str) -> 
 }
 
 /// A confirmed goal came up again: it holds GOAL_DAYS from now.
-async fn renew(pool: &DbPool, id: Uuid) {
+pub async fn renew(pool: &DbPool, id: Uuid) {
     let _ = sqlx::query(
         "UPDATE db_memory_entries SET expires_at = NOW() + make_interval(days => $2), updated_at = NOW() \
          WHERE id = $1 AND status = 'confirmed' AND category = 'goal'",
@@ -393,16 +431,9 @@ async fn renew(pool: &DbPool, id: Uuid) {
     .await;
 }
 
-/// Save a dialectic-derived fact as a low-trust pending entry (60-day TTL),
-/// `source=dialectic_derived`, `confidence=medium`. Dedups against the agent's
-/// active entries: any neighbour within CORROBORATE_DISTANCE is judged by
-/// Stage-B NLI — `entails` corroborates a pending neighbour when the two are
-/// independent (another conversation, INDEPENDENT_DAYS apart) and the neighbour
-/// contradicts nothing still held, else it's a duplicate (a confirmed goal is
-/// renewed); `contradicts` supersedes a pending neighbour, and waits beside a
-/// confirmed one for the user; `neutral` saves both linked via `related_ids`. With NLI
-/// unavailable, cosine alone is trusted only below DUP_DISTANCE.
-/// Returns the outcome label.
+/// Save a dialectic-derived fact about the user as a low-trust pending entry (60-day TTL),
+/// `source=dialectic_derived`, `confidence=medium`, from the Piuma chat `conversation_id`.
+/// Returns the outcome label (`save`).
 pub async fn save_derived(
     pool: &DbPool,
     agent: &str,
@@ -410,56 +441,66 @@ pub async fn save_derived(
     category: Option<&str>,
     conversation_id: Option<Uuid>,
 ) -> Result<&'static str, String> {
-    let Ok(emb) = embeddings::embed(pool, content, EMBED_DIMS, "embedding:memory").await else {
-        let id: Uuid = sqlx::query_scalar(
-            "INSERT INTO db_memory_entries \
-               (agent, content, category, confidence, source, status, source_conversation_id, expires_at) \
-             VALUES ($1, $2, $3, 'medium', 'dialectic_derived', 'pending', $4, NOW() + INTERVAL '60 days') \
-             RETURNING id",
-        )
-        .bind(agent)
-        .bind(content)
-        .bind(category)
-        .bind(conversation_id)
-        .fetch_one(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-        let _ = sqlx::query("INSERT INTO db_memory_embedding_jobs (memory_entry_id, content) VALUES ($1, $2)")
-            .bind(id)
-            .bind(content)
-            .execute(pool)
-            .await;
+    save(pool, &Derived { agent, content, category, conversation_id, about: None, stated: false }).await
+}
+
+/// Save what Pigeon learnt about a person from their conversations: `stated` when they said it
+/// about themselves (confirmed), else a guess (pending). Returns the outcome label (`save`).
+pub async fn save_about(pool: &DbPool, agent: &str, person: Person<'_>, content: &str, category: Option<&str>, stated: bool) -> Result<&'static str, String> {
+    save(pool, &Derived { agent, content, category, conversation_id: None, about: Some(person), stated }).await
+}
+
+/// Dedups against the active facts about the same subject (the user, or the one person): any
+/// neighbour within CORROBORATE_DISTANCE is judged by Stage-B NLI.
+///   - `entails`: the same fact. About the user, it corroborates a pending neighbour when the
+///     two are independent (another conversation, INDEPENDENT_DAYS apart); about a person, when
+///     they said it themselves. Either way not when the neighbour contradicts a fact still held.
+///     Otherwise a duplicate (a confirmed goal is renewed).
+///   - `contradicts`: supersedes a pending neighbour; beside a confirmed one it waits, pending,
+///     for the user.
+///   - `neutral`: both kept, linked via `related_ids`.
+///
+/// With NLI unavailable, cosine alone is trusted only below DUP_DISTANCE.
+async fn save(pool: &DbPool, d: &Derived<'_>) -> Result<&'static str, String> {
+    let Ok(emb) = embeddings::embed(pool, d.content, EMBED_DIMS, "embedding:memory").await else {
+        insert_derived(pool, d, None, None, false).await?;
         return Ok("inserted");
     };
 
     let vec = pgvector::Vector::from(emb);
-    // the nearest held fact; `independent`: written in another conversation, at
-    // least INDEPENDENT_DAYS ago (so the same chat, or the agent repeating it,
+    // the nearest held fact about the same subject; `independent`: written in another
+    // conversation, at least INDEPENDENT_DAYS ago (so the same chat, or the agent repeating it,
     // can't confirm it); `disputed`: it contradicts a fact still held
     let nearest: Option<(Uuid, f64, String, String, bool, bool)> = sqlx::query_as(
         "SELECT e.id, (e.embedding <=> $2) AS dist, e.status, e.content, \
                 (e.source_conversation_id IS DISTINCT FROM $3 AND e.created_at < NOW() - make_interval(days => $4)) AS independent, \
                 EXISTS (SELECT 1 FROM db_memory_entries c WHERE c.id = e.contradicts_id AND c.is_active) AS disputed \
          FROM db_memory_entries e \
-         WHERE e.agent = $1 AND e.is_active AND e.embedding IS NOT NULL \
+         WHERE e.agent = $1 AND e.contact_id IS NOT DISTINCT FROM $5 AND e.is_active AND e.embedding IS NOT NULL \
          ORDER BY e.embedding <=> $2 LIMIT 1",
     )
-    .bind(agent)
+    .bind(d.agent)
     .bind(&vec)
-    .bind(conversation_id)
+    .bind(d.conversation_id)
     .bind(INDEPENDENT_DAYS)
+    .bind(d.about.map(|p| p.contact))
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?;
+    let content = d.content;
     if let Some((existing_id, dist, status, existing_content, independent, disputed)) = nearest {
         if dist < CORROBORATE_DISTANCE {
             let judgment = nli_check(pool, content, &existing_content).await;
             // the same fact (NLI unavailable: near-verbatim cosine alone is trustworthy)
             if judgment == Some("entails") || (judgment.is_none() && dist < DUP_DISTANCE) {
-                // Corroboration: derived again, independently, a pending fact is confirmed.
-                if status == "pending" && independent && !disputed {
-                    confirm(pool, existing_id, None, "corroborated").await.map_err(|e| e.to_string())?;
-                    log::info!("dialectic corroboration: '{content}' (dist {dist:.3}) confirms pending {existing_id}");
+                // Corroboration: derived again, independently, or said by the person themselves.
+                let (confirms, by) = match d.about {
+                    None => (independent, "corroborated"),
+                    Some(_) => (d.stated, "stated"),
+                };
+                if status == "pending" && confirms && !disputed {
+                    confirm(pool, existing_id, None, by).await.map_err(|e| e.to_string())?;
+                    log::info!("memory corroboration ({by}): '{content}' (dist {dist:.3}) confirms pending {existing_id}");
                     return Ok("corroborated");
                 }
                 if status == "confirmed" {
@@ -469,27 +510,23 @@ pub async fn save_derived(
             }
             match judgment {
                 Some("contradicts") => {
-                    let new_id =
-                        insert_pending(pool, agent, content, &vec, category, conversation_id, Some(existing_id))
-                            .await?;
                     // a guess replaces a guess; a confirmed fact stays until the user confirms the new one
-                    if status == "pending" {
-                        let _ = sqlx::query(
-                            "UPDATE db_memory_entries SET is_active = FALSE, updated_at = NOW() WHERE id = $1",
-                        )
-                        .bind(existing_id)
-                        .execute(pool)
-                        .await;
-                        log::warn!("dialectic contradiction: new '{content}' supersedes pending {existing_id}, saved as {new_id}");
+                    let waits = status != "pending";
+                    let new_id = insert_derived(pool, d, Some(&vec), Some(existing_id), waits).await?;
+                    if waits {
+                        log::warn!("memory contradiction: new '{content}' contradicts confirmed {existing_id}: saved pending as {new_id}, for the user");
                     } else {
-                        log::warn!("dialectic contradiction: new '{content}' contradicts confirmed {existing_id}: saved pending as {new_id}, for the user");
+                        let _ = sqlx::query("UPDATE db_memory_entries SET is_active = FALSE, updated_at = NOW() WHERE id = $1")
+                            .bind(existing_id)
+                            .execute(pool)
+                            .await;
+                        log::warn!("memory contradiction: new '{content}' supersedes pending {existing_id}, saved as {new_id}");
                     }
                     return Ok("inserted");
                 }
                 Some(_) => {
                     // neutral — save both, link via related_ids.
-                    let new_id =
-                        insert_pending(pool, agent, content, &vec, category, conversation_id, None).await?;
+                    let new_id = insert_derived(pool, d, Some(&vec), None, false).await?;
                     link_related(pool, existing_id, new_id).await;
                     link_related(pool, new_id, existing_id).await;
                     return Ok("inserted");
@@ -502,7 +539,7 @@ pub async fn save_derived(
         }
     }
 
-    insert_pending(pool, agent, content, &vec, category, conversation_id, None).await?;
+    insert_derived(pool, d, Some(&vec), None, false).await?;
     Ok("inserted")
 }
 
@@ -531,7 +568,7 @@ pub async fn memory_save(pool: &DbPool, agent: &str, args: &Value) -> Result<Val
         let vec = pgvector::Vector::from(e.clone());
         let dup: Option<(Uuid, String, f64)> = sqlx::query_as(
             "SELECT id, content, (embedding <=> $2) AS dist FROM db_memory_entries \
-             WHERE agent = $1 AND is_active AND embedding IS NOT NULL \
+             WHERE agent = $1 AND contact_id IS NULL AND is_active AND embedding IS NOT NULL \
              ORDER BY embedding <=> $2 LIMIT 1",
         )
         .bind(agent)
@@ -657,17 +694,41 @@ pub async fn memory_delete(pool: &DbPool, agent: &str, args: &Value) -> Result<V
     Ok(json!({ "deleted": true, "id": id }))
 }
 
+/// The contacts a name or @slug names (the vault is one user's: the agents app has no other).
+async fn people_named(pool: &DbPool, who: &str) -> Result<Vec<(Uuid, String)>, String> {
+    let who = who.trim().trim_start_matches('@');
+    let found: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT id, COALESCE(name, slug, id::text) FROM db_pigeon_contacts \
+         WHERE lower(slug) = lower($1) OR name ILIKE '%' || $1 || '%' ORDER BY (lower(slug) = lower($1)) DESC LIMIT 5",
+    )
+    .bind(who)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    if found.is_empty() {
+        return Err(format!("no contact named {who}"));
+    }
+    Ok(found)
+}
+
 pub async fn memory_search(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
     let q = req_str(args, "query")?;
     let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(5).clamp(1, 20);
+    // about the user (no contact), or about the people named
+    let people = match opt_string(args, "person") {
+        Some(who) => Some(people_named(pool, &who).await?),
+        None => None,
+    };
+    let contacts: Option<Vec<Uuid>> = people.as_ref().map(|p| p.iter().map(|(id, _)| *id).collect());
     let emb = embeddings::embed(pool, &q, EMBED_DIMS, "embedding:memory").await.ok();
 
-    let rows: Vec<(Uuid, String, Option<String>, String, String, f64)> = if let Some(e) = emb {
+    let rows: Vec<(Uuid, String, Option<String>, String, String, Option<Uuid>, f64)> = if let Some(e) = emb {
         let vec = pgvector::Vector::from(e);
         sqlx::query_as(
-            "SELECT id, content, category, status, source, (embedding <=> $2) AS dist \
+            "SELECT id, content, category, status, source, contact_id, (embedding <=> $2) AS dist \
              FROM db_memory_entries \
              WHERE agent = $1 AND is_active AND embedding IS NOT NULL \
+               AND CASE WHEN $4::uuid[] IS NULL THEN contact_id IS NULL ELSE contact_id = ANY($4) END \
                AND status IN ('confirmed', 'pending') \
                AND (expires_at IS NULL OR expires_at > NOW()) \
              ORDER BY embedding <=> $2 LIMIT $3",
@@ -675,29 +736,34 @@ pub async fn memory_search(pool: &DbPool, agent: &str, args: &Value) -> Result<V
         .bind(agent)
         .bind(&vec)
         .bind(limit)
+        .bind(&contacts)
         .fetch_all(pool)
         .await
         .map_err(|e| e.to_string())?
     } else {
         sqlx::query_as(
-            "SELECT id, content, category, status, source, 1.0::float8 AS dist \
+            "SELECT id, content, category, status, source, contact_id, 1.0::float8 AS dist \
              FROM db_memory_entries \
              WHERE agent = $1 AND is_active AND status IN ('confirmed', 'pending') \
+               AND CASE WHEN $3::uuid[] IS NULL THEN contact_id IS NULL ELSE contact_id = ANY($3) END \
                AND (expires_at IS NULL OR expires_at > NOW()) \
              ORDER BY created_at DESC LIMIT $2",
         )
         .bind(agent)
         .bind(limit)
+        .bind(&contacts)
         .fetch_all(pool)
         .await
         .map_err(|e| e.to_string())?
     };
 
+    let name_of = |id: Option<Uuid>| people.as_ref().and_then(|p| p.iter().find(|(c, _)| Some(*c) == id).map(|(_, n)| n.clone()));
     let results: Vec<Value> = rows
         .into_iter()
-        .map(|(id, content, category, status, source, dist)| {
+        .map(|(id, content, category, status, source, contact, dist)| {
             json!({
                 "id": id,
+                "about": name_of(contact),
                 "content": content,
                 "category": category,
                 "status": status,
@@ -714,7 +780,7 @@ pub async fn memory_list(pool: &DbPool, agent: &str, args: &Value) -> Result<Val
     let category = opt_string(args, "category");
     let rows: Vec<(Uuid, String, Option<String>, String, String, String)> = sqlx::query_as(
         "SELECT id, content, category, confidence, status, source FROM db_memory_entries \
-         WHERE agent = $1 AND is_active AND ($2::text IS NULL OR category = $2) \
+         WHERE agent = $1 AND contact_id IS NULL AND is_active AND ($2::text IS NULL OR category = $2) \
          ORDER BY created_at DESC LIMIT $3",
     )
     .bind(agent)

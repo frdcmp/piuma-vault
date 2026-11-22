@@ -230,8 +230,8 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
         people::catch_up_later(st, contact.as_ref(), &conv);
     } else if let Some(c) = &contact {
         // what Pigeon knows about them, and how the user writes to them here, brought up to date
-        if let Err(e) = people::ensure_memory(st, c, false).await {
-            log::warn!("memory of {}: {e:#}", c.id);
+        if let Err(e) = crate::apps::pigeon::known::learn(st, c, false).await {
+            log::warn!("learning about {}: {e:#}", c.id);
         }
         if writes_reply_as_user {
             if let Err(e) = people::ensure_style(st, c, &conv.connector, false).await {
@@ -677,11 +677,12 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
     if let Some(c) = contact {
         s.push_str(&c.facts(name));
         s.push_str(&told);
-        // what Pigeon knows about them: its notes in their folder in the vault
-        let kept = folder::kept(st, folder::Whose::Person(c.id)).await?;
-        if let Some(m) = kept.iter().find(|k| k.kind == folder::MEMORY).filter(|k| !k.body().is_empty()) {
-            s.push_str(&format!("\nWhat Pigeon knows about {them}, from their past conversations:\n{}\n", m.body()));
+        // what Pigeon knows about them, from their past conversations (`known`)
+        if let Some(known) = crate::apps::pigeon::known::told(&st.pool, c.id).await? {
+            s.push_str(&format!("\nWhat Pigeon knows about {them}, from their past conversations:\n{known}\n"));
         }
+        // how the user writes to them: Pigeon's style notes in their folder in the vault
+        let kept = folder::kept(st, folder::Whose::Person(c.id)).await?;
         // the user's voice: not when Pigeon writes as itself (away)
         if !away_mode {
             let styles: Vec<&folder::Kept> = kept.iter().filter(|k| k.kind == folder::STYLE && !k.body().is_empty()).collect();

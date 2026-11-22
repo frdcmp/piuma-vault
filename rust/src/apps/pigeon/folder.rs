@@ -1,7 +1,7 @@
-//! A person's folder in the vault: what Pigeon knows about someone is notes in
-//! `/contacts/<person>/`, next to the user's own notes on them, read and edited like any note.
+//! A person's folder in the vault: how the user writes to someone is notes in
+//! `/contacts/<person>/`, next to the user's own notes on them, read and edited like any note
+//! (what Pigeon knows about them is facts in the vault's memory: `known`).
 //!
-//!   Pigeon · Memory             who they are to the user, what's going on, what's open
 //!   Pigeon · Style · WhatsApp   how the user writes to them there, one per channel
 //!   Pigeon · Style              a group chat's (its folder is in `/contacts` too, named after it)
 //!
@@ -39,7 +39,6 @@ const OWN_NOTES_MAX: i64 = 30;
 /// A group chat's folder name is this long at most.
 const NAME_MAX: usize = 40;
 
-pub const MEMORY: &str = "memory";
 pub const STYLE: &str = "style";
 
 /// Whether a folder is `/contacts` or in it: private, never shared.
@@ -82,7 +81,7 @@ pub struct Kept {
     pub connector: Option<String>,
     pub written_hash: String,
     pub written_at: DateTime<Utc>,
-    /// what it was written from: the items with the person (memory), the user's messages (style)
+    /// what it was written from: the user's messages
     pub items: i32,
     pub content: String,
     pub folder: String,
@@ -111,7 +110,7 @@ pub async fn kept(st: &State, whose: Whose) -> anyhow::Result<Vec<Kept>> {
         .await?)
 }
 
-/// One of them: the memory, or a channel's style (a group chat's: no channel).
+/// One of them: a channel's style (a group chat's: no channel).
 pub async fn one(st: &State, whose: Whose, kind: &str, connector: Option<&str>) -> anyhow::Result<Option<Kept>> {
     Ok(kept(st, whose).await?.into_iter().find(|k| k.kind == kind && k.connector.as_deref() == connector))
 }
@@ -391,8 +390,6 @@ pub fn style_title(connector: Option<&str>) -> String {
         None => "Pigeon · Style".to_string(),
     }
 }
-
-pub const MEMORY_TITLE: &str = "Pigeon · Memory";
 
 /// A channel as it's written.
 pub fn channel(connector: &str) -> String {

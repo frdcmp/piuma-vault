@@ -19,6 +19,7 @@ import {
 	pvMessage,
 } from "@/ui";
 import {
+	useJudgePigeonFact,
 	useLearnPigeonContact,
 	useMergePigeonContacts,
 	usePigeonContact,
@@ -39,6 +40,69 @@ import {
 	withInherit,
 } from "./inboxText";
 import SwitchInfo from "./SwitchInfo";
+
+// What Pigeon knows about them: facts it learnt from their conversations, in the
+// vault's memory. A guess (pending) waits for a yes; any can be dropped.
+const FACT_KINDS = {
+	who: "Who they are",
+	fact: "Facts",
+	preference: "Preferences",
+	goal: "Open between you",
+};
+
+function TheirFacts({ id, facts }) {
+	const judge = useJudgePigeonFact();
+	if (!facts.length) return null;
+	const act = (factId, verdict) =>
+		judge.mutate(
+			{ id, factId, verdict },
+			{ onError: (e) => pvMessage.error(errorText(e)) },
+		);
+	const kinds = Object.keys(FACT_KINDS).filter((k) =>
+		facts.some((f) => (f.category ?? "fact") === k),
+	);
+	return (
+		<PvField
+			label="What Pigeon knows"
+			as="div"
+			hint="From your conversations. A guess waits for your yes; what's open goes by itself once it stops coming up."
+		>
+			<div className="inbox-contact-facts">
+				{kinds.map((k) => (
+					<div key={k} className="inbox-contact-facts-kind">
+						<div className="inbox-contact-facts-head">{FACT_KINDS[k]}</div>
+						{facts
+							.filter((f) => (f.category ?? "fact") === k)
+							.map((f) => (
+								<div key={f.id} className="inbox-contact-fact">
+									<span>{f.content}</span>
+									{f.status === "pending" ? <PvTag>guess</PvTag> : null}
+									<span className="inbox-contact-fact-actions">
+										{f.status === "pending" ? (
+											<PvButton
+												size="sm"
+												variant="text"
+												onClick={() => act(f.id, "confirm")}
+											>
+												Yes
+											</PvButton>
+										) : null}
+										<PvButton
+											size="sm"
+											variant="text"
+											onClick={() => act(f.id, "reject")}
+										>
+											Not true
+										</PvButton>
+									</span>
+								</div>
+							))}
+					</div>
+				))}
+			</div>
+		</PvField>
+	);
+}
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
@@ -287,22 +351,7 @@ function ContactDrawer({ id, people, onClose, onOpen }) {
 
 					<TheirNotes id={id} />
 
-					{c.memory ? (
-						<PvField
-							label="What Pigeon learnt"
-							as="div"
-							hint={
-								<>
-									A note in {c.folder}, yours to change:{" "}
-									<Link to={`/notes/${c.memory_note_id}`}>
-										Open in the vault
-									</Link>
-								</>
-							}
-						>
-							<div className="inbox-contact-memory">{c.memory}</div>
-						</PvField>
-					) : null}
+					<TheirFacts id={id} facts={c.facts ?? []} />
 					{Object.keys(c.style_notes ?? {}).length ? (
 						<PvField label="How you write to them" as="div">
 							<div className="inbox-contact-styles">

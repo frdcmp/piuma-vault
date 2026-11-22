@@ -51,6 +51,7 @@ pub mod handlers;
 pub mod health;
 pub mod instructions;
 pub mod items;
+pub mod known;
 pub mod listen;
 pub mod mcp_files;
 pub mod mcp_server;

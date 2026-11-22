@@ -45,6 +45,9 @@ struct MemoryEntryOut {
     /// user (the dashboard), chat (the agent, on the user's word), corroborated
     confirmed_by: Option<String>,
     confirmed_at: Option<DateTime<Utc>>,
+    /// whom it is about when not the user: one of their contacts (Pigeon's), and their name
+    contact_id: Option<Uuid>,
+    contact_name: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -56,6 +59,9 @@ pub struct EntriesQuery {
     source: Option<String>,
     category: Option<String>,
     q: Option<String>,
+    /// `user` (what Piuma knows about the user), `people` (what Pigeon knows about the people
+    /// they talk to), or a contact's id; none: both
+    about: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
 }
@@ -70,16 +76,19 @@ pub async fn list_entries(
     let limit = q.limit.unwrap_or(200).clamp(1, 1000);
     let offset = q.offset.unwrap_or(0).max(0);
     match sqlx::query_as::<_, MemoryEntryOut>(
-        "SELECT id, agent, content, category, confidence, source, status, tags, \
-                related_ids, contradicts_id, source_conversation_id, source_message_id, is_active, \
-                (embedding IS NOT NULL) AS embedded, expires_at, confirmed_by, confirmed_at, created_at, updated_at \
-         FROM db_memory_entries \
-         WHERE ($1::text IS NULL OR agent = $1) \
-           AND ($2::text IS NULL OR status = $2) \
-           AND ($3::text IS NULL OR source = $3) \
-           AND ($4::text IS NULL OR category = $4) \
-           AND ($5::text IS NULL OR content ILIKE '%' || $5 || '%') \
-         ORDER BY created_at DESC LIMIT $6 OFFSET $7",
+        "SELECT e.id, e.agent, e.content, e.category, e.confidence, e.source, e.status, e.tags, \
+                e.related_ids, e.contradicts_id, e.source_conversation_id, e.source_message_id, e.is_active, \
+                (e.embedding IS NOT NULL) AS embedded, e.expires_at, e.confirmed_by, e.confirmed_at, \
+                e.contact_id, COALESCE(k.name, k.slug) AS contact_name, e.created_at, e.updated_at \
+         FROM db_memory_entries e LEFT JOIN db_pigeon_contacts k ON k.id = e.contact_id \
+         WHERE ($1::text IS NULL OR e.agent = $1) \
+           AND ($2::text IS NULL OR e.status = $2) \
+           AND ($3::text IS NULL OR e.source = $3) \
+           AND ($4::text IS NULL OR e.category = $4) \
+           AND ($5::text IS NULL OR e.content ILIKE '%' || $5 || '%' OR k.name ILIKE '%' || $5 || '%') \
+           AND CASE $8::text WHEN 'user' THEN e.contact_id IS NULL WHEN 'people' THEN e.contact_id IS NOT NULL \
+                 ELSE $8::text IS NULL OR e.contact_id::text = $8 END \
+         ORDER BY e.created_at DESC LIMIT $6 OFFSET $7",
     )
     .bind(&q.agent)
     .bind(&q.status)
@@ -88,6 +97,7 @@ pub async fn list_entries(
     .bind(&q.q)
     .bind(limit)
     .bind(offset)
+    .bind(&q.about)
     .fetch_all(pool.get_ref())
     .await
     {
@@ -127,7 +137,7 @@ pub async fn overview(
            COUNT(*) FILTER (WHERE source = 'user_stated'), \
            COUNT(*) FILTER (WHERE source = 'agent_observed'), \
            COUNT(*) FILTER (WHERE embedding IS NULL AND is_active) \
-         FROM db_memory_entries WHERE agent = $1 AND is_active",
+         FROM db_memory_entries WHERE agent = $1 AND contact_id IS NULL AND is_active",
     )
     .bind(&agent)
     .fetch_optional(pool.get_ref())
@@ -138,7 +148,7 @@ pub async fn overview(
 
     let by_category: Vec<(Option<String>, i64)> = sqlx::query_as(
         "SELECT category, COUNT(*) FROM db_memory_entries \
-         WHERE agent = $1 AND is_active GROUP BY category ORDER BY COUNT(*) DESC",
+         WHERE agent = $1 AND contact_id IS NULL AND is_active GROUP BY category ORDER BY COUNT(*) DESC",
     )
     .bind(&agent)
     .fetch_all(pool.get_ref())
@@ -163,6 +173,17 @@ pub async fn overview(
     .unwrap_or(None);
     let (l3_messages, l3_conversations) = l3.unwrap_or((0, 0));
 
+    // what Pigeon knows about the people the user talks to: facts, people, pending
+    let people: (i64, i64, i64) = sqlx::query_as(
+        "SELECT COUNT(*), COUNT(DISTINCT contact_id), COUNT(*) FILTER (WHERE status = 'pending') \
+         FROM db_memory_entries WHERE agent = $1 AND contact_id IS NOT NULL AND is_active \
+           AND status IN ('confirmed', 'pending') AND (expires_at IS NULL OR expires_at > NOW())",
+    )
+    .bind(&agent)
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or((0, 0, 0));
+
     let uc_chars = user_context.chars().count();
     let cap = crate::apps::agents::profile::CAP;
     let sections: Vec<_> = crate::apps::agents::profile::SECTIONS
@@ -185,7 +206,8 @@ pub async fn overview(
             "by_source": { "dialectic_derived": derived, "user_stated": user_stated, "agent_observed": agent_observed },
             "unembedded": unembedded,
             "by_category": categories,
-        }
+        },
+        "people": { "facts": people.0, "people": people.1, "pending": people.2 },
     }))
 }
 
@@ -341,7 +363,7 @@ pub async fn entry_stats(
     let nearest: Option<(Uuid, String, String, String, f64)> = sqlx::query_as(
         "SELECT n.id, n.content, n.status, n.source, (n.embedding <=> e.embedding) AS dist \
          FROM db_memory_entries n, db_memory_entries e \
-         WHERE e.id = $1 AND n.id <> $1 AND n.agent = $2 \
+         WHERE e.id = $1 AND n.id <> $1 AND n.agent = $2 AND n.contact_id IS NOT DISTINCT FROM e.contact_id \
            AND n.is_active AND n.embedding IS NOT NULL \
          ORDER BY n.embedding <=> e.embedding LIMIT 1",
     )
@@ -430,7 +452,7 @@ pub async fn dedup_pending(
     let entries: Vec<(Uuid, String, bool)> = sqlx::query_as(
         "SELECT e.id, e.content, EXISTS (SELECT 1 FROM db_memory_entries c WHERE c.id = e.contradicts_id AND c.is_active) \
          FROM db_memory_entries e \
-         WHERE e.agent = $1 AND e.is_active AND e.status = 'pending' AND e.embedding IS NOT NULL \
+         WHERE e.agent = $1 AND e.contact_id IS NULL AND e.is_active AND e.status = 'pending' AND e.embedding IS NOT NULL \
          ORDER BY e.created_at ASC",
     )
     .bind(&agent)
@@ -456,7 +478,7 @@ pub async fn dedup_pending(
                     (n.source_conversation_id IS DISTINCT FROM s.source_conversation_id \
                      AND abs(extract(epoch FROM n.created_at - s.created_at)) >= $4 * 86400) AS independent \
              FROM db_memory_entries n, db_memory_entries s \
-             WHERE s.id = $1 AND n.id <> $1 AND n.agent = $2 \
+             WHERE s.id = $1 AND n.id <> $1 AND n.agent = $2 AND n.contact_id IS NULL \
                AND n.is_active AND n.status = 'pending' AND n.embedding IS NOT NULL \
                AND (n.embedding <=> s.embedding) < $3 \
              ORDER BY n.embedding <=> s.embedding",

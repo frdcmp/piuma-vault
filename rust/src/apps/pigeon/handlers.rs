@@ -725,6 +725,18 @@ pub async fn learn_contact(st: web::Data<AppState>, u: InboxWriter, path: web::P
     reply(people::learn(&st, &u.0.user_id, path.into_inner(), body.days.unwrap_or(365).clamp(1, 3650)).await)
 }
 
+#[derive(Deserialize)]
+pub struct Verdict {
+    /// confirm, reject or delete
+    verdict: String,
+}
+
+/// The user's word on something Pigeon knows about a person (`known`).
+pub async fn judge_fact(st: web::Data<AppState>, u: InboxWriter, path: web::Path<(Uuid, Uuid)>, body: web::Json<Verdict>) -> HttpResponse {
+    let (contact, fact) = path.into_inner();
+    reply(crate::apps::pigeon::known::judge(&st, &u.0.user_id, contact, fact, &body.verdict, "user").await)
+}
+
 /// Everyone the user wrote to, learnt in the background.
 pub async fn learn_all(st: web::Data<AppState>, u: InboxWriter, body: web::Json<LearnBody>) -> HttpResponse {
     let days = body.days.unwrap_or(90).clamp(1, 3650);

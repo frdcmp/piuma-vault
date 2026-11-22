@@ -32,6 +32,19 @@ fn main() {
             }
             return;
         }
+        // `pigeon-worker facts-from-notes`: the one-off that turns the Memory notes Pigeon kept on
+        // people into facts in the vault's memory, then ends
+        if std::env::args().nth(1).as_deref() == Some("facts-from-notes") {
+            let st = backend::apps::pigeon::state::shared(&pool);
+            match backend::apps::pigeon::known::from_notes(&st).await {
+                Ok(done) => println!("{done}"),
+                Err(e) => {
+                    eprintln!("facts-from-notes: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
         worker::run(pool).await;
     });
 }

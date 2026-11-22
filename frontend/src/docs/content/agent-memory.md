@@ -206,6 +206,26 @@ sweep flips expired ones to `rejected`. A confirmed **goal** holds 60 days from
 when it last came up (confirmed, or derived again); then it stops being
 retrieved and the sweep switches it off. Other confirmed facts never expire.
 
+### Facts about people (Pigeon)
+
+The same table holds what Pigeon knows about the people the user talks to: a fact
+with `contact_id` (and `user_id`) is about that contact, learnt from their
+conversations (`apps/pigeon/known.rs`), under the same rules:
+
+- what the person said about themselves is confirmed (`person_stated`); Pigeon's
+  guesses are pending for 60 days (`pigeon_derived`), confirmed by the user or
+  when new messages, a day or more later, show them again;
+- a fact that contradicts a confirmed one waits for the user;
+- what's open between them (a question waiting, a promise, a plan) is a `goal`
+  and expires 60 days after it last came up.
+
+Categories: `who` (who they are to the user), `fact`, `preference`, `goal`.
+Pigeon reads a person's facts only in that person's chats; Piuma's per-turn
+retrieval never sees them, and reads them only with `memory_search(person)`.
+The user confirms or rejects them on the person's page in the Inbox, and the
+Entries tab here filters by *About you* / *People*. They replaced the
+`Pigeon · Memory` notes, imported once as confirmed (`imported`).
+
 ## 6. The numbers, explained
 
 Every figure on the dashboard is derived from one comparison — cosine distance —
