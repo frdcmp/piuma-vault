@@ -12,12 +12,14 @@
 //!   - they hold it and Pigeon knows nothing to say (no place: the phone's switch is off): nothing
 //!     is told, and the user reads why in the chat (`unknown`), with nothing to answer
 //!
-//! Notes (`shared`) are held one by one: asked for something the user may have written down,
-//! Pigeon looks only among the notes the chat holds, Jev says which one answers (or none), and
-//! that whole note is what the reply is written from, one note a reply. On its own only when,
-//! besides the above, Jev is sure of the note, it isn't cut for its length, and the reply holds
-//! no card number (an account number or an IBAN goes: those are given to be paid). A note that
-//! answers but that only others hold is the 🔑 card; a note shared with nobody is never looked at.
+//! Notes (`shared`) are held one by one: whatever someone asks the user, Pigeon looks among the
+//! notes their chat holds (a trip's folder answers "how was Japan?", which isn't asking for
+//! something written down), Jev says which one answers (or none), and that whole note is what
+//! the reply is written from, one note a reply. On its own only when, besides the above, Jev is
+//! sure of the note, it isn't cut for its length, and the reply holds no card number (an account
+//! number or an IBAN goes: those are given to be paid). Notes only others hold are looked in only
+//! when Jev sees them ask for something the user may have written down: one that answers is the
+//! 🔑 card. A note shared with nobody is never looked at.
 //!
 //! What was used stays on the reply (`args.used`, the record: the tool, the level, the permission
 //! and where it came from, how sure Jev was), shown beside the message; "this was wrong" on it
@@ -321,8 +323,9 @@ async fn pick(st: &State, conv: &Conversation, me: &Owner, asked: &str, notes: &
 }
 
 /// Notes: of the notes the user shares, the one that holds what they ask (`asked`: the new
-/// messages' words), if any. One the chat holds: a use. One only others hold: a 🔑 card. None,
-/// or nothing shared with anyone: nothing.
+/// messages' words), if any. One the chat holds: a use, looked for whatever they ask (Jev's pick
+/// is what counts). One only others hold: a 🔑 card, looked for only when Jev sees them ask for
+/// something written down (`p`). None, or nothing shared with anyone: nothing.
 async fn from_notes(st: &State, conv: &Conversation, me: &Owner, book: &Book, tool: &'static Tool, p: f64, asked: &str, out: &mut Round) -> anyhow::Result<()> {
     let user = conv.user_id.as_str();
     let everyones = book.shared();
@@ -331,15 +334,23 @@ async fn from_notes(st: &State, conv: &Conversation, me: &Owner, book: &Book, to
     }
     let held = book.notes(&access::holders_of(conv));
     let theirs: Vec<Target> = held.iter().map(|e| e.target.clone()).collect();
+    let written_down = p >= ASKED_AT;
+    if theirs.is_empty() && !written_down {
+        return Ok(());
+    }
     let mut notes = shared::search(st, user, &theirs, asked, NOTE_PICKS).await?;
     // and what only others hold: the user is asked before any of it is told
-    for n in shared::search(st, user, &everyones, asked, 2 * NOTE_PICKS).await? {
-        if notes.len() < 2 * NOTE_PICKS as usize && !theirs.iter().any(|t| shared::covers(t, &n)) {
-            notes.push(n);
+    if written_down {
+        for n in shared::search(st, user, &everyones, asked, 2 * NOTE_PICKS).await? {
+            if notes.len() < 2 * NOTE_PICKS as usize && !theirs.iter().any(|t| shared::covers(t, &n)) {
+                notes.push(n);
+            }
         }
     }
     let Some((i, sure)) = (if notes.is_empty() { None } else { pick(st, conv, me, asked, &notes).await }) else {
-        asked_event(conv, tool.name, p, "no note");
+        if written_down {
+            asked_event(conv, tool.name, p, "no note");
+        }
         return Ok(());
     };
     let note = &notes[i];
@@ -351,13 +362,13 @@ async fn from_notes(st: &State, conv: &Conversation, me: &Owner, book: &Book, to
         return Ok(());
     };
     let eff = if first.auto { first } else { covering.find(|e| e.auto).unwrap_or(first) };
-    let mut u = blank(tool, eff.permission.clone(), Some(eff.grant), via_of(eff), p.min(sure), false);
+    let mut u = blank(tool, eff.permission.clone(), Some(eff.grant), via_of(eff), sure, false);
     let whole = of_note(&mut u, tool, note, me);
-    u.auto = eff.auto && p >= SURE_AT && sure >= SURE_AT && whole;
+    u.auto = eff.auto && sure >= SURE_AT && whole;
     if eff.auto && !u.auto {
-        u.waits = Some(if whole { format!("Jev was {:.0}% sure, under the {:.0}% to send it by itself", p.min(sure) * 100.0, SURE_AT * 100.0) } else { "the note is too long to be given whole".to_string() });
+        u.waits = Some(if whole { format!("Jev was {:.0}% sure, under the {:.0}% to send it by itself", sure * 100.0, SURE_AT * 100.0) } else { "the note is too long to be given whole".to_string() });
     }
-    asked_event(conv, tool.name, p, if u.auto { "auto" } else { "ask" });
+    asked_event(conv, tool.name, sure, if u.auto { "auto" } else { "ask" });
     out.uses.push(u);
     Ok(())
 }
@@ -374,11 +385,12 @@ pub async fn round(st: &State, conv: &Conversation, me: &Owner, answers: &Answer
     let effs = book.effective(&access::holders_of(conv));
     for tool in offer::TOOLS.iter().filter(|t| t.live) {
         let p = answers.yes(&format!("tool_{}", tool.name)).unwrap_or(0.0);
-        if p < ASKED_AT {
-            continue;
-        }
+        // the notes the chat holds are looked in whatever they ask
         if tool.targets {
             from_notes(st, conv, me, &book, tool, p, asked, &mut out).await?;
+            continue;
+        }
+        if p < ASKED_AT {
             continue;
         }
         let held = access::held(&effs, tool.name);
