@@ -163,7 +163,7 @@ pub async fn dispatch(
         // ── Self-config (scoped to the active agent) ──
         "read_self" => self_config::read_self(pool, agent).await,
         "update_instructions" => self_config::update_instructions(pool, agent, args).await,
-        "update_persona" => self_config::update_persona(pool, agent, args).await,
+        "update_personality" => self_config::update_personality(pool, agent, args).await,
         "context_add" => self_config::context_add(pool, agent, args).await,
         "context_replace" => self_config::context_replace(pool, agent, args).await,
         "context_remove" => self_config::context_remove(pool, agent, args).await,

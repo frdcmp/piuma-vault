@@ -7,7 +7,6 @@ use super::AgentDef;
 pub static DEF: AgentDef = AgentDef {
     kind: "vault_agent",
     display_name: "Vault Agent",
-    persona: "piuma",
     tools: &[
         // Tier 1 — read
         "search_notes",
@@ -60,7 +59,7 @@ pub static DEF: AgentDef = AgentDef {
         "delete_share",
         "read_self",
         "update_instructions",
-        "update_persona",
+        "update_personality",
         // L1: the profile of the user, in every prompt (`profile`)
         "context_add",
         "context_replace",

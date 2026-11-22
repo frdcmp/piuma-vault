@@ -12,11 +12,9 @@ import {
 	fetchConversation,
 	fetchConversations,
 	fetchModels,
-	fetchPersonas,
 	fetchProfile,
 	fetchProviders,
 	updateModel,
-	updatePersona,
 	updateProfile,
 	updateProvider,
 } from "../api/agentChatApi";
@@ -29,7 +27,6 @@ export const agentKeys = {
 	availableModels: (providerId) => ["agents", "available-models", providerId],
 	allModels: ["agents", "all-models"],
 	profile: (agent) => ["agents", "profile", agent],
-	personas: (agent) => ["agents", "personas", agent],
 	conversations: (agent) => ["agents", "conversations", agent ?? null],
 	conversation: (id) => ["agents", "conversation", id],
 };
@@ -84,14 +81,6 @@ export const useAgentProfile = (agent, options = {}) =>
 	useQuery({
 		queryKey: agentKeys.profile(agent),
 		queryFn: () => fetchProfile(agent),
-		enabled: !!agent,
-		...options,
-	});
-
-export const useAgentPersonas = (agent, options = {}) =>
-	useQuery({
-		queryKey: agentKeys.personas(agent),
-		queryFn: () => fetchPersonas(agent),
 		enabled: !!agent,
 		...options,
 	});
@@ -161,14 +150,6 @@ export const useUpdateAgentProfile = () => {
 			// the profile of the user is the memory's first layer (its gauge)
 			qc.invalidateQueries({ queryKey: ["memory"] });
 		},
-	});
-};
-export const useUpdatePersona = () => {
-	const qc = useQueryClient();
-	return useMutation({
-		mutationFn: updatePersona,
-		onSuccess: (data) =>
-			qc.invalidateQueries({ queryKey: agentKeys.personas(data?.agent) }),
 	});
 };
 

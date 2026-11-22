@@ -1,6 +1,6 @@
 //! Self-config tools (Tier 3) — let an agent read and rewrite ITS OWN editable
-//! prose: `db_agent_profiles` (instructions, and the profile of the user: L1, `profile`) and its
-//! `db_agent_personas` row (system_prompt / display_name / emoji).
+//! prose in `db_agent_profiles`: its instructions and its personality (the profile of the user,
+//! L1, is the `context_*` tools: `profile`).
 //! Every query is scoped by the active `agent` kind, so an agent can never touch
 //! another agent's config. Edits apply on the next request (rows re-read).
 
@@ -26,7 +26,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         (
             "read_self",
-            "Read your own editable config: instructions, your profile of the user, and your persona (system prompt, allowed tools).",
+            "Read your own editable config: instructions, personality and your profile of the user.",
             json!({ "type": "object", "properties": {} }),
         ),
         (
@@ -39,15 +39,12 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
             }),
         ),
         (
-            "update_persona",
-            "Update your own persona. Only provided fields change.",
+            "update_personality",
+            "Replace your own personality: who you are and how you talk (it follows your instructions in your prompt).",
             json!({
                 "type": "object",
-                "properties": {
-                    "system_prompt": { "type": "string", "description": "who-you-are / voice" },
-                    "display_name": { "type": "string" },
-                    "emoji": { "type": "string" }
-                }
+                "properties": { "text": { "type": "string" } },
+                "required": ["text"]
             }),
         ),
         (
@@ -204,32 +201,20 @@ pub async fn context_remove(pool: &DbPool, agent: &str, args: &Value) -> Result<
 }
 
 pub async fn read_self(pool: &DbPool, agent: &str) -> Result<Value, String> {
-    let row: Option<(String, String, String)> = sqlx::query_as(
-        "SELECT display_name, instructions, user_context FROM db_agent_profiles WHERE agent = $1",
+    let row: Option<(String, String, String, String)> = sqlx::query_as(
+        "SELECT display_name, instructions, personality, user_context FROM db_agent_profiles WHERE agent = $1",
     )
     .bind(agent)
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?;
-    let persona: Option<(String, String, Option<String>, String)> =
-        sqlx::query_as(
-            "SELECT name, display_name, emoji, system_prompt FROM db_agent_personas \
-             WHERE agent = $1 ORDER BY created_at LIMIT 1",
-        )
-        .bind(agent)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    let (display_name, instructions, user_profile) = row.ok_or("agent profile not found")?;
-    let persona_json = persona.map(|(name, pdisplay, emoji, system_prompt)| {
-        json!({ "name": name, "display_name": pdisplay, "emoji": emoji, "system_prompt": system_prompt })
-    });
+    let (display_name, instructions, personality, user_profile) = row.ok_or("agent profile not found")?;
     Ok(json!({
         "agent": agent,
         "display_name": display_name,
         "instructions": instructions,
-        "profile_of_the_user": user_profile,
-        "persona": persona_json
+        "personality": personality,
+        "profile_of_the_user": user_profile
     }))
 }
 
@@ -254,27 +239,7 @@ pub async fn update_instructions(pool: &DbPool, agent: &str, args: &Value) -> Re
     set_profile_field(pool, agent, "instructions", &text).await
 }
 
-pub async fn update_persona(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
-    let system_prompt = opt_string(args, "system_prompt");
-    let display_name = opt_string(args, "display_name");
-    let emoji = opt_string(args, "emoji");
-    let row: Option<(String,)> = sqlx::query_as(
-        "UPDATE db_agent_personas SET \
-           system_prompt = COALESCE($2, system_prompt), \
-           display_name = COALESCE($3, display_name), \
-           emoji = COALESCE($4, emoji), \
-           updated_at = NOW() \
-         WHERE agent = $1 RETURNING name",
-    )
-    .bind(agent)
-    .bind(&system_prompt)
-    .bind(&display_name)
-    .bind(&emoji)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-    match row {
-        Some((name,)) => Ok(json!({ "agent": agent, "persona": name, "updated": true })),
-        None => Err("agent persona not found".into()),
-    }
+pub async fn update_personality(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
+    let text = req_str(args, "text")?;
+    set_profile_field(pool, agent, "personality", &text).await
 }

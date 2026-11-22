@@ -1,6 +1,7 @@
-//! Agent registry. The agent *kind* — its type, tool subscriptions and persona
-//! name — is defined in code here; editable prose lives in `db_agent_profiles` /
-//! `db_agent_personas`. Adding a native agent = one entry + its DB rows.
+//! Agent registry. The agent *kind* — its type and tool subscriptions — is
+//! defined in code here; its editable prose (instructions, personality, the
+//! profile of the user, commands) lives in `db_agent_profiles`. Adding a native
+//! agent = one entry + its row.
 
 pub mod vault_agent;
 
@@ -8,9 +9,7 @@ pub mod vault_agent;
 pub struct AgentDef {
     pub kind: &'static str,
     pub display_name: &'static str,
-    /// Default (and, for now, only) persona name.
-    pub persona: &'static str,
-    /// Tool names this agent may use (a persona can narrow this further).
+    /// Tool names this agent may use.
     pub tools: &'static [&'static str],
 }
 

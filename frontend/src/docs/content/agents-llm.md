@@ -6,7 +6,7 @@ turn control, and a large catalog of tools that act directly on your vault.
 ## The agent
 
 There is one agent, set on the **Agents** page: its **name** (what the chat calls
-it), its **voice** (who it is, how it talks), the **instructions** it reads every
+it), its **personality** (who it is, how it talks), the **instructions** it reads every
 turn (how it works) and its **slash commands**. What it knows about you — the
 profile in every prompt, the first layer of its memory — is on the **Memory**
 page.
@@ -48,7 +48,7 @@ MCP server's (a cron run only the servers marked safe for it). By domain:
   zip bundle
 - **Shares** — list, create, update, delete
 - **Web** — web search, web fetch
-- **Self-config** — read self, update its instructions and its voice
+- **Self-config** — read self, update its instructions and its personality
 - **Memory (L2)** — search, save, update, delete, list, confirm, reject
 - **Always-in-context (L1)** — context add / replace / remove / list
 - **Conversation search (L3)** — `search_conversations` (full-text over chat history)

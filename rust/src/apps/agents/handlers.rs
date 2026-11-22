@@ -1,5 +1,5 @@
 //! HTTP handlers for the agents module: agent listing, provider/model catalog,
-//! agent-config (profile + personas), and conversation CRUD. The streaming chat
+//! agent-config (its profile), and conversation CRUD. The streaming chat
 //! turn lives in `chat.rs`.
 
 use actix_web::{web, HttpResponse, Responder};
@@ -49,7 +49,6 @@ pub async fn list_agents(_user: AgentChat, pool: web::Data<DbPool>) -> impl Resp
         out.push(AgentInfo {
             kind: def.kind.to_string(),
             display_name,
-            persona: def.persona.to_string(),
             tool_count: def.tools.len(),
             commands,
         });
@@ -373,7 +372,7 @@ pub async fn delete_model(
     }
 }
 
-// ── Agent profile + personas ────────────────────────────────────────────────
+// ── Agent profile ──────────────────────────────────────────────────────────
 
 pub async fn get_profile(
     _user: AgentChat,
@@ -401,13 +400,14 @@ pub async fn patch_profile(
     let b = body.into_inner();
     // Upsert — PATCH also seeds the row if it doesn't exist yet.
     match sqlx::query_as::<_, AgentProfileRow>(
-        "INSERT INTO db_agent_profiles (agent, display_name, instructions, user_context, commands, updated_at) \
-         VALUES ($1, COALESCE($2,''), COALESCE($3,''), COALESCE($4,''), COALESCE($5,'[]'::jsonb), NOW()) \
+        "INSERT INTO db_agent_profiles (agent, display_name, instructions, user_context, personality, commands, updated_at) \
+         VALUES ($1, COALESCE($2,''), COALESCE($3,''), COALESCE($4,''), COALESCE($5,''), COALESCE($6,'[]'::jsonb), NOW()) \
          ON CONFLICT (agent) DO UPDATE SET \
             display_name = COALESCE($2, db_agent_profiles.display_name), \
             instructions = COALESCE($3, db_agent_profiles.instructions), \
             user_context = COALESCE($4, db_agent_profiles.user_context), \
-            commands = COALESCE($5, db_agent_profiles.commands), \
+            personality = COALESCE($5, db_agent_profiles.personality), \
+            commands = COALESCE($6, db_agent_profiles.commands), \
             updated_at = NOW() \
          RETURNING *",
     )
@@ -415,59 +415,12 @@ pub async fn patch_profile(
     .bind(&b.display_name)
     .bind(&b.instructions)
     .bind(&b.user_context)
+    .bind(&b.personality)
     .bind(&b.commands)
     .fetch_one(pool.get_ref())
     .await
     {
         Ok(row) => HttpResponse::Ok().json(row),
-        Err(e) => db_err(e),
-    }
-}
-
-pub async fn list_personas(
-    _user: AgentChat,
-    pool: web::Data<DbPool>,
-    path: web::Path<String>,
-) -> impl Responder {
-    match sqlx::query_as::<_, PersonaRow>(
-        "SELECT * FROM db_agent_personas WHERE agent = $1 ORDER BY name",
-    )
-    .bind(path.into_inner())
-    .fetch_all(pool.get_ref())
-    .await
-    {
-        Ok(rows) => HttpResponse::Ok().json(rows),
-        Err(e) => db_err(e),
-    }
-}
-
-pub async fn patch_persona(
-    _user: AgentAdmin,
-    pool: web::Data<DbPool>,
-    path: web::Path<Uuid>,
-    body: web::Json<UpdatePersonaReq>,
-) -> impl Responder {
-    let id = path.into_inner();
-    let b = body.into_inner();
-    match sqlx::query_as::<_, PersonaRow>(
-        "UPDATE db_agent_personas SET \
-            display_name = COALESCE($2, display_name), \
-            emoji = COALESCE($3, emoji), \
-            system_prompt = COALESCE($4, system_prompt), \
-            config = COALESCE($5, config), \
-            updated_at = NOW() \
-         WHERE id = $1 RETURNING *",
-    )
-    .bind(id)
-    .bind(&b.display_name)
-    .bind(&b.emoji)
-    .bind(&b.system_prompt)
-    .bind(&b.config)
-    .fetch_optional(pool.get_ref())
-    .await
-    {
-        Ok(Some(row)) => HttpResponse::Ok().json(row),
-        Ok(None) => HttpResponse::NotFound().json(ApiError::new("persona not found")),
         Err(e) => db_err(e),
     }
 }
@@ -552,13 +505,12 @@ pub async fn create_conversation(
         .await;
     }
     match sqlx::query_as::<_, ConversationRow>(
-        "INSERT INTO db_chat_conversations (agent, title, model_id, identity, metadata) \
-         VALUES ($1, $2, $3, $4, $5) RETURNING *",
+        "INSERT INTO db_chat_conversations (agent, title, model_id, metadata) \
+         VALUES ($1, $2, $3, $4) RETURNING *",
     )
     .bind(def.kind)
     .bind(&b.title)
     .bind(model_id)
-    .bind(def.persona)
     .bind(if b.incognito { json!({ "incognito": true }) } else { json!({}) })
     .fetch_one(pool.get_ref())
     .await

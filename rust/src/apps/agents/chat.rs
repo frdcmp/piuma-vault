@@ -366,7 +366,7 @@ pub async fn chat(
         return HttpResponse::BadRequest().json(ApiError::new("provider has no API key set"));
     }
 
-    let resolved = match identities::resolve(db, &conv.agent, &conv.identity).await {
+    let resolved = match identities::resolve(db, &conv.agent).await {
         Ok(r) => r,
         Err(e) => return HttpResponse::BadRequest().json(ApiError::new(e)),
     };

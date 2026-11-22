@@ -504,13 +504,12 @@ pub async fn chat_conversation(
             .json(serde_json::json!({ "error": "vault agent not registered" }));
     };
     let created = sqlx::query_as::<_, crate::apps::agents::models::ConversationRow>(
-        "INSERT INTO db_chat_conversations (agent, title, model_id, identity, metadata) \
-         VALUES ($1, $2, (SELECT id FROM db_llm_models WHERE is_default AND enabled LIMIT 1), $3, $4) \
+        "INSERT INTO db_chat_conversations (agent, title, model_id, metadata) \
+         VALUES ($1, $2, (SELECT id FROM db_llm_models WHERE is_default AND enabled LIMIT 1), $3) \
          RETURNING *",
     )
     .bind(def.kind)
     .bind(format!("🎙 {}", rec.title))
-    .bind(def.persona)
     .bind(serde_json::json!({ "source": "recording", "recording_id": id }))
     .fetch_one(pool)
     .await;

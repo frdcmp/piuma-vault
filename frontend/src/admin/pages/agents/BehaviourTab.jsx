@@ -8,58 +8,36 @@ import {
 	PvTextarea,
 	pvMessage,
 } from "@/ui";
-import {
-	useAgentPersonas,
-	useAgentProfile,
-	useUpdateAgentProfile,
-	useUpdatePersona,
-} from "../../../queries";
+import { useAgentProfile, useUpdateAgentProfile } from "../../../queries";
 import { errMsg } from "./ModelsTab";
 
 /**
- * How Piuma behaves, in one panel: its name (what the chat calls it), the
- * instructions it reads every turn (how it works) and its voice (who it is, how
- * it talks). What it knows about you is on the Memory page.
+ * How Piuma behaves, in one panel: its name (what the chat calls it), its
+ * personality (who it is, how it talks) and the instructions it reads every turn
+ * (how it works). What it knows about you is on the Memory page.
  */
 export default function BehaviourTab({ agent }) {
 	const { data: profile, isLoading } = useAgentProfile(agent);
-	const { data: personas = [] } = useAgentPersonas(agent);
-	const persona = personas[0];
-	if (isLoading || !persona) return <PvSpin block label="Loading the agent…" />;
-	return <AgentPanel agent={agent} profile={profile} persona={persona} />;
+	if (isLoading) return <PvSpin block label="Loading the agent…" />;
+	return <AgentPanel agent={agent} profile={profile} />;
 }
 
-const fields = (profile, persona) => ({
+const fields = (profile) => ({
 	display_name: profile?.display_name || "",
+	personality: profile?.personality || "",
 	instructions: profile?.instructions || "",
-	voice: persona?.system_prompt || "",
 });
 
-function AgentPanel({ agent, profile, persona }) {
-	const saveProfile = useUpdateAgentProfile();
-	const savePersona = useUpdatePersona();
-	const saved = fields(profile, persona);
+function AgentPanel({ agent, profile }) {
+	const save = useUpdateAgentProfile();
+	const saved = fields(profile);
 	const [v, setV] = useState(saved);
-	useEffect(() => setV(fields(profile, persona)), [profile, persona]);
+	useEffect(() => setV(fields(profile)), [profile]);
 	const dirty = JSON.stringify(v) !== JSON.stringify(saved);
 	const set = (patch) => setV((x) => ({ ...x, ...patch }));
-	const busy = saveProfile.isPending || savePersona.isPending;
 	const submit = async () => {
 		try {
-			if (
-				v.display_name !== saved.display_name ||
-				v.instructions !== saved.instructions
-			)
-				await saveProfile.mutateAsync({
-					agent,
-					display_name: v.display_name,
-					instructions: v.instructions,
-				});
-			if (v.voice !== saved.voice)
-				await savePersona.mutateAsync({
-					id: persona.id,
-					system_prompt: v.voice,
-				});
+			await save.mutateAsync({ agent, ...v });
 			pvMessage.success("Saved");
 		} catch (e) {
 			pvMessage.error(errMsg(e, "Couldn't save"));
@@ -71,7 +49,7 @@ function AgentPanel({ agent, profile, persona }) {
 			extra={
 				<SaveBar
 					dirty={dirty}
-					busy={busy}
+					busy={save.isPending}
 					onSave={submit}
 					onReset={() => setV(saved)}
 				/>
@@ -84,13 +62,13 @@ function AgentPanel({ agent, profile, persona }) {
 						onChange={(e) => set({ display_name: e.target.value })}
 					/>
 				</PvField>
-				<PvField label="Voice" hint="Who it is and how it talks">
+				<PvField label="Personality" hint="Who it is and how it talks">
 					<PvTextarea
 						autoSize
 						maxHeight="50vh"
 						rows={8}
-						value={v.voice}
-						onChange={(e) => set({ voice: e.target.value })}
+						value={v.personality}
+						onChange={(e) => set({ personality: e.target.value })}
 					/>
 				</PvField>
 				<PvField

@@ -6,7 +6,6 @@
 
 use std::time::Duration;
 
-use backend::apps::agents::registry;
 use backend::apps::agents::runner::{run_turn, RunOptions};
 use backend::apps::cron::models::{compute_next_run, CronJobRow};
 use backend::apps::notifications::{notify, Channels, NewNotification};
@@ -173,14 +172,12 @@ async fn ensure_conversation(pool: &DbPool, job: &CronJobRow) -> Option<Uuid> {
     if let Some(c) = job.conversation_id {
         return Some(c);
     }
-    let persona = registry::get(&job.agent).map(|d| d.persona).unwrap_or("piuma");
     let title = format!("⏰ {}", job.title);
     let conv_id: Option<Uuid> = sqlx::query_scalar(
-        "INSERT INTO db_chat_conversations (agent, title, identity) VALUES ($1, $2, $3) RETURNING id",
+        "INSERT INTO db_chat_conversations (agent, title) VALUES ($1, $2) RETURNING id",
     )
     .bind(&job.agent)
     .bind(&title)
-    .bind(persona)
     .fetch_one(pool)
     .await
     .ok();

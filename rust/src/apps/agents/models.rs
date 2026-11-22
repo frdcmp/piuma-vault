@@ -157,7 +157,7 @@ pub struct UpdateModelReq {
     pub enabled: Option<bool>,
 }
 
-// ── Agent profile + persona ────────────────────────────────────────────────
+// ── Agent profile ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct AgentProfileRow {
@@ -166,6 +166,8 @@ pub struct AgentProfileRow {
     pub instructions: String,
     /// the profile of the user, L1 (`profile`)
     pub user_context: String,
+    /// who it is and how it talks
+    pub personality: String,
     /// Per-agent slash-command macros: [{ name, description, prompt }].
     pub commands: Json,
     pub dialectic_cadence: Option<i32>,
@@ -181,28 +183,8 @@ pub struct UpdateProfileReq {
     pub display_name: Option<String>,
     pub instructions: Option<String>,
     pub user_context: Option<String>,
+    pub personality: Option<String>,
     pub commands: Option<Json>,
-}
-
-#[derive(Debug, Clone, FromRow, Serialize)]
-pub struct PersonaRow {
-    pub id: Uuid,
-    pub agent: String,
-    pub name: String,
-    pub display_name: String,
-    pub emoji: Option<String>,
-    pub system_prompt: String,
-    pub config: Json,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdatePersonaReq {
-    pub display_name: Option<String>,
-    pub emoji: Option<String>,
-    pub system_prompt: Option<String>,
-    pub config: Option<Json>,
 }
 
 // ── Conversations + messages ────────────────────────────────────────────────
@@ -213,7 +195,6 @@ pub struct ConversationRow {
     pub agent: String,
     pub title: Option<String>,
     pub model_id: Option<Uuid>,
-    pub identity: String,
     pub metadata: Json,
     pub archived_at: Option<DateTime<Utc>>,
     pub active_leaf_id: Option<Uuid>,
@@ -339,7 +320,6 @@ pub struct ChatTurnReq {
 pub struct AgentInfo {
     pub kind: String,
     pub display_name: String,
-    pub persona: String,
     pub tool_count: usize,
     /// Per-agent slash-command macros (from db_agent_profiles.commands).
     pub commands: Json,

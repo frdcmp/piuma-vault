@@ -1,5 +1,5 @@
-//! Idempotent boot seed for the first agent (`vault_agent`) and its persona
-//! (`piuma`). Inserts the editable prose rows if they don't exist yet; the user
+//! Idempotent boot seed for the first agent (`vault_agent`, Piuma). Inserts its
+//! editable prose if it doesn't exist yet; the user
 //! can then refine them in the Agents admin editor. ON CONFLICT DO NOTHING means
 //! re-runs and user edits are never clobbered.
 
@@ -105,13 +105,14 @@ const VAULT_COMMANDS: &str = r#"[
 
 pub async fn seed_defaults(pool: &DbPool) {
     if let Err(e) = sqlx::query(
-        "INSERT INTO db_agent_profiles (agent, display_name, instructions, user_context, commands) \
-         VALUES ($1, $2, $3, $4, $5::jsonb) ON CONFLICT (agent) DO NOTHING",
+        "INSERT INTO db_agent_profiles (agent, display_name, instructions, user_context, personality, commands) \
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb) ON CONFLICT (agent) DO NOTHING",
     )
     .bind("vault_agent")
-    .bind("Vault Agent")
+    .bind("Piuma")
     .bind(VAULT_INSTRUCTIONS)
     .bind(VAULT_USER_CONTEXT)
+    .bind(PIUMA_PROMPT)
     .bind(VAULT_COMMANDS)
     .execute(pool)
     .await
@@ -127,19 +128,4 @@ pub async fn seed_defaults(pool: &DbPool) {
     .bind(VAULT_COMMANDS)
     .execute(pool)
     .await;
-
-    if let Err(e) = sqlx::query(
-        "INSERT INTO db_agent_personas (agent, name, display_name, emoji, system_prompt) \
-         VALUES ($1, $2, $3, $4, $5) ON CONFLICT (agent, name) DO NOTHING",
-    )
-    .bind("vault_agent")
-    .bind("piuma")
-    .bind("Piuma")
-    .bind("🐾")
-    .bind(PIUMA_PROMPT)
-    .execute(pool)
-    .await
-    {
-        log::warn!("agents seed (persona) skipped: {e}");
-    }
 }

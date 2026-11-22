@@ -627,6 +627,8 @@ const TABLES: &[TableDefinition] = &[
                 instructions TEXT NOT NULL DEFAULT '',
                 -- the profile of the user, L1 (apps/agents/profile.rs)
                 user_context TEXT NOT NULL DEFAULT '',
+                -- who it is and how it talks, last in its prompt (apps/agents/identities.rs)
+                personality TEXT NOT NULL DEFAULT '',
                 commands JSONB NOT NULL DEFAULT '[]',
                 dialectic_cadence INTEGER NOT NULL DEFAULT 3,
                 dialectic_depth INTEGER NOT NULL DEFAULT 1,
@@ -637,27 +639,6 @@ const TABLES: &[TableDefinition] = &[
             )
         "#,
         indices: &[],
-    },
-    // One persona per agent for now (UNIQUE(agent, name) allows multi later).
-    TableDefinition {
-        name: "db_agent_personas",
-        sql: r#"
-            CREATE TABLE db_agent_personas (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                agent TEXT NOT NULL REFERENCES db_agent_profiles(agent) ON DELETE CASCADE,
-                name TEXT NOT NULL,
-                display_name TEXT NOT NULL DEFAULT '',
-                emoji TEXT,
-                system_prompt TEXT NOT NULL DEFAULT '',
-                config JSONB NOT NULL DEFAULT '{}',
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE (agent, name)
-            )
-        "#,
-        indices: &[
-            "CREATE INDEX IF NOT EXISTS idx_agent_personas_agent ON db_agent_personas USING btree (agent)",
-        ],
     },
     // Provider configs; api_key stored plaintext, masked at the HTTP layer.
     TableDefinition {
@@ -716,7 +697,6 @@ const TABLES: &[TableDefinition] = &[
                 agent TEXT NOT NULL,
                 title TEXT,
                 model_id UUID REFERENCES db_llm_models(id) ON DELETE SET NULL,
-                identity TEXT NOT NULL,
                 metadata JSONB NOT NULL DEFAULT '{}',
                 archived_at TIMESTAMPTZ,
                 -- Active leaf of the message tree (the currently-shown branch). The

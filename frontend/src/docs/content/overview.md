@@ -4,7 +4,7 @@
 
 - **Notes** — markdown notes with folders, tags, soft-delete trash, and vector
   embeddings for semantic search.
-- **LLM chat & agents** — conversational agents with editable personas, multiple
+- **LLM chat & agents** — conversational agents with an editable personality, multiple
   providers/models, streaming, and a large catalog of tools that act on your vault.
 - **Agent memory** — a layered, persistent memory (L1–L4) so the agent learns your
   preferences and ongoing work across conversations, with an admin dashboard to

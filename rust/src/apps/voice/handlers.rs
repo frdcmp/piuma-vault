@@ -51,11 +51,7 @@ async fn load_conversation(pool: &DbPool, id: Uuid) -> Result<Option<Conversatio
 
 /// The single standing voice conversation: the most recent non-archived one,
 /// created on first use, so every new voice session continues the same chat.
-async fn voice_conversation(
-    pool: &DbPool,
-    agent: &str,
-    persona: &str,
-) -> Result<ConversationRow, sqlx::Error> {
+async fn voice_conversation(pool: &DbPool, agent: &str) -> Result<ConversationRow, sqlx::Error> {
     let existing = sqlx::query_as::<_, ConversationRow>(
         "SELECT * FROM db_chat_conversations \
          WHERE agent = $1 AND metadata->>'source' = 'voice' AND archived_at IS NULL \
@@ -68,13 +64,12 @@ async fn voice_conversation(
         return Ok(c);
     }
     sqlx::query_as::<_, ConversationRow>(
-        "INSERT INTO db_chat_conversations (agent, title, model_id, identity, metadata) \
-         VALUES ($1, $2, (SELECT id FROM db_llm_models WHERE is_default AND enabled LIMIT 1), $3, $4) \
+        "INSERT INTO db_chat_conversations (agent, title, model_id, metadata) \
+         VALUES ($1, $2, (SELECT id FROM db_llm_models WHERE is_default AND enabled LIMIT 1), $3) \
          RETURNING *",
     )
     .bind(agent)
     .bind("🎙 Voice")
-    .bind(persona)
     .bind(json!({ "source": "voice" }))
     .fetch_one(pool)
     .await
@@ -128,14 +123,14 @@ pub async fn start_session(
             let Some(def) = registry::get(VOICE_AGENT) else {
                 return bad_request("voice agent not registered");
             };
-            match voice_conversation(pool, def.kind, def.persona).await {
+            match voice_conversation(pool, def.kind).await {
                 Ok(c) => c,
                 Err(e) => return db_error(e),
             }
         }
     };
 
-    let resolved = match identities::resolve(pool, &conv.agent, &conv.identity).await {
+    let resolved = match identities::resolve(pool, &conv.agent).await {
         Ok(r) => r,
         Err(e) => return bad_request(e),
     };

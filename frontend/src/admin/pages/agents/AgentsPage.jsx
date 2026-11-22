@@ -11,7 +11,7 @@ const TABS = ["models", "behaviour", "commands"];
 
 /**
  * The Vault Agent: the models it can run (providers and their models, the one new chats start
- * on), how it behaves (profile and persona) and its slash commands. The tab is in the URL
+ * on), how it behaves (name, personality, instructions) and its slash commands. The tab is in the URL
  * (?tab=), so a reload or a link keeps it.
  */
 export default function AgentsPage() {

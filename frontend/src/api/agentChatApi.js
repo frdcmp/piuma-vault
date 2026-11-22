@@ -41,15 +41,11 @@ export const updateModel = async ({ id, ...payload }) =>
 export const deleteModel = async (id) =>
 	(await axiosInstance.delete(`/agents/models/${id}`)).data;
 
-// ── Agent config (profile + personas) ───────────────────────────────────────
+// ── Agent config (its profile) ──────────────────────────────────────────────
 export const fetchProfile = async (agent) =>
 	(await axiosInstance.get(`/agents/${agent}/profile`)).data;
 export const updateProfile = async ({ agent, ...payload }) =>
 	(await axiosInstance.patch(`/agents/${agent}/profile`, payload)).data;
-export const fetchPersonas = async (agent) =>
-	(await axiosInstance.get(`/agents/${agent}/personas`)).data;
-export const updatePersona = async ({ id, ...payload }) =>
-	(await axiosInstance.patch(`/agents/personas/${id}`, payload)).data;
 
 // ── Conversations ────────────────────────────────────────────────────────────
 // `opts` enables backend pagination: { limit, offset }. Omitted → no limit

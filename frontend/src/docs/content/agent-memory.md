@@ -45,7 +45,7 @@ layers click into place.
 flowchart TD
     Start([User sends a message]) --> SP[1. System prompt assembly]
     SP --> SP1[Time + model blocks]
-    SP --> SP2[Agent instructions + persona]
+    SP --> SP2[Agent instructions + personality]
     SP --> SP3["L1: the profile of the user<br/>(always in)"]
     SP --> SP4["L2: embed user message → pgvector search<br/>→ top-K facts, tagged with provenance"]
     SP4 --> SP4a{Distance &lt; floor?}
@@ -69,7 +69,7 @@ flowchart TD
     Dia --> Done
 ```
 
-1. **Prompt assembly.** Time/model blocks, the agent's instructions + persona,
+1. **Prompt assembly.** Time/model blocks, the agent's instructions + personality,
    then **L1** (the profile, verbatim) and **L2** (the user's message is
    embedded and matched against stored facts; whatever clears the relevance
    floor is injected with a `[provenance]` tag).

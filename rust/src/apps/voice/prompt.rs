@@ -66,7 +66,7 @@ pub fn wake_block() -> Option<String> {
     ))
 }
 
-/// Spoken-style rules. Placed after the persona prompt so it wins over any
+/// Spoken-style rules. Placed after the personality so it wins over any
 /// chat formatting/linking guidance there.
 pub fn voice_block() -> String {
     String::from(

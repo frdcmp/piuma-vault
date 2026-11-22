@@ -78,11 +78,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                 .route(web::patch().to(handlers::update_model))
                 .route(web::delete().to(handlers::delete_model)),
         )
-        // Personas (by id)
-        .service(
-            web::resource("/agents/personas/{id}")
-                .route(web::patch().to(handlers::patch_persona)),
-        )
         // Conversations
         .service(
             web::resource("/agents/conversations")
@@ -122,15 +117,11 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             web::resource("/agents/conversations/{id}/retitle")
                 .route(web::post().to(handlers::retitle_conversation)),
         )
-        // Agent config (profile + personas) — registered last so the static
+        // Agent config (its profile) — registered last so the static
         // segments above win over the `{agent}` wildcard.
         .service(
             web::resource("/agents/{agent}/profile")
                 .route(web::get().to(handlers::get_profile))
                 .route(web::patch().to(handlers::patch_profile)),
-        )
-        .service(
-            web::resource("/agents/{agent}/personas")
-                .route(web::get().to(handlers::list_personas)),
         );
 }

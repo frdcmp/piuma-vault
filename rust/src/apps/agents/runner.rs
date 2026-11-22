@@ -106,7 +106,7 @@ pub async fn run_turn(
         return Err("provider has no API key set".to_string());
     }
 
-    let resolved = identities::resolve(pool, &conv.agent, &conv.identity).await?;
+    let resolved = identities::resolve(pool, &conv.agent).await?;
 
     // Enabled tools = the agent's subscription, minus the destructive
     // `delete_*` family unless this job opted in.
