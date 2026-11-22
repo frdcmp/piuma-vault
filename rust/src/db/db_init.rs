@@ -625,8 +625,8 @@ const TABLES: &[TableDefinition] = &[
                 agent TEXT PRIMARY KEY,
                 display_name TEXT NOT NULL DEFAULT '',
                 instructions TEXT NOT NULL DEFAULT '',
+                -- the profile of the user, L1 (apps/agents/profile.rs)
                 user_context TEXT NOT NULL DEFAULT '',
-                memory TEXT NOT NULL DEFAULT '',
                 commands JSONB NOT NULL DEFAULT '[]',
                 dialectic_cadence INTEGER NOT NULL DEFAULT 3,
                 dialectic_depth INTEGER NOT NULL DEFAULT 1,
