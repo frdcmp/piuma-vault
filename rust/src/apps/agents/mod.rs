@@ -10,6 +10,7 @@ pub mod identities;
 pub mod mcp;
 pub mod memory_admin;
 pub mod models;
+pub mod profile;
 pub mod providers;
 pub mod registry;
 pub mod routes;

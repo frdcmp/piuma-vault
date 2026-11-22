@@ -18,7 +18,7 @@ Memory comes in **three layers — L1, L2, L3** — split by *where it lives* an
 
 | Layer | Role | Where it lives | In every prompt? |
 |-------|------|----------------|------------------|
-| **L1** | Always-in-context scratchpad | `db_agent_profiles.memory` / `.user_context` | **Yes** — injected verbatim |
+| **L1** | The profile of the user | `db_agent_profiles.user_context` | **Yes** — injected verbatim |
 | **L2** | Semantic long-term memory | `db_memory_entries` | Yes — top-K by relevance |
 | **L3** | Conversation full-text search | `db_chat_messages` (FTS over transcript) | **No** — on-demand tool |
 
@@ -46,7 +46,7 @@ flowchart TD
     Start([User sends a message]) --> SP[1. System prompt assembly]
     SP --> SP1[Time + model blocks]
     SP --> SP2[Agent instructions + persona]
-    SP --> SP3["L1: db_agent_profiles.memory + user_context<br/>(always in)"]
+    SP --> SP3["L1: the profile of the user<br/>(always in)"]
     SP --> SP4["L2: embed user message → pgvector search<br/>→ top-K facts, tagged with provenance"]
     SP4 --> SP4a{Distance &lt; floor?}
     SP4a -->|yes| SP4b["Inject fact with [provenance] tag"]
@@ -70,7 +70,7 @@ flowchart TD
 ```
 
 1. **Prompt assembly.** Time/model blocks, the agent's instructions + persona,
-   then **L1** (both text fields, verbatim) and **L2** (the user's message is
+   then **L1** (the profile, verbatim) and **L2** (the user's message is
    embedded and matched against stored facts; whatever clears the relevance
    floor is injected with a `[provenance]` tag).
 2. **Tool loop.** The model streams its answer and may call memory tools along
@@ -88,25 +88,29 @@ flowchart TD
 
 ## 4. The three layers, in depth
 
-### L1 — always-in-context scratchpad
+### L1 — the profile of the user
 
-Two text columns on `db_agent_profiles`, both concatenated into the system prompt
-on **every** turn:
+The agent's profile of the user, in the system prompt on **every** turn (under
+`# About the user`). It holds what any assistant needs to answer any message from
+the user well, whatever it's about, in three sections, one line per fact:
 
-- **`memory`** — the agent's own running notes (cap **2,200** chars).
-- **`user_context`** — the user's standing profile / preferences (cap **1,375**).
+| Section | Holds |
+|---------|-------|
+| **Who they are** (`who`) | name, what they do, where they're based, time zone, languages |
+| **How they want answers** (`answers`) | tone, length, language, format |
+| **How their things are organised** (`organised`) | where projects, plans and notes live in the vault; conventions such as the first day of the week |
 
-Because it costs tokens on every single turn, it's hard-capped and reserved for
-the handful of always-relevant essentials: what stays true for months and
-matters in almost any chat (who the user is, how they want answers, where things
-live, standing rules). Never an event, a date, a trip, a plan, a task, or what to
-do in one note or topic: what goes stale here misleads every turn, so those go to
-the calendar, tasks or L2 (a goal there expires when it stops coming up). Every
-tool that writes L1 says so. The agent fills it via `context_add` and, when it
-nears a cap, **consolidates** with `context_replace` rather than stopping — the
-cap is the backpressure, not a wall. Anything that's only needed when a topic
-comes up goes to L2 instead. Dedup here is normalized-string matching (it's free
-text, not rows).
+A fact goes under one of them, so what fits none (a trip, a purchase being
+planned, how to handle one note) never gets in: it belongs to the calendar,
+tasks or L2. The sections live in code (`apps/agents/profile.rs`); the profile is
+markdown in `db_agent_profiles.user_context` (`## <section>`, then `- <fact>`),
+which the user can edit as text on the Agents page.
+
+The agent adds a fact with `context_add(section, text)`, and corrects or merges
+with `context_replace` / `context_remove`. It's hard-capped at **1,375**
+characters: at the cap, `context_add` is refused with the profile so the agent
+merges facts first — the cap is the backpressure, not a wall. Dedup is
+normalized-string matching against the facts held.
 
 ### L2 — semantic long-term memory
 
@@ -244,14 +248,10 @@ The track visual maps these onto a line from **0 (identical)** to **0.7
 (unrelated)**: the shaded zone is `0 → 0.40` and the ◆ pin sits at the nearest
 neighbour's distance.
 
-### L1 capacity gauges
+### L1 capacity gauge
 
-Pure character count against the hard caps:
-
-- **`memory_pct` = `memory.chars / 2200 × 100`** (scratchpad).
-- **`user_context_pct` = `user_context.chars / 1375 × 100`** (profile).
-- **L1 card headline** = combined, since both are always injected:
-  **`(memory.chars + user_context.chars) / (2200 + 1375) × 100`**.
+Pure character count against the hard cap:
+**`user_context_pct` = `profile.chars / 1375 × 100`**.
 
 ### Retrieval & lifecycle numbers
 
@@ -265,7 +265,7 @@ Pure character count against the hard caps:
 
 The `/admin/memory` page maps directly onto everything above.
 
-- **Cards (top).** **L1** shows combined capacity (`scratchpad % · profile %`);
+- **Cards (top).** **L1** shows how full the profile is;
   **L2** the confirmed-fact count; **L3** indexed conversations/messages;
   **Pending** the count awaiting confirmation (L2 facts with `status=pending`);
   **∑** total active. Clicking a card filters the Entries tab to that slice.
@@ -283,8 +283,8 @@ The `/admin/memory` page maps directly onto everything above.
 
 ### Tables
 
-- **`db_agent_profiles`** — one row per agent. `memory` + `user_context` are the
-  **L1** fields; `instructions` is the system-prompt preamble; `dialectic_*`
+- **`db_agent_profiles`** — one row per agent. `user_context` is **L1**, the
+  profile of the user; `instructions` is the system-prompt preamble; `dialectic_*`
   columns configure L2's dialectic pass (cadence / depth / model).
 - **`db_memory_entries`** — **L2**. One row per fact: `content`,
   `embedding vector(1536)` (HNSW cosine), `source`, `status`, `confidence`,
@@ -299,8 +299,8 @@ The `/admin/memory` page maps directly onto everything above.
 
 ### Tools the agent uses
 
-- **L1:** `context_add(text)`, `context_replace(old, new)`, `context_remove(text)`,
-  `context_list` — hard caps (2,200 / 1,375), normalized-match dedup.
+- **L1:** `context_add(section, text)`, `context_replace(old, new)`,
+  `context_remove(text)`, `context_list` — hard cap 1,375, normalized-match dedup.
 - **L2:** `memory_search(query)`,
   `memory_save(content, source?, category?, confidence?, tags?)`,
   `memory_update(id, content)`, `memory_delete(id)`, `memory_list(category?)`,

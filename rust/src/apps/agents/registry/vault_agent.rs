@@ -61,10 +61,8 @@ pub static DEF: AgentDef = AgentDef {
         "delete_share",
         "read_self",
         "update_instructions",
-        "update_user_context",
-        "update_memory",
         "update_persona",
-        // L1 always-in-context scratchpad (capped, compactable)
+        // L1: the profile of the user, in every prompt (`profile`)
         "context_add",
         "context_replace",
         "context_remove",

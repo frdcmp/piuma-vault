@@ -164,8 +164,8 @@ pub struct AgentProfileRow {
     pub agent: String,
     pub display_name: String,
     pub instructions: String,
+    /// the profile of the user, L1 (`profile`)
     pub user_context: String,
-    pub memory: String,
     /// Per-agent slash-command macros: [{ name, description, prompt }].
     pub commands: Json,
     pub dialectic_cadence: Option<i32>,
@@ -181,7 +181,6 @@ pub struct UpdateProfileReq {
     pub display_name: Option<String>,
     pub instructions: Option<String>,
     pub user_context: Option<String>,
-    pub memory: Option<String>,
     pub commands: Option<Json>,
 }
 

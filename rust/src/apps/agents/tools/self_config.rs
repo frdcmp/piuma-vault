@@ -1,5 +1,5 @@
 //! Self-config tools (Tier 3) — let an agent read and rewrite ITS OWN editable
-//! prose: `db_agent_profiles` (instructions / user_context / memory) and its
+//! prose: `db_agent_profiles` (instructions, and the profile of the user: L1, `profile`) and its
 //! `db_agent_personas` row (system_prompt / display_name / emoji / allowed_tools).
 //! Every query is scoped by the active `agent` kind, so an agent can never touch
 //! another agent's config. Edits apply on the next request (rows re-read).
@@ -7,47 +7,31 @@
 use serde_json::{json, Value};
 
 use super::*;
+use crate::apps::agents::profile;
 use crate::db::db::DbPool;
 
-/// What belongs in the always-in-context fields (L1), said on every tool that writes them: it's
-/// in every prompt, so what goes stale there misleads every turn.
-macro_rules! l1_rule {
-    () => {
-        " Only what stays true for months and matters in almost any chat: who the user is, how they \
-         want answers, where things live, standing rules. Never an event, a date, a trip, a plan, a \
-         task, or what to do in one note or one topic: the calendar and tasks hold those, and \
-         memory_save the rest (a goal there expires when it stops coming up)."
-    };
-}
+/// context_add's description: what the profile is for, and its sections.
+static CONTEXT_ADD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    format!(
+        "Add one fact to your profile of the user. It is in every prompt and holds what any \
+         assistant needs to answer any message from them well, whatever it's about. A fact goes \
+         under one of its sections: {}. Hard-capped at {} characters: when full, the call returns \
+         the profile so you can merge facts with context_replace first.",
+        profile::described(),
+        profile::CAP
+    )
+});
 
 pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         (
             "read_self",
-            "Read your own editable config: instructions, user_context, memory, and your persona (system prompt, allowed tools).",
+            "Read your own editable config: instructions, your profile of the user, and your persona (system prompt, allowed tools).",
             json!({ "type": "object", "properties": {} }),
         ),
         (
             "update_instructions",
             "Replace your own instructions (the always-loaded overview + tool guidance).",
-            json!({
-                "type": "object",
-                "properties": { "text": { "type": "string" } },
-                "required": ["text"]
-            }),
-        ),
-        (
-            "update_user_context",
-            concat!("Replace your own user_context: the user's standing profile and preferences.", l1_rule!()),
-            json!({
-                "type": "object",
-                "properties": { "text": { "type": "string" } },
-                "required": ["text"]
-            }),
-        ),
-        (
-            "update_memory",
-            concat!("Replace your own always-in-context memory scratchpad.", l1_rule!()),
             json!({
                 "type": "object",
                 "properties": { "text": { "type": "string" } },
@@ -73,82 +57,48 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
         ),
         (
             "context_add",
-            concat!(
-                "Append one durable, always-relevant fact to your always-in-context scratchpad. \
-                 Use this (not memory_save) only for the handful of facts you need EVERY turn; \
-                 memory_save is for everything topic-specific. Hard-capped — if full, the call is \
-                 rejected with your current entries so you can consolidate via context_replace first.",
-                l1_rule!()
-            ),
+            CONTEXT_ADD.as_str(),
             json!({
                 "type": "object",
                 "properties": {
-                    "text": { "type": "string" },
-                    "target": { "type": "string", "description": "memory (default) | user_context" }
+                    "section": { "type": "string", "enum": ["who", "answers", "organised"] },
+                    "text": { "type": "string", "description": "one fact, one line" }
                 },
-                "required": ["text"]
+                "required": ["section", "text"]
             }),
         ),
         (
             "context_replace",
-            concat!(
-                "Substring-replace in your always-in-context scratchpad — the primary way to compact \
-                 (merge related entries into one, drop what went stale).",
-                l1_rule!()
-            ),
+            "Replace text in your profile of the user (it is in every prompt): correct a fact, or merge two into one.",
             json!({
                 "type": "object",
                 "properties": {
                     "old_text": { "type": "string" },
-                    "new_text": { "type": "string" },
-                    "target": { "type": "string", "description": "memory (default) | user_context" }
+                    "new_text": { "type": "string" }
                 },
                 "required": ["old_text", "new_text"]
             }),
         ),
         (
             "context_remove",
-            "Remove a fact from your always-in-context scratchpad by substring match.",
+            "Remove a fact from your profile of the user (it is in every prompt) by substring match.",
             json!({
                 "type": "object",
-                "properties": {
-                    "text": { "type": "string" },
-                    "target": { "type": "string", "description": "memory (default) | user_context" }
-                },
+                "properties": { "text": { "type": "string" } },
                 "required": ["text"]
             }),
         ),
         (
             "context_list",
-            "Show your always-in-context scratchpad with usage stats (chars / cap / %).",
-            json!({
-                "type": "object",
-                "properties": {
-                    "target": { "type": "string", "description": "memory (default) | user_context" }
-                }
-            }),
+            "Show your profile of the user, its facts by section, and its size against the cap.",
+            json!({ "type": "object", "properties": {} }),
         ),
     ]
 }
 
-// ── L1 always-in-context scratchpad (context_* tools) ────────────────────────
+// ── L1: the profile of the user (context_* tools, `profile`) ──────────────────
 
-/// Char cap per field (memory = agent scratchpad, user_context = user profile).
-fn cap_for(target: &str) -> usize {
-    match target {
-        "user_context" => 1375,
-        _ => 2200,
-    }
-}
-
-/// Validate + normalise the `target` arg to a real column name.
-fn target_col(args: &Value) -> Result<&'static str, String> {
-    match opt_string(args, "target").as_deref() {
-        None | Some("memory") => Ok("memory"),
-        Some("user_context") => Ok("user_context"),
-        Some(other) => Err(format!("invalid target '{other}' (use memory | user_context)")),
-    }
-}
+const PROFILE: &str = "user_context";
 
 /// Normalise a line for duplicate detection: lowercase, keep alphanumerics +
 /// spaces, collapse runs of whitespace.
@@ -161,9 +111,8 @@ fn normalize(s: &str) -> String {
     lowered.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-async fn get_field(pool: &DbPool, agent: &str, column: &str) -> Result<String, String> {
-    let sql = format!("SELECT {column} FROM db_agent_profiles WHERE agent = $1");
-    let row: Option<(String,)> = sqlx::query_as(&sql)
+async fn get_profile(pool: &DbPool, agent: &str) -> Result<String, String> {
+    let row: Option<(String,)> = sqlx::query_as("SELECT user_context FROM db_agent_profiles WHERE agent = $1")
         .bind(agent)
         .fetch_optional(pool)
         .await
@@ -171,103 +120,97 @@ async fn get_field(pool: &DbPool, agent: &str, column: &str) -> Result<String, S
     row.map(|(v,)| v).ok_or_else(|| "agent profile not found".into())
 }
 
-fn entries_of(field: &str) -> Vec<String> {
-    field.lines().map(|l| l.to_string()).filter(|l| !l.trim().is_empty()).collect()
+fn facts_json(p: &str) -> Value {
+    json!(profile::facts(p).into_iter().map(|(section, fact)| json!({ "section": section, "fact": fact })).collect::<Vec<_>>())
 }
 
-pub async fn context_list(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
-    let column = target_col(args)?;
-    let field = get_field(pool, agent, column).await?;
-    let cap = cap_for(column);
-    let chars = field.chars().count();
+pub async fn context_list(pool: &DbPool, agent: &str, _args: &Value) -> Result<Value, String> {
+    let p = get_profile(pool, agent).await?;
+    let chars = p.chars().count();
     Ok(json!({
-        "target": column,
-        "content": field,
-        "entries": entries_of(&field),
+        "content": p,
+        "facts": facts_json(&p),
         "chars": chars,
-        "cap": cap,
-        "pct": (chars * 100 / cap).min(100)
+        "cap": profile::CAP,
+        "pct": (chars * 100 / profile::CAP).min(100)
     }))
 }
 
 pub async fn context_add(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
-    let column = target_col(args)?;
+    let section = profile::section(&req_str(args, "section")?)?;
     let text = req_str(args, "text")?;
-    let field = get_field(pool, agent, column).await?;
-    let cap = cap_for(column);
+    let p = get_profile(pool, agent).await?;
 
-    // Normalised duplicate check against existing lines.
+    // Normalised duplicate check against the facts held.
     let norm = normalize(&text);
-    if let Some(dup) = entries_of(&field).into_iter().find(|l| normalize(l) == norm) {
+    if let Some((_, dup)) = profile::facts(&p).into_iter().find(|(_, f)| normalize(f) == norm) {
         return Ok(json!({ "duplicate": true, "existing": dup }));
     }
 
-    let new_field = if field.trim().is_empty() {
-        text.clone()
-    } else {
-        format!("{field}\n{text}")
-    };
-    let new_len = new_field.chars().count();
-    if new_len > cap {
+    let new_profile = profile::with_line(&p, section, &text);
+    let new_len = new_profile.chars().count();
+    if new_len > profile::CAP {
         return Ok(json!({
             "rejected": true,
             "reason": format!(
-                "{} at {}/{} chars. Adding this entry ({} chars) would exceed the limit. \
-                 Replace or remove existing entries first.",
-                column, field.chars().count(), cap, text.chars().count()
+                "The profile is at {}/{} chars; this fact ({} chars) would exceed the limit. \
+                 Merge or remove facts first.",
+                p.chars().count(), profile::CAP, text.chars().count()
             ),
-            "chars": field.chars().count(),
-            "cap": cap,
-            "entries": entries_of(&field)
+            "chars": p.chars().count(),
+            "cap": profile::CAP,
+            "facts": facts_json(&p)
         }));
     }
-    set_profile_field(pool, agent, column, &new_field).await?;
-    Ok(json!({ "added": true, "target": column, "chars": new_len, "cap": cap }))
+    set_profile_field(pool, agent, PROFILE, &new_profile).await?;
+    Ok(json!({ "added": true, "section": section.key, "chars": new_len, "cap": profile::CAP }))
 }
 
 pub async fn context_replace(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
-    let column = target_col(args)?;
     let old_text = req_str(args, "old_text")?;
     let new_text = req_str(args, "new_text")?;
-    let field = get_field(pool, agent, column).await?;
-    if !field.contains(&old_text) {
-        return Err("old_text not found in the scratchpad".into());
+    let p = get_profile(pool, agent).await?;
+    if !p.contains(&old_text) {
+        return Err("old_text not found in the profile".into());
     }
-    let new_field = field.replace(&old_text, &new_text);
-    let cap = cap_for(column);
-    let new_len = new_field.chars().count();
-    if new_len > cap {
+    let new_profile = p.replace(&old_text, &new_text);
+    let new_len = new_profile.chars().count();
+    if new_len > profile::CAP {
         return Ok(json!({
             "rejected": true,
-            "reason": format!("Replacement would put {column} at {new_len}/{cap} chars."),
-            "cap": cap
+            "reason": format!("Replacement would put the profile at {new_len}/{} chars.", profile::CAP),
+            "cap": profile::CAP
         }));
     }
-    set_profile_field(pool, agent, column, &new_field).await?;
-    Ok(json!({ "replaced": true, "target": column, "chars": new_len, "cap": cap }))
+    set_profile_field(pool, agent, PROFILE, &new_profile).await?;
+    Ok(json!({ "replaced": true, "chars": new_len, "cap": profile::CAP }))
 }
 
 pub async fn context_remove(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
-    let column = target_col(args)?;
     let text = req_str(args, "text")?;
-    let field = get_field(pool, agent, column).await?;
-    if !field.contains(&text) {
-        return Err("text not found in the scratchpad".into());
+    let p = get_profile(pool, agent).await?;
+    if !p.contains(&text) {
+        return Err("text not found in the profile".into());
     }
-    // Remove the substring, then drop any blank lines it left behind.
-    let stripped = field.replace(&text, "");
-    let new_field = stripped
+    // Remove the substring, and a fact line it leaves empty.
+    let new_profile = p
         .lines()
-        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| {
+            if !l.contains(&text) {
+                return Some(l.to_string());
+            }
+            let rest = l.replace(&text, "");
+            (!matches!(rest.trim(), "-" | "")).then_some(rest)
+        })
         .collect::<Vec<_>>()
         .join("\n");
-    set_profile_field(pool, agent, column, &new_field).await?;
-    Ok(json!({ "removed": true, "target": column, "chars": new_field.chars().count() }))
+    set_profile_field(pool, agent, PROFILE, &new_profile).await?;
+    Ok(json!({ "removed": true, "chars": new_profile.chars().count() }))
 }
 
 pub async fn read_self(pool: &DbPool, agent: &str) -> Result<Value, String> {
-    let profile: Option<(String, String, String, String)> = sqlx::query_as(
-        "SELECT display_name, instructions, user_context, memory FROM db_agent_profiles WHERE agent = $1",
+    let row: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT display_name, instructions, user_context FROM db_agent_profiles WHERE agent = $1",
     )
     .bind(agent)
     .fetch_optional(pool)
@@ -282,8 +225,7 @@ pub async fn read_self(pool: &DbPool, agent: &str) -> Result<Value, String> {
         .fetch_optional(pool)
         .await
         .map_err(|e| e.to_string())?;
-    let (display_name, instructions, user_context, memory) =
-        profile.ok_or("agent profile not found")?;
+    let (display_name, instructions, user_profile) = row.ok_or("agent profile not found")?;
     let persona_json = persona.map(|(name, pdisplay, emoji, system_prompt, allowed_tools)| {
         json!({
             "name": name, "display_name": pdisplay, "emoji": emoji,
@@ -294,8 +236,7 @@ pub async fn read_self(pool: &DbPool, agent: &str) -> Result<Value, String> {
         "agent": agent,
         "display_name": display_name,
         "instructions": instructions,
-        "user_context": user_context,
-        "memory": memory,
+        "profile_of_the_user": user_profile,
         "persona": persona_json
     }))
 }
@@ -319,16 +260,6 @@ async fn set_profile_field(pool: &DbPool, agent: &str, column: &str, text: &str)
 pub async fn update_instructions(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
     let text = req_str(args, "text")?;
     set_profile_field(pool, agent, "instructions", &text).await
-}
-
-pub async fn update_user_context(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
-    let text = req_str(args, "text")?;
-    set_profile_field(pool, agent, "user_context", &text).await
-}
-
-pub async fn update_memory(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
-    let text = req_str(args, "text")?;
-    set_profile_field(pool, agent, "memory", &text).await
 }
 
 pub async fn update_persona(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {

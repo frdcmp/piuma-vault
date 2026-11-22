@@ -3,7 +3,7 @@
 //! manages memory through the `memory_*` / `context_*` tools; these endpoints let
 //! a human scout and curate it.
 //!
-//! - L1 (always-in-context): `db_agent_profiles.memory` / `.user_context` + caps.
+//! - L1 (always-in-context): the profile of the user, `db_agent_profiles.user_context`, by section, + cap.
 //! - L2/L4 (semantic + derived): `db_memory_entries` rows (embedding excluded).
 //! - Phase 0 inspector: `db_agent_turn_logs` (what was retrieved each turn).
 
@@ -19,8 +19,6 @@ use super::access::AgentAdmin;
 use super::models::ApiError;
 
 // L1 caps mirror `tools::self_config`.
-const MEMORY_CAP: i64 = 2200;
-const USER_CONTEXT_CAP: i64 = 1375;
 
 fn db_err(e: sqlx::Error) -> HttpResponse {
     log::error!("memory admin db error: {e}");
@@ -111,13 +109,12 @@ pub async fn overview(
 ) -> impl Responder {
     let agent = q.agent.clone().unwrap_or_else(|| "vault_agent".to_string());
 
-    let l1: Option<(String, String)> =
-        sqlx::query_as("SELECT memory, user_context FROM db_agent_profiles WHERE agent = $1")
-            .bind(&agent)
-            .fetch_optional(pool.get_ref())
-            .await
-            .unwrap_or(None);
-    let (memory, user_context) = l1.unwrap_or_default();
+    let user_context: String = sqlx::query_scalar("SELECT user_context FROM db_agent_profiles WHERE agent = $1")
+        .bind(&agent)
+        .fetch_optional(pool.get_ref())
+        .await
+        .unwrap_or(None)
+        .unwrap_or_default();
 
     // Aggregate counts in one pass.
     let stats: Option<(i64, i64, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(
@@ -166,20 +163,21 @@ pub async fn overview(
     .unwrap_or(None);
     let (l3_messages, l3_conversations) = l3.unwrap_or((0, 0));
 
-    let mem_chars = memory.chars().count() as i64;
-    let uc_chars = user_context.chars().count() as i64;
+    let uc_chars = user_context.chars().count();
+    let cap = crate::apps::agents::profile::CAP;
+    let sections: Vec<_> = crate::apps::agents::profile::SECTIONS
+        .iter()
+        .map(|s| json!({ "key": s.key, "title": s.title, "holds": s.holds }))
+        .collect();
     HttpResponse::Ok().json(json!({
         "agent": agent,
         "l3": { "messages": l3_messages, "conversations": l3_conversations },
         "l1": {
-            "memory": memory,
-            "memory_chars": mem_chars,
-            "memory_cap": MEMORY_CAP,
-            "memory_pct": (mem_chars * 100 / MEMORY_CAP).min(100),
             "user_context": user_context,
             "user_context_chars": uc_chars,
-            "user_context_cap": USER_CONTEXT_CAP,
-            "user_context_pct": (uc_chars * 100 / USER_CONTEXT_CAP).min(100),
+            "user_context_cap": cap,
+            "user_context_pct": (uc_chars * 100 / cap).min(100),
+            "sections": sections,
         },
         "stats": {
             "total": total,

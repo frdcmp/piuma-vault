@@ -543,7 +543,6 @@ function ConfigTab({ agent }) {
 		display_name: "",
 		instructions: "",
 		user_context: "",
-		memory: "",
 	});
 	const [pe, setPe] = useState({
 		display_name: "",
@@ -560,7 +559,6 @@ function ConfigTab({ agent }) {
 				display_name: profile.display_name || "",
 				instructions: profile.instructions || "",
 				user_context: profile.user_context || "",
-				memory: profile.memory || "",
 			});
 			setCommands(Array.isArray(profile.commands) ? profile.commands : []);
 		}
@@ -624,18 +622,11 @@ function ConfigTab({ agent }) {
 								onChange={(e) => setPf({ ...pf, instructions: e.target.value })}
 							/>
 						</PvField>
-						<PvField label="User context">
+						<PvField label="Profile of the user (L1: who they are, how they want answers, how their things are organised)">
 							<PvTextarea
-								rows={4}
+								rows={8}
 								value={pf.user_context}
 								onChange={(e) => setPf({ ...pf, user_context: e.target.value })}
-							/>
-						</PvField>
-						<PvField label="Memory">
-							<PvTextarea
-								rows={4}
-								value={pf.memory}
-								onChange={(e) => setPf({ ...pf, memory: e.target.value })}
 							/>
 						</PvField>
 						<PvField

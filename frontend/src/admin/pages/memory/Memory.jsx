@@ -199,11 +199,10 @@ const Legend = () => (
 				</p>
 				<h4 className="mem-legend-sub">Layers</h4>
 				<p className="mem-legend-note">
-					<b>L1</b> always-in-context scratchpad (always in the prompt) ·{" "}
-					<b>L2</b> semantic facts retrieved by relevance — confirmed ones plus
-					low-trust <b>pending</b> guesses from L2's dialectic pass, awaiting
-					confirmation · <b>L3</b> full-text search over chat history
-					(on-demand).
+					<b>L1</b> the profile of the user (always in the prompt) · <b>L2</b>{" "}
+					semantic facts retrieved by relevance — confirmed ones plus low-trust{" "}
+					<b>pending</b> guesses from L2's dialectic pass, awaiting confirmation
+					· <b>L3</b> full-text search over chat history (on-demand).
 				</p>
 			</div>
 		</div>
@@ -496,14 +495,6 @@ const Memory = () => {
 
 	const stats = overview.data?.stats;
 	const l1 = overview.data?.l1;
-	// Combined L1 footprint: both `memory` and `user_context` are injected every
-	// turn, so the card reflects total usage, not just the agent scratchpad.
-	const l1CombinedPct = l1
-		? Math.round(
-				((l1.memory_chars + l1.user_context_chars) * 100) /
-					(l1.memory_cap + l1.user_context_cap),
-			)
-		: 0;
 	const l3 = overview.data?.l3;
 	const byStatus = stats?.by_status || {};
 	const bySource = stats?.by_source || {};
@@ -730,8 +721,8 @@ const Memory = () => {
 						layer="L1"
 						icon={<RobotOutlined />}
 						title="Always-in-context"
-						subtitle={`scratchpad ${l1?.memory_pct ?? 0}% · profile ${l1?.user_context_pct ?? 0}%`}
-						count={l1 ? `${l1CombinedPct}%` : "—"}
+						subtitle={`profile · ${l1?.user_context_chars ?? 0} / ${l1?.user_context_cap ?? 0} chars`}
+						count={l1 ? `${l1.user_context_pct}%` : "—"}
 						accent="var(--vp-info)"
 						active={tab === "l1"}
 						onClick={() => setTab("l1")}
@@ -790,23 +781,18 @@ const Memory = () => {
 							) : (
 								<>
 									<TabIntro>
-										<b>Always-in-context.</b> These two fields are injected into{" "}
-										<i>every</i> prompt, so they stay small and hard-capped.{" "}
-										<b>memory</b> = the agent's own running notes (it rarely
-										writes here — most facts go to L2); <b>user_context</b> =
-										your profile / preferences. Bulk memory lives in the Entries
-										tab.
+										<b>Always-in-context.</b> The agent's profile of you, in{" "}
+										<i>every</i> prompt: what any assistant needs to answer any
+										message from you well, whatever it's about. A fact goes
+										under one of its sections:{" "}
+										{(l1?.sections ?? [])
+											.map((s) => `${s.title.toLowerCase()} (${s.holds})`)
+											.join("; ")}
+										. Everything else lives in the Entries tab.
 									</TabIntro>
 									<div className="mem-l1">
 										<L1Gauge
-											label="memory — agent scratchpad"
-											chars={l1?.memory_chars ?? 0}
-											cap={l1?.memory_cap ?? 0}
-											pct={l1?.memory_pct ?? 0}
-											content={l1?.memory}
-										/>
-										<L1Gauge
-											label="user_context — profile / preferences"
+											label="profile of the user"
 											chars={l1?.user_context_chars ?? 0}
 											cap={l1?.user_context_cap ?? 0}
 											pct={l1?.user_context_pct ?? 0}

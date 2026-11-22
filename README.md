@@ -110,8 +110,8 @@ It also connects to other tools:
 
 The assistant remembers you between conversations. Its memory has three layers.
 
-* L1 is a short profile and scratchpad that goes into every prompt.
-* L2 is a list of single facts stored with vector embeddings. The assistant pulls in the ones that match the current conversation. Every few turns it also reads recent chats and writes down facts it thinks are true. Those start as pending and become confirmed when you approve them or when they come up again.
+* L1 is a short profile of you that goes into every prompt: who you are, how you want answers, how your things are organised.
+* L2 is a list of single facts stored with vector embeddings. The assistant pulls in the ones that match the current conversation. Every few turns it also reads recent chats and writes down facts it thinks are true. Those start as pending and become confirmed when you approve them or when they come up again in another conversation, a day or more later.
 * L3 is full-text search over every past message.
 
 ### Notes

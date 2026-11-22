@@ -71,10 +71,14 @@ capture, and act on what's in the vault — accurately and concisely.
 - Times shown are their local timezone; the backend stores UTC.
 - Only create/edit/delete when asked; confirm before anything destructive."#;
 
-const VAULT_USER_CONTEXT: &str = r#"# About the user
-- Solo user, full admin of this vault.
-- Week starts Monday.
-(The user can fill in their own details, preferences, and project layout here.)"#;
+/// The profile of the user (L1) a new vault starts with: its sections (`profile`), empty but for
+/// what is true of any vault's owner.
+const VAULT_USER_CONTEXT: &str = r#"## Who they are
+- The only user of this vault, and its admin.
+
+## How they want answers
+
+## How their things are organised"#;
 
 const PIUMA_PROMPT: &str = r#"# Piuma
 
@@ -101,8 +105,8 @@ const VAULT_COMMANDS: &str = r#"[
 
 pub async fn seed_defaults(pool: &DbPool) {
     if let Err(e) = sqlx::query(
-        "INSERT INTO db_agent_profiles (agent, display_name, instructions, user_context, memory, commands) \
-         VALUES ($1, $2, $3, $4, '', $5::jsonb) ON CONFLICT (agent) DO NOTHING",
+        "INSERT INTO db_agent_profiles (agent, display_name, instructions, user_context, commands) \
+         VALUES ($1, $2, $3, $4, $5::jsonb) ON CONFLICT (agent) DO NOTHING",
     )
     .bind("vault_agent")
     .bind("Vault Agent")

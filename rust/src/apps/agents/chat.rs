@@ -617,15 +617,11 @@ pub async fn chat(
         }
         blocks.push(pending_block);
     }
-    // Phase 0 observability: snapshot what was retrieved + L1 usage for the turn log.
-    // L1 "always-in-context" usage spans BOTH injected fields — the agent's
-    // `memory` scratchpad (cap 2200) and `user_context` (cap 1375) — measured
-    // against their combined cap. (Counting `memory` alone read a false 0% since
-    // the agent rarely writes to its scratchpad.)
+    // Phase 0 observability: snapshot what was retrieved + L1 usage for the turn log
+    // (the profile of the user against its cap).
     let retrieved_json = serde_json::to_value(&retrieved).unwrap_or_else(|_| json!([]));
-    let l1_chars = (resolved.profile.memory.chars().count()
-        + resolved.profile.user_context.chars().count()) as i32;
-    let l1_pct = (l1_chars * 100 / (2200 + 1375)).min(100);
+    let l1_chars = resolved.profile.user_context.chars().count() as i32;
+    let l1_pct = (l1_chars * 100 / super::profile::CAP as i32).min(100);
     let system = blocks.join("\n\n");
     if !system.trim().is_empty() {
         messages.push(json!({ "role": "system", "content": system }));

@@ -1,6 +1,6 @@
 //! Assembles a conversation's system prompt from the agent's DB rows
 //! (`db_agent_profiles` + `db_agent_personas`), in the §8 order:
-//! instructions → user_context → persona system_prompt → memory.
+//! instructions → the profile of the user (L1, `profile`) → persona system_prompt.
 
 use crate::db::db::DbPool;
 
@@ -39,13 +39,10 @@ pub async fn resolve(
         parts.push(profile.instructions.clone());
     }
     if !profile.user_context.trim().is_empty() {
-        parts.push(format!("# User context\n\n{}", profile.user_context));
+        parts.push(format!("# About the user\n\n{}", profile.user_context));
     }
     if !persona.system_prompt.trim().is_empty() {
         parts.push(persona.system_prompt.clone());
-    }
-    if !profile.memory.trim().is_empty() {
-        parts.push(format!("# Memory\n\n{}", profile.memory));
     }
     let system_prompt = parts.join("\n\n");
 

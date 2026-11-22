@@ -422,14 +422,13 @@ pub async fn patch_profile(
     let b = body.into_inner();
     // Upsert — PATCH also seeds the row if it doesn't exist yet.
     match sqlx::query_as::<_, AgentProfileRow>(
-        "INSERT INTO db_agent_profiles (agent, display_name, instructions, user_context, memory, commands, updated_at) \
-         VALUES ($1, COALESCE($2,''), COALESCE($3,''), COALESCE($4,''), COALESCE($5,''), COALESCE($6,'[]'::jsonb), NOW()) \
+        "INSERT INTO db_agent_profiles (agent, display_name, instructions, user_context, commands, updated_at) \
+         VALUES ($1, COALESCE($2,''), COALESCE($3,''), COALESCE($4,''), COALESCE($5,'[]'::jsonb), NOW()) \
          ON CONFLICT (agent) DO UPDATE SET \
             display_name = COALESCE($2, db_agent_profiles.display_name), \
             instructions = COALESCE($3, db_agent_profiles.instructions), \
             user_context = COALESCE($4, db_agent_profiles.user_context), \
-            memory = COALESCE($5, db_agent_profiles.memory), \
-            commands = COALESCE($6, db_agent_profiles.commands), \
+            commands = COALESCE($5, db_agent_profiles.commands), \
             updated_at = NOW() \
          RETURNING *",
     )
@@ -437,7 +436,6 @@ pub async fn patch_profile(
     .bind(&b.display_name)
     .bind(&b.instructions)
     .bind(&b.user_context)
-    .bind(&b.memory)
     .bind(&b.commands)
     .fetch_one(pool.get_ref())
     .await

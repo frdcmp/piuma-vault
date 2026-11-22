@@ -23,7 +23,7 @@ agent's layered memory:
 
 - a **layer map** (L1 / L2 / L4) with live counts,
 - **Entries (L2 / L4)** — browse, filter, and confirm / reject / delete facts,
-- **Always-in-context (L1)** — the agent's always-in-prompt scratchpad,
+- **Always-in-context (L1)** — the agent's profile of you, in every prompt,
 - **Turn inspector** — what the agent retrieved each turn (with similarity), the
   feedback loop for tuning retrieval.
 
