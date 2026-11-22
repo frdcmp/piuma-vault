@@ -1,9 +1,15 @@
 //! The vault over MCP (`apps::pigeon::mcp_server`, next to Pigeon's tools): notes, tasks,
 //! recurring tasks, buckets, the calendar and the agenda, for an assistant outside the vault.
 //! Each tool is one of Piuma's (this module's siblings), run as the caller, or — where Piuma has
-//! none (a note list, the trash, versions, a folder move, one recurring task) — the REST handler
-//! the web app calls, with its own permission check. Hard deletes of notes (purge, empty the
-//! trash) aren't offered.
+//! none (a note list, a search within a folder or tag, the trash, versions, a folder move, one
+//! recurring task) or hers can't do it (an update that clears a field) — the REST handler the web
+//! app calls, with its own permission check. Hard deletes of notes (purge, empty the trash)
+//! aren't offered.
+//!
+//! The arguments' one convention: a field left out (or null) is kept; a field is cleared only by
+//! saying so (`clear_due`, `clear_end`, `clear_until`; bucket "none"). A bucket is named, and
+//! must exist: an unknown name is an error naming the ones there are (Piuma's own tools make
+//! one; here that's `buckets_create`).
 //!
 //! A tool is listed and run only for a caller holding one of its scopes (`scopes`), the ones the
 //! REST handlers check: `notes.read` / `notes.write`; `tasks.read` / `tasks.write` (or
@@ -19,8 +25,10 @@ use super::{agenda, buckets, calendar, notes, tasks};
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::calendar::events::CalendarEventBus;
+use crate::apps::calendar::models::UpdateEventRequest;
 use crate::apps::notes::events::NotesEventBus;
 use crate::apps::tasks::events::TasksEventBus;
+use crate::apps::tasks::models::{UpdateRecurringTaskRequest, UpdateTaskRequest};
 use crate::db::db::DbPool;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -102,6 +110,12 @@ fn alerts(d: &str) -> Json {
 
 const WHEN: &str = "RFC 3339 with its offset (2026-11-07T18:00:00+01:00, or Z for UTC)";
 
+fn clear(d: &str) -> Json {
+    json!({ "type": "boolean", "description": d })
+}
+
+const BUCKET: &str = "The bucket (task group) by name, one of buckets_list's (an unknown name is an error: buckets_create makes one)";
+
 /// Every tool, in the order they're listed.
 pub fn defs() -> Vec<Tool> {
     use Area::*;
@@ -109,9 +123,11 @@ pub fn defs() -> Vec<Tool> {
     vec![
         // ── Notes ──
         tool("notes_search", Notes, Read,
-            "Search the user's notes by meaning and words (vector + full-text + fuzzy title), best first: id, title, folder and a snippet each. Start here for anything that may be written down, and before creating a note (the vault likely has one to add to). A brand-new note may take a few seconds to show up by meaning.",
+            "Search the user's notes by meaning and words (vector + full-text + fuzzy title), best first: id, title, folder and a snippet each, optionally only in one folder or with one tag. Start here for anything that may be written down, and before creating a note (the vault likely has one to add to). A brand-new note may take a few seconds to show up by meaning.",
             json!({ "type": "object", "properties": {
                 "query": s("What to look for"),
+                "folder": s("Only notes in exactly this folder (not its subfolders), e.g. /projects"),
+                "tag": s("Only notes with this tag (lowercase-with-hyphens)"),
                 "limit": { "type": "integer", "description": "Default 8, at most 25" },
             }, "required": ["query"] })),
         tool("notes_list", Notes, Read,
@@ -202,35 +218,39 @@ pub fn defs() -> Vec<Tool> {
             }, "required": ["id", "version_id"] })),
         // ── Tasks ──
         tool("tasks_list", Tasks, Read,
-            "The user's one-off tasks (not recurring ones: recurring_list, agenda), open ones only unless include_done; sorted by due date, so the overdue (open, due_at past) come first. Each: id, title, done, due_at (UTC), priority (0 none … 3 high), bucket name, tags. At most 200.",
+            "The user's one-off tasks (not recurring ones: recurring_list, agenda), open ones only unless include_done; sorted by due date, so the overdue (open, due_at past) come first. Each: id, title, done, due_at (UTC), priority (0 none … 3 high), bucket name, tags. The filters combine; at most 200.",
             json!({ "type": "object", "properties": {
                 "include_done": { "type": "boolean", "description": "Completed tasks too" },
+                "overdue": { "type": "boolean", "description": "Only the late ones: open, due before now" },
+                "due_before": s(&format!("Only tasks due before this, {WHEN}")),
+                "due_after": s(&format!("Only tasks due at or after this, {WHEN}")),
                 "tag": s("Only tasks with this tag"),
-                "bucket": s("Only tasks in this bucket, by name"),
+                "bucket": s("Only tasks in this bucket, by name (an unknown one is an error); \"none\": only those in no bucket"),
             } })),
         tool("tasks_get", Tasks, Read,
             "One task in full: notes, due_at (UTC), priority, bucket, tags, done.",
             json!({ "type": "object", "properties": { "id": s("The task's id, from tasks_list or agenda") }, "required": ["id"] })),
         tool("tasks_create", Tasks, Write,
-            "Create a one-off task; returns its id. Times: RFC 3339 with an offset (stored in UTC). Alerts need a due_at. A bucket named that doesn't exist yet is created.",
+            "Create a one-off task; returns its id. Times: RFC 3339 with an offset (stored in UTC). Alerts need a due_at. The bucket must exist (buckets_list; buckets_create makes one).",
             json!({ "type": "object", "properties": {
                 "title": s("What to do"),
                 "notes": s("Details"),
                 "due_at": s(&format!("When it's due, {WHEN}")),
                 "priority": { "type": "integer", "description": "0 none, 1 low, 2 medium, 3 high" },
-                "bucket": s("The bucket (task group) by name; see buckets_list"),
+                "bucket": s(BUCKET),
                 "tags": tags("Task tags (shared with events, lowercased, made on use)"),
                 "alerts": alerts("Reminders: minutes before due_at (0 = at due_at), each a push and an alarm on the phone. Needs due_at"),
             }, "required": ["title"] })),
         tool("tasks_update", Tasks, Write,
-            "Change a task: only the fields given change (a due date can't be cleared here). `tags` and `alerts` replace the task's own; bucket \"none\" takes it out of its bucket, a new name makes a bucket.",
+            "Change a task: only the fields given change (left out or null: kept). clear_due removes the due date (its alerts must go too: alerts []). `tags` and `alerts` replace the task's own; bucket \"none\" takes it out of its bucket, another name must be an existing bucket. Returns the task.",
             json!({ "type": "object", "properties": {
                 "id": s("The task's id"),
                 "title": s("New title"),
                 "notes": s("New details"),
                 "due_at": s(&format!("New due time, {WHEN}")),
+                "clear_due": clear("true: the task has no due date any more (not with due_at)"),
                 "priority": { "type": "integer", "description": "0 none, 1 low, 2 medium, 3 high" },
-                "bucket": s("A bucket's name, or \"none\""),
+                "bucket": s("An existing bucket's name, or \"none\" for no bucket"),
                 "tags": tags("Its tags, all of them"),
                 "done": { "type": "boolean" },
                 "alerts": alerts("Its reminders, all of them: minutes before due_at; [] clears them"),
@@ -252,7 +272,7 @@ pub fn defs() -> Vec<Tool> {
             "One recurring task in full: rrule, dtstart, until, active, notes, priority, bucket, tags, alerts.",
             json!({ "type": "object", "properties": { "id": s("The recurring task's id") }, "required": ["id"] })),
         tool("recurring_create", Tasks, Write,
-            "Create a recurring task. rrule is an iCal RRULE: FREQ DAILY, WEEKLY or MONTHLY, with INTERVAL, BYDAY (weekly), UNTIL, COUNT (e.g. FREQ=WEEKLY;BYDAY=MO,WE). A bucket named that doesn't exist yet is created.",
+            "Create a recurring task. rrule is an iCal RRULE: FREQ DAILY, WEEKLY or MONTHLY, with INTERVAL, BYDAY (weekly), UNTIL, COUNT (e.g. FREQ=WEEKLY;BYDAY=MO,WE). The bucket must exist (buckets_list; buckets_create makes one).",
             json!({ "type": "object", "properties": {
                 "title": s("What to do"),
                 "rrule": s("e.g. FREQ=WEEKLY;BYDAY=MO"),
@@ -260,20 +280,22 @@ pub fn defs() -> Vec<Tool> {
                 "until": s(&format!("The last day it may fall on, {WHEN}")),
                 "notes": s("Details"),
                 "priority": { "type": "integer", "description": "0 none, 1 low, 2 medium, 3 high" },
-                "bucket": s("A bucket's name"),
+                "bucket": s(BUCKET),
                 "tags": tags("Task tags"),
                 "alerts": alerts("Reminders: minutes before each occurrence (0 = at its time)"),
             }, "required": ["title", "rrule", "dtstart"] })),
         tool("recurring_update", Tasks, Write,
-            "Change a recurring task: only the fields given change (until can't be changed here). To pause one, active false rather than deleting it.",
+            "Change a recurring task: only the fields given change (left out or null: kept). `until` sets its last day, clear_until lets it run on. To pause one, active false rather than deleting it. Returns the recurring task.",
             json!({ "type": "object", "properties": {
                 "id": s("The recurring task's id"),
                 "title": s("New title"),
                 "rrule": s("New RRULE"),
                 "dtstart": s(&format!("New first occurrence, {WHEN}")),
+                "until": s(&format!("The last day it may fall on, {WHEN}")),
+                "clear_until": clear("true: no last day any more, it runs on (not with until)"),
                 "notes": s("New details"),
-                "priority": { "type": "integer" },
-                "bucket": s("A bucket's name, or \"none\""),
+                "priority": { "type": "integer", "description": "0 none, 1 low, 2 medium, 3 high" },
+                "bucket": s("An existing bucket's name, or \"none\" for no bucket"),
                 "tags": tags("Its tags, all of them"),
                 "active": { "type": "boolean", "description": "false pauses it" },
                 "alerts": alerts("Its reminders, all of them; [] clears them"),
@@ -332,12 +354,13 @@ pub fn defs() -> Vec<Tool> {
                 "alerts": alerts("Reminders: minutes before the start (0 = at the start)"),
             }, "required": ["title", "starts_at"] })),
         tool("calendar_update", Calendar, Write,
-            "Change an event: only the fields given change (an end can't be cleared here). `tags` and `alerts` replace the event's own.",
+            "Change an event: only the fields given change (left out or null: kept). clear_end removes its end. `tags` and `alerts` replace the event's own. Returns the event.",
             json!({ "type": "object", "properties": {
                 "id": s("The event's id"),
                 "title": s("New title"),
                 "starts_at": s(&format!("New start, {WHEN}")),
                 "ends_at": s(&format!("New end, {WHEN}")),
+                "clear_end": clear("true: the event has no end any more (not with ends_at)"),
                 "all_day": { "type": "boolean" },
                 "location": s("Where"),
                 "description": s("Details"),
@@ -365,7 +388,7 @@ pub fn scopes(name: &str) -> Option<&'static [&'static str]> {
 
 /// The time arguments, each RFC 3339 with its offset when given: Piuma's tools take one they
 /// can't read as left out, which would quietly drop a due date.
-const TIMES: &[&str] = &["due_at", "starts_at", "ends_at", "dtstart", "until", "from", "to"];
+const TIMES: &[&str] = &["due_at", "starts_at", "ends_at", "dtstart", "until", "from", "to", "due_before", "due_after"];
 
 fn check_times(args: &Json) -> Result<(), String> {
     for key in TIMES {
@@ -406,15 +429,208 @@ fn page(args: &Json) -> (Option<i64>, Option<i64>) {
     (Some(args.get("limit").and_then(Json::as_i64).unwrap_or(50).clamp(1, 200)), args.get("offset").and_then(Json::as_i64))
 }
 
+/// A time argument: left out, null or empty is none; anything else RFC 3339 with its offset.
+fn time(args: &Json, key: &str) -> Result<Option<chrono::DateTime<chrono::Utc>>, String> {
+    match args.get(key) {
+        None | Some(Json::Null) => Ok(None),
+        Some(Json::String(v)) if v.trim().is_empty() => Ok(None),
+        Some(Json::String(v)) => chrono::DateTime::parse_from_rfc3339(v.trim())
+            .map(|t| Some(t.with_timezone(&chrono::Utc)))
+            .map_err(|_| format!("`{key}`: RFC 3339 with its offset, e.g. 2026-11-07T18:00:00+01:00 or …Z, not {v}")),
+        Some(other) => Err(format!("`{key}`: a time in RFC 3339, not {other}")),
+    }
+}
+
+/// A time an update can clear, as the REST bodies take it: `key` sets it, `clear` (true) clears
+/// it (Some(None)), neither keeps it (None).
+fn clearable(args: &Json, key: &str, clear: &str) -> Result<Option<Option<chrono::DateTime<chrono::Utc>>>, String> {
+    let set = time(args, key)?;
+    let clearing = args.get(clear).and_then(Json::as_bool).unwrap_or(false);
+    match (set, clearing) {
+        (Some(_), true) => Err(format!("`{key}` or `{clear}`, not both")),
+        (Some(t), false) => Ok(Some(Some(t))),
+        (None, true) => Ok(Some(None)),
+        (None, false) => Ok(None),
+    }
+}
+
+/// What a `bucket` argument asks.
+#[derive(Debug, PartialEq)]
+enum Bucket {
+    /// Left out (or null): as it is.
+    Keep,
+    /// "none": no bucket.
+    NoBucket,
+    /// An existing bucket, by name.
+    Named(String),
+}
+
+fn bucket_arg(args: &Json) -> Result<Bucket, String> {
+    match args.get("bucket") {
+        None | Some(Json::Null) => Ok(Bucket::Keep),
+        Some(Json::String(n)) if n.trim().eq_ignore_ascii_case("none") => Ok(Bucket::NoBucket),
+        Some(Json::String(n)) if !n.trim().is_empty() => Ok(Bucket::Named(n.trim().to_string())),
+        Some(_) => Err("`bucket`: an existing bucket's name (buckets_list), or \"none\"".into()),
+    }
+}
+
+/// The user's bucket of that name (any case), or an error naming the ones there are: no tool
+/// here makes one on the way (buckets_create does).
+fn pick_bucket(name: &str, buckets: &[(Uuid, String)]) -> Result<(Uuid, String), String> {
+    let want = name.to_lowercase();
+    if let Some(b) = buckets.iter().find(|(_, n)| n.to_lowercase() == want) {
+        return Ok(b.clone());
+    }
+    let there = if buckets.is_empty() {
+        "there are none yet".to_string()
+    } else {
+        format!("there are: {}", buckets.iter().map(|(_, n)| n.as_str()).collect::<Vec<_>>().join(", "))
+    };
+    Err(format!("no bucket named \"{name}\" ({there}); buckets_create makes one"))
+}
+
+async fn find_bucket(pool: &DbPool, me: &str, name: &str) -> Result<(Uuid, String), String> {
+    let buckets: Vec<(Uuid, String)> = sqlx::query_as("SELECT id, name FROM db_buckets WHERE user_id = $1 ORDER BY sort_order, lower(name)")
+        .bind(me)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    pick_bucket(name, &buckets)
+}
+
+/// The bucket an update sets, as the REST bodies take it: None keeps it, Some(None) clears it.
+async fn bucket_id(pool: &DbPool, me: &str, args: &Json) -> Result<Option<Option<Uuid>>, String> {
+    Ok(match bucket_arg(args)? {
+        Bucket::Keep => None,
+        Bucket::NoBucket => Some(None),
+        Bucket::Named(n) => Some(Some(find_bucket(pool, me, &n).await?.0)),
+    })
+}
+
+/// The arguments for one of Piuma's tools that take a bucket by name, with the name checked
+/// first: hers makes a bucket it doesn't find. "none" (no bucket) is left out; a bucket keeps
+/// its own spelling.
+async fn existing_bucket(pool: &DbPool, me: &str, args: &Json) -> Result<Json, String> {
+    let mut args = args.clone();
+    match bucket_arg(&args)? {
+        Bucket::Keep => {}
+        Bucket::NoBucket => {
+            if let Some(o) = args.as_object_mut() {
+                o.remove("bucket");
+            }
+        }
+        Bucket::Named(n) => args["bucket"] = json!(find_bucket(pool, me, &n).await?.1),
+    }
+    Ok(args)
+}
+
+/// tasks_list's arguments for Piuma's list_tasks: the bucket checked, "none" as `no_bucket`.
+async fn task_filters(pool: &DbPool, me: &str, args: &Json) -> Result<Json, String> {
+    let mut out = args.clone();
+    if bucket_arg(args)? == Bucket::NoBucket {
+        if let Some(o) = out.as_object_mut() {
+            o.remove("bucket");
+            o.insert("no_bucket".into(), json!(true));
+        }
+        return Ok(out);
+    }
+    existing_bucket(pool, me, args).await
+}
+
+/// tasks_update as the REST body (its bucket set apart, by `bucket_id`).
+fn task_patch(args: &Json) -> Result<UpdateTaskRequest, String> {
+    use super::{opt_bool, opt_i16, opt_str_array, opt_string, parse_alerts};
+    Ok(UpdateTaskRequest {
+        title: opt_string(args, "title"),
+        notes: opt_string(args, "notes").map(Some),
+        due_at: clearable(args, "due_at", "clear_due")?,
+        priority: opt_i16(args, "priority"),
+        bucket_id: None,
+        tags: opt_str_array(args, "tags"),
+        rank: None,
+        done: opt_bool(args, "done"),
+        alerts: parse_alerts(args, "alerts"),
+    })
+}
+
+/// recurring_update as the REST body (its bucket set apart).
+fn recurring_patch(args: &Json) -> Result<UpdateRecurringTaskRequest, String> {
+    use super::{opt_bool, opt_i16, opt_str_array, opt_string, parse_alerts};
+    Ok(UpdateRecurringTaskRequest {
+        title: opt_string(args, "title"),
+        notes: opt_string(args, "notes").map(Some),
+        priority: opt_i16(args, "priority"),
+        bucket_id: None,
+        tags: opt_str_array(args, "tags"),
+        rrule: opt_string(args, "rrule"),
+        dtstart: time(args, "dtstart")?,
+        until: clearable(args, "until", "clear_until")?,
+        active: opt_bool(args, "active"),
+        alerts: parse_alerts(args, "alerts"),
+    })
+}
+
+/// calendar_update as the REST body.
+fn event_patch(args: &Json) -> Result<UpdateEventRequest, String> {
+    use super::{opt_bool, opt_str_array, opt_string, parse_alerts};
+    Ok(UpdateEventRequest {
+        title: opt_string(args, "title"),
+        description: opt_string(args, "description"),
+        location: opt_string(args, "location"),
+        starts_at: time(args, "starts_at")?,
+        ends_at: clearable(args, "ends_at", "clear_end")?,
+        all_day: opt_bool(args, "all_day"),
+        color: None,
+        tags: opt_str_array(args, "tags"),
+        rrule: opt_string(args, "rrule").map(Some),
+        alerts: parse_alerts(args, "alerts"),
+    })
+}
+
+/// A search hit's highlighted words (the REST search's `headline`, HTML) as plain text.
+fn plain(headline: &str) -> String {
+    headline
+        .replace("<b>", "")
+        .replace("</b>", "")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#x27;", "'")
+        .replace("&amp;", "&")
+}
+
+/// The REST search's answer as notes_search gives one: id, title, folder, tags and a snippet.
+fn search_hits(out: &Json) -> Json {
+    let results: Vec<Json> = out["data"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|n| {
+            json!({
+                "id": n["id"], "title": n["title"], "folder": n["folder"].as_str().unwrap_or("/"), "tags": n["tags"],
+                "snippet": plain(n["headline"].as_str().unwrap_or_default()),
+            })
+        })
+        .collect();
+    json!({ "count": results.len(), "results": results })
+}
+
+fn filter(args: &Json, key: &str) -> Option<String> {
+    args.get(key).and_then(Json::as_str).map(str::trim).filter(|v| !v.is_empty()).map(str::to_string)
+}
+
 /// Run a tool as the caller (who holds one of its scopes: the server checked).
 pub async fn call(req: &HttpRequest, user: &AuthenticatedUser, name: &str, args: &Json) -> Result<Json, String> {
     use crate::apps::notes::{handlers as nh, models::{ListNotesQuery, RenameFolderRequest}, versions};
+    use crate::apps::{calendar::handlers as ch, tasks::handlers as th};
     check_times(args)?;
     let db = data::<DbPool>(req)?;
     let (pool, me) = (db.get_ref(), user.user_id.as_str());
     // The ones that are Piuma's: run as hers, then the web and the phone told, as after hers.
     let (piuma_name, out) = match name {
-        "notes_search" => ("search_notes", notes::search_notes(pool, me, args).await),
+        "notes_search" if filter(args, "folder").is_none() && filter(args, "tag").is_none() => {
+            ("search_notes", notes::search_notes(pool, me, args).await)
+        }
         "notes_get" => {
             let id = uuid(args, "id")?;
             ("read_note", notes::read_note(pool, me, args).await.map(|mut n| {
@@ -431,18 +647,16 @@ pub async fn call(req: &HttpRequest, user: &AuthenticatedUser, name: &str, args:
         "notes_append" => ("append_to_note", notes::append_to_note(pool, me, args).await),
         "notes_replace_text" => ("edit_note", notes::edit_note(pool, me, args).await),
         "notes_delete" => ("delete_note", notes::delete_note(pool, me, args).await),
-        "tasks_list" => ("list_tasks", tasks::list_tasks(pool, me, args).await),
+        "tasks_list" => ("list_tasks", tasks::list_tasks(pool, me, &task_filters(pool, me, args).await?).await),
         "tasks_get" => ("get_task", tasks::get_task(pool, me, args).await),
-        "tasks_create" => ("create_task", tasks::create_task(pool, me, args).await),
-        "tasks_update" => ("update_task", tasks::update_task(pool, me, args).await),
+        "tasks_create" => ("create_task", tasks::create_task(pool, me, &existing_bucket(pool, me, args).await?).await),
         "tasks_set_done" => {
             let done = args.get("done").and_then(Json::as_bool).unwrap_or(true);
             ("update_task", tasks::update_task(pool, me, &json!({ "id": uuid(args, "id")?.to_string(), "done": done })).await)
         }
         "tasks_delete" => ("delete_task", tasks::delete_task(pool, me, args).await),
         "recurring_list" => ("list_recurring", tasks::list_recurring(pool, me).await),
-        "recurring_create" => ("create_recurring", tasks::create_recurring(pool, me, args).await),
-        "recurring_update" => ("update_recurring", tasks::update_recurring(pool, me, args).await),
+        "recurring_create" => ("create_recurring", tasks::create_recurring(pool, me, &existing_bucket(pool, me, args).await?).await),
         "recurring_complete" => ("complete_occurrence", tasks::complete_occurrence(pool, me, args).await),
         "recurring_delete" => ("delete_recurring", tasks::delete_recurring(pool, me, args).await),
         "buckets_list" => ("list_buckets", buckets::list_buckets(pool, me).await),
@@ -452,10 +666,38 @@ pub async fn call(req: &HttpRequest, user: &AuthenticatedUser, name: &str, args:
         "calendar_list" => ("list_events", calendar::list_events(pool, me, args).await),
         "calendar_get" => ("get_event", calendar::get_event(pool, me, args).await),
         "calendar_create" => ("create_event", calendar::create_event(pool, me, args).await),
-        "calendar_update" => ("update_event", calendar::update_event(pool, me, args).await),
         "calendar_delete" => ("delete_event", calendar::delete_event(pool, me, args).await),
         "agenda" => return agenda_for(pool, user, args).await,
-        // The ones Piuma hasn't: the web app's own handlers, which check the scope again.
+        // The ones Piuma hasn't, or can't do: the web app's own handlers, which check the scope
+        // again and tell the web and the phone themselves.
+        "notes_search" => {
+            let limit = args.get("limit").and_then(Json::as_i64).unwrap_or(8).clamp(1, 25);
+            let q = ListNotesQuery {
+                search: Some(super::req_str(args, "query")?),
+                folder: filter(args, "folder"),
+                tag: filter(args, "tag"),
+                limit: Some(limit),
+                offset: None,
+            };
+            return rest(req, nh::list_notes(user.clone(), db, web::Query(q)).await).await.map(|out| search_hits(&out));
+        }
+        "tasks_update" => {
+            let id = uuid(args, "id")?;
+            let mut body = task_patch(args)?;
+            body.bucket_id = bucket_id(pool, me, args).await?;
+            return rest(req, th::update_task(user.clone(), web::Path::from(id), web::Json(body), db, data::<TasksEventBus>(req)?).await).await;
+        }
+        "recurring_update" => {
+            let id = uuid(args, "id")?;
+            let mut body = recurring_patch(args)?;
+            body.bucket_id = bucket_id(pool, me, args).await?;
+            return rest(req, th::update_recurring(user.clone(), web::Path::from(id), web::Json(body), db, data::<TasksEventBus>(req)?).await).await;
+        }
+        "calendar_update" => {
+            let id = uuid(args, "id")?;
+            let body = event_patch(args)?;
+            return rest(req, ch::update_event(user.clone(), web::Path::from(id), web::Json(body), db, data::<CalendarEventBus>(req)?).await).await;
+        }
         "notes_list" => {
             let (limit, offset) = page(args);
             let folder = args.get("folder").and_then(Json::as_str).map(str::to_string);
@@ -490,7 +732,7 @@ pub async fn call(req: &HttpRequest, user: &AuthenticatedUser, name: &str, args:
         }
         "recurring_get" => {
             let id = uuid(args, "id")?;
-            return rest(req, crate::apps::tasks::handlers::get_recurring(user.clone(), web::Path::from(id), db).await).await;
+            return rest(req, th::get_recurring(user.clone(), web::Path::from(id), db).await).await;
         }
         other => return Err(format!("no tool {other}")),
     };
@@ -585,5 +827,97 @@ mod tests {
         assert!(check_times(&json!({ "due_at": "2026-11-07" })).is_err());
         assert!(check_times(&json!({ "starts_at": "2026-11-07 18:00" })).is_err());
         assert!(check_times(&json!({ "from": "tomorrow" })).is_err());
+    }
+
+    #[test]
+    fn times_need_their_offset_in_the_filters_too() {
+        assert!(check_times(&json!({ "due_before": "2026-11-07T00:00:00Z", "due_after": "2026-11-01T00:00:00+07:00" })).is_ok());
+        assert!(check_times(&json!({ "due_before": "2026-11-07" })).is_err());
+    }
+
+    #[test]
+    fn a_field_is_cleared_only_when_told() {
+        let at = chrono::DateTime::parse_from_rfc3339("2026-11-07T18:00:00+01:00").unwrap().with_timezone(&chrono::Utc);
+        assert_eq!(clearable(&json!({ "due_at": "2026-11-07T18:00:00+01:00" }), "due_at", "clear_due"), Ok(Some(Some(at))));
+        assert_eq!(clearable(&json!({ "clear_due": true }), "due_at", "clear_due"), Ok(Some(None)));
+        // left out, null, empty, or clear false: kept
+        assert_eq!(clearable(&json!({}), "due_at", "clear_due"), Ok(None));
+        assert_eq!(clearable(&json!({ "due_at": null }), "due_at", "clear_due"), Ok(None));
+        assert_eq!(clearable(&json!({ "due_at": " " }), "due_at", "clear_due"), Ok(None));
+        assert_eq!(clearable(&json!({ "clear_due": false }), "due_at", "clear_due"), Ok(None));
+        assert!(clearable(&json!({ "due_at": "2026-11-07T18:00:00Z", "clear_due": true }), "due_at", "clear_due").unwrap_err().contains("not both"));
+        assert!(clearable(&json!({ "due_at": "tomorrow" }), "due_at", "clear_due").is_err());
+        assert!(clearable(&json!({ "due_at": 5 }), "due_at", "clear_due").is_err());
+    }
+
+    #[test]
+    fn the_updates_as_the_rest_bodies() {
+        let t = task_patch(&json!({ "id": "x", "title": "Call", "clear_due": true, "alerts": [], "done": true })).unwrap();
+        assert_eq!((t.title.as_deref(), t.due_at, t.done), (Some("Call"), Some(None), Some(true)));
+        assert_eq!(t.alerts, Some(json!([])));
+        assert!(t.notes.is_none() && t.priority.is_none() && t.tags.is_none() && t.bucket_id.is_none());
+        let t = task_patch(&json!({ "notes": "n", "alerts": [10] })).unwrap();
+        assert_eq!(t.notes, Some(Some("n".into())));
+        assert_eq!(t.due_at, None);
+        assert_eq!(t.alerts, Some(json!([{ "offset_minutes": 10 }])));
+        assert!(task_patch(&json!({ "due_at": "2026-11-07T18:00:00Z", "clear_due": true })).is_err());
+
+        let r = recurring_patch(&json!({ "until": "2026-12-31T23:59:59Z" })).unwrap();
+        assert!(matches!(r.until, Some(Some(_))));
+        assert_eq!(recurring_patch(&json!({ "clear_until": true })).unwrap().until, Some(None));
+        assert_eq!(recurring_patch(&json!({ "active": false })).unwrap().until, None);
+        assert!(recurring_patch(&json!({ "dtstart": "2026-11-07" })).is_err());
+
+        let e = event_patch(&json!({ "clear_end": true, "location": "Home" })).unwrap();
+        assert_eq!((e.ends_at, e.location.as_deref(), e.starts_at), (Some(None), Some("Home"), None));
+        assert!(matches!(event_patch(&json!({ "ends_at": "2026-11-07T19:00:00Z" })).unwrap().ends_at, Some(Some(_))));
+        assert!(event_patch(&json!({ "ends_at": "2026-11-07T19:00:00Z", "clear_end": true })).is_err());
+    }
+
+    #[test]
+    fn a_bucket_is_one_that_exists() {
+        assert_eq!(bucket_arg(&json!({})), Ok(Bucket::Keep));
+        assert_eq!(bucket_arg(&json!({ "bucket": null })), Ok(Bucket::Keep));
+        assert_eq!(bucket_arg(&json!({ "bucket": " None " })), Ok(Bucket::NoBucket));
+        assert_eq!(bucket_arg(&json!({ "bucket": " Work " })), Ok(Bucket::Named("Work".into())));
+        assert!(bucket_arg(&json!({ "bucket": "" })).is_err());
+        assert!(bucket_arg(&json!({ "bucket": 3 })).is_err());
+
+        let (work, home) = (Uuid::new_v4(), Uuid::new_v4());
+        let there = [(work, "Work".to_string()), (home, "Casa Città".to_string())];
+        assert_eq!(pick_bucket("work", &there), Ok((work, "Work".into())));
+        assert_eq!(pick_bucket("CASA CITTÀ", &there).unwrap().0, home);
+        let err = pick_bucket("Gym", &there).unwrap_err();
+        assert!(err.contains("\"Gym\"") && err.contains("Work, Casa Città") && err.contains("buckets_create"), "{err}");
+        assert!(pick_bucket("Gym", &[]).unwrap_err().contains("none yet"));
+    }
+
+    #[test]
+    fn the_new_arguments_are_in_the_schemas() {
+        let props = |n: &str| tool_named(n).schema["properties"].clone();
+        for (tool, arg) in [
+            ("tasks_list", "overdue"), ("tasks_list", "due_before"), ("tasks_list", "due_after"), ("tasks_list", "bucket"), ("tasks_list", "tag"),
+            ("tasks_update", "clear_due"), ("calendar_update", "clear_end"), ("recurring_update", "until"), ("recurring_update", "clear_until"),
+            ("notes_search", "folder"), ("notes_search", "tag"),
+        ] {
+            assert!(props(tool).get(arg).is_some(), "{tool} {arg}");
+        }
+        // nothing here says a bucket is made on the way any more
+        for t in defs() {
+            assert!(!t.description.contains("is created") && !t.description.contains("makes a bucket"), "{}", t.name);
+        }
+    }
+
+    #[test]
+    fn a_search_hit_in_plain_words() {
+        assert_eq!(plain("a <b>pasta</b> &amp; &lt;b&gt; &quot;x&quot; it&#x27;s"), "a pasta & <b> \"x\" it's");
+        let out = json!({ "data": [
+            { "id": "1", "title": "Pasta", "folder": "/recipes", "tags": ["food"], "headline": "<b>pasta</b> al forno", "score": 0.3 },
+            { "id": "2", "title": "Notes", "folder": null, "tags": [] },
+        ], "total": 2 });
+        assert_eq!(search_hits(&out), json!({ "count": 2, "results": [
+            { "id": "1", "title": "Pasta", "folder": "/recipes", "tags": ["food"], "snippet": "pasta al forno" },
+            { "id": "2", "title": "Notes", "folder": "/", "tags": [], "snippet": "" },
+        ] }));
     }
 }

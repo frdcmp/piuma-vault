@@ -106,7 +106,7 @@ fn message_param() -> Json {
 pub const ID: &str = "gmail";
 /// Labels whose messages are never items.
 /// The largest file attached to a reply (Gmail's own limit for what it sends is 25 MB).
-const MAX_ATTACHMENT: i64 = 25 << 20;
+pub(crate) const MAX_ATTACHMENT: i64 = 25 << 20;
 const SKIP_LABELS: &[&str] = &["DRAFT", "SPAM", "TRASH", "CHAT"];
 
 #[async_trait]

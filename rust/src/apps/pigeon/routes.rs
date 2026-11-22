@@ -5,12 +5,20 @@ use super::{connect, events, handlers as h, mcp_server, webhooks};
 /// A provider's delivery, at most.
 const WEBHOOK_BODY: usize = 4 * 1024 * 1024;
 
+/// One MCP message, at most: room for `pigeon_upload`'s file (25 MB, a third more in base64).
+const MCP_BODY: usize = 36 * 1024 * 1024;
+
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
+    // the tools over MCP (signed in, or a key)
+    cfg.service(
+        web::resource("/mcp")
+            .app_data(web::JsonConfig::default().limit(MCP_BODY))
+            .route(web::post().to(mcp_server::post))
+            .route(web::get().to(mcp_server::no_stream))
+            .route(web::delete().to(mcp_server::no_stream)),
+    );
     // the Inbox (signed in); fixed sub-paths before the `{id}` ones
-    cfg.route("/mcp", web::post().to(mcp_server::post))
-        .route("/mcp", web::get().to(mcp_server::no_stream))
-        .route("/mcp", web::delete().to(mcp_server::no_stream))
-        .route("/admin/pigeon/events", web::get().to(events::stream))
+    cfg.route("/admin/pigeon/events", web::get().to(events::stream))
         .route("/admin/pigeon/conversations", web::get().to(h::list_conversations))
         .route("/admin/pigeon/conversations/{id}", web::get().to(h::get_conversation))
         .route("/admin/pigeon/conversations/{id}/items", web::get().to(h::conversation_items))

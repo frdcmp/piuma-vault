@@ -20,7 +20,7 @@ is a scope that's missing (see *Scopes*), not a reason to go around it.
 
 | Tool | |
 |---|---|
-| `notes_search` | by meaning and words; start here |
+| `notes_search` | by meaning and words; start here; `folder` (exactly that path), `tag`, `limit` |
 | `notes_list` | newest-updated first; `folder` (exactly that path), `tag`, `limit`, `offset` |
 | `notes_get` | one note in full |
 | `notes_browse` · `notes_folders` · `notes_find_folders` · `notes_tags` | navigation |
@@ -38,15 +38,16 @@ is a scope that's missing (see *Scopes*), not a reason to go around it.
 | Tool | |
 |---|---|
 | `agenda` | tasks due, events and recurring occurrences in a range (default the next 7 days), plus the user's `timezone` |
-| `tasks_list` · `tasks_get` | open tasks by default (`include_done`), `tag`, `bucket`; sorted by due date |
-| `tasks_create` · `tasks_update` · `tasks_set_done` · `tasks_delete` | |
+| `tasks_list` · `tasks_get` | open tasks by default (`include_done`); filters `overdue`, `due_before`, `due_after`, `tag`, `bucket` (`"none"`: those in no bucket), combined; sorted by due date |
+| `tasks_create` · `tasks_update` · `tasks_set_done` · `tasks_delete` | `tasks_update`'s `clear_due: true` removes the due date |
 | `recurring_list` · `recurring_get` | RRULE templates |
-| `recurring_create` · `recurring_update` · `recurring_complete` · `recurring_delete` | `recurring_complete` ticks one occurrence (`done: false` unticks) |
-| `buckets_list` · `buckets_create` · `buckets_update` · `buckets_delete` | named groups of tasks |
+| `recurring_create` · `recurring_update` · `recurring_complete` · `recurring_delete` | `recurring_update` sets `until`, or `clear_until: true` lets it run on; `recurring_complete` ticks one occurrence (`done: false` unticks) |
+| `buckets_list` · `buckets_create` · `buckets_update` · `buckets_delete` | named groups of tasks; only `buckets_create` makes one |
 | `calendar_list` · `calendar_get` | `from` / `to` (default the next 30 days) |
-| `calendar_create` · `calendar_update` · `calendar_delete` | |
+| `calendar_create` · `calendar_update` · `calendar_delete` | `calendar_update`'s `clear_end: true` removes the end |
 
-**The Inbox (Pigeon)**: the `pigeon_*` tools (see *The Inbox*).
+**The Inbox (Pigeon)**: the `pigeon_*` tools (see *The Inbox*), with a message's file
+(`pigeon_file`) and a file to attach to an email (`pigeon_upload`).
 
 ---
 
@@ -103,15 +104,19 @@ is a scope that's missing (see *Scopes*), not a reason to go around it.
   (`2026-11-07T18:00:00+01:00`, or `Z`); a bare date or a time without an offset is refused.
   Say them to the user in their own timezone (`agenda` returns it as `timezone`).
 - Buckets are named groups, one per project or life area (`buckets_list`). Tools take a
-  bucket by **name**; over MCP an unknown name makes a new bucket, so check the list first.
-  `"none"` takes a task out of its bucket.
+  bucket by **name** (any case), and it must exist: an unknown name is an error that lists the
+  buckets there are. Make a new one only when the user wants it, with `buckets_create`.
+  `"none"` takes a task out of its bucket (in `tasks_list`: only the tasks in no bucket).
 - Tags on tasks/events are a shared registry, lowercased, auto-created on use. They are a
   different namespace from note tags.
 - Priority is `0..3` = none/low/medium/high.
 - Alerts are minutes before the due time / start (0 = at it), each a push and an alarm on the
   phone. **Alerts need a due date** — a task without `due_at` can't have them.
-- Updates change only the fields given, and can't clear one (a due date, an event's end, a
-  recurring task's `until`): the scripts do that (`--clear-due`, `--clear-end`, `--until`).
+- Updates change only the fields given; a field left out **or `null`** is kept. Clearing is
+  always explicit: `clear_due` (`tasks_update`), `clear_end` (`calendar_update`),
+  `clear_until` (`recurring_update`), bucket `"none"`; a value and its clear together are
+  refused. Clearing the due date of a task with alerts is refused unless the same call clears
+  them too (`alerts: []`). The three updates return the whole task / recurring task / event.
 
 ## Task & calendar facts that bite
 
@@ -121,8 +126,8 @@ is a scope that's missing (see *Scopes*), not a reason to go around it.
 - **An event's `rrule` is stored but expanded nowhere** — not by the API, not by the web UI,
   not by the scripts. A recurring *event* shows up once, on its first date. Use a recurring
   *task* for anything that must repeat.
-- `agenda` covers a window only: overdue tasks are the open ones in `tasks_list` whose
-  `due_at` is past (it sorts them first).
+- `agenda` covers a window only: overdue tasks are `tasks_list` with `overdue: true` (open,
+  due before now); a plain `tasks_list` sorts them first.
 - `tasks_list` returns one-off tasks only (at most 200); recurring ones are in
   `recurring_list` and, by occurrence, in `agenda`.
 
@@ -180,14 +185,20 @@ description says what it takes.
 ## Inbox facts that bite
 
 - A message's text says only `[image]` or `[voice message]`: what was sent is in its
-  `files` (kind, name, a voice note's `transcript`, `status`). The tools describe files but
-  don't fetch them: to see a photo or read a document, `pigeon.py file` (the scripts). Only a
-  `stored` file can be had: `expired` and `gone` ones are no longer kept.
+  `files` (id, kind, name, mime, size, a voice note's `transcript`, `status`). To look at
+  one, `pigeon_file` with `item_id` (the message's id) and `file_id`: a JPEG, PNG, GIF or
+  WebP up to 5 MB comes back as the image itself; a text-like file (text, CSV, JSON,
+  markdown, an .ics…) as its text, at most 200 KB (its `note` says when it's cut); anything
+  else (a PDF, a video, a voice note, a big image) as what it is and its size, with a `note`
+  that it can't be shown there. Only a `stored` file can be had: `expired` and `gone` ones are
+  no longer kept. Without MCP, `pigeon.py file` saves it to disk.
 - **Files on an email**: `files` on `pigeon_draft_email`, or on `pigeon_draft_reply` and
-  `pigeon_send_reply` in an email conversation, takes the `file` objects an upload returned
-  (`pigeon.py upload <path>`, or `POST /admin/pigeon/files`, multipart `file`, `inbox.write`).
-  At most 10 files and 25 MB in all; email only (WhatsApp and Instagram replies take none);
-  a draft's card in the Inbox lists them, so say which files go when you show the text.
+  `pigeon_send_reply` in an email conversation, takes the `file` objects an upload returned:
+  `pigeon_upload` (`name`, `mime_type`, `data` in base64; one file a call, at most 25 MB;
+  returns `{ "file": {…} }`), or without MCP `pigeon.py upload <path>` (`POST
+  /admin/pigeon/files`, multipart `file`). At most 10 files and 25 MB in all; email only
+  (WhatsApp and Instagram replies take none); a draft's card in the Inbox lists them, so say
+  which files go when you show the text.
 - When someone asks for something they hold no permission for, the user gets a 🔑 card in
   the Inbox (answer this once, allow, no); with `ask` the answer is a draft that says what it
   uses; with `auto` it goes out only when Jev is sure they asked, for themselves and nothing
@@ -230,7 +241,7 @@ What a caller may do is its scopes (a vault API key's, set in admin → API Keys
 | `calendar_*` | `calendar.read` or `calendar.manage` | `calendar.write` or `calendar.manage` |
 | `buckets_*` | any tasks or calendar read | any tasks or calendar write |
 | `agenda` | tasks or calendar read: it shows only the parts the caller may read | |
-| `pigeon_*` | `inbox.read` | `inbox.write` |
+| `pigeon_*` (with `pigeon_file`, `pigeon_upload`) | `inbox.read` | `inbox.write` |
 
 Groups and grants (`pigeon_set_group`, `pigeon_grant`, `pigeon_revoke`, `pigeon_mark_wrong`)
 need their own scope, **`inbox.access`**. Signed in through a gateway (OAuth), its read scope
@@ -263,8 +274,13 @@ What differs from the tools:
   composes its views from `/admin/tasks`, `/admin/calendar/events` and
   `/admin/recurring-tasks`, expanding RRULEs locally (python-dateutil).
 - `agenda.py --bucket <name>` resolves an existing bucket; an unknown name is an error (it
-  doesn't make one). `tasks list` also takes `--overdue`, `--due-before`, `--due-after`,
-  `--no-bucket`.
+  doesn't make one), as over MCP. `tasks list` also takes `--overdue`, `--due-before`,
+  `--due-after`, `--no-bucket`.
+- `tasks edit --clear-due` and `cal edit --clear-end` send `null`, which the REST API
+  currently keeps rather than clears (its update bodies read a `null` as left out): clear a
+  due date or an event's end over MCP (`clear_due`, `clear_end`), and check the answer.
+  `recurring edit --until` sets an end but nothing in the scripts clears one (MCP:
+  `clear_until`).
 - The API: notes under `/admin/notes`, `GET /admin/calendar/events` **requires** `from` and
   `to`, the task list is clamped to 200. Cloudflare fronts the vault and 403s (its error 1010)
   on unusual User-Agents — `agenda.py` sends its own; anything new that talks to the API must

@@ -111,6 +111,16 @@ pub async fn expire(st: &State) -> anyhow::Result<usize> {
 
 /// A stored file, to save: its type, name and bytes as they come from storage.
 pub async fn download(pool: &DbPool, user: &str, item: Uuid, id: &str) -> anyhow::Result<(String, String, ByteStream)> {
+    let m = stored(pool, user, item, id).await?;
+    let key = m["key"].as_str().unwrap_or_default();
+    let body = open(pool, key).await?;
+    let name = m["name"].as_str().map(str::to_string).unwrap_or_else(|| key.rsplit('/').next().unwrap_or("file").to_string());
+    let mime = m["mime"].as_str().unwrap_or("application/octet-stream").to_string();
+    Ok((mime, name, body))
+}
+
+/// A message's file of this user's, as its `media` keeps it: only a `stored` one (with its key).
+pub async fn stored(pool: &DbPool, user: &str, item: Uuid, id: &str) -> anyhow::Result<Json> {
     let media: Option<Json> = sqlx::query_scalar(
         "SELECT i.media FROM db_pigeon_items i JOIN db_pigeon_conversations c ON c.id = i.conversation_id WHERE i.id = $1 AND c.user_id = $2",
     )
@@ -123,12 +133,15 @@ pub async fn download(pool: &DbPool, user: &str, item: Uuid, id: &str) -> anyhow
         .and_then(|m| m.as_array())
         .and_then(|a| a.iter().find(|m| m["id"] == id))
         .ok_or_else(|| anyhow::anyhow!("no such file"))?;
-    let key = m["key"].as_str().filter(|_| m["status"] == "stored").ok_or_else(|| anyhow::anyhow!("this file isn't kept any more"))?;
+    m["key"].as_str().filter(|_| m["status"] == "stored").ok_or_else(|| anyhow::anyhow!("this file isn't kept any more"))?;
+    Ok(m.clone())
+}
+
+/// A stored file's bytes as they come from storage.
+pub async fn open(pool: &DbPool, key: &str) -> anyhow::Result<ByteStream> {
     let (client, bucket) = s3_client(pool).await.map_err(|e| anyhow::anyhow!(e))?;
     let obj = client.get_object().bucket(&bucket).key(key).send().await.map_err(|e| anyhow::anyhow!("reading it: {e}"))?;
-    let name = m["name"].as_str().map(str::to_string).unwrap_or_else(|| key.rsplit('/').next().unwrap_or("file").to_string());
-    let mime = m["mime"].as_str().unwrap_or("application/octet-stream").to_string();
-    Ok((mime, name, obj.body))
+    Ok(obj.body)
 }
 
 /// A new file of a message, to fetch: its entry in the message's `media`.

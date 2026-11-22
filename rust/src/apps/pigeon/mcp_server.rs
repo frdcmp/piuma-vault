@@ -1,7 +1,7 @@
 //! The vault over MCP (`POST /mcp`, behind nginx `/api/v1/mcp`), for an assistant that speaks the
 //! Model Context Protocol (Claude, a desktop client), with a vault API key (`x-api-key`) or a
-//! sign-in: Pigeon's tools (`tools`, the Inbox) and the vault's notes, tasks, recurring tasks,
-//! buckets, calendar and agenda (`agents::tools::vault_mcp`).
+//! sign-in: Pigeon's tools (`tools`, the Inbox, and `mcp_files`, its files) and the vault's notes,
+//! tasks, recurring tasks, buckets, calendar and agenda (`agents::tools::vault_mcp`).
 //!
 //! The Inbox's tools are the ones Piuma has, under the same two rules: a message goes only in
 //! words the user has seen, and a big change waits for their tap in the Inbox (`confirm`). A key
@@ -11,7 +11,8 @@
 //! here, a person signed in through the suite's gateway comes in too, with its access token (`oauth`).
 //!
 //! Streamable HTTP, stateless: each POST is one JSON-RPC message (or a batch) answered as JSON;
-//! there's no stream to open (GET is 405) and no session to keep.
+//! there's no stream to open (GET is 405) and no session to keep. A tool's result is text (its
+//! JSON), but for `pigeon_file`, whose image is an `image` block.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -23,7 +24,7 @@ use crate::apps::agents::tools::vault_mcp;
 use crate::apps::auth::middleware::check_permission;
 use crate::apps::auth::models::AuthenticatedUser;
 use crate::apps::pigeon::state::AppState;
-use crate::apps::pigeon::{oauth, tools};
+use crate::apps::pigeon::{mcp_files, oauth, tools};
 
 /// The protocol versions answered as asked, newest first; anything else gets the newest.
 const VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -31,15 +32,20 @@ const VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-0
 const INSTRUCTIONS: &str = "The user's vault: notes, tasks, the calendar, and their Inbox. Notes: notes_search first (the vault likely \
 has a note on it already: add to it rather than make another), notes_get before changing one; notes_update's content replaces the whole \
 body, notes_append adds, notes_replace_text changes one passage; notes_delete only moves a note to the trash (notes_restore). What's on: \
-agenda (tasks due, events, recurring occurrences), then tasks_*, recurring_*, calendar_*, buckets_*. Times are UTC; give them in RFC 3339 \
-with an offset. tasks_delete, recurring_delete, calendar_delete and buckets_delete are permanent: ask the user first.
+agenda (tasks due, events, recurring occurrences), then tasks_list (overdue: true for what's late), recurring_list, calendar_list and \
+buckets_list, each area with its get, create, update and delete tools. Times are UTC; give them in RFC 3339 with an offset. An update \
+changes only what it's given; it clears a field only when told (clear_due, clear_end, clear_until, bucket \"none\"). A bucket is named \
+from buckets_list: an unknown name is an error, and buckets_create makes a new one. tasks_delete, recurring_delete, calendar_delete and \
+buckets_delete are permanent: ask the user first.
 
 Pigeon is the user's Inbox: their WhatsApp, Instagram and Gmail in one place, with an agent that sorts what \
 comes in and answers where they let it. Start with pigeon_inbox (what needs them) or pigeon_pending (what waits for their yes). A message \
-to someone goes only in words the user has seen: draft it (pigeon_draft_reply), show them the full text, send on their word. Who may be \
-told what (the user's place, their calendar, a note of theirs) is pigeon_access, pigeon_permissions, pigeon_grant, pigeon_revoke and the \
-groups: grant only what the user asked, for whom they said; never let Pigeon answer on its own (mode auto, a policy to auto) unless they ask, and then it \
-still waits for their tap in the Inbox.";
+to someone goes only in words the user has seen: draft it (pigeon_draft_reply), show them the full text, send on their word. A message's \
+photo or document is pigeon_file; a file to attach to an email is stored with pigeon_upload, its `file` then passed in `files`. Who may \
+be told what (the user's place, their calendar, a note of theirs) is read with pigeon_access and pigeon_permissions; with a vault key \
+that holds inbox.access it is changed with pigeon_grant, pigeon_revoke and pigeon_set_group (not there without one). Grant only what the \
+user asked, for whom they said; never let Pigeon answer on its own (mode auto, a policy to auto) unless they ask, and then it still \
+waits for their tap in the Inbox.";
 
 /// Who calls: a vault key or sign-in, as everywhere in the vault, or a person signed in through
 /// the suite (`oauth`); and the assistant to mark what it sends as its (none: the user's own sign-in).
@@ -86,6 +92,8 @@ fn error(id: &Json, code: i64, message: &str) -> Json {
 fn need(name: &str) -> Option<Vec<&'static str>> {
     if tools::names().contains(&name) {
         Some(vec![tools::scope(name)])
+    } else if let Some(scope) = mcp_files::scope(name) {
+        Some(vec![scope])
     } else {
         vault_mcp::scopes(name).map(<[_]>::to_vec)
     }
@@ -95,7 +103,7 @@ fn may(user: &AuthenticatedUser, scopes: &[&str]) -> bool {
     scopes.iter().any(|s| check_permission(user, s))
 }
 
-/// The tools this key may run, as MCP lists them: the vault's, then the Inbox's.
+/// The tools this key may run, as MCP lists them: the vault's, then the Inbox's and its files.
 fn listed(user: &AuthenticatedUser) -> Vec<Json> {
     let vault = vault_mcp::defs().into_iter().filter(|t| may(user, t.scopes())).map(|t| {
         json!({
@@ -112,7 +120,23 @@ fn listed(user: &AuthenticatedUser) -> Vec<Json> {
                 "annotations": { "readOnlyHint": tools::scope(name) == "inbox.read" },
             })
         });
-    vault.chain(inbox).collect()
+    let files = mcp_files::defs().into_iter().filter(|(name, _, _)| need(name).is_some_and(|n| may(user, &n))).map(|(name, description, schema)| {
+        let read_only = mcp_files::scope(name) == Some("inbox.read");
+        json!({
+            "name": name, "description": description, "inputSchema": schema,
+            "annotations": { "readOnlyHint": read_only, "destructiveHint": false },
+        })
+    });
+    vault.chain(inbox).chain(files).collect()
+}
+
+/// Who answers: the name a client and the suite's gateway know this server by.
+fn server_info() -> Json {
+    json!({ "name": "pigeon", "title": "Pigeon (the Inbox)", "version": env!("CARGO_PKG_VERSION") })
+}
+
+fn text(t: String) -> Json {
+    json!({ "type": "text", "text": t })
 }
 
 /// One message; none: a notification (nothing to answer).
@@ -130,7 +154,7 @@ async fn handle(req: &HttpRequest, st: &AppState, caller: &Caller, msg: &Json) -
                 json!({
                     "protocolVersion": version,
                     "capabilities": { "tools": { "listChanged": false } },
-                    "serverInfo": { "name": "piuma-vault", "title": "Piuma Vault (notes, tasks, calendar, the Inbox)", "version": env!("CARGO_PKG_VERSION") },
+                    "serverInfo": server_info(),
                     "instructions": INSTRUCTIONS,
                 }),
             )
@@ -147,16 +171,22 @@ async fn handle(req: &HttpRequest, st: &AppState, caller: &Caller, msg: &Json) -
                 return Some(result(id, json!({ "content": [{ "type": "text", "text": text }], "isError": true })));
             }
             let args = params.get("arguments").cloned().filter(Json::is_object).unwrap_or_else(|| json!({}));
-            let ran = if tools::names().contains(&name) {
-                tools::call_as(st, &user.user_id, name, &args, caller.by.clone().unwrap_or_else(|| "an assistant".into())).await
+            // what a tool gives back: its JSON as text, or (a file) its own content blocks
+            let ran = if mcp_files::scope(name).is_some() {
+                mcp_files::call(st, &user.user_id, name, &args).await
             } else {
-                vault_mcp::call(req, user, name, &args).await
+                let v = if tools::names().contains(&name) {
+                    tools::call_as(st, &user.user_id, name, &args, caller.by.clone().unwrap_or_else(|| "an assistant".into())).await
+                } else {
+                    vault_mcp::call(req, user, name, &args).await
+                };
+                v.map(|v| vec![text(serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string()))])
             };
-            let (text, failed) = match ran {
-                Ok(v) => (serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string()), false),
-                Err(e) => (e, true),
+            let (content, failed) = match ran {
+                Ok(blocks) => (blocks, false),
+                Err(e) => (vec![text(e)], true),
             };
-            result(id, json!({ "content": [{ "type": "text", "text": text }], "isError": failed }))
+            result(id, json!({ "content": content, "isError": failed }))
         }
         // nothing else is offered (no resources, no prompts)
         "resources/list" => result(id, json!({ "resources": [] })),
@@ -228,11 +258,16 @@ mod tests {
 
         let inbox = names(&key(&["inbox.read"]));
         assert!(inbox.contains(&"pigeon_inbox".into()));
+        assert!(inbox.contains(&"pigeon_file".into()));
+        assert!(!inbox.contains(&"pigeon_upload".into()));
+        let writer = names(&key(&["inbox.write"]));
+        assert!(writer.contains(&"pigeon_upload".into()));
+        assert!(!writer.contains(&"pigeon_file".into()));
         assert!(!inbox.iter().any(|n| !n.starts_with("pigeon_")));
 
         assert!(names(&key(&[])).is_empty());
         let all = names(&key(&["admin_access"]));
-        assert_eq!(all.len(), vault_mcp::defs().len() + tools::names().len());
+        assert_eq!(all.len(), vault_mcp::defs().len() + tools::names().len() + mcp_files::names().len());
     }
 
     #[test]
@@ -249,6 +284,8 @@ mod tests {
         assert_eq!(hints("notes_get"), json!({ "readOnlyHint": true, "destructiveHint": false }));
         assert_eq!(hints("notes_delete"), json!({ "readOnlyHint": false, "destructiveHint": false }));
         assert_eq!(hints("calendar_delete"), json!({ "readOnlyHint": false, "destructiveHint": true }));
+        assert_eq!(hints("pigeon_file"), json!({ "readOnlyHint": true, "destructiveHint": false }));
+        assert_eq!(hints("pigeon_upload"), json!({ "readOnlyHint": false, "destructiveHint": false }));
     }
 
     #[test]
@@ -256,7 +293,32 @@ mod tests {
         assert_eq!(need("pigeon_grant"), Some(vec!["inbox.access"]));
         assert_eq!(need("tasks_create"), Some(vec!["tasks.write", "tasks.manage"]));
         assert_eq!(need("nothing"), None);
+        assert_eq!(need("pigeon_file"), Some(vec!["inbox.read"]));
+        assert_eq!(need("pigeon_upload"), Some(vec!["inbox.write"]));
+        assert!(!may(&key(&["inbox.read"]), &need("pigeon_upload").unwrap()));
         assert!(may(&key(&["tasks.manage"]), &need("tasks_create").unwrap()));
         assert!(!may(&key(&["tasks.read"]), &need("tasks_create").unwrap()));
+    }
+
+    #[test]
+    fn the_instructions_name_tools_exactly() {
+        // the suite's gateway prefixes each exact tool name in this text: a wildcard it can't
+        assert!(!INSTRUCTIONS.contains("_*"), "a wildcard in the instructions");
+        let all = names(&key(&["admin_access"]));
+        let areas = ["notes_", "tasks_", "recurring_", "calendar_", "buckets_", "pigeon_"];
+        let words = INSTRUCTIONS.split(|c: char| !(c.is_ascii_lowercase() || c == '_')).filter(|w| areas.iter().any(|a| w.starts_with(a)));
+        for w in words {
+            assert!(all.iter().any(|n| n == w), "{w} isn't a tool");
+        }
+        for named in ["pigeon_file", "pigeon_upload", "pigeon_grant", "pigeon_revoke", "tasks_list", "agenda"] {
+            assert!(INSTRUCTIONS.contains(named), "{named}");
+        }
+        assert!(INSTRUCTIONS.contains("inbox.access"));
+    }
+
+    #[test]
+    fn the_server_is_pigeon() {
+        assert_eq!(server_info()["name"], "pigeon");
+        assert_eq!(server_info()["title"], "Pigeon (the Inbox)");
     }
 }

@@ -233,6 +233,12 @@ pub async fn list_tasks(pool: &DbPool, user_id: &str, args: &Value) -> Result<Va
     let bucket = opt_string(args, "bucket")
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
+    // The MCP's own filters (`vault_mcp`'s tasks_list; not in Piuma's schema above, so she
+    // never sends them): RFC 3339 bounds on due_at, only the late ones, only the bucketless.
+    let due_before = parse_dt(args, "due_before");
+    let due_after = parse_dt(args, "due_after");
+    let overdue = opt_bool(args, "overdue").unwrap_or(false);
+    let no_bucket = opt_bool(args, "no_bucket").unwrap_or(false);
 
     // One-off tasks only (materialized recurring occurrences are history). Each
     // row carries its bucket name + tag-name array so the agent can see and
@@ -244,10 +250,24 @@ pub async fn list_tasks(pool: &DbPool, user_id: &str, args: &Value) -> Result<Va
          FROM db_tasks t LEFT JOIN db_buckets b ON b.id = t.bucket_id \
          WHERE t.user_id = $1 AND t.recurrence_id IS NULL",
     );
-    if !include_done {
+    if !include_done || overdue {
         sql.push_str(" AND t.done = FALSE");
     }
+    if overdue {
+        sql.push_str(" AND t.due_at < NOW()");
+    }
+    if no_bucket {
+        sql.push_str(" AND t.bucket_id IS NULL");
+    }
     let mut idx = 2;
+    if due_before.is_some() {
+        sql.push_str(&format!(" AND t.due_at < ${idx}"));
+        idx += 1;
+    }
+    if due_after.is_some() {
+        sql.push_str(&format!(" AND t.due_at >= ${idx}"));
+        idx += 1;
+    }
     if tag.is_some() {
         sql.push_str(&format!(
             " AND EXISTS (SELECT 1 FROM db_task_tags tt JOIN db_tags tg ON tg.id = tt.tag_id \
@@ -262,6 +282,12 @@ pub async fn list_tasks(pool: &DbPool, user_id: &str, args: &Value) -> Result<Va
 
     let mut q = sqlx::query_as::<_, (Uuid, String, bool, Option<DateTime<Utc>>, i16, Option<String>, Vec<String>)>(&sql)
         .bind(user_id);
+    if let Some(before) = due_before {
+        q = q.bind(before);
+    }
+    if let Some(after) = due_after {
+        q = q.bind(after);
+    }
     if let Some(ref tg) = tag {
         q = q.bind(tg);
     }

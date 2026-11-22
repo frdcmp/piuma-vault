@@ -23,9 +23,9 @@
 //!     `people` writes them). Nothing there is ever told
 //!
 //! Channels are `connectors` (one folder each). The backend serves the API, the tools over MCP
-//! (`mcp_server`), the OAuth callbacks and the providers' webhooks; the pigeon-worker (`worker`,
-//! `bin/pigeon-worker.rs`) runs triage, Gmail's polling, the pushes, the sweeps and the health
-//! checks. Both change things through Postgres and tell the apps through `events` (NOTIFY). Every
+//! (`mcp_server`, and the Inbox's files there: `mcp_files`), the OAuth callbacks and the
+//! providers' webhooks; the pigeon-worker (`worker`, `bin/pigeon-worker.rs`) runs triage, Gmail's
+//! polling, the pushes, the sweeps and the health checks. Both change things through Postgres and tell the apps through `events` (NOTIFY). Every
 //! row carries its user.
 //! Tables are `db_pigeon_*` (`db/db_init.rs`); settings `PIGEON_*` (`config`, `.env.example`).
 
@@ -52,6 +52,7 @@ pub mod health;
 pub mod instructions;
 pub mod items;
 pub mod listen;
+pub mod mcp_files;
 pub mod mcp_server;
 pub mod media;
 pub mod oauth;
