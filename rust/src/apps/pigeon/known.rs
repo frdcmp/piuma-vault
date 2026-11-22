@@ -61,10 +61,20 @@ pub struct Fact {
 /// The categories, in the order a person's facts are shown, with what each holds.
 const CATEGORIES: &[(&str, &str)] = &[
     ("who", "who they are to the user: friend, family, client, colleague, a company"),
-    ("fact", "a fact worth remembering: names, places, dates, their work, their family"),
-    ("preference", "what they like or how they want things, the language they use"),
-    ("goal", "what is open between them: a question waiting, a promise, a plan"),
+    ("fact", "their life and work: their job and role, where they live, their family, the people and places in their life"),
+    ("preference", "how they like things: the language and tone they write in, what they like"),
+    ("goal", "what is still open between them: a question one of them has to answer, a promise, a plan for a date to come"),
 ];
+
+/// What Pigeon keeps about a person, as the model reads it (learning, and the review).
+fn what_to_keep(name: &str) -> String {
+    let kinds = CATEGORIES.iter().map(|(k, holds)| format!("  [{k}] {holds}")).collect::<Vec<_>>().join("\n");
+    format!(
+        "What Pigeon keeps about a person is what will still be true, and help {name} write to them, months from now, \
+         one short line each, with its kind:\n{kinds}\nA line is about them as a person: one message, thread, email or \
+         ticket is what happened on a day, and is in the chat already."
+    )
+}
 
 /// What is known about a person: confirmed and pending, not expired, by category.
 pub async fn of(pool: &DbPool, contact: Uuid) -> anyhow::Result<Vec<Fact>> {
@@ -240,17 +250,16 @@ pub async fn learn(st: &State, c: &Contact, force: bool) -> anyhow::Result<bool>
         }
     }
     prompt.push_str(&format!("\nTheir new messages with {name}, each conversation oldest first:\n{text}"));
-    let kinds = CATEGORIES.iter().map(|(k, holds)| format!("  [{k}] {holds}")).collect::<Vec<_>>().join("\n");
     let raw = llm::text_of(
         &st.pool,
         "memory",
         &format!(
-            "You keep Pigeon's memory of one person {name} talks to, so {name}'s replies to them make sense. From their \
-             new messages, write what is worth remembering about them that isn't known already, one short fact per line, in \
-             English, each with its kind:\n{kinds}\nAdd \", theirs\" to the kind when the person said it about themselves \
+            "You keep Pigeon's memory of one person {name} talks to. {}\n\nFrom their new messages, write what of that \
+             isn't known already, in English. Add \", theirs\" to the kind when the person said it about themselves \
              (\"[fact, theirs] Works as a nurse in Milan\"); leave it out for what you read between the lines. For a known \
              fact the new messages show again, write \"= <its number>\". Only what the messages show: never guess beyond \
-             them, never repeat a known fact in other words. Nothing worth adding: answer nothing. No preamble."
+             them, never repeat a known fact in other words. Nothing worth adding: answer nothing. No preamble.",
+            what_to_keep(&name)
         ),
         &prompt,
     )
@@ -351,6 +360,62 @@ pub async fn from_notes(st: &State) -> anyhow::Result<Json> {
         log::info!("facts-from-notes: {contact}: {} facts", lines.len());
     }
     Ok(json!({ "notes": notes, "facts": facts }))
+}
+
+/// One-off (`pigeon-worker facts-review`): every person's facts read again against what Pigeon
+/// keeps (`what_to_keep`); a line that isn't that (what happened on a day: a message, a thread, a
+/// ticket) is rejected, as by a "not true", so it stops being used and can be put back.
+pub async fn review(st: &State) -> anyhow::Result<Json> {
+    let people: Vec<(Uuid, String, Option<String>)> = sqlx::query_as(
+        "SELECT c.id, c.user_id, c.name FROM db_pigeon_contacts c
+          WHERE EXISTS (SELECT 1 FROM db_memory_entries m WHERE m.contact_id = c.id AND m.is_active AND m.status IN ('confirmed', 'pending'))",
+    )
+    .fetch_all(&st.pool)
+    .await?;
+    let (mut kept, mut rejected) = (0, 0);
+    for (contact, user, them) in &people {
+        let facts = of(&st.pool, *contact).await?;
+        if facts.is_empty() {
+            continue;
+        }
+        let name = owner::get(&st.pool, user).await.name;
+        let them = them.as_deref().unwrap_or("this person");
+        let list = facts
+            .iter()
+            .enumerate()
+            .map(|(i, f)| format!("{}. [{}] {}", i + 1, f.category.as_deref().unwrap_or("fact"), f.content))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let raw = llm::text_of(
+            &st.pool,
+            "memory",
+            &format!(
+                "{}\n\nBelow is what Pigeon keeps about {them}, numbered. For each line that isn't that, answer \
+                 \"= <its number>\", one per line. All of them are: answer nothing. No preamble.",
+                what_to_keep(&name)
+            ),
+            &list,
+        )
+        .await?;
+        let gone: Vec<Uuid> = said(&raw)
+            .into_iter()
+            .filter_map(|s| match s {
+                Said::Again(i) => i.checked_sub(1).and_then(|i| facts.get(i)).map(|f| f.id),
+                Said::New { .. } => None,
+            })
+            .collect();
+        if !gone.is_empty() {
+            sqlx::query("UPDATE db_memory_entries SET status = 'rejected', is_active = FALSE, updated_at = NOW() WHERE id = ANY($1)")
+                .bind(&gone)
+                .execute(&st.pool)
+                .await?;
+            crate::apps::pigeon::events::publish(&st.pool, user, "contact", Some(*contact)).await;
+        }
+        kept += facts.len() - gone.len();
+        rejected += gone.len();
+        log::info!("facts-review: {contact}: {} kept, {} rejected", facts.len() - gone.len(), gone.len());
+    }
+    Ok(json!({ "people": people.len(), "kept": kept, "rejected": rejected }))
 }
 
 #[cfg(test)]

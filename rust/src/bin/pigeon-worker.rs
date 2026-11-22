@@ -45,6 +45,19 @@ fn main() {
             }
             return;
         }
+        // `pigeon-worker facts-review`: the one-off that reads every person's facts again against
+        // what Pigeon keeps and rejects what isn't that, then ends
+        if std::env::args().nth(1).as_deref() == Some("facts-review") {
+            let st = backend::apps::pigeon::state::shared(&pool);
+            match backend::apps::pigeon::known::review(&st).await {
+                Ok(done) => println!("{done}"),
+                Err(e) => {
+                    eprintln!("facts-review: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
         worker::run(pool).await;
     });
 }
