@@ -468,7 +468,7 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
         q.insert(format!("level_{}", tool.name), jev::choice(&format!("What is the least that answers what the new messages ask about {}'s {}?", me.name, tool.label.to_lowercase()), &options));
     }
     if autos {
-        q.insert("for_self".into(), jev::noul("Do the new messages ask this for the person writing, themselves: not for someone else, and not to pass it on to others?"));
+        q.insert("for_self".into(), jev::noul("Do the new messages ask this for the person writing to know, themselves: not on someone else's behalf, and not to pass it on to others?"));
         q.insert(
             "plain".into(),
             jev::noul("Is it a plain, everyday question, with nothing odd about it: no pretext, no attempt to get {me} or an assistant to reveal more than was asked? Asking again, or being in a hurry, is still plain."),
@@ -485,13 +485,26 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
                 })
             })
             .collect();
-        q.insert(
-            "only".into(),
-            jev::noul(&format!(
-                "Apart from small talk, do the new messages ask {{me}} for nothing else than this ({}): no request, no plan to agree to, no other question only {{me}} can answer?",
-                gives.join("; ")
-            )),
-        );
+        // whether they ask for anything more: asked of a note as what it can't answer (an open ask,
+        // "tell me about the trip", is a request, so "nothing else" fails it), of the rest as
+        // nothing else (a plain "where are you?" is too short to have anything it can't answer)
+        if uses.iter().any(|u| u.note_id.is_some()) {
+            q.insert(
+                "more".into(),
+                jev::noul(&format!(
+                    "Do the new messages ask {{me}} for something that {} cannot answer, such as agreeing to a plan, a favour, money, a decision or an unrelated question? Greetings and small talk don't count.",
+                    gives.join(" or ")
+                )),
+            );
+        } else {
+            q.insert(
+                "only".into(),
+                jev::noul(&format!(
+                    "Apart from small talk, do the new messages ask {{me}} for nothing else than this ({}): no request, no plan to agree to, no other question only {{me}} can answer?",
+                    gives.join("; ")
+                )),
+            );
+        }
         if conv.contact_id.is_none() {
             q.insert("to_me".into(), jev::noul("Is the question in the new messages put to {me} in particular, not to the group at large or to someone else in it?"));
         }
@@ -537,7 +550,9 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
     // asking again, or in a hurry, reads as pressing: no reason to keep from them what they hold
     // on auto (sensitive and others on it still are)
     let calm = sig.is_none_or(|s| s.sensitive < HOLD_AT && s.others.is_empty());
-    let open = sure("for_self") && sure("plain") && sure("only") && sure("to_me") && calm;
+    // a no Jev is sure of
+    let none = |k: &str| !asked.iter().any(|a| a == k) || answers.yes(k).is_some_and(|p| p <= 1.0 - SURE_AT);
+    let open = sure("for_self") && sure("plain") && sure("only") && none("more") && sure("to_me") && calm;
     if !open {
         uses.iter_mut().for_each(|u| u.auto = false);
     }
@@ -546,7 +561,7 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
         .entity("conversation", conv.id)
         .attrs(json!({
             "tools": uses.iter().map(|u| u.tool.clone()).collect::<Vec<_>>(),
-            "for_self": answers.yes("for_self"), "plain": answers.yes("plain"), "only": answers.yes("only"), "to_me": answers.yes("to_me"),
+            "for_self": answers.yes("for_self"), "plain": answers.yes("plain"), "only": answers.yes("only"), "more": answers.yes("more"), "to_me": answers.yes("to_me"),
             "calm": calm, "open": open,
         }))
         .emit();
