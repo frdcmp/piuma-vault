@@ -51,6 +51,18 @@ async fn main() {
                 }
                 Err(e) => log::error!("Cleanup query failed: {e}"),
             }
+            // and confirmed goals that stopped coming up (memory::GOAL_DAYS)
+            match sqlx::query(
+                "UPDATE db_memory_entries SET is_active = FALSE, updated_at = NOW() \
+                 WHERE status = 'confirmed' AND category = 'goal' AND expires_at IS NOT NULL AND expires_at < NOW() AND is_active",
+            )
+            .execute(&pool)
+            .await
+            {
+                Ok(r) if r.rows_affected() > 0 => log::info!("🧹 Cleanup: switched off {} goals that stopped coming up", r.rows_affected()),
+                Ok(_) => {}
+                Err(e) => log::error!("Cleanup query failed: {e}"),
+            }
             last_cleanup = Instant::now();
         }
 

@@ -1,8 +1,10 @@
-//! L4 dialectic reasoning — Honcho-style async post-turn insight derivation.
+//! L2's dialectic pass — Honcho-style async post-turn insight derivation.
 //!
-//! After every N assistant turns (configurable per agent, default 3), the last
-//! few turns are summarised by the dialectic model, which extracts implicit
-//! facts the user never explicitly stated. Each is saved as a LOW-TRUST pending
+//! After every N assistant turns (configurable per agent, default 3), the
+//! user's last few messages are read by the dialectic model, which extracts
+//! implicit facts the user never explicitly stated. Only the user's words are
+//! evidence: the agent's replies repeat what it was told it remembers, and a
+//! guess read back from them would confirm itself. Each is saved as a LOW-TRUST pending
 //! memory entry (`source=dialectic_derived`, `confidence=medium`, 60-day TTL).
 //! Pending entries auto-inject into retrieval only at the tighter distance floor
 //! and are tagged `[derived, unconfirmed]`; they graduate to confirmed via the
@@ -24,12 +26,12 @@ use super::tools::memory;
 
 /// Fallback cadence when the agent profile has no config.
 const DEFAULT_CADENCE: i64 = 3;
-/// Turns of transcript to analyse each run.
+/// The user's messages to analyse each run.
 const LAST_N: i64 = 6;
 
-const SYSTEM_PASS1: &str = "You are a reasoning engine. Analyze a conversation between \
-the User and their AI agent and derive implicit facts, preferences, patterns, and \
-goals that were NOT explicitly stated.\n\n\
+const SYSTEM_PASS1: &str = "You are a reasoning engine. Below are the messages the User \
+wrote to their AI agent (the agent's replies are left out). Derive implicit facts, \
+preferences, patterns, and goals about the User that were NOT explicitly stated.\n\n\
 Rules:\n\
 - Only derive what is strongly implied, not what is merely possible.\n\
 - Prefer specific facts over vague observations.\n\
@@ -168,10 +170,10 @@ async fn run(
         return Ok(());
     }
 
-    // Last N turns as a plain transcript.
+    // The user's last N messages as a plain transcript.
     let rows: Vec<(String, serde_json::Value)> = sqlx::query_as(
         "SELECT role, content FROM db_chat_messages \
-         WHERE conversation_id = $1 AND role IN ('user', 'assistant') \
+         WHERE conversation_id = $1 AND role = 'user' \
          ORDER BY created_at DESC LIMIT $2",
     )
     .bind(conv_id)
@@ -209,7 +211,7 @@ async fn run(
     let mut prior = String::new();
     for pass in 1..=depth {
         let (system, user_content) = if pass == 1 {
-            let mut conv_block = format!("Conversation:\n---\n{transcript}---");
+            let mut conv_block = format!("The User's messages:\n---\n{transcript}---");
             if !snapshot.is_empty() {
                 conv_block.push_str(&format!("\n\n{}", snapshot));
             }

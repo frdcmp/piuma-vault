@@ -6,7 +6,15 @@
 //!
 //! Also exposes `retrieve_for_turn` + `format_block`, used by the chat loop to
 //! inject the top-K relevant memories into the system prompt (graded floor:
-//! confirmed facts at distance < 0.5, pending/derived at the tighter < 0.3).
+//! confirmed facts at distance < FLOOR_CONFIRMED, pending at the tighter
+//! FLOOR_PENDING).
+//!
+//! A pending fact earns trust only from the user or from independent evidence:
+//! the user confirms it (`confirm`, `confirmed_by` user or chat), or the
+//! dialectic derives it again from another conversation at least a day later
+//! (corroborated). A derived fact never switches off a confirmed one: one that
+//! contradicts it waits, pending, for the user. A confirmed goal holds GOAL_DAYS
+//! from when it last came up; other confirmed facts don't expire.
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -39,12 +47,23 @@ pub const DUP_DISTANCE: f64 = 0.15;
 /// stretched to "same"); every clean merge sat at ≤0.37, so 0.40 keeps the wins
 /// and drops the questionable tail.
 pub const CORROBORATE_DISTANCE: f64 = 0.40;
-/// Per-turn retrieval floors (cosine distance = 1 − similarity). Tuned loose so
-/// related-but-not-identical facts actually surface (text-embedding-3-large puts
-/// topical matches around 0.4–0.65 distance); tighten from the turn inspector if
-/// retrieval gets noisy. Pending/derived facts use the stricter floor.
-pub const FLOOR_CONFIRMED: f64 = 0.65;
+/// Per-turn retrieval floors (cosine distance = 1 − similarity).
+/// text-embedding-3-large puts topical matches around 0.4–0.65; at 0.65 two
+/// thirds of what the turn inspector showed injected sat at 0.55 or more, loosely
+/// related at best, so confirmed facts stop at 0.55. Pending facts use the
+/// stricter floor.
+pub const FLOOR_CONFIRMED: f64 = 0.55;
 pub const FLOOR_PENDING: f64 = 0.5;
+/// Ranking: a confirmed fact counts as this much closer than it is, so it wins
+/// over a guess about as close, never over a much closer one.
+pub const CONFIRMED_BONUS: f64 = 0.05;
+/// A confirmed goal ("User is working toward X") holds this many days from when
+/// it last came up (confirmed, or derived again); then it stops being retrieved
+/// and the worker's sweep switches it off.
+pub const GOAL_DAYS: i32 = 60;
+/// A re-derivation corroborates a pending fact only this many days or more
+/// after it was written, and from another conversation.
+pub const INDEPENDENT_DAYS: i32 = 1;
 
 pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
     vec![
@@ -149,8 +168,8 @@ pub struct Retrieved {
 }
 
 /// Top-K active memories for the given query, with a graded distance floor
-/// (confirmed facts at < 0.5, pending at the tighter < 0.3) and confirmed
-/// ranked first. Pass a `precomputed` embedding to skip the synchronous embed
+/// (FLOOR_CONFIRMED, the tighter FLOOR_PENDING), closest first with confirmed
+/// facts CONFIRMED_BONUS closer. Pass a `precomputed` embedding to skip the synchronous embed
 /// call; falls back to embedding `query` inline if not provided.
 /// Returns empty on any failure — retrieval is best-effort and never blocks the
 /// turn.
@@ -176,7 +195,7 @@ pub async fn retrieve_for_turn(
            AND status IN ('confirmed', 'pending') \
            AND (expires_at IS NULL OR expires_at > NOW()) \
            AND (embedding <=> $2) < CASE WHEN status = 'confirmed' THEN $3 ELSE $4 END \
-         ORDER BY (status = 'confirmed') DESC, embedding <=> $2 \
+         ORDER BY (embedding <=> $2) - CASE WHEN status = 'confirmed' THEN $6 ELSE 0 END \
          LIMIT $5",
     )
     .bind(agent)
@@ -184,6 +203,7 @@ pub async fn retrieve_for_turn(
     .bind(FLOOR_CONFIRMED)
     .bind(FLOOR_PENDING)
     .bind(limit)
+    .bind(CONFIRMED_BONUS)
     .fetch_all(pool)
     .await
     .unwrap_or_default();
@@ -331,15 +351,44 @@ async fn insert_pending(
     .map_err(|e| e.to_string())
 }
 
-/// Corroboration promotion: an independent re-derivation confirmed a pending
-/// fact — graduate it (confidence high, no expiry).
-async fn promote_pending(pool: &DbPool, id: Uuid) {
-    let _ = sqlx::query(
+/// Confirm an entry: trusted, high confidence, and `by` says how: `user` (on
+/// the dashboard), `chat` (the agent, on the user's word), `corroborated`
+/// (derived again, independently). A goal holds GOAL_DAYS from now, anything
+/// else never expires. Confirming a fact settles the one it contradicts: that
+/// one is switched off. False: no such entry (of this agent, when one is given).
+pub async fn confirm(pool: &DbPool, id: Uuid, agent: Option<&str>, by: &str) -> Result<bool, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let settled: Option<Option<Uuid>> = sqlx::query_scalar(
         "UPDATE db_memory_entries \
-         SET confidence = 'high', status = 'confirmed', expires_at = NULL, updated_at = NOW() \
-         WHERE id = $1",
+         SET status = 'confirmed', confidence = 'high', is_active = TRUE, confirmed_by = $3, confirmed_at = NOW(), \
+             expires_at = CASE WHEN category = 'goal' THEN NOW() + make_interval(days => $4) END, updated_at = NOW() \
+         WHERE id = $1 AND ($2::text IS NULL OR agent = $2) \
+         RETURNING contradicts_id",
     )
     .bind(id)
+    .bind(agent)
+    .bind(by)
+    .bind(GOAL_DAYS)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(contradicts) = settled else {
+        return Ok(false);
+    };
+    if let Some(old) = contradicts {
+        sqlx::query("UPDATE db_memory_entries SET is_active = FALSE, updated_at = NOW() WHERE id = $1").bind(old).execute(&mut *tx).await?;
+    }
+    tx.commit().await?;
+    Ok(true)
+}
+
+/// A confirmed goal came up again: it holds GOAL_DAYS from now.
+async fn renew(pool: &DbPool, id: Uuid) {
+    let _ = sqlx::query(
+        "UPDATE db_memory_entries SET expires_at = NOW() + make_interval(days => $2), updated_at = NOW() \
+         WHERE id = $1 AND status = 'confirmed' AND category = 'goal'",
+    )
+    .bind(id)
+    .bind(GOAL_DAYS)
     .execute(pool)
     .await;
 }
@@ -347,9 +396,11 @@ async fn promote_pending(pool: &DbPool, id: Uuid) {
 /// Save a dialectic-derived fact as a low-trust pending entry (60-day TTL),
 /// `source=dialectic_derived`, `confidence=medium`. Dedups against the agent's
 /// active entries: any neighbour within CORROBORATE_DISTANCE is judged by
-/// Stage-B NLI — `entails` corroborates a pending neighbour (promotes it to
-/// confirmed) or skips a confirmed one as duplicate, `contradicts` supersedes
-/// the neighbour, `neutral` saves both linked via `related_ids`. With NLI
+/// Stage-B NLI — `entails` corroborates a pending neighbour when the two are
+/// independent (another conversation, INDEPENDENT_DAYS apart) and the neighbour
+/// contradicts nothing still held, else it's a duplicate (a confirmed goal is
+/// renewed); `contradicts` supersedes a pending neighbour, and waits beside a
+/// confirmed one for the user; `neutral` saves both linked via `related_ids`. With NLI
 /// unavailable, cosine alone is trusted only below DUP_DISTANCE.
 /// Returns the outcome label.
 pub async fn save_derived(
@@ -382,58 +433,57 @@ pub async fn save_derived(
     };
 
     let vec = pgvector::Vector::from(emb);
-    let nearest: Option<(Uuid, f64, String)> = sqlx::query_as(
-        "SELECT id, (embedding <=> $2) AS dist, status FROM db_memory_entries \
-         WHERE agent = $1 AND is_active AND embedding IS NOT NULL \
-         ORDER BY embedding <=> $2 LIMIT 1",
+    // the nearest held fact; `independent`: written in another conversation, at
+    // least INDEPENDENT_DAYS ago (so the same chat, or the agent repeating it,
+    // can't confirm it); `disputed`: it contradicts a fact still held
+    let nearest: Option<(Uuid, f64, String, String, bool, bool)> = sqlx::query_as(
+        "SELECT e.id, (e.embedding <=> $2) AS dist, e.status, e.content, \
+                (e.source_conversation_id IS DISTINCT FROM $3 AND e.created_at < NOW() - make_interval(days => $4)) AS independent, \
+                EXISTS (SELECT 1 FROM db_memory_entries c WHERE c.id = e.contradicts_id AND c.is_active) AS disputed \
+         FROM db_memory_entries e \
+         WHERE e.agent = $1 AND e.is_active AND e.embedding IS NOT NULL \
+         ORDER BY e.embedding <=> $2 LIMIT 1",
     )
     .bind(agent)
     .bind(&vec)
+    .bind(conversation_id)
+    .bind(INDEPENDENT_DAYS)
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?;
-    if let Some((existing_id, dist, status)) = nearest {
+    if let Some((existing_id, dist, status, existing_content, independent, disputed)) = nearest {
         if dist < CORROBORATE_DISTANCE {
-            let existing_content: Option<String> = sqlx::query_scalar(
-                "SELECT content FROM db_memory_entries WHERE id = $1",
-            )
-            .bind(existing_id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten();
-            let judgment = match existing_content {
-                Some(ref existing_content) => nli_check(pool, content, existing_content).await,
-                None => None,
-            };
-            match judgment {
-                Some("entails") => {
-                    if status == "pending" {
-                        // Corroboration: re-derivation confirms a pending fact.
-                        promote_pending(pool, existing_id).await;
-                        log::info!(
-                            "dialectic corroboration: '{}' (dist {:.3}) confirms pending {}",
-                            content, dist, existing_id
-                        );
-                        return Ok("corroborated");
-                    }
-                    return Ok("duplicate");
+            let judgment = nli_check(pool, content, &existing_content).await;
+            // the same fact (NLI unavailable: near-verbatim cosine alone is trustworthy)
+            if judgment == Some("entails") || (judgment.is_none() && dist < DUP_DISTANCE) {
+                // Corroboration: derived again, independently, a pending fact is confirmed.
+                if status == "pending" && independent && !disputed {
+                    confirm(pool, existing_id, None, "corroborated").await.map_err(|e| e.to_string())?;
+                    log::info!("dialectic corroboration: '{content}' (dist {dist:.3}) confirms pending {existing_id}");
+                    return Ok("corroborated");
                 }
+                if status == "confirmed" {
+                    renew(pool, existing_id).await;
+                }
+                return Ok("duplicate");
+            }
+            match judgment {
                 Some("contradicts") => {
                     let new_id =
                         insert_pending(pool, agent, content, &vec, category, conversation_id, Some(existing_id))
                             .await?;
-                    let _ = sqlx::query(
-                        "UPDATE db_memory_entries SET is_active = FALSE, updated_at = NOW() WHERE id = $1",
-                    )
-                    .bind(existing_id)
-                    .execute(pool)
-                    .await;
-                    log::warn!(
-                        "dialectic contradiction: new '{}' contradicts existing {} — \
-                         old deactivated, new saved as {}",
-                        content, existing_id, new_id
-                    );
+                    // a guess replaces a guess; a confirmed fact stays until the user confirms the new one
+                    if status == "pending" {
+                        let _ = sqlx::query(
+                            "UPDATE db_memory_entries SET is_active = FALSE, updated_at = NOW() WHERE id = $1",
+                        )
+                        .bind(existing_id)
+                        .execute(pool)
+                        .await;
+                        log::warn!("dialectic contradiction: new '{content}' supersedes pending {existing_id}, saved as {new_id}");
+                    } else {
+                        log::warn!("dialectic contradiction: new '{content}' contradicts confirmed {existing_id}: saved pending as {new_id}, for the user");
+                    }
                     return Ok("inserted");
                 }
                 Some(_) => {
@@ -443,14 +493,6 @@ pub async fn save_derived(
                     link_related(pool, existing_id, new_id).await;
                     link_related(pool, new_id, existing_id).await;
                     return Ok("inserted");
-                }
-                None if dist < DUP_DISTANCE => {
-                    // NLI unavailable — near-verbatim cosine alone is trustworthy.
-                    if status == "pending" {
-                        promote_pending(pool, existing_id).await;
-                        return Ok("corroborated");
-                    }
-                    return Ok("duplicate");
                 }
                 None => {
                     // NLI unavailable in the wide band — could be a sibling
@@ -692,18 +734,8 @@ pub async fn memory_list(pool: &DbPool, agent: &str, args: &Value) -> Result<Val
 
 pub async fn memory_confirm(pool: &DbPool, agent: &str, args: &Value) -> Result<Value, String> {
     let id = uuid_arg(args, "id")?;
-    let affected = sqlx::query(
-        "UPDATE db_memory_entries \
-         SET status = 'confirmed', confidence = 'high', expires_at = NULL, updated_at = NOW() \
-         WHERE id = $1 AND agent = $2",
-    )
-    .bind(id)
-    .bind(agent)
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?
-    .rows_affected();
-    if affected == 0 {
+    // the agent confirms on the user's word in the chat
+    if !confirm(pool, id, Some(agent), "chat").await.map_err(|e| e.to_string())? {
         return Err("memory entry not found".into());
     }
     Ok(json!({ "confirmed": true, "id": id }))

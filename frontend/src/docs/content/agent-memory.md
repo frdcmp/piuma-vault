@@ -97,8 +97,12 @@ on **every** turn:
 - **`user_context`** — the user's standing profile / preferences (cap **1,375**).
 
 Because it costs tokens on every single turn, it's hard-capped and reserved for
-the handful of always-relevant essentials (identity, active projects, standing
-preferences, hard constraints). The agent fills it via `context_add` and, when it
+the handful of always-relevant essentials: what stays true for months and
+matters in almost any chat (who the user is, how they want answers, where things
+live, standing rules). Never an event, a date, a trip, a plan, a task, or what to
+do in one note or topic: what goes stale here misleads every turn, so those go to
+the calendar, tasks or L2 (a goal there expires when it stops coming up). Every
+tool that writes L1 says so. The agent fills it via `context_add` and, when it
 nears a cap, **consolidates** with `context_replace` rather than stopping — the
 cap is the backpressure, not a wall. Anything that's only needed when a topic
 comes up goes to L2 instead. Dedup here is normalized-string matching (it's free
@@ -110,7 +114,7 @@ The agent's recall: a table of discrete, self-contained facts (e.g. *"User
 prefers Rust for backend work"*). Each row carries a 1536-dim `embedding` (Azure
 OpenAI `text-embedding-3-large`, HNSW cosine index) so facts are found by meaning,
 not keywords. Each turn the user's message is matched against these embeddings
-and the top-K relevant facts are injected, **confirmed ranked above pending**,
+and the top-K relevant facts are injected, closest first (a confirmed fact counts a little closer),
 each tagged with its `[provenance]` so the agent treats guesses as claims to
 verify. Trust and origin are tracked by `status` and `source` — see §5.
 
@@ -119,8 +123,9 @@ verify. Trust and origin are tracked by `status` and `source` — see §5.
 1. **Explicitly**, when the agent calls `memory_save` (from something the user
    said, or that it inferred during the chat).
 2. **The dialectic pass** — L2's background reasoner. Every *N* assistant turns
-   it reads the recent transcript and extracts implicit facts the user never said
-   outright, running **multi-pass** (depth 1–3: raw observations → patterns →
+   it reads the user's recent messages (only theirs: the agent's replies repeat
+   what it was told it remembers, and a guess read back from them would confirm
+   itself) and extracts implicit facts the user never said outright, running **multi-pass** (depth 1–3: raw observations → patterns →
    meta-patterns) and writing each as `source=dialectic_derived`,
    `status=pending`, `confidence=medium`. Cadence, depth, and model are per-agent
    config on `db_agent_profiles`. These are exactly the low-trust guesses that
@@ -154,6 +159,8 @@ Every row in `db_memory_entries` carries three descriptors:
 - `confirmed` — trusted; retrieved whenever relevant.
 - `pending` — low-trust (usually a dialectic guess); retrieved only when *very*
   strongly relevant, and auto-expires after 60 days if never confirmed.
+  A confirmed fact records how: `confirmed_by` is `user` (the dashboard), `chat`
+  (the agent, on the user's word) or `corroborated`, with `confirmed_at`.
 - `rejected` — discarded; kept for the record but never retrieved.
 
 **`confidence`** (`high`/`medium`/`low`) — defaults from source, and bumps to
@@ -169,9 +176,15 @@ A `pending` guess becomes a trusted `confirmed` fact through any of three paths:
    a new derivation lands within `CORROBORATE_DISTANCE` (**0.40** cosine) of an
    existing entry, a **Stage-B NLI** check judges the pair:
    - `entails` (same fact) → if the neighbour is **pending**, it's **promoted to
-     confirmed**; if already confirmed, the new one is skipped as a duplicate.
-   - `contradicts` → the new fact supersedes the old (`contradicts_id` set, old
-     deactivated).
+     confirmed** only when the two are independent: the new one comes from
+     another conversation, a day or more after the pending one was written, and
+     the pending one contradicts nothing still held. Otherwise (and when the
+     neighbour is already confirmed) the new one is skipped as a duplicate; a
+     confirmed goal is renewed.
+   - `contradicts` → against a **pending** fact, the new one supersedes it
+     (`contradicts_id` set, old deactivated). Against a **confirmed** fact, the
+     new one is saved pending beside it and never confirms itself: when the user
+     confirms it, the old one is switched off.
    - `neutral` (different but related) → both kept, linked via `related_ids`.
 
    *Why NLI and not just distance:* real re-derivations paraphrase heavily
@@ -185,7 +198,9 @@ A `pending` guess becomes a trusted `confirmed` fact through any of three paths:
    impression you prefer X — is that right?").
 
 **Expiry.** Pending entries carry `expires_at = created_at + 60 days`; a worker
-sweep flips expired ones to `rejected`. Confirmed facts never expire.
+sweep flips expired ones to `rejected`. A confirmed **goal** holds 60 days from
+when it last came up (confirmed, or derived again); then it stops being
+retrieved and the sweep switches it off. Other confirmed facts never expire.
 
 ## 6. The numbers, explained
 
@@ -208,7 +223,7 @@ so none of it is a mystery dial.
 |----------|-------|---------|---------|
 | `DUP_DISTANCE` | **0.15** | `memory_save` dedup | This close = duplicate on save (no NLI — strict, no backstop). |
 | `CORROBORATE_DISTANCE` | **0.40** | corroboration / dedup | A *candidate* for "same fact" → handed to NLI to decide. A loose pre-filter, not the verdict. |
-| `FLOOR_CONFIRMED` | **0.65** | per-turn retrieval | A **confirmed** fact is injected only if `distance < 0.65`. |
+| `FLOOR_CONFIRMED` | **0.55** | per-turn retrieval | A **confirmed** fact is injected only if `distance < 0.55`. |
 | `FLOOR_PENDING` | **0.50** | per-turn retrieval | A **pending** fact uses the tighter `< 0.50` — guesses surface only when strongly on-topic. |
 
 ### Per-row corroboration metrics (the entry expander)
@@ -240,8 +255,9 @@ Pure character count against the hard caps:
 
 ### Retrieval & lifecycle numbers
 
-- **top-K = 5** — at most 5 memories injected per turn, confirmed ranked first,
-  after the floor filters by distance.
+- **top-K = 5** — at most 5 memories injected per turn, closest first, a
+  confirmed fact counting as 0.05 closer (`CONFIRMED_BONUS`), after the floor
+  filters by distance.
 - **TTL = 60 days** — `expires_at = created_at + 60 days` for pending; the sweep
   rejects expired ones. Confirmed = `expires_at NULL` (never expires).
 

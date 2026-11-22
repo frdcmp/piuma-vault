@@ -44,6 +44,9 @@ struct MemoryEntryOut {
     is_active: bool,
     embedded: bool,
     expires_at: Option<DateTime<Utc>>,
+    /// user (the dashboard), chat (the agent, on the user's word), corroborated
+    confirmed_by: Option<String>,
+    confirmed_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -71,7 +74,7 @@ pub async fn list_entries(
     match sqlx::query_as::<_, MemoryEntryOut>(
         "SELECT id, agent, content, category, confidence, source, status, tags, \
                 related_ids, contradicts_id, source_conversation_id, source_message_id, is_active, \
-                (embedding IS NOT NULL) AS embedded, expires_at, created_at, updated_at \
+                (embedding IS NOT NULL) AS embedded, expires_at, confirmed_by, confirmed_at, created_at, updated_at \
          FROM db_memory_entries \
          WHERE ($1::text IS NULL OR agent = $1) \
            AND ($2::text IS NULL OR status = $2) \
@@ -270,17 +273,9 @@ pub async fn confirm_entry(
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let id = path.into_inner();
-    match sqlx::query(
-        "UPDATE db_memory_entries \
-         SET status = 'confirmed', confidence = 'high', expires_at = NULL, is_active = TRUE, updated_at = NOW() \
-         WHERE id = $1",
-    )
-    .bind(id)
-    .execute(pool.get_ref())
-    .await
-    {
-        Ok(r) if r.rows_affected() > 0 => HttpResponse::Ok().json(json!({ "confirmed": true, "id": id })),
-        Ok(_) => HttpResponse::NotFound().json(ApiError::new("entry not found")),
+    match crate::apps::agents::tools::memory::confirm(pool.get_ref(), id, None, "user").await {
+        Ok(true) => HttpResponse::Ok().json(json!({ "confirmed": true, "id": id })),
+        Ok(false) => HttpResponse::NotFound().json(ApiError::new("entry not found")),
         Err(e) => db_err(e),
     }
 }
@@ -414,9 +409,11 @@ pub struct DedupQuery {
 /// near-duplicate **pending** entries the dialectic accumulated before/around
 /// the corroboration fix. Mirrors the live corroboration logic: for each
 /// cluster of pending entries within `CORROBORATE_DISTANCE` that Stage-B NLI
-/// judges to `entails`, the oldest is kept and **promoted to confirmed**
-/// (independent re-derivations = corroboration) and the rest are rejected and
-/// linked to the survivor via `related_ids`. `?apply=false` (default) returns
+/// judges to `entails`, the oldest is kept and the rest are rejected and linked
+/// to the survivor via `related_ids`. The survivor is **promoted to confirmed**
+/// only when one of them is independent of it (another conversation, at least
+/// `memory::INDEPENDENT_DAYS` apart) and it contradicts nothing still held, as
+/// in the live corroboration. `?apply=false` (default) returns
 /// the plan as a dry-run; `?apply=true` executes it.
 pub async fn dedup_pending(
     _user: AgentAdmin,
@@ -431,10 +428,12 @@ pub async fn dedup_pending(
     const MAX_NLI: usize = 400; // safety cap on LLM calls per run
 
     // All active, embedded pending entries, oldest first (oldest = survivor).
-    let entries: Vec<(Uuid, String)> = sqlx::query_as(
-        "SELECT id, content FROM db_memory_entries \
-         WHERE agent = $1 AND is_active AND status = 'pending' AND embedding IS NOT NULL \
-         ORDER BY created_at ASC",
+    // `disputed`: it contradicts a fact still held, so only the user confirms it
+    let entries: Vec<(Uuid, String, bool)> = sqlx::query_as(
+        "SELECT e.id, e.content, EXISTS (SELECT 1 FROM db_memory_entries c WHERE c.id = e.contradicts_id AND c.is_active) \
+         FROM db_memory_entries e \
+         WHERE e.agent = $1 AND e.is_active AND e.status = 'pending' AND e.embedding IS NOT NULL \
+         ORDER BY e.created_at ASC",
     )
     .bind(&agent)
     .fetch_all(pool.get_ref())
@@ -447,15 +446,17 @@ pub async fn dedup_pending(
     let mut nli_cap_hit = false;
     let mut absorbed_total = 0usize;
 
-    for (sid, scontent) in &entries {
+    for (sid, scontent, disputed) in &entries {
         if claimed.contains(sid) {
             continue;
         }
         claimed.insert(*sid);
 
         // Pending neighbours of the survivor within the corroboration band.
-        let neighbours: Vec<(Uuid, String, f64)> = sqlx::query_as(
-            "SELECT n.id, n.content, (n.embedding <=> s.embedding) AS dist \
+        let neighbours: Vec<(Uuid, String, f64, bool)> = sqlx::query_as(
+            "SELECT n.id, n.content, (n.embedding <=> s.embedding) AS dist, \
+                    (n.source_conversation_id IS DISTINCT FROM s.source_conversation_id \
+                     AND abs(extract(epoch FROM n.created_at - s.created_at)) >= $4 * 86400) AS independent \
              FROM db_memory_entries n, db_memory_entries s \
              WHERE s.id = $1 AND n.id <> $1 AND n.agent = $2 \
                AND n.is_active AND n.status = 'pending' AND n.embedding IS NOT NULL \
@@ -465,12 +466,14 @@ pub async fn dedup_pending(
         .bind(sid)
         .bind(&agent)
         .bind(memory::CORROBORATE_DISTANCE)
+        .bind(memory::INDEPENDENT_DAYS)
         .fetch_all(pool.get_ref())
         .await
         .unwrap_or_default();
 
         let mut absorbed: Vec<serde_json::Value> = Vec::new();
-        for (nid, ncontent, dist) in neighbours {
+        let mut independent = false;
+        for (nid, ncontent, dist, apart) in neighbours {
             if claimed.contains(&nid) {
                 continue;
             }
@@ -482,9 +485,10 @@ pub async fn dedup_pending(
             let verdict = memory::nli_check(pool.get_ref(), scontent, &ncontent).await;
             if verdict == Some("entails") {
                 claimed.insert(nid);
+                independent |= apart;
                 absorbed.push(json!({
                     "id": nid, "content": ncontent,
-                    "distance": dist, "nli": "entails",
+                    "distance": dist, "nli": "entails", "independent": apart,
                 }));
             }
         }
@@ -493,17 +497,12 @@ pub async fn dedup_pending(
             continue;
         }
         absorbed_total += absorbed.len();
+        let promote = independent && !disputed;
 
         if apply {
-            // Promote survivor (corroborated by N independent re-derivations).
-            let _ = sqlx::query(
-                "UPDATE db_memory_entries \
-                 SET status = 'confirmed', confidence = 'high', expires_at = NULL, updated_at = NOW() \
-                 WHERE id = $1",
-            )
-            .bind(sid)
-            .execute(pool.get_ref())
-            .await;
+            if promote {
+                let _ = memory::confirm(pool.get_ref(), *sid, None, "corroborated").await;
+            }
             for a in &absorbed {
                 let aid = a["id"].as_str().and_then(|s| Uuid::parse_str(s).ok());
                 if let Some(aid) = aid {
@@ -526,7 +525,7 @@ pub async fn dedup_pending(
         }
 
         clusters.push(json!({
-            "survivor": { "id": sid, "content": scontent, "action": "promote to confirmed" },
+            "survivor": { "id": sid, "content": scontent, "action": if promote { "promote to confirmed" } else { "keep pending" } },
             "absorbed": absorbed,
         }));
     }

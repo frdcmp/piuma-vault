@@ -819,6 +819,9 @@ const TABLES: &[TableDefinition] = &[
                 is_active BOOLEAN NOT NULL DEFAULT TRUE,
                 contradicts_id UUID REFERENCES db_memory_entries(id) ON DELETE SET NULL,
                 expires_at TIMESTAMPTZ,
+                -- how it was confirmed: user (the dashboard), chat (the agent, on the user's word), corroborated
+                confirmed_by TEXT,
+                confirmed_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )

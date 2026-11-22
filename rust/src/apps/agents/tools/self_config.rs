@@ -9,6 +9,17 @@ use serde_json::{json, Value};
 use super::*;
 use crate::db::db::DbPool;
 
+/// What belongs in the always-in-context fields (L1), said on every tool that writes them: it's
+/// in every prompt, so what goes stale there misleads every turn.
+macro_rules! l1_rule {
+    () => {
+        " Only what stays true for months and matters in almost any chat: who the user is, how they \
+         want answers, where things live, standing rules. Never an event, a date, a trip, a plan, a \
+         task, or what to do in one note or one topic: the calendar and tasks hold those, and \
+         memory_save the rest (a goal there expires when it stops coming up)."
+    };
+}
+
 pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         (
@@ -27,7 +38,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
         ),
         (
             "update_user_context",
-            "Replace your own user_context scratchpad (notes about the user / project).",
+            concat!("Replace your own user_context: the user's standing profile and preferences.", l1_rule!()),
             json!({
                 "type": "object",
                 "properties": { "text": { "type": "string" } },
@@ -36,7 +47,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
         ),
         (
             "update_memory",
-            "Replace your own persistent memory.",
+            concat!("Replace your own always-in-context memory scratchpad.", l1_rule!()),
             json!({
                 "type": "object",
                 "properties": { "text": { "type": "string" } },
@@ -62,10 +73,13 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
         ),
         (
             "context_add",
-            "Append one durable, always-relevant fact to your always-in-context scratchpad. \
-             Use this (not memory_save) only for the handful of facts you need EVERY turn; \
-             memory_save is for everything topic-specific. Hard-capped — if full, the call is \
-             rejected with your current entries so you can consolidate via context_replace first.",
+            concat!(
+                "Append one durable, always-relevant fact to your always-in-context scratchpad. \
+                 Use this (not memory_save) only for the handful of facts you need EVERY turn; \
+                 memory_save is for everything topic-specific. Hard-capped — if full, the call is \
+                 rejected with your current entries so you can consolidate via context_replace first.",
+                l1_rule!()
+            ),
             json!({
                 "type": "object",
                 "properties": {
@@ -77,8 +91,11 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
         ),
         (
             "context_replace",
-            "Substring-replace in your always-in-context scratchpad — the primary way to compact \
-             (merge related entries into one).",
+            concat!(
+                "Substring-replace in your always-in-context scratchpad — the primary way to compact \
+                 (merge related entries into one, drop what went stale).",
+                l1_rule!()
+            ),
             json!({
                 "type": "object",
                 "properties": {
