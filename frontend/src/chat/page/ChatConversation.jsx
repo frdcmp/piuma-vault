@@ -19,7 +19,7 @@ import {
 	switchBranch,
 	updateConversation,
 } from "../../api/agentChatApi";
-import { useAgentList, useDefaultAgent } from "../../queries";
+import { useAgentList } from "../../queries";
 import { formatDateTime, timeAgo } from "../../utils/dateTime";
 import MessageList from "../components/MessageList";
 import PendingAttachments from "../components/PendingAttachments";
@@ -33,6 +33,9 @@ import useAttachments from "../engine/useAttachments";
 import useChatScroll from "../engine/useChatScroll";
 import useChatStream from "../engine/useChatStream";
 import useModelCatalog from "../engine/useModelCatalog";
+
+// The vault has one agent: every chat is with the Vault Agent.
+const AGENT = "vault_agent";
 
 // Composer grows with its text up to ~10 lines (never past 40% of the
 // viewport), then scrolls.
@@ -86,10 +89,8 @@ export default function ChatConversation({
 }) {
 	const navigate = useNavigate();
 	const { data: agents = [] } = useAgentList();
-	const { data: def } = useDefaultAgent();
-	const effectiveAgent = def?.agent || "vault_agent";
 	const agentLabel =
-		agents.find((a) => a.kind === effectiveAgent)?.display_name || "Piuma";
+		agents.find((a) => a.kind === AGENT)?.display_name || "Piuma";
 
 	const [messages, setMessages] = useState([]);
 	const [input, setInput] = useState("");
@@ -287,7 +288,7 @@ export default function ChatConversation({
 		let created = false;
 		if (!convId) {
 			try {
-				const conv = await createConversation({ agent: effectiveAgent });
+				const conv = await createConversation({ agent: AGENT });
 				convId = conv.id;
 				created = true;
 				setModelId(conv.model_id || null);
@@ -355,7 +356,6 @@ export default function ChatConversation({
 		isStreaming,
 		sending,
 		conversationId,
-		effectiveAgent,
 		readyImages,
 		readyDocs,
 		busy,
@@ -521,8 +521,8 @@ export default function ChatConversation({
 	// Client commands + the active agent's prompt macros, filtered by the typed
 	// token (active only while the input is a single `/word`).
 	const agentCommands = useMemo(
-		() => agents.find((a) => a.kind === effectiveAgent)?.commands || [],
-		[agents, effectiveAgent],
+		() => agents.find((a) => a.kind === AGENT)?.commands || [],
+		[agents],
 	);
 	const slashMatches = useMemo(() => {
 		if (!input.startsWith("/") || /\s/.test(input)) return [];

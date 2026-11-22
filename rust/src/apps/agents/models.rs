@@ -347,11 +347,6 @@ pub struct AgentInfo {
     pub commands: Json,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct DefaultAgentReq {
-    pub agent: String,
-}
-
 // ── Error ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]

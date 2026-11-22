@@ -41,9 +41,8 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
                 .route(web::post().to(memory_admin::dedup_pending)),
         )
         .service(
-            web::resource("/agents/default-agent")
-                .route(web::get().to(handlers::get_default_agent))
-                .route(web::put().to(handlers::set_default_agent)),
+            // The phone app asks which agent new chats use: always the Vault Agent.
+            web::resource("/agents/default-agent").route(web::get().to(handlers::get_default_agent)),
         )
         // Providers
         .service(

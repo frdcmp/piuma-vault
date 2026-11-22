@@ -14,7 +14,6 @@ import {
 	PvIconButton,
 	PvInput,
 	PvModal,
-	PvSelect,
 	PvTextarea,
 	PvUpload,
 	pvMessage,
@@ -33,7 +32,7 @@ import {
 	switchBranch,
 	updateConversation,
 } from "../../api/agentChatApi";
-import { useAgentList, useDefaultAgent } from "../../queries";
+import { useAgentList } from "../../queries";
 import useChatDockStore from "../../store/chatDockStore";
 import useNotesWorkspaceStore from "../../store/notesWorkspaceStore";
 import ContextTag from "../components/ContextTag";
@@ -51,6 +50,9 @@ import useChatScroll from "../engine/useChatScroll";
 import useChatStream from "../engine/useChatStream";
 import useModelCatalog from "../engine/useModelCatalog";
 import "../chat-shared.css";
+
+// The vault has one agent: every chat is with the Vault Agent.
+const AGENT = "vault_agent";
 
 // Composer grows with its text up to ~10 lines (never past 40% of the
 // viewport), then scrolls.
@@ -129,14 +131,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		[navigate, onOpenNote],
 	);
 	const { data: agents = [] } = useAgentList();
-	const { data: def } = useDefaultAgent();
-	const [agentKind, setAgentKind] = useState("");
-	useEffect(() => {
-		if (def?.agent && !agentKind) setAgentKind(def.agent);
-	}, [def, agentKind]);
-	const effectiveAgent = agentKind || def?.agent || "vault_agent";
 	const agentLabel =
-		agents.find((a) => a.kind === effectiveAgent)?.display_name || "Piuma";
+		agents.find((a) => a.kind === AGENT)?.display_name || "Piuma";
 
 	const [messages, setMessages] = useState([]);
 	const [input, setInput] = useState("");
@@ -403,7 +399,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 				// chat. Without this the new conversation is created with the global
 				// default and the first turn ignores the selection.
 				const conv = await createConversation({
-					agent: effectiveAgent,
+					agent: AGENT,
 					...(modelId ? { model_id: modelId } : {}),
 				});
 				convId = conv.id;
@@ -471,7 +467,6 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 		sending,
 		conversationId,
 		modelId,
-		effectiveAgent,
 		sentContextPaths,
 		sentContextIds,
 		sentPigeonIds,
@@ -595,8 +590,8 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 	// Slash commands: client commands + the active agent's macros, filtered by
 	// the typed token (active only while the input is a single `/word`).
 	const agentCommands = useMemo(
-		() => agents.find((a) => a.kind === effectiveAgent)?.commands || [],
-		[agents, effectiveAgent],
+		() => agents.find((a) => a.kind === AGENT)?.commands || [],
+		[agents],
 	);
 	const slashMatches = useMemo(() => {
 		if (!input.startsWith("/") || /\s/.test(input)) return [];
@@ -980,22 +975,7 @@ export default function ChatPanel({ onClose, onOpenNote }) {
 			<div className="chat-header">
 				<div className="chat-title">
 					<span className="chat-eyebrow">agent /</span>
-					{agents.length > 1 ? (
-						<PvSelect
-							size="sm"
-							className="chat-agent-select"
-							value={effectiveAgent}
-							onChange={(v) => setAgentKind(v)}
-							title="Agent for new chats"
-							aria-label="Agent for new chats"
-							options={agents.map((a) => ({
-								value: a.kind,
-								label: a.display_name,
-							}))}
-						/>
-					) : (
-						<span className="chat-name">{agentLabel}</span>
-					)}
+					<span className="chat-name">{agentLabel}</span>
 				</div>
 				<div
 					className={`chat-status${isStreaming ? " streaming" : ""}`}

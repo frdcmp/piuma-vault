@@ -7,7 +7,6 @@ use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::apps::settings;
 use crate::db::db::DbPool;
 
 use super::access::{AgentAdmin, AgentChat};
@@ -15,8 +14,6 @@ use super::control::TurnControl;
 use super::models::*;
 use super::registry;
 use super::title;
-
-const DEFAULT_AGENT_KEY: &str = "agents_default_agent";
 
 fn fallback_agent() -> String {
     registry::all()
@@ -60,28 +57,10 @@ pub async fn list_agents(_user: AgentChat, pool: web::Data<DbPool>) -> impl Resp
     HttpResponse::Ok().json(out)
 }
 
-// ── Default agent (new conversations start with this) ───────────────────────
+// ── The agent (new conversations start with it: the vault has one) ───────────
 
-pub async fn get_default_agent(_user: AgentChat, pool: web::Data<DbPool>) -> impl Responder {
-    let stored = settings::store::get(pool.get_ref(), DEFAULT_AGENT_KEY).await;
-    let agent = stored
-        .filter(|s| registry::get(s).is_some())
-        .unwrap_or_else(fallback_agent);
-    HttpResponse::Ok().json(json!({ "agent": agent }))
-}
-
-pub async fn set_default_agent(
-    _user: AgentAdmin,
-    pool: web::Data<DbPool>,
-    body: web::Json<DefaultAgentReq>,
-) -> impl Responder {
-    if registry::get(&body.agent).is_none() {
-        return HttpResponse::BadRequest().json(ApiError::new("unknown agent"));
-    }
-    match settings::store::set(pool.get_ref(), DEFAULT_AGENT_KEY, &body.agent).await {
-        Ok(_) => HttpResponse::Ok().json(json!({ "agent": body.agent })),
-        Err(e) => db_err(e),
-    }
+pub async fn get_default_agent(_user: AgentChat) -> impl Responder {
+    HttpResponse::Ok().json(json!({ "agent": fallback_agent() }))
 }
 
 // ── Providers ────────────────────────────────────────────────────────────────
