@@ -5,243 +5,189 @@ description: Read, search, create, edit, move and delete the notes in Piuma Vaul
 
 # Piuma Vault
 
-The user's self-hosted Rust/Postgres app (`~/docker/piuma-vault`), served at whatever
-host `VAULT_URL` names — this repo is public, so the instance is named in local config,
-never here. Two scripts cover it, both authenticating the same way:
+The user's self-hosted Rust/Postgres app (`~/docker/piuma-vault`), served at whatever host
+`VAULT_URL` names — this repo is public, so the instance is named in local config, never here.
 
-| Script | Covers |
+**If the vault's MCP server is connected — directly or through a gateway that may prefix the
+tool names (e.g. `vault_notes_search`) — use its tools; otherwise the scripts below with a
+key** (*Without MCP: the scripts*). Tool names here are unprefixed: match them by their
+ending. The server lists only the tools the caller's scopes allow, so a tool that's missing
+is a scope that's missing (see *Scopes*), not a reason to go around it.
+
+## The tools
+
+**Notes** (markdown notes in a folder tree)
+
+| Tool | |
 |---|---|
-| `scripts/vault.sh` | **notes** — markdown notes in a folder tree; run `folders` to see the live layout |
-| `scripts/agenda.py` | **tasks, recurring tasks, buckets, calendar events, agenda** |
-| `scripts/pigeon.py` | **the Inbox (Pigeon)** — chats, messages, people, drafts, rules, switches |
+| `notes_search` | by meaning and words; start here |
+| `notes_list` | newest-updated first; `folder` (exactly that path), `tag`, `limit`, `offset` |
+| `notes_get` | one note in full |
+| `notes_browse` · `notes_folders` · `notes_find_folders` · `notes_tags` | navigation |
+| `notes_create` | title, content, folder, tags |
+| `notes_update` | title / content / folder / tags; **content replaces the body**; folder moves it |
+| `notes_append` | adds after a blank line |
+| `notes_replace_text` | one exact passage → new text |
+| `notes_move_folder` | a whole folder and its subfolders |
+| `notes_delete` | **soft** delete → trash |
+| `notes_trash` · `notes_restore` | the trash, and back from it |
+| `notes_versions` · `notes_version_get` · `notes_version_restore` | every save is a version |
 
-All three sit in `scripts/`, beside this file. They are not on `PATH`, so invoke them by full
-path — on this machine `~/.claude/skills/piuma-vault/scripts/vault.sh`, which is a symlink
-into the checkout (see *Installing this skill* at the end). Run any with `help` /
-`--help` for the full flag list. Don't hand-roll curl unless an endpoint isn't wrapped.
+**Tasks, recurring tasks, buckets, calendar, agenda**
+
+| Tool | |
+|---|---|
+| `agenda` | tasks due, events and recurring occurrences in a range (default the next 7 days), plus the user's `timezone` |
+| `tasks_list` · `tasks_get` | open tasks by default (`include_done`), `tag`, `bucket`; sorted by due date |
+| `tasks_create` · `tasks_update` · `tasks_set_done` · `tasks_delete` | |
+| `recurring_list` · `recurring_get` | RRULE templates |
+| `recurring_create` · `recurring_update` · `recurring_complete` · `recurring_delete` | `recurring_complete` ticks one occurrence (`done: false` unticks) |
+| `buckets_list` · `buckets_create` · `buckets_update` · `buckets_delete` | named groups of tasks |
+| `calendar_list` · `calendar_get` | `from` / `to` (default the next 30 days) |
+| `calendar_create` · `calendar_update` · `calendar_delete` | |
+
+**The Inbox (Pigeon)**: the `pigeon_*` tools (see *The Inbox*).
 
 ---
 
-# Notes — `vault.sh`
-
-## Commands
-
-| | |
-|---|---|
-| `list [--folder /f] [--tag t] [--limit N] [--offset N]` | newest-updated first |
-| `search "query" [--folder /f] [--tag t] [--limit N]` | hybrid FTS + pgvector + trigram, with match snippets |
-| `get <id\|title> [--raw] [--json]` | `--raw` = markdown body only |
-| `browse [/path]` · `folders` · `findfolder "q"` · `tags` | navigation |
-| `new "Title" [--folder /f] [--tags a,b]` + body on stdin/`--content`/`--file` | |
-| `edit <id\|title> [--title T] [--folder /f] [--tags a,b]` + new body | body replaces, doesn't merge |
-| `append <id\|title>` + body | adds after a blank line |
-| `mv <id\|title> /new/folder` · `mvfolder /from /to` | one note · a whole subtree |
-| `rm <id\|title>` | **soft** delete → trash |
-| `trash` · `restore <uuid>` · `purge <id> --yes` · `empty-trash --yes` | |
-| `versions <id> [--get <vid>] [--restore <vid>]` | every save is snapshotted |
-
-Any `<id|title>` accepts a UUID or a title. A title is resolved by search: an exact
-(case-insensitive) title wins, otherwise it must be unique or the script lists the
-candidates and stops. Prefer UUIDs from a previous `list`/`search` when acting in bulk.
+# Notes
 
 ## Note rules
 
 - **Always link every note you created, edited, appended to, moved or restored** in your
-  reply, so the user can open it straight from the chat. The web link is
-  `$VAULT_URL/notes/<uuid>`: take the host from `VAULT_URL` in `~/.config/piuma-vault/env`
-  and the UUID from the script's output. It's `/notes/`, not `/admin/notes/` (that path is
-  the API). Give one link per note, next to its title.
-- **Read before you write.** `search` first — the vault already has a note for most topics,
-  and appending to it beats creating a near-duplicate.
-- **`rm` is soft** (sets `deleted_at`, note keeps content and attachments). It's the default
-  for "delete this note". `purge` and `empty-trash` are irreversible — they also drop the
-  note's S3 attachments — so both demand `--yes`, and you should confirm with the user first.
-- `restore` only takes a **UUID from `vault.sh trash`**; search can't see trashed notes.
-- **`edit` replaces the body.** To add to a note use `append`, or `get --raw` → modify → `edit`.
-- Folders are just a string column, created implicitly by using them and gone when the last
-  note leaves. `mvfolder` rewrites the path prefix across the folder *and its subfolders*.
+  reply, so the user can open it straight from the chat: `<vault host>/notes/<uuid>`, the
+  host from `VAULT_URL` in `~/.config/piuma-vault/env` (or the host of the MCP server, when
+  connected directly), the UUID from the tool's answer. It's `/notes/`, not `/admin/notes/`
+  (that path is the API). One link per note, next to its title; if you don't know the host,
+  give the title and the id.
+- **Read before you write.** `notes_search` first — the vault already has a note for most
+  topics, and appending to it beats creating a near-duplicate. `notes_get` before changing a
+  note; reuse an existing folder (`notes_find_folders`) verbatim.
+- **`notes_delete` is soft** (the note keeps its content and attachments, `notes_restore`
+  brings it back). Confirm with the user first. Purging a note or emptying the trash are
+  irreversible (they also drop the note's attachments): not over MCP; the scripts do them
+  with `--yes`, and only after the user confirms.
+- `notes_restore` takes the **id from `notes_trash`**; search can't see trashed notes.
+- **`notes_update`'s `content` replaces the body.** To add use `notes_append`; to change one
+  passage `notes_replace_text` (copy `old_text` verbatim from `notes_get`, it must match once).
+- Folders are just a string on each note, created by using them and gone when the last note
+  leaves. `notes_move_folder` rewrites the path prefix across the folder *and its subfolders*.
 - Never paste a note's body into a public place, a commit, or an issue. The vault is a
   personal second brain: assume any note may hold credentials or personal data, and check
   before quoting one anywhere it leaves this machine.
 
-## Note API facts that bite
+## Note facts that bite
 
-- Notes live under `/admin/notes` (see `rust/src/apps/notes/routes.rs`).
-- Content is **markdown** (BlockNote/Milkdown both round-trip it), max 1 MB.
-  Title max 500 chars, max 20 tags, folder path max 255 chars and must start with `/`.
+- Content is **markdown**, max 1 MB. Title max 500 chars, max 20 tags, folder path max 255
+  chars and must start with `/`.
 - Tags are normalized server-side to lowercase-with-hyphens (`"Project Plans"` → `project-plans`).
-- Search embeds the query (Azure OpenAI) and RRF-merges three candidate pools; if embedding
-  fails it silently falls back to FTS-only, so results can vary run to run.
+  A visible tag goes inline in the body as `#tag`; `tags` are stored beside it.
+- Search embeds the query and merges vector, full-text and fuzzy-title results; if embedding
+  fails it silently falls back to full-text, so results can vary run to run.
 - Saving re-queues an embedding job in the background — a brand-new note may not surface in
   semantic search for a few seconds.
-- Every update writes a version row, so a bad `edit` is recoverable via `versions --restore`.
+- Every save writes a version, so a bad update is recoverable: `notes_versions` →
+  `notes_version_restore` (what the note held becomes a version too).
 
 ---
 
-# Tasks & calendar — `agenda.py`
-
-```
-agenda.py today | week | month | agenda [--from X --to Y | --days N] [--tag t]
-```
-The merged day-by-day view: overdue tasks first, then per day the calendar events (📅),
-tasks due (☐) and recurring-task occurrences (↻ pending, ☑ done).
-
-| | |
-|---|---|
-| `tasks list [--all\|--done\|--overdue] [--tag t] [--bucket b\|--no-bucket] [--due-before X] [--due-after X]` | open tasks by default |
-| `tasks get <id\|title>` · `tasks buckets` | detail · buckets with open/total counts |
-| `tasks add "Title" [--due WHEN] [--priority none\|low\|medium\|high] [--bucket b] [--tags a,b] [--notes N]` | |
-| `tasks edit <id\|title> [--title][--due WHEN\|--clear-due][--priority][--bucket b\|--no-bucket][--tags][--notes]` | |
-| `tasks done <id\|title>` · `tasks undone` · `tasks rm <id> --yes` | |
-| `recurring list\|get <ref>` | RRULE templates, with the next occurrences expanded |
-| `recurring add "Title" --rrule FREQ=WEEKLY;BYDAY=MO [--dtstart][--until][--bucket][--tags]` | |
-| `recurring edit <ref> [--rrule][--dtstart][--until][--active true\|false][…]` · `recurring rm <ref> --yes` | |
-| `recurring complete <ref> [--date YYYY-MM-DD] [--undo]` | ticks one occurrence (default today) |
-| `cal list [--from X --to Y \| --days N] [--tag t]` · `cal get <id\|title>` | |
-| `cal add "Title" --start WHEN [--end WHEN] [--all-day] [--location L] [--desc D] [--tags a,b] [--rrule R]` | |
-| `cal edit <id\|title> [--start][--end\|--clear-end][--all-day true\|false][--location][--desc][--tags]` · `cal rm <ref> --yes` | |
-
-`--due`, `--start`, `--from` etc. take ISO (`2026-11-07`, `2026-11-07 18:00`) **or** natural
-language via GNU date (`"tomorrow 18:00"`, `"next monday"`). All input and display is in the
-machine's local timezone (Europe/Rome); the API stores UTC. Any `<id|title>` accepts a UUID
-or a unique title substring, same as notes.
+# Tasks & calendar
 
 ## Task & calendar rules
 
-- **Deleting a task or event is permanent — there is no trash** (unlike notes). Both `rm`s
-  demand `--yes`; confirm with the user first. To silence a recurring task, prefer
-  `recurring edit <ref> --active false` over deleting the template.
-- Buckets are named groups, one per project or life area; run `agenda.py tasks buckets`
-  to list them. Pass `--bucket <name>` and the script resolves the id.
-  Unlike tags, a bucket is **not** created on the fly here — an unknown name is an error.
+- **Deleting a task, recurring task, event or bucket is permanent — there is no trash**
+  (unlike notes). Confirm with the user first. To finish a task, `tasks_set_done`; to silence
+  a recurring task, `recurring_update` with `active: false` rather than deleting it. Deleting
+  a bucket keeps its tasks, in no bucket.
+- **Times are UTC in the API.** Give them as RFC 3339 with an offset
+  (`2026-11-07T18:00:00+01:00`, or `Z`); a bare date or a time without an offset is refused.
+  Say them to the user in their own timezone (`agenda` returns it as `timezone`).
+- Buckets are named groups, one per project or life area (`buckets_list`). Tools take a
+  bucket by **name**; over MCP an unknown name makes a new bucket, so check the list first.
+  `"none"` takes a task out of its bucket.
 - Tags on tasks/events are a shared registry, lowercased, auto-created on use. They are a
   different namespace from note tags.
-- Priority is `0..3` = none/low/medium/high; `!high` in listings.
-- Alerts need a due date — the API rejects alerts on a task without `due_at`.
+- Priority is `0..3` = none/low/medium/high.
+- Alerts are minutes before the due time / start (0 = at it), each a push and an alarm on the
+  phone. **Alerts need a due date** — a task without `due_at` can't have them.
+- Updates change only the fields given, and can't clear one (a due date, an event's end, a
+  recurring task's `until`): the scripts do that (`--clear-due`, `--clear-end`, `--until`).
 
 ## Task & calendar facts that bite
 
-- **`GET /admin/agenda` is broken (500).** `agenda/handlers.rs`'s `RECURRING_FIELDS` omits
-  `bucket_id`, which `RecurringTask` requires, so the row decode fails whenever an active
-  template exists. `agenda.py` therefore composes the view client-side from
-  `/admin/tasks` + `/admin/calendar/events` + `/admin/recurring-tasks`. Adding `bucket_id, `
-  to that constant fixes the endpoint, but needs a backend rebuild + deploy.
-- **Recurring tasks are never materialized until completed.** The backend stores templates
-  only; the web UI, the mobile app and this script each expand the RRULE locally
-  (here via python-dateutil). Completing an occurrence inserts a `db_tasks` row;
-  `--undo` deletes it again.
-- **An event's `rrule` is stored but expanded nowhere** — not by the API, not by the web
-  UI (`CalendarPage.jsx` buckets each event on its start day only), not here. A recurring
-  *event* shows up once, on its first date. Use a recurring *task* for anything that must
-  repeat.
-- `GET /admin/calendar/events` **requires** `from` and `to`; there is no "all events" call.
-- The task list endpoint returns everything by default; `--limit` is clamped to 200
-  server-side.
-- Cloudflare fronts the vault and 403s (its error 1010) on unusual User-Agents — `agenda.py`
-  sends its own. Anything new that talks to the API must set one too.
+- **Recurring tasks are never materialized until completed.** The backend stores templates;
+  `agenda` expands them (in UTC dates: FREQ DAILY/WEEKLY/MONTHLY, INTERVAL, BYDAY, UNTIL,
+  COUNT). `recurring_complete` inserts a done task for that date; `done: false` deletes it.
+- **An event's `rrule` is stored but expanded nowhere** — not by the API, not by the web UI,
+  not by the scripts. A recurring *event* shows up once, on its first date. Use a recurring
+  *task* for anything that must repeat.
+- `agenda` covers a window only: overdue tasks are the open ones in `tasks_list` whose
+  `due_at` is past (it sorts them first).
+- `tasks_list` returns one-off tasks only (at most 200); recurring ones are in
+  `recurring_list` and, by occurrence, in `agenda`.
 
 ---
 
-# The Inbox — `pigeon.py`
+# The Inbox
 
 Pigeon is the vault's Inbox: the user's WhatsApp, Instagram and Gmail in one place, with
 people (each an `@slug`, their handles on every channel), Pigeon's drafts and suggestions
 waiting for the user, rules for what a sender keeps sending, and per-person switches (may
 Pigeon reply: off / ask / auto; how loud on the phone: all / smart / quiet / off).
 
-`pigeon.py` runs the vault's own Inbox tools, the ones Piuma (the vault's assistant) has,
-as the key's user. Each command is a tool without its `pigeon_` prefix; its arguments are
-`key=value` (JSON when it parses, else text; `-` reads stdin; `--json '{…}'` for many).
-`contact_id` / `merge_id` take an `@slug` too.
-
-```sh
-pigeon.py tools                         # every tool, w = changes something
-pigeon.py tools set_contact             # one tool's arguments
-pigeon.py summary                       # what's open, in a few lines
-pigeon.py inbox attention=true          # what needs the user
-pigeon.py pending                       # drafts, suggestions, questions waiting
-pigeon.py search query="invoice"
-pigeon.py conversation conversation_id=<uuid>   # each message's photos and files: its `files`
-pigeon.py file item=<message id> file=<file id> # save one here, prints its path (then read it)
-pigeon.py contacts query=alex           # people: @slug, handles, note, memory (a note in their folder)
-pigeon.py names_from_whatsapp contact_id=<uuid|@slug>   # name one from WhatsApp; none: everyone
-pigeon.py set_contact contact_id=@alex relationship=friend slug=alex-r
-pigeon.py draft_reply conversation_id=<uuid> instructions="say I'll be late, sweetly"
-pigeon.py send_reply conversation_id=<uuid> text="…"   # only on the user's word, words they saw
-pigeon.py draft_email to=alex@example.com subject="The report" text=- attach=~/report.pdf < body.txt
-pigeon.py upload ~/report.pdf           # store a file to attach: prints its `file` object
-pigeon.py set_alerts contact_id=@alex level=all
-pigeon.py instructions                  # the user's instructions for Pigeon: for every chat
-pigeon.py instructions conversation_id=<uuid>   # and what counts in one chat: the person's note, its own
-pigeon.py set_instructions text="short and warm, never formal"            # for every chat
-pigeon.py set_instructions conversation_id=<uuid> text="always in English"   # for one chat or group chat
-pigeon.py set_note contact_id=@alex note="never agree to a call"          # for one person, in every chat
-pigeon.py access                        # who may be told what: the catalogue, groups, grants
-pigeon.py permissions contact_id=@alex  # what counts for one person (or conversation_id=, group=)
-pigeon.py set_group name=Friends        # a group; rename: group=Friends name=Mates
-pigeon.py grant contact_id=@alex member_of=Friends
-pigeon.py grant group=Friends permission=location.city.ask
-pigeon.py grant contact_id=@alex permission=location.exact.ask minutes=120 said="for tonight"
-pigeon.py grant contact_id=@alex permission=notes.use.ask folder=/shared/trip   # Notes: on one folder
-pigeon.py grant group=Family permission=notes.use.auto note_id=<uuid>           # or on one note
-pigeon.py shared_notes                  # every note and folder someone may be told from, and who
-pigeon.py shared_notes folder=/shared/trip   # who holds this one (or note_id=), also through a folder above
-pigeon.py revoke grant_id=<uuid>
-pigeon.py try_permission group=Friends permission=location.city.auto   # what it would have done lately
-pigeon.py facts                         # what Pigeon knows now: the user's place
-pigeon.py set_fact key=location levels='{"country":"Japan","city":"Tokyo"}' minutes=180
-pigeon.py tool_uses contact_id=@alex    # what Pigeon told them, with which permission
-pigeon.py mark_wrong action_id=<uuid>   # that reply told too much: its auto goes back to ask
-```
+The `pigeon_*` tools are the ones Piuma (the vault's assistant) has, run as the user. Start
+with `pigeon_inbox` (what needs them) or `pigeon_pending` (what waits for their yes);
+`pigeon_conversation` reads a chat, `pigeon_search` every message, `pigeon_contacts` the
+people (a `contact_id` is the id it gives; find someone by `@slug` with `query`). Each tool's
+description says what it takes.
 
 ## Inbox rules
 
 - **A message goes only on the user's word.** By default it's a **draft** the user sends from
-  the Inbox (`draft_reply`, `draft_email`, `edit_draft`). When they say send it: show them
-  the exact text first, then `send_reply` (new words) or `approve` (a waiting draft).
-- **Never set a policy to `auto`** (`set_policy`, `set_auto`) unless the user asks for it.
+  the Inbox (`pigeon_draft_reply`, `pigeon_draft_email`, `pigeon_edit_draft`). When they say
+  send it: show them the exact text first, then `pigeon_send_reply` (new words) or
+  `pigeon_approve` (a waiting draft).
+- **Never set a policy to `auto`** (`pigeon_set_policy`, `pigeon_set_auto`) unless the user
+  asks for it.
 - Big changes (merging two people, deleting a rule, switching auto) don't run: they come
   back as a card the user taps in the Inbox. Say so rather than retrying.
-- **Who may be told what** (`access`, `grant`, `revoke`, the groups): a permission is
-  `tool.level.mode` from the catalogue `access` prints (`location.city.ask`). Grant only what
-  the user asked, for whom they said. Mode `ask` still shows them every answer first; mode
-  `auto` (or a place in a group that holds one) is Pigeon answering on its own: only when
-  they ask for it, and it comes back as a card they tap.
-- **Notes** (`notes.use.ask|auto`) is given on one note (`note_id=`) or one folder (`folder=`:
+- **Who may be told what** (`pigeon_access`, `pigeon_grant`, `pigeon_revoke`, the groups): a
+  permission is `tool.level.mode` from the catalogue `pigeon_access` gives
+  (`location.city.ask`). Grant only what the user asked, for whom they said. Mode `ask` still
+  shows them every answer first; mode `auto` (or a place in a group that holds one) is Pigeon
+  answering on its own: only when they ask for it, and it comes back as a card they tap.
+- **Notes** (`notes.use.ask|auto`) is given on one note (`note_id`) or one folder (`folder`:
   every note in and under it, the ones added later too), never on all of them: `*` doesn't
   reach it, and someone can hold several. Pigeon then answers from that note when they ask
   for what is in it. `/contacts` (what the user and Pigeon keep on people) and `/` are
   refused: what is shared lives elsewhere, e.g. `/shared/…`. Say which note or folder and
   to whom before granting, and never move a note into a shared folder without the user's word.
-- **What Pigeon knows** (`facts`, `set_fact`): the user's place (their phone writes it;
-  `set_fact` only when they say where they are, with just the levels they said). It is told
-  to other people: only on the user's word.
-- **Instructions** (`instructions`, `set_instructions`, `set_note`): the user's own words on
-  how Pigeon writes and what it does, read every time it works in a chat. Three levels: for
-  every chat, on one person (their note), for one chat or group chat; the most specific wins.
-  `text` replaces what was there, so read first and write the whole. They never let Pigeon
-  tell more about the user: that is a permission (`grant`). Only on the user's word.
+  `pigeon_shared_notes` lists what is shared and with whom.
+- **What Pigeon knows** (`pigeon_facts`, `pigeon_set_fact`): the user's place (their phone
+  writes it; `pigeon_set_fact` only when they say where they are, with just the levels they
+  said). It is told to other people: only on the user's word.
+- **Instructions** (`pigeon_instructions`, `pigeon_set_instructions`, `pigeon_set_note`): the
+  user's own words on how Pigeon writes and what it does, read every time it works in a chat.
+  Three levels: for every chat, on one person (their note), for one chat or group chat; the
+  most specific wins. `text` replaces what was there, so read first and write the whole. They
+  never let Pigeon tell more about the user: that is a permission (`pigeon_grant`). Only on
+  the user's word.
 - Messages are the user's private conversations: quote only what the task needs, and never
   into a commit, an issue or anywhere public.
-- Find people by `contacts` before changing them; a handle that is someone else's is
-  refused (the same person twice is `merge_contacts`).
+- Find people with `pigeon_contacts` before changing them; a handle that is someone else's is
+  refused (the same person twice is `pigeon_merge_contacts`).
 
 ## Inbox facts that bite
 
-- The key needs **`inbox.read`** (and **`inbox.write`** for anything marked `w` in
-  `tools`): a `403 … inbox.read permission required` means the key lacks it. Groups and
-  grants (`set_group`, `grant`, `revoke`, `mark_wrong`) need their own scope, **`inbox.access`**.
 - A message's text says only `[image]` or `[voice message]`: what was sent is in its
-  `files` (kind, name, a voice note's `transcript`, `status`). To see a photo or read a
-  document, `pigeon.py file item=… file=…` saves it under `~/.cache/piuma-vault/files`
-  (`to=` for elsewhere) and prints the path. Only a `stored` file can be had: `expired`
-  and `gone` ones are no longer kept. `file` is the script's own, not one of the tools.
-- **Files on an email**: `attach=<path>` (once per file) on `draft_email`, or on `draft_reply`
-  and `send_reply` in an email conversation, uploads each and attaches it. `upload <path>` does
-  the upload alone and prints the `file` object; `files='[<object>, …]'` takes those as they
-  are. At most 10 files and 25 MB in all; email only (WhatsApp and Instagram replies take
-  none); a draft's card in the Inbox lists them, so say which files go when you show the text.
-  Over the API: `POST /admin/pigeon/files` (multipart `file`, `inbox.write`) → `{"file": …}`.
+  `files` (kind, name, a voice note's `transcript`, `status`). The tools describe files but
+  don't fetch them: to see a photo or read a document, `pigeon.py file` (the scripts). Only a
+  `stored` file can be had: `expired` and `gone` ones are no longer kept.
+- **Files on an email**: `files` on `pigeon_draft_email`, or on `pigeon_draft_reply` and
+  `pigeon_send_reply` in an email conversation, takes the `file` objects an upload returned
+  (`pigeon.py upload <path>`, or `POST /admin/pigeon/files`, multipart `file`, `inbox.write`).
+  At most 10 files and 25 MB in all; email only (WhatsApp and Instagram replies take none);
+  a draft's card in the Inbox lists them, so say which files go when you show the text.
 - When someone asks for something they hold no permission for, the user gets a 🔑 card in
   the Inbox (answer this once, allow, no); with `ask` the answer is a draft that says what it
   uses; with `auto` it goes out only when Jev is sure they asked, for themselves and nothing
@@ -250,59 +196,108 @@ pigeon.py mark_wrong action_id=<uuid>   # that reply told too much: its auto goe
   by someone who may know it while the phone has sent none (its switch is off): nothing is
   told, the chat says so (a news line: switch your place on in the app), and Pigeon asks no
   question about it.
-- In `pending` a 🔑 card is kind `uncovered` (`asks_for`: the tool). `answer` on it takes
-  `once` (Pigeon drafts the answer for this time, with the least that answers), `granted`
-  (after a `grant`: Pigeon drafts with it) or `no`. While telling is paused (`access`:
-  `paused`) only `no` works.
+- In `pigeon_pending` a 🔑 card is kind `uncovered` (`asks_for`: the tool). `pigeon_answer`
+  on it takes `once` (Pigeon drafts the answer for this time, with the least that answers),
+  `granted` (after a `pigeon_grant`: Pigeon drafts with it) or `no`. While telling is paused
+  (`pigeon_access`: `paused`) only `no` works.
 - Notes: Pigeon searches only the notes that chat holds, Jev picks one or none, and the reply
   answers from that one note (its text, never its attachments). On its own (`auto`) only when
   Jev is sure of the question and of the note, the note fits whole (8000 characters) and
   the reply holds no card number (an account number or an IBAN goes): otherwise a draft,
   and its card says why. A note in the trash or moved to `/contacts` is no longer read; a
   renamed folder keeps its grants; a 🔑 card for a note names it (`note`), and allowing it
-  grants that one note. `try_permission` doesn't take Notes.
+  grants that one note. `pigeon_try_permission` doesn't take Notes.
 - What Pigeon knows about a person is notes in their folder of the vault,
   `/contacts/<person>/` (a group chat has one too): `Pigeon · Memory` and
   `Pigeon · Style · <Channel>`, tagged `pigeon`, beside the user's own notes there, which
-  Pigeon also reads before writing to them. They are the user's to edit (`vault.sh`): an
-  edit wins, the next rewrite keeps it. Don't delete them or rename them.
+  Pigeon also reads before writing to them. They are the user's to edit (the notes tools):
+  an edit wins, the next rewrite keeps it. Don't delete them or rename them.
 - A person known only by a number takes the name their next message carries on its own;
-  `names_from_whatsapp` does it now from the phone's address book (and gives the slug).
-- `learn` brings old conversations in and writes what Pigeon knows about people: slow, it
-  runs in the background without `contact_id`.
-- The same tools are served over MCP at `$VAULT_URL/api/v1/mcp` (streamable HTTP, the key in
-  an `x-api-key` header; it lists only what the key's scopes allow). The older standalone
-  Pigeon (its own `pigeon` MCP and database) is gone.
+  `pigeon_names_from_whatsapp` does it now from the phone's address book (and gives the slug).
+- `pigeon_learn` brings old conversations in and writes what Pigeon knows about people: slow,
+  it runs in the background without `contact_id`.
 
 ---
 
+## Scopes
+
+What a caller may do is its scopes (a vault API key's, set in admin → API Keys):
+
+| Tools | Read | Write |
+|---|---|---|
+| `notes_*` | `notes.read` | `notes.write` |
+| `tasks_*`, `recurring_*` | `tasks.read` or `tasks.manage` | `tasks.write` or `tasks.manage` |
+| `calendar_*` | `calendar.read` or `calendar.manage` | `calendar.write` or `calendar.manage` |
+| `buckets_*` | any tasks or calendar read | any tasks or calendar write |
+| `agenda` | tasks or calendar read: it shows only the parts the caller may read | |
+| `pigeon_*` | `inbox.read` | `inbox.write` |
+
+Groups and grants (`pigeon_set_group`, `pigeon_grant`, `pigeon_revoke`, `pigeon_mark_wrong`)
+need their own scope, **`inbox.access`**. Signed in through a gateway (OAuth), its read scope
+gives every read above and its write scope every write, but never `inbox.access`: those four
+need a vault key that carries it. A tool's error *"This key can't: it needs the … scope"*, or
+a script's `403 … permission required`, means the scope is missing; a `401` means the key is
+wrong, revoked, or expired.
+
+---
+
+# Without MCP: the scripts
+
+Three scripts in `scripts/`, beside this file, cover the same, with a key (see *Credentials*).
+They are not on `PATH`: invoke them by full path — on this machine
+`~/.claude/skills/piuma-vault/scripts/vault.sh`, a symlink into the checkout. Run any with
+`help` / `--help` for the full flag list. Don't hand-roll curl unless an endpoint isn't wrapped.
+
+| Script | Covers |
+|---|---|
+| `scripts/vault.sh` | **notes**: `list`, `search`, `get [--raw]`, `browse`/`folders`/`findfolder`/`tags`, `new`, `edit` (body replaces), `append`, `mv`, `mvfolder`, `rm` (soft), `trash`, `restore <uuid>`, `versions [--get\|--restore]`, and the irreversible `purge <id> --yes` / `empty-trash --yes` |
+| `scripts/agenda.py` | `today` / `week` / `month` / `agenda [--from --to \| --days] [--tag]` (overdue first, then per day 📅 events, ☐ tasks, ↻/☑ recurring); `tasks list\|get\|add\|edit\|done\|undone\|rm --yes\|buckets`; `recurring list\|get\|add\|edit\|rm --yes\|complete [--date] [--undo]`; `cal list\|get\|add\|edit\|rm --yes` |
+| `scripts/pigeon.py` | the Inbox: each command is a `pigeon_*` tool without its prefix, arguments `key=value` (JSON when it parses, `-` reads stdin, `--json '{…}'`); `contact_id` / `merge_id` take an `@slug`; `tools [name]` lists them (`w` = writes); plus its own `file item=… file=…` (saves a message's file under `~/.cache/piuma-vault/files`, prints the path) and `upload <path>` (prints the `file` object; or `attach=<path>` on a draft or send) |
+
+What differs from the tools:
+
+- Any `<id|title>` takes a UUID or a title: an exact (case-insensitive) title wins, otherwise
+  it must be unique or the script lists the candidates and stops. Prefer UUIDs in bulk.
+- `agenda.py` takes ISO (`2026-11-07`, `2026-11-07 18:00`) **or** natural language via GNU
+  date (`"tomorrow 18:00"`), in the machine's local timezone, and shows local times. It
+  composes its views from `/admin/tasks`, `/admin/calendar/events` and
+  `/admin/recurring-tasks`, expanding RRULEs locally (python-dateutil).
+- `agenda.py --bucket <name>` resolves an existing bucket; an unknown name is an error (it
+  doesn't make one). `tasks list` also takes `--overdue`, `--due-before`, `--due-after`,
+  `--no-bucket`.
+- The API: notes under `/admin/notes`, `GET /admin/calendar/events` **requires** `from` and
+  `to`, the task list is clamped to 200. Cloudflare fronts the vault and 403s (its error 1010)
+  on unusual User-Agents — `agenda.py` sends its own; anything new that talks to the API must
+  set one too.
+
 ## Credentials
 
-The script resolves, in order: exported `VAULT_API_KEY` → `~/.config/piuma-vault/env`
+The scripts resolve, in order: exported `VAULT_API_KEY` → `~/.config/piuma-vault/env`
 (`VAULT_URL=` / `VAULT_API_KEY=`) → `~/docker/piuma-vault-mobile/.env`.
 
 Both `VAULT_URL` and `VAULT_API_KEY` are **required** — the scripts exit 2 rather than
-guess a host. Mint a dedicated key in the vault UI (admin → API Keys) scoped to
-`notes.read` + `notes.write` (and `tasks.*`, `calendar.*`, `inbox.read` + `inbox.write` +
-`inbox.access` for `agenda.py` and `pigeon.py`), then write both to `~/.config/piuma-vault/env`:
+guess a host. Mint a dedicated key in the vault UI (admin → API Keys) with the scopes it
+needs (see *Scopes*), then write both to `~/.config/piuma-vault/env`:
 
 ```sh
 install -Dm600 /dev/stdin ~/.config/piuma-vault/env <<'EOF'
 VAULT_URL=https://your-vault.example
 VAULT_API_KEY=your-key-here
 EOF
-``` Give the
-scripts their own key rather than reusing one issued to another client, so it can be
-revoked on its own. None of these files are in the repo, and no key belongs in one.
-A `403 … permission required` means the key lacks the scope; a `401` means it's wrong,
-revoked, or expired.
+```
+
+Give the scripts their own key rather than reusing one issued to another client, so it can
+be revoked on its own. None of these files are in the repo, and no key belongs in one.
+
+The same key works for the MCP server: `$VAULT_URL/api/v1/mcp` (streamable HTTP, the key in
+an `x-api-key` header). The older standalone Pigeon (its own `pigeon` MCP and database) is gone.
 
 ---
 
 ## Installing this skill somewhere else
 
 The skill lives **inside the piuma-vault checkout**, at `skills/piuma-vault/` — SKILL.md
-plus the two scripts. It is versioned with the Rust code it drives, so an endpoint change
+plus the scripts. It is versioned with the Rust code it drives, so an endpoint change
 and the skill note describing it land in the same commit.
 
 **Symlink it into place rather than copying it.** A copy forks the moment either side is

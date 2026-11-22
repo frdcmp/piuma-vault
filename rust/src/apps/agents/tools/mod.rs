@@ -30,6 +30,7 @@ mod self_config;
 mod shares;
 mod storage;
 mod tasks;
+pub mod vault_mcp;
 pub(crate) mod web;
 
 /// (name, description, JSON-schema for parameters).

@@ -5,10 +5,12 @@
 //! for this MCP (`aud`, `MCP_AUTH_RESOURCE`) and of type `oauth_access`. Its person is the
 //! verified vault account with its email (any case); none: 403.
 //!
-//! What it may do is its scopes, as the vault's own: the read scope `inbox.read`, the write scope
-//! `inbox.write`. Never `inbox.access` (who may be told what): only a vault key that carries it
-//! decides that. The rules every caller is under (drafts, not sends; cards for big changes; never
-//! auto unless asked) are the tools' own and don't change.
+//! What it may do is its scopes, as the vault's own: the read scope every read the MCP serves
+//! (`inbox.read`, `notes.read`, `tasks.read`, `calendar.read`), the write scope every write
+//! (`inbox.write`, `notes.write`, `tasks.write`, `calendar.write`). Never `inbox.access` (who may
+//! be told what): only a vault key that carries it decides that. The rules every caller is under
+//! (drafts, not sends; cards for big changes; never auto unless asked) are the tools' own and
+//! don't change.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -134,15 +136,20 @@ fn check(token: &str, key: &DecodingKey, conf: &McpAuthConf) -> Result<Claims, R
     Ok(claims)
 }
 
-/// The vault's scopes for the token's: its read scope reads the Inbox, its write scope acts in it.
+/// What the read scope gives: every read the MCP serves.
+const READS: &[&str] = &["inbox.read", "notes.read", "tasks.read", "calendar.read"];
+/// What the write scope gives: every write it serves, but who may be told what (`inbox.access`).
+const WRITES: &[&str] = &["inbox.write", "notes.write", "tasks.write", "calendar.write"];
+
+/// The vault's scopes for the token's: its read scope reads, its write scope writes.
 fn permissions(scope: &str, conf: &McpAuthConf) -> Vec<String> {
     let has = |s: &str| scope.split_whitespace().any(|x| x == s);
-    let mut out = Vec::new();
+    let mut out: Vec<String> = Vec::new();
     if has(&conf.read_scope) {
-        out.push("inbox.read".to_string());
+        out.extend(READS.iter().map(|s| s.to_string()));
     }
     if has(&conf.write_scope) {
-        out.push("inbox.write".to_string());
+        out.extend(WRITES.iter().map(|s| s.to_string()));
     }
     out
 }
@@ -293,9 +300,43 @@ mod tests {
     #[test]
     fn scopes_as_the_vaults() {
         let c = conf();
-        assert_eq!(permissions("suite:read", &c), vec!["inbox.read"]);
-        assert_eq!(permissions("suite:read suite:write", &c), vec!["inbox.read", "inbox.write"]);
-        assert!(permissions("other:read inbox.access", &c).is_empty());
+        assert_eq!(permissions("suite:read", &c), vec!["inbox.read", "notes.read", "tasks.read", "calendar.read"]);
+        assert_eq!(
+            permissions("suite:read suite:write", &c),
+            vec!["inbox.read", "notes.read", "tasks.read", "calendar.read", "inbox.write", "notes.write", "tasks.write", "calendar.write"]
+        );
+        assert_eq!(permissions("suite:write", &c), vec!["inbox.write", "notes.write", "tasks.write", "calendar.write"]);
+        assert!(permissions("other:read inbox.access notes.write", &c).is_empty());
+        assert!(!permissions("suite:read suite:write", &c).iter().any(|p| p == "inbox.access" || p == "admin_access" || p.ends_with(".manage")));
+    }
+
+    /// What a token's person may run at the MCP: every vault read with the read scope, the
+    /// writes only with the write scope, never who may be told what.
+    #[test]
+    fn a_token_runs_what_its_scopes_allow() {
+        use crate::apps::agents::tools::vault_mcp;
+        use crate::apps::auth::middleware::check_permission;
+        use crate::apps::pigeon::tools;
+        let person = |scope: &str| AuthenticatedUser {
+            user_id: "u".into(),
+            email: "someone@example.com".into(),
+            first_name: None,
+            last_name: None,
+            permissions: permissions(scope, &conf()),
+            groups: vec![],
+            via_api_key: false,
+        };
+        let may = |u: &AuthenticatedUser, any: &[&str]| any.iter().any(|s| check_permission(u, s));
+        let (reader, writer) = (person("suite:read"), person("suite:read suite:write"));
+        for t in vault_mcp::defs() {
+            assert_eq!(may(&reader, t.scopes()), t.read_only(), "{}", t.name);
+            assert!(may(&writer, t.scopes()), "{}", t.name);
+        }
+        for name in tools::names() {
+            let scope = tools::scope(name);
+            assert_eq!(check_permission(&reader, scope), scope == "inbox.read", "{name}");
+            assert_eq!(check_permission(&writer, scope), scope != "inbox.access", "{name}");
+        }
     }
 
     #[test]
