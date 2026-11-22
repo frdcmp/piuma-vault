@@ -649,7 +649,6 @@ const TABLES: &[TableDefinition] = &[
                 display_name TEXT NOT NULL DEFAULT '',
                 emoji TEXT,
                 system_prompt TEXT NOT NULL DEFAULT '',
-                allowed_tools TEXT[],
                 config JSONB NOT NULL DEFAULT '{}',
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1044,8 +1043,8 @@ const TABLES: &[TableDefinition] = &[
     // row's `env` — admin-only, it is arbitrary code execution by design).
     // `tool_cache` holds the last tools/list result so the chat loop never
     // blocks on discovery; the worker refreshes it on connect and on
-    // POST /refresh. `cron_safe` gates headless (cron) runs — chat is gated
-    // per-persona (allowed_tools patterns like `mcp__github__*`) instead.
+    // POST /refresh. `cron_safe` gates headless (cron) runs; chat gets every
+    // server's tools.
     TableDefinition {
         name: "mcp_servers",
         sql: r#"

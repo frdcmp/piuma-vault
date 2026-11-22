@@ -3,11 +3,13 @@
 The `agents` app is a multi-provider, multi-agent LLM chat system with streaming,
 turn control, and a large catalog of tools that act directly on your vault.
 
-## Agents and personas
+## The agent
 
-An **agent** (the Vault Agent) has an editable profile — its instructions, user
-context, memory, and slash commands. An agent can have multiple **personas** that
-tune behavior and narrow the available tools.
+There is one agent, set on the **Agents** page: its **name** (what the chat calls
+it), its **voice** (who it is, how it talks), the **instructions** it reads every
+turn (how it works) and its **slash commands**. What it knows about you — the
+profile in every prompt, the first layer of its memory — is on the **Memory**
+page.
 
 The agent is steered to consult the **vault** (notes, tasks, calendar) rather than
 the web for personal questions — e.g. calendar queries resolve against your data,
@@ -32,8 +34,8 @@ cleared, and deleted.
 
 ## Tool catalog
 
-Tools are registered on agents via a registry; a persona can narrow them further.
-By domain:
+Tools are registered on the agent via a registry; it has all of them, and every
+MCP server's (a cron run only the servers marked safe for it). By domain:
 
 - **Notes** — search, read, list/browse/search folders, list tags, create, update,
   append, delete
@@ -46,8 +48,7 @@ By domain:
   zip bundle
 - **Shares** — list, create, update, delete
 - **Web** — web search, web fetch
-- **Self-config** — read self, update instructions / user context / memory /
-  persona (scoped to the active agent)
+- **Self-config** — read self, update its instructions and its voice
 - **Memory (L2)** — search, save, update, delete, list, confirm, reject
 - **Always-in-context (L1)** — context add / replace / remove / list
 - **Conversation search (L3)** — `search_conversations` (full-text over chat history)

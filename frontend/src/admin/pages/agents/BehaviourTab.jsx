@@ -17,63 +17,80 @@ import {
 import { errMsg } from "./ModelsTab";
 
 /**
- * How the Vault Agent behaves: its profile (instructions it always reads, who the user is) and
- * its persona (its voice and the tools it may use), side by side, each saved on its own.
+ * How Piuma behaves, in one panel: its name (what the chat calls it), the
+ * instructions it reads every turn (how it works) and its voice (who it is, how
+ * it talks). What it knows about you is on the Memory page.
  */
 export default function BehaviourTab({ agent }) {
 	const { data: profile, isLoading } = useAgentProfile(agent);
 	const { data: personas = [] } = useAgentPersonas(agent);
 	const persona = personas[0];
-	if (isLoading) return <PvSpin block label="Loading the agent…" />;
-	return (
-		<div className="ag-behaviour">
-			<ProfilePanel agent={agent} profile={profile} />
-			{persona && <PersonaPanel persona={persona} />}
-		</div>
-	);
+	if (isLoading || !persona) return <PvSpin block label="Loading the agent…" />;
+	return <AgentPanel agent={agent} profile={profile} persona={persona} />;
 }
 
-const profileFields = (p) => ({
-	display_name: p?.display_name || "",
-	instructions: p?.instructions || "",
-	user_context: p?.user_context || "",
+const fields = (profile, persona) => ({
+	display_name: profile?.display_name || "",
+	instructions: profile?.instructions || "",
+	voice: persona?.system_prompt || "",
 });
 
-function ProfilePanel({ agent, profile }) {
-	const save = useUpdateAgentProfile();
-	const [v, setV] = useState({
-		display_name: "",
-		instructions: "",
-		user_context: "",
-	});
-	useEffect(() => setV(profileFields(profile)), [profile]);
-	const dirty = JSON.stringify(v) !== JSON.stringify(profileFields(profile));
+function AgentPanel({ agent, profile, persona }) {
+	const saveProfile = useUpdateAgentProfile();
+	const savePersona = useUpdatePersona();
+	const saved = fields(profile, persona);
+	const [v, setV] = useState(saved);
+	useEffect(() => setV(fields(profile, persona)), [profile, persona]);
+	const dirty = JSON.stringify(v) !== JSON.stringify(saved);
 	const set = (patch) => setV((x) => ({ ...x, ...patch }));
-	const submit = () =>
-		save.mutate(
-			{ agent, ...v },
-			{
-				onSuccess: () => pvMessage.success("Profile saved"),
-				onError: (e) => pvMessage.error(errMsg(e, "Couldn't save the profile")),
-			},
-		);
+	const busy = saveProfile.isPending || savePersona.isPending;
+	const submit = async () => {
+		try {
+			if (
+				v.display_name !== saved.display_name ||
+				v.instructions !== saved.instructions
+			)
+				await saveProfile.mutateAsync({
+					agent,
+					display_name: v.display_name,
+					instructions: v.instructions,
+				});
+			if (v.voice !== saved.voice)
+				await savePersona.mutateAsync({
+					id: persona.id,
+					system_prompt: v.voice,
+				});
+			pvMessage.success("Saved");
+		} catch (e) {
+			pvMessage.error(errMsg(e, "Couldn't save"));
+		}
+	};
 	return (
 		<PvPanel
-			title="Profile"
+			title={saved.display_name || "The agent"}
 			extra={
 				<SaveBar
 					dirty={dirty}
-					busy={save.isPending}
+					busy={busy}
 					onSave={submit}
-					onReset={() => setV(profileFields(profile))}
+					onReset={() => setV(saved)}
 				/>
 			}
 		>
 			<div className="ag-form">
-				<PvField label="Name" hint="What the chat calls the agent">
+				<PvField label="Name" hint="What the chat calls it">
 					<PvInput
 						value={v.display_name}
 						onChange={(e) => set({ display_name: e.target.value })}
+					/>
+				</PvField>
+				<PvField label="Voice" hint="Who it is and how it talks">
+					<PvTextarea
+						autoSize
+						maxHeight="50vh"
+						rows={8}
+						value={v.voice}
+						onChange={(e) => set({ voice: e.target.value })}
 					/>
 				</PvField>
 				<PvField
@@ -83,112 +100,9 @@ function ProfilePanel({ agent, profile }) {
 					<PvTextarea
 						autoSize
 						maxHeight="50vh"
-						rows={8}
+						rows={10}
 						value={v.instructions}
 						onChange={(e) => set({ instructions: e.target.value })}
-					/>
-				</PvField>
-				<PvField
-					label="About you"
-					hint="Who you are, how you want answers, how your things are organised (the memory's first layer)"
-				>
-					<PvTextarea
-						autoSize
-						maxHeight="50vh"
-						rows={8}
-						value={v.user_context}
-						onChange={(e) => set({ user_context: e.target.value })}
-					/>
-				</PvField>
-			</div>
-		</PvPanel>
-	);
-}
-
-const personaFields = (p) => ({
-	display_name: p.display_name || "",
-	emoji: p.emoji || "",
-	system_prompt: p.system_prompt || "",
-	allowed_tools: (p.allowed_tools || []).join(", "),
-});
-
-function PersonaPanel({ persona }) {
-	const save = useUpdatePersona();
-	const [v, setV] = useState(() => personaFields(persona));
-	useEffect(() => setV(personaFields(persona)), [persona]);
-	const dirty = JSON.stringify(v) !== JSON.stringify(personaFields(persona));
-	const set = (patch) => setV((x) => ({ ...x, ...patch }));
-	const tools = v.allowed_tools
-		.split(/[,\n]/)
-		.map((s) => s.trim())
-		.filter(Boolean);
-	const submit = () =>
-		save.mutate(
-			{
-				id: persona.id,
-				display_name: v.display_name,
-				emoji: v.emoji,
-				system_prompt: v.system_prompt,
-				allowed_tools: tools.length ? tools : null,
-			},
-			{
-				onSuccess: () => pvMessage.success("Persona saved"),
-				onError: (e) => pvMessage.error(errMsg(e, "Couldn't save the persona")),
-			},
-		);
-	return (
-		<PvPanel
-			title="Persona"
-			extra={
-				<SaveBar
-					dirty={dirty}
-					busy={save.isPending}
-					onSave={submit}
-					onReset={() => setV(personaFields(persona))}
-				/>
-			}
-		>
-			<div className="ag-form">
-				<div className="ag-pair">
-					<PvField label="Emoji" className="ag-pair__small">
-						<PvInput
-							value={v.emoji}
-							onChange={(e) => set({ emoji: e.target.value })}
-						/>
-					</PvField>
-					<PvField label="Name" className="ag-pair__grow">
-						<PvInput
-							value={v.display_name}
-							onChange={(e) => set({ display_name: e.target.value })}
-						/>
-					</PvField>
-				</div>
-				<PvField
-					label="Voice"
-					hint="The system prompt: who it is and how it talks"
-				>
-					<PvTextarea
-						autoSize
-						maxHeight="50vh"
-						rows={10}
-						value={v.system_prompt}
-						onChange={(e) => set({ system_prompt: e.target.value })}
-					/>
-				</PvField>
-				<PvField
-					label="Tools it may use"
-					hint={
-						tools.length
-							? `${tools.length} tool${tools.length === 1 ? "" : "s"}, separated by commas`
-							: "Empty: every tool"
-					}
-				>
-					<PvTextarea
-						autoSize
-						rows={2}
-						value={v.allowed_tools}
-						placeholder="every tool"
-						onChange={(e) => set({ allowed_tools: e.target.value })}
 					/>
 				</PvField>
 			</div>

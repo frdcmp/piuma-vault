@@ -156,8 +156,11 @@ export const useUpdateAgentProfile = () => {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: updateProfile,
-		onSuccess: (data) =>
-			qc.invalidateQueries({ queryKey: agentKeys.profile(data?.agent) }),
+		onSuccess: (data) => {
+			qc.invalidateQueries({ queryKey: agentKeys.profile(data?.agent) });
+			// the profile of the user is the memory's first layer (its gauge)
+			qc.invalidateQueries({ queryKey: ["memory"] });
+		},
 	});
 };
 export const useUpdatePersona = () => {

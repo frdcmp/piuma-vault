@@ -1,6 +1,6 @@
 //! Self-config tools (Tier 3) — let an agent read and rewrite ITS OWN editable
 //! prose: `db_agent_profiles` (instructions, and the profile of the user: L1, `profile`) and its
-//! `db_agent_personas` row (system_prompt / display_name / emoji / allowed_tools).
+//! `db_agent_personas` row (system_prompt / display_name / emoji).
 //! Every query is scoped by the active `agent` kind, so an agent can never touch
 //! another agent's config. Edits apply on the next request (rows re-read).
 
@@ -46,12 +46,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Value)> {
                 "properties": {
                     "system_prompt": { "type": "string", "description": "who-you-are / voice" },
                     "display_name": { "type": "string" },
-                    "emoji": { "type": "string" },
-                    "allowed_tools": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "narrows your tools; omit to leave unchanged"
-                    }
+                    "emoji": { "type": "string" }
                 }
             }),
         ),
@@ -216,9 +211,9 @@ pub async fn read_self(pool: &DbPool, agent: &str) -> Result<Value, String> {
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?;
-    let persona: Option<(String, String, Option<String>, String, Option<Vec<String>>)> =
+    let persona: Option<(String, String, Option<String>, String)> =
         sqlx::query_as(
-            "SELECT name, display_name, emoji, system_prompt, allowed_tools FROM db_agent_personas \
+            "SELECT name, display_name, emoji, system_prompt FROM db_agent_personas \
              WHERE agent = $1 ORDER BY created_at LIMIT 1",
         )
         .bind(agent)
@@ -226,11 +221,8 @@ pub async fn read_self(pool: &DbPool, agent: &str) -> Result<Value, String> {
         .await
         .map_err(|e| e.to_string())?;
     let (display_name, instructions, user_profile) = row.ok_or("agent profile not found")?;
-    let persona_json = persona.map(|(name, pdisplay, emoji, system_prompt, allowed_tools)| {
-        json!({
-            "name": name, "display_name": pdisplay, "emoji": emoji,
-            "system_prompt": system_prompt, "allowed_tools": allowed_tools
-        })
+    let persona_json = persona.map(|(name, pdisplay, emoji, system_prompt)| {
+        json!({ "name": name, "display_name": pdisplay, "emoji": emoji, "system_prompt": system_prompt })
     });
     Ok(json!({
         "agent": agent,
@@ -266,13 +258,11 @@ pub async fn update_persona(pool: &DbPool, agent: &str, args: &Value) -> Result<
     let system_prompt = opt_string(args, "system_prompt");
     let display_name = opt_string(args, "display_name");
     let emoji = opt_string(args, "emoji");
-    let allowed_tools = opt_str_array(args, "allowed_tools");
     let row: Option<(String,)> = sqlx::query_as(
         "UPDATE db_agent_personas SET \
            system_prompt = COALESCE($2, system_prompt), \
            display_name = COALESCE($3, display_name), \
            emoji = COALESCE($4, emoji), \
-           allowed_tools = COALESCE($5, allowed_tools), \
            updated_at = NOW() \
          WHERE agent = $1 RETURNING name",
     )
@@ -280,7 +270,6 @@ pub async fn update_persona(pool: &DbPool, agent: &str, args: &Value) -> Result<
     .bind(&system_prompt)
     .bind(&display_name)
     .bind(&emoji)
-    .bind(&allowed_tools)
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?;

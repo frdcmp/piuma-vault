@@ -9,8 +9,8 @@ use uuid::Uuid;
 use crate::apps::agents::chat::blocks_to_text;
 use crate::db::db::DbPool;
 
-/// Candidate voice tools. Narrowed further by the agent's subscription and the
-/// persona's `allowed_tools` (see `handlers::enabled_tools`).
+/// Candidate voice tools. Narrowed further by the agent's subscription (see
+/// `handlers::enabled_tools`).
 pub const VOICE_TOOLS: &[&str] = &[
     "get_agenda",
     "list_tasks",

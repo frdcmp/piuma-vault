@@ -81,17 +81,10 @@ async fn voice_conversation(
 }
 
 /// Voice tools this conversation may use: the voice subset ∩ the agent's
-/// subscription ∩ the persona's `allowed_tools`.
-async fn enabled_tools(pool: &DbPool, conv: &ConversationRow) -> Result<Vec<String>, String> {
+/// subscription.
+async fn enabled_tools(_pool: &DbPool, conv: &ConversationRow) -> Result<Vec<String>, String> {
     let def = registry::get(&conv.agent).ok_or("unknown agent")?;
-    let resolved = identities::resolve(pool, &conv.agent, &conv.identity).await?;
-    let allowed = resolved.persona.allowed_tools;
-    Ok(prompt::VOICE_TOOLS
-        .iter()
-        .filter(|t| def.tools.contains(t))
-        .filter(|t| tools::tool_allowed(allowed.as_ref(), t))
-        .map(|t| t.to_string())
-        .collect())
+    Ok(prompt::VOICE_TOOLS.iter().filter(|t| def.tools.contains(t)).map(|t| t.to_string()).collect())
 }
 
 /// A voice telemetry event for `user`.

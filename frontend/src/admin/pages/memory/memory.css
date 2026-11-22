@@ -199,21 +199,12 @@
 	color: var(--vp-muted);
 	white-space: nowrap;
 }
-.mem-gauge-body {
-	margin: 10px 0 0;
-	padding: 12px;
-	background: var(--vp-bg-soft);
-	border: 1px solid var(--vp-border-soft);
-	font-family: var(--vp-font);
-	font-size: 12.5px;
-	line-height: 1.6;
-	color: var(--vp-text);
-	white-space: pre-wrap;
-	word-break: break-word;
-	max-height: 320px;
-	overflow: auto;
+.mem-l1-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 6px;
+	margin-top: 8px;
 }
-
 /* ---- Turn inspector ------------------------------------------------------- */
 .mem-retrieved {
 	display: flex;

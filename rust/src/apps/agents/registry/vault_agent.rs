@@ -1,7 +1,6 @@
 //! The vault agent — the first (and currently only) agent. It subscribes to the
 //! full catalogue: Tier-1 read + Tier-2 create/edit + Tier-3 sensitive
 //! (deletes / storage writes / shares / self-config) + web (see plan §9).
-//! A persona can still narrow this via `db_agent_personas.allowed_tools`.
 
 use super::AgentDef;
 

@@ -454,8 +454,7 @@ pub async fn patch_persona(
             display_name = COALESCE($2, display_name), \
             emoji = COALESCE($3, emoji), \
             system_prompt = COALESCE($4, system_prompt), \
-            allowed_tools = COALESCE($5, allowed_tools), \
-            config = COALESCE($6, config), \
+            config = COALESCE($5, config), \
             updated_at = NOW() \
          WHERE id = $1 RETURNING *",
     )
@@ -463,7 +462,6 @@ pub async fn patch_persona(
     .bind(&b.display_name)
     .bind(&b.emoji)
     .bind(&b.system_prompt)
-    .bind(&b.allowed_tools)
     .bind(&b.config)
     .fetch_optional(pool.get_ref())
     .await

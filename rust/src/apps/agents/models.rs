@@ -192,7 +192,6 @@ pub struct PersonaRow {
     pub display_name: String,
     pub emoji: Option<String>,
     pub system_prompt: String,
-    pub allowed_tools: Option<Vec<String>>,
     pub config: Json,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -203,7 +202,6 @@ pub struct UpdatePersonaReq {
     pub display_name: Option<String>,
     pub emoji: Option<String>,
     pub system_prompt: Option<String>,
-    pub allowed_tools: Option<Vec<String>>,
     pub config: Option<Json>,
 }
 

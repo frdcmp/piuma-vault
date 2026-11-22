@@ -22,10 +22,12 @@ import {
 	PvSpin,
 	PvTable,
 	PvTabs,
+	PvTextarea,
 	PvTooltip,
 	pvMessage,
 } from "@/ui";
 import {
+	useAgentProfile,
 	useConfirmMemoryEntry,
 	useDeleteMemoryEntry,
 	useEntryStats,
@@ -34,6 +36,7 @@ import {
 	useRejectMemoryEntry,
 	useSearchConversations,
 	useTurnLogs,
+	useUpdateAgentProfile,
 } from "../../../queries";
 import { formatDateTime, timeAgo } from "../../../utils/dateTime";
 import { PageContent } from "../../components/layout/PageLayout";
@@ -450,20 +453,61 @@ const EntryDetail = ({ row }) => (
 );
 
 /** L1 capacity gauge. */
-const L1Gauge = ({ label, chars, cap, pct, content }) => (
-	<div className="mem-gauge">
-		<div className="mem-gauge-head">
-			<span className="mem-gauge-label">{label}</span>
-			<span className="mem-gauge-num">
-				{chars} / {cap} chars · {pct}%
-			</span>
+// The profile of you (L1), editable: what the agent reads about you every turn.
+const L1Profile = ({ chars, cap, pct }) => {
+	const { data: profile } = useAgentProfile(AGENT);
+	const save = useUpdateAgentProfile();
+	const saved = profile?.user_context ?? "";
+	const [text, setText] = useState(null);
+	const value = text ?? saved;
+	const dirty = text !== null && text !== saved;
+	return (
+		<div className="mem-gauge">
+			<div className="mem-gauge-head">
+				<span className="mem-gauge-label">profile of you</span>
+				<span className="mem-gauge-num">
+					{dirty ? value.length : chars} / {cap} chars · {pct}%
+				</span>
+			</div>
+			<Bar pct={pct} />
+			<PvTextarea
+				autoSize
+				rows={10}
+				maxHeight="60vh"
+				value={value}
+				onChange={(e) => setText(e.target.value)}
+			/>
+			{dirty ? (
+				<div className="mem-l1-actions">
+					<PvButton size="sm" variant="ghost" onClick={() => setText(null)}>
+						Undo
+					</PvButton>
+					<PvButton
+						size="sm"
+						variant="primary"
+						loading={save.isPending}
+						disabled={value.length > cap}
+						onClick={() =>
+							save.mutate(
+								{ agent: AGENT, user_context: value },
+								{
+									onSuccess: () => {
+										setText(null);
+										pvMessage.success("Profile saved");
+									},
+									onError: (e) =>
+										pvMessage.error(e?.message || "Couldn't save the profile"),
+								},
+							)
+						}
+					>
+						Save
+					</PvButton>
+				</div>
+			) : null}
 		</div>
-		<Bar pct={pct} />
-		<pre className="mem-gauge-body">
-			{content?.trim() ? content : <span className="mem-muted">— empty —</span>}
-		</pre>
-	</div>
-);
+	);
+};
 
 const Memory = () => {
 	const [tab, setTab] = useState("entries");
@@ -801,12 +845,10 @@ const Memory = () => {
 										. Everything else lives in the Entries tab.
 									</TabIntro>
 									<div className="mem-l1">
-										<L1Gauge
-											label="profile of the user"
+										<L1Profile
 											chars={l1?.user_context_chars ?? 0}
 											cap={l1?.user_context_cap ?? 0}
 											pct={l1?.user_context_pct ?? 0}
-											content={l1?.user_context}
 										/>
 									</div>
 								</>
