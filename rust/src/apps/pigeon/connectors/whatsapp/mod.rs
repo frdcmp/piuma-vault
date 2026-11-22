@@ -4,6 +4,11 @@
 //! Unofficial: WhatsApp's terms don't allow it, and the number can be banned; Pigeon keeps to
 //! replies, never writes first.
 //!
+//! The chat with the user's own number ("Message yourself") is where they try Pigeon: what they
+//! write there from the phone comes in as the other person's (`to_self`), and Pigeon answers it
+//! as it would anyone, by the grants and policies its person holds. What Pigeon or the Inbox sent
+//! there is stored as sent, and comes back as a copy that is dropped.
+//!
 //! In: the server posts every message a session sees to `/pigeon/webhooks/whatsapp`, signed with
 //! the shared secret and tagged with the user: theirs as items to triage, the user's own from the
 //! phone as theirs (the conversation handled), on pairing the latest of each chat as history; and
@@ -340,6 +345,12 @@ fn worded(text: &str, kinds: &[String]) -> String {
     parts.join("\n")
 }
 
+/// Whether the user wrote it in the chat with their own number: a test of Pigeon, taken as
+/// someone else's message.
+fn to_self(m: &Message) -> bool {
+    m.from_me && !m.group && handle_of_chat(&m.chat) == m.sender
+}
+
 /// What a message keeps of the one it answers (an item's `raw.answers`, as `Quoted::kept`).
 fn kept_quote(q: &Quote) -> Json {
     json!({ "id": q.id, "mine": q.from_me, "sender": q.sender, "body": worded(&q.text, &q.kinds) })
@@ -475,6 +486,7 @@ async fn store(st: &State, user: &str, connection: Option<i32>, m: &Message, tri
     if let Some(q) = &m.quoted {
         raw["answers"] = kept_quote(q);
     }
+    let mine = m.from_me && !to_self(m);
     let inc = Incoming {
         user_id: user.to_string(),
         connector: ID,
@@ -482,10 +494,10 @@ async fn store(st: &State, user: &str, connection: Option<i32>, m: &Message, tri
         thread: m.chat.clone(),
         thread_title: name.clone(),
         external_id: m.id.clone(),
-        direction: if m.from_me { Direction::Out } else { Direction::In },
-        author: if m.from_me { Author::Me } else { Author::Them },
+        direction: if mine { Direction::Out } else { Direction::In },
+        author: if mine { Author::Me } else { Author::Them },
         sender: Some(m.sender.clone()),
-        sender_name: if m.from_me { None } else { some(&m.sender_name) },
+        sender_name: if mine { None } else { some(&m.sender_name) },
         subject: None,
         body: body_of(m, &tags),
         media: media_of(user, m, at),
@@ -775,6 +787,18 @@ mod tests {
         .unwrap();
         assert_eq!(body_of(&m, &[]), "look\n[image]");
         assert!(!m.from_me && !m.group && m.mentions.is_empty() && m.quoted.is_none());
+    }
+
+    #[test]
+    fn what_the_user_writes_to_themselves_is_a_test() {
+        let m = |chat: &str, from_me: bool, group: bool| -> Message {
+            serde_json::from_value(json!({ "id": format!("{chat}/ABC"), "chat": chat, "from_me": from_me, "group": group, "sender": "+393331234567", "at": 0 })).unwrap()
+        };
+        assert!(to_self(&m("393331234567@s.whatsapp.net", true, false)));
+        // to someone else, from someone else, in a group: as it is
+        assert!(!to_self(&m("393339999999@s.whatsapp.net", true, false)));
+        assert!(!to_self(&m("393331234567@s.whatsapp.net", false, false)));
+        assert!(!to_self(&m("120363000000000000@g.us", true, true)));
     }
 
     #[test]
