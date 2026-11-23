@@ -11,6 +11,9 @@
 //!   - ✋ needs: Pigeon kept the reply and asks nothing (`needs_note`): Handled, or say what to do
 //!   - 🕊 confirm: a big change asked of Piuma (replies to auto, a merge), waiting for a tap
 //!
+//! A card is about the message that brought it (`item_id`: the conversation's newest received one
+//! when the card was made, a rule's the one it ran on); a confirmation is about none.
+//!
 //! When a round leaves cards, the phone hears of it (the vault's push): the first card rings or
 //! not by the person's alert switch (alerts), the rest are silent. News (`db_pigeon_news`) is
 //! what Pigeon did or found, nothing to decide: in the person's chat, or General.
@@ -51,6 +54,9 @@ pub struct Card {
     pub free_text: bool,
     pub buttons: Vec<Button>,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// the received message it is about (`brought`): the apps draw it beside that one
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item_id: Option<Uuid>,
     /// what the apps draw it from: an uncovered card's tool and holder, the tools a draft uses
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Json>,
@@ -131,6 +137,7 @@ fn tidy_card(rows: &[&actions::ActionRow]) -> Card {
         free_text: false,
         buttons,
         created_at: rows[0].created_at,
+        item_id: None,
         data: None,
     }
 }
@@ -205,6 +212,7 @@ fn action_card(row: &actions::ActionRow) -> Card {
             free_text: false,
             buttons: vec![button("✅ Send", "y"), button("🗑 Drop", "n")],
             created_at: row.created_at,
+            item_id: None,
             data: match (used.is_empty(), row.args.get("place").filter(|p| p.is_object()), attached(&row.args)) {
                 (true, None, files) if files.is_empty() => None,
                 (_, place, files) => Some(json!({ "used": used, "place": place, "files": files })),
@@ -225,8 +233,19 @@ fn action_card(row: &actions::ActionRow) -> Card {
         free_text: false,
         buttons: vec![button("✅ Add", "y"), button("🗑 Drop", "n")],
         created_at: row.created_at,
+        item_id: None,
         data: None,
     }
+}
+
+/// The received message a card made at `made` is about: the conversation's newest that was
+/// there by then (a round's cards are made after its messages came in).
+async fn brought(st: &State, conversation: Uuid, made: chrono::DateTime<chrono::Utc>) -> anyhow::Result<Option<Uuid>> {
+    Ok(sqlx::query_scalar("SELECT id FROM db_pigeon_items WHERE conversation_id = $1 AND direction = 'in' AND created_at <= $2 ORDER BY at DESC LIMIT 1")
+        .bind(conversation)
+        .bind(made)
+        .fetch_optional(&st.pool)
+        .await?)
 }
 
 /// What waits for the user in a conversation (None: General's, the confirmations not about one).
@@ -243,13 +262,13 @@ pub async fn list(st: &State, user: &str, conversation: Option<Uuid>) -> anyhow:
             // asked, and they don't hold it (`tell`): the 🔑 card
             if let Some(data) = options.get("uncovered") {
                 let buttons = vec![button("Answer this once", "once"), button("Allow…", "allow"), button("No", "x")];
-                out.push(Card { kind: "uncovered", id, text: format!("🔑 {question}"), draft: None, free_text: false, buttons, created_at, data: Some(data.clone()) });
+                out.push(Card { kind: "uncovered", id, text: format!("🔑 {question}"), draft: None, free_text: false, buttons, created_at, item_id: None, data: Some(data.clone()) });
                 continue;
             }
             let mut buttons: Vec<Button> =
                 options.as_array().into_iter().flatten().filter_map(|o| o.as_str()).enumerate().map(|(i, o)| button(o, &i.to_string())).collect();
             buttons.push(button("🗑 Drop", "x"));
-            out.push(Card { kind: "question", id, text: format!("❓ {question}"), draft: None, free_text: true, buttons, created_at, data: None });
+            out.push(Card { kind: "question", id, text: format!("❓ {question}"), draft: None, free_text: true, buttons, created_at, item_id: None, data: None });
         }
         let mut rows = actions::list(st, user, Some("pending"), Some(conversation), 20).await?;
         // an auto one is on its way (Pigeon is typing it): nothing to approve
@@ -260,13 +279,13 @@ pub async fn list(st: &State, user: &str, conversation: Option<Uuid>) -> anyhow:
         if !tidy.is_empty() {
             out.push(tidy_card(&tidy));
         }
-        let runs: Vec<(Uuid, i32, Json, Option<String>, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
-            "SELECT id, rule_id, steps, reason, created_at FROM db_pigeon_rule_runs WHERE conversation_id = $1 AND status = 'pending' ORDER BY created_at",
+        let runs: Vec<(Uuid, i32, Uuid, Json, Option<String>, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
+            "SELECT id, rule_id, item_id, steps, reason, created_at FROM db_pigeon_rule_runs WHERE conversation_id = $1 AND status = 'pending' ORDER BY created_at",
         )
         .bind(conversation)
         .fetch_all(&st.pool)
         .await?;
-        for (id, rule_id, steps, reason, created_at) in runs {
+        for (id, rule_id, item_id, steps, reason, created_at) in runs {
             let rule = rules::get(st, rule_id).await?.map(|r| r.name).unwrap_or_default();
             let mut text = format!("📋 rule «{rule}»");
             for step in steps.as_array().into_iter().flatten() {
@@ -275,7 +294,7 @@ pub async fn list(st: &State, user: &str, conversation: Option<Uuid>) -> anyhow:
             if let Some(r) = reason {
                 text.push_str(&format!("\nwaits: {r}"));
             }
-            out.push(Card { kind: "run", id, text, draft: None, free_text: false, buttons: vec![button("✅ Run it", "y"), button("🗑 Drop", "n")], created_at, data: None });
+            out.push(Card { kind: "run", id, text, draft: None, free_text: false, buttons: vec![button("✅ Run it", "y"), button("🗑 Drop", "n")], created_at, item_id: Some(item_id), data: None });
         }
         let needs: Option<(Option<String>, chrono::DateTime<chrono::Utc>)> =
             sqlx::query_as("SELECT needs_note, COALESCE(triaged_at, updated_at) FROM db_pigeon_conversations WHERE id = $1 AND needs_note IS NOT NULL")
@@ -284,7 +303,10 @@ pub async fn list(st: &State, user: &str, conversation: Option<Uuid>) -> anyhow:
                 .await?;
         if let Some((Some(note), at)) = needs {
             let text = if note.starts_with(URGENT) { note } else { format!("✋ {note}") };
-            out.push(Card { kind: "needs", id: conversation, text, draft: None, free_text: true, buttons: vec![button("✓ Handled", "y")], created_at: at, data: None });
+            out.push(Card { kind: "needs", id: conversation, text, draft: None, free_text: true, buttons: vec![button("✓ Handled", "y")], created_at: at, item_id: None, data: None });
+        }
+        for card in out.iter_mut().filter(|c| c.item_id.is_none()) {
+            card.item_id = brought(st, conversation, card.created_at).await?;
         }
     }
     if conversation.is_none() {
@@ -309,6 +331,7 @@ pub async fn list(st: &State, user: &str, conversation: Option<Uuid>) -> anyhow:
             free_text: false,
             buttons: vec![button("✅ Yes, do it", "y"), button("✖ Cancel", "n")],
             created_at,
+            item_id: None,
             data: None,
         });
     }
