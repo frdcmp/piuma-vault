@@ -155,7 +155,7 @@ pub async fn propose(st: &State, mut p: Proposal) -> anyhow::Result<Outcome> {
     // a reply with what the user lets Pigeon tell them on its own (`tell`: asked, held as auto,
     // read back): the permission is their yes, the same way
     let told = def.kind == Kind::Reply && p.args.get("used_auto").and_then(Json::as_bool) == Some(true);
-    let pol = if (away_reply || told) && pol != Policy::Off { Policy::Auto } else { pol };
+    let pol = if (away_reply || told) && pol != Policy::Off && !pol.alone() { Policy::Smart } else { pol };
     // off drops what Pigeon proposes on its own; a draft the user asked for still comes to them
     if pol == Policy::Off && p.hold.as_deref() != Some(super::agent::ASKED_AS_DRAFT) {
         return Ok(Outcome { id: None, status: "off".into(), detail: Some(format!("{} actions are off here", def.kind.as_str())) });
@@ -172,7 +172,7 @@ pub async fn propose(st: &State, mut p: Proposal) -> anyhow::Result<Outcome> {
     }
 
     let mut hold = p.hold.clone();
-    if pol == Policy::Auto && hold.is_none() {
+    if pol.alone() && hold.is_none() {
         // an away reply goes with Auto off (setting away is the user's yes): not with something
         // of theirs in it
         if (!away_reply || told) && !policy::auto_enabled(&st.pool, &p.user_id).await? {
@@ -193,9 +193,9 @@ pub async fn propose(st: &State, mut p: Proposal) -> anyhow::Result<Outcome> {
         }
         _ => Some(Utc::now() + chrono::Duration::days(OTHER_EXPIRES_DAYS)),
     };
-    let label = if pol == Policy::Auto && hold.is_none() { "auto" } else { "ask" };
-    let reason = match (&p.reason, &hold, pol) {
-        (r, Some(h), Policy::Auto) => Some(format!("{} (held for approval: {h})", r.clone().unwrap_or_default()).trim().to_string()),
+    let label = if pol.alone() && hold.is_none() { "auto" } else { "ask" };
+    let reason = match (&p.reason, &hold, pol.alone()) {
+        (r, Some(h), true) => Some(format!("{} (held for approval: {h})", r.clone().unwrap_or_default()).trim().to_string()),
         (r, _, _) => r.clone(),
     };
     let id: Uuid = sqlx::query_scalar(

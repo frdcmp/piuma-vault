@@ -67,6 +67,9 @@ enum Mode<'a> {
     Away { triage_id: i64, sig: &'a Signals, away: &'a Away, first: bool, known: bool, tells: &'a [Use] },
     /// The user said to tell them (a 🔑 card): the reply with these, held for them like a draft.
     Tell { uses: &'a [Use] },
+    /// Their replies are auto, and the responder's reply didn't go (`kept`: why): one that goes,
+    /// answering without deciding what's the user's; the decision is put to the user after.
+    Holding { triage_id: i64, sig: &'a Signals, kept: &'a str },
 }
 
 impl<'a> Mode<'a> {
@@ -120,6 +123,12 @@ pub async fn respond(st: &State, conversation: Uuid, triage_id: i64, sig: &Signa
 /// `replied` what became of the responder's reply, `note` what is already put to the user.
 pub async fn intake(st: &State, conversation: Uuid, triage_id: i64, sig: &Signals, held: Option<&str>, replied: Option<&str>, note: Option<&str>) -> anyhow::Result<Vec<Outcome>> {
     run(st, conversation, Mode::AfterTriage { triage_id, sig, role: Role::Intaker, held, replied, tells: &[], note }).await
+}
+
+/// Their replies are auto and the responder's reply didn't go on its own (`kept`: why): a reply
+/// that does, saying the user will let them know what's theirs to decide.
+pub async fn holding(st: &State, conversation: Uuid, triage_id: i64, sig: &Signals, kept: &str) -> anyhow::Result<Vec<Outcome>> {
+    run(st, conversation, Mode::Holding { triage_id, sig, kept }).await
 }
 
 /// The away responder after a triage: Pigeon answers them as itself while the user is away
@@ -186,6 +195,7 @@ fn offers(mode: &Mode<'_>, kind: Kind) -> bool {
         Mode::Answer { .. } => true,
         Mode::Away { .. } => kind == Kind::Reply,
         Mode::Tell { .. } => kind == Kind::Reply,
+        Mode::Holding { .. } => kind == Kind::Reply,
     }
 }
 
@@ -299,6 +309,8 @@ async fn run(st: &State, id: Uuid, mode: Mode<'_>) -> anyhow::Result<Vec<Outcome
         Mode::Draft { .. } | Mode::Tell { .. } => (None, Some(ASKED_AS_DRAFT.to_string())),
         Mode::Answer { .. } => (None, None),
         Mode::Away { triage_id, .. } => (Some(*triage_id), None),
+        // what made the first one wait is what this one leaves to the user
+        Mode::Holding { triage_id, .. } => (Some(*triage_id), None),
     };
     let mut out = Vec::new();
     // one reply a round: a second is the same answer again
@@ -633,6 +645,17 @@ fn system_prompt(me: &Owner, mode: &Mode<'_>, asking: bool, replies_off: bool, p
                 ));
             }
         }
+        Mode::Holding { .. } => {
+            s.push_str(&replying);
+            s.push_str(&format!(
+                "\n- {name} has Pigeon always answer this person: propose exactly one reply now; this comes before the rule \
+                 above that says to propose none. What is {name}'s to decide, give or tell (whether to meet, a date or time, \
+                 money, a favour, a yes or no, a plan, a fact about {name} or what only {name} knows) you neither decide nor \
+                 answer: say, briefly and the way {name} would, that {name} will let them know. No yes, no no, no promise, no \
+                 date, no guess, nothing about {name}. Answer only what needs nothing from {name} (a greeting, thanks, small \
+                 talk). Don't say why, and don't mention Pigeon or an assistant."
+            ));
+        }
         Mode::Tell { .. } => {
             s.push_str(&replying);
             s.push_str(&format!(
@@ -819,6 +842,12 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
         }
         Mode::Answer { asked, answer } => {
             s.push_str(&format!("\nPigeon asked {name}: {asked}\n{name}'s answer: {answer}\n"));
+        }
+        Mode::Holding { sig, kept, .. } => {
+            s.push_str(&format!("\nWhat is {name}'s here (why the reply waits for them): {kept}.\n"));
+            if !sig.others.is_empty() {
+                s.push_str(&format!("Also on the newest messages, and copied on a reply: {}.\n", sig.others.join(", ")));
+            }
         }
         Mode::Tell { .. } => {
             s.push_str(&format!("\n{name} asks for a reply now that answers what {them} asked, with the above.\n"));

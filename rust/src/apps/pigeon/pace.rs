@@ -74,7 +74,7 @@ async fn interrupted(st: &State, conversation: Uuid, since: DateTime<Utc>, their
     // the user paused auto replies here meanwhile (the pill): the reply waits for them instead
     if let Some(c) = crate::apps::pigeon::conversations::get(&st.pool, conversation).await? {
         let pol = crate::apps::pigeon::policy::resolve(&st.pool, &c.user_id, crate::apps::pigeon::connectors::Kind::Reply, c.contact_id, Some(c.id)).await?;
-        if pol != crate::apps::pigeon::policy::Policy::Auto {
+        if !pol.alone() {
             return Ok(Some(PAUSED));
         }
     }

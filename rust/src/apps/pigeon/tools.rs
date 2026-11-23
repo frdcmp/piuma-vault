@@ -275,15 +275,15 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
         ),
         (
             "pigeon_policies",
-            "Every Inbox policy (off, ask, auto per kind of action: reply, record, organize; default, per contact, per conversation) and whether auto is switched on.",
+            "Every Inbox policy (off, ask, smart, auto per kind of action: reply, record, organize; default, per contact, per conversation) and whether auto is switched on. For replies, smart answers on its own only when nothing is the user's to decide, auto always answers (without deciding, and puts the decision to the user after).",
             json!({ "type": "object", "properties": {} }),
         ),
         (
             "pigeon_set_policy",
-            "Set off, ask or auto for a kind of Inbox action (reply, record, organize): the default, or for one contact or conversation (the most specific wins). `inherit` removes a contact's or conversation's own. Only set auto when the user asks for it; auto needs their tap in the Inbox.",
+            "Set off, ask, smart (replies only) or auto for a kind of Inbox action (reply, record, organize): the default, or for one contact or conversation (the most specific wins). For replies, smart answers on its own only when nothing is the user's to decide; auto always answers, without deciding, and puts the decision to the user after. `inherit` removes a contact's or conversation's own. Only set smart or auto when the user asks for it; both need their tap in the Inbox.",
             json!({ "type": "object", "properties": {
                 "kind": { "type": "string", "enum": ["reply", "record", "organize"] },
-                "policy": { "type": "string", "enum": ["off", "ask", "auto", "inherit"] },
+                "policy": { "type": "string", "enum": ["off", "ask", "smart", "auto", "inherit"] },
                 "contact_id": id("For this person"),
                 "conversation_id": id("For this conversation"),
             }, "required": ["kind", "policy"] }),
@@ -1007,8 +1007,8 @@ async fn question_owner(st: &State, id: Uuid) -> anyhow::Result<Option<String>> 
 /// A policy's arguments: the kind, the policy (None: inherit), and its scope.
 pub async fn policy_args(st: &State, user: &str, args: &Json) -> anyhow::Result<(Kind, Option<Policy>, &'static str, String)> {
     let kind = text(args, "kind").and_then(Kind::parse).ok_or_else(|| anyhow::anyhow!("kind: reply, record or organize"))?;
-    let pol = text(args, "policy").ok_or_else(|| anyhow::anyhow!("policy: off, ask, auto or inherit"))?;
-    let pol = if pol == "inherit" { None } else { Some(Policy::parse(pol).ok_or_else(|| anyhow::anyhow!("policy: off, ask, auto or inherit"))?) };
+    let pol = text(args, "policy").ok_or_else(|| anyhow::anyhow!("policy: off, ask, smart, auto or inherit"))?;
+    let pol = if pol == "inherit" { None } else { Some(Policy::parse(pol).ok_or_else(|| anyhow::anyhow!("policy: off, ask, smart, auto or inherit"))?) };
     let (scope, scope_id) = match (opt_uuid(args, "conversation_id")?, opt_uuid(args, "contact_id")?) {
         (Some(c), _) => {
             own_conversation(st, user, c).await?;

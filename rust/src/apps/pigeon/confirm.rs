@@ -34,13 +34,14 @@ pub async fn needs_tap(st: &State, user: &str, tool: &str, args: &Json) -> anyho
         }
         "pigeon_set_policy" => {
             let (kind, pol, scope, scope_id) = tools::policy_args(st, user, args).await?;
-            if pol != Some(Policy::Auto) {
+            if !pol.is_some_and(Policy::alone) {
                 return Ok(None);
             }
-            let what = match kind {
-                Kind::Reply => "answer on its own",
-                Kind::Record => "add tasks and events on its own",
-                Kind::Organize => "tidy the mail on its own",
+            let what = match (kind, pol) {
+                (Kind::Reply, Some(Policy::Auto)) => "always answer, without deciding for you what's yours,",
+                (Kind::Reply, _) => "answer on its own when there's nothing for you to decide",
+                (Kind::Record, _) => "add tasks and events on its own",
+                (Kind::Organize, _) => "tidy the mail on its own",
             };
             match scope {
                 "conversation" => {

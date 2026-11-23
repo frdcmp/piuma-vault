@@ -356,7 +356,8 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
     // the user is writing there: Pigeon doesn't answer, and comes back when they stop (below)
     let paused = actions::quiet_until(st, id).await?;
     // with their replies off the user answers them: the intaker only for something to do
-    let replies_off = policy::resolve(&st.pool, &conv.user_id, crate::apps::pigeon::connectors::Kind::Reply, conv.contact_id, Some(id)).await? == policy::Policy::Off;
+    let replies = policy::resolve(&st.pool, &conv.user_id, crate::apps::pigeon::connectors::Kind::Reply, conv.contact_id, Some(id)).await?;
+    let replies_off = replies == policy::Policy::Off;
     // what they ask for that the user lets Pigeon tell (`tell`): the responder answers with what
     // they hold; what they don't hold goes to the user as a 🔑 card. Not when the user answers
     // them themselves, is writing there, or they doubt who writes
@@ -395,6 +396,38 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
         log::info!("triage {id}: the auto reply stopped, {}", outcomes[0].detail.as_deref().unwrap_or_default());
         return Ok("stopped");
     }
+    // auto: they always get a reply. What smart keeps for the user (Jev's gate, a reply held, or
+    // none written) is answered without deciding, and the decision goes to the user after. Not
+    // when they doubt who writes, others are on it, or the user is writing there
+    let mut holding_note = None;
+    if replies == policy::Policy::Auto
+        && policy::auto_enabled(&st.pool, &conv.user_id).await?
+        && away.is_none()
+        && attention == Some("reply")
+        && paused.is_none()
+        && held != Some(DOUBTS)
+        && sig.others.is_empty()
+        && replied.as_deref() != Some("done")
+    {
+        let kept = match (held, replied.as_deref()) {
+            (Some(_), _) => format!("only {} can decide or answer what they ask", owner.name),
+            (None, Some("pending")) => format!("the reply Pigeon wrote waits for {}'s yes, as a card", owner.name),
+            _ => format!("what they ask is {}'s to decide or answer", owner.name),
+        };
+        for o in agent::holding(st, id, triage_id, &sig, &kept).await? {
+            match (o.status.as_str(), o.id) {
+                ("done", _) => holding_note = Some(format!(
+                    "Pigeon answered them without deciding (its message above: {} will let them know). Ask {} what only they can decide or tell, unless a reply waiting for them already does.",
+                    owner.name, owner.name
+                )),
+                // held (the hourly limit, the user writing): a vague reply is nobody's to approve
+                ("pending", Some(a)) => {
+                    actions::drop(st, a, "pigeon", Some("auto: the holding reply couldn't go")).await?;
+                }
+                _ => {}
+            }
+        }
+    }
     let answered = matches!(replied.as_deref(), Some("done" | "pending"));
     // answered with the user's leave: nothing was kept for them
     let held = if answered && with_leave { None } else { held };
@@ -420,14 +453,17 @@ async fn triage_inner(st: &State, id: Uuid) -> anyhow::Result<&'static str> {
         cards::news(st, &conv.user_id, Some(id), &tell::unknown(tool, &them), None, false).await;
         put.push(format!("Pigeon already told {} that they ask {} and that it knows nothing to tell them: don't ask about that.", owner.name, tell::gives(tool, &owner.name)));
     }
+    put.extend(holding_note.clone());
     let put = (!put.is_empty()).then(|| put.join("\n"));
     let intake = if paused.is_some() || replies_off {
         sig.actionable >= ACTION_AT
     } else {
-        !answered || attention == Some("action") || sig.actionable >= ACTION_AT
+        !answered || holding_note.is_some() || attention == Some("action") || sig.actionable >= ACTION_AT
     };
     if intake {
-        outcomes.extend(agent::intake(st, id, triage_id, &sig, held, replied.as_deref(), put.as_deref()).await?);
+        // answered without deciding: Pigeon replied, and the intaker asks the user (`put`)
+        let (held, replied) = if holding_note.is_some() { (None, Some("done")) } else { (held, replied.as_deref()) };
+        outcomes.extend(agent::intake(st, id, triage_id, &sig, held, replied, put.as_deref()).await?);
     }
     if let Some(until) = paused {
         // not triaged yet: once the user stopped writing, the round runs again on what they left

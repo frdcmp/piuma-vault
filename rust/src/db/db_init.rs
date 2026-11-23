@@ -1306,8 +1306,9 @@ const TABLES: &[TableDefinition] = &[
             "CREATE INDEX IF NOT EXISTS idx_pigeon_actions_conversation ON db_pigeon_actions (conversation_id)",
         ],
     },
-    // off / ask / auto per kind of action: the user's default, then per contact,
-    // then per conversation (the most specific wins). scope_id is '' for the default.
+    // off / ask / smart / auto per kind of action (smart: replies only): the user's default,
+    // then per contact, then per conversation (the most specific wins). scope_id is '' for the
+    // default.
     TableDefinition {
         name: "db_pigeon_policies",
         sql: r#"
@@ -1316,7 +1317,7 @@ const TABLES: &[TableDefinition] = &[
                 scope TEXT NOT NULL CHECK (scope IN ('default', 'contact', 'conversation')),
                 scope_id TEXT NOT NULL DEFAULT '',
                 kind TEXT NOT NULL CHECK (kind IN ('reply', 'record', 'organize')),
-                policy TEXT NOT NULL CHECK (policy IN ('off', 'ask', 'auto')),
+                policy TEXT NOT NULL CHECK (policy IN ('off', 'ask', 'smart', 'auto')),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 PRIMARY KEY (user_id, scope, scope_id, kind)
             )

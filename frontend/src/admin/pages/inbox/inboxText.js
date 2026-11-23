@@ -12,12 +12,23 @@ export const CHANNELS = {
 export const channelLabel = (id) => CHANNELS[id]?.label ?? id;
 export const channelTone = (id) => CHANNELS[id]?.tone ?? "muted";
 
-// What Pigeon may do on its own: a policy.
+// What Pigeon may do on its own: a policy (recording, organizing).
 export const POLICY_OPTIONS = [
 	{ value: "off", label: "Off" },
 	{ value: "ask", label: "Ask" },
 	{ value: "auto", label: "Auto" },
 ];
+
+// Replies: smart answers on its own when there's nothing to decide, auto always.
+export const REPLY_OPTIONS = [
+	{ value: "off", label: "Off" },
+	{ value: "ask", label: "Ask" },
+	{ value: "smart", label: "Smart" },
+	{ value: "auto", label: "Auto" },
+];
+
+// Replies that go on their own (the pill in a chat's bar).
+export const ON_ITS_OWN = ["smart", "auto"];
 
 // How a new message reaches the phone.
 export const ALERT_OPTIONS = [
@@ -225,8 +236,12 @@ export const SWITCH_INFO = {
 				text: "When a reply is due, Pigeon writes it and leaves it as a card. Nothing goes out until you press Send; you can change it or drop it.",
 			},
 			{
+				label: "Smart",
+				text: "Pigeon sends a reply itself when there's nothing in it for you to decide. Anything else (a plan, money, a yes or no, something only you know) waits for you as a card.",
+			},
+			{
 				label: "Auto",
-				text: "Pigeon sends its replies itself and tells you in the chat. A reply it isn't sure of still waits for you as a card, and with Auto switched off in Settings it always asks.",
+				text: "They always get a reply, like from a personal assistant. What's yours to decide, Pigeon doesn't: it answers that you'll let them know, then gives you a card to decide (a draft, a question, a task or an event to confirm). When they ask if it's really you, it still waits for you. With Auto switched off in Settings, Smart and Auto ask instead.",
 			},
 		],
 	},

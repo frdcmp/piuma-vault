@@ -1,6 +1,16 @@
 //! off / ask / auto per kind of action, per user. The most specific scope wins: the conversation,
 //! then the contact, then the user's default (`ask` when they set none). `auto_enabled` is the one
-//! switch that turns every auto into ask at once (on unless they switched it off).
+//! switch that turns every smart and auto into ask at once (on unless they switched it off).
+//!
+//! Replies have two ways of going on their own:
+//!
+//!   - smart  a reply goes when nothing in it is the user's to decide, tell or confirm (Jev's
+//!            gates, `tell`, `agent`); anything else waits for them as a card
+//!   - auto   they always get a reply: what smart would keep for the user, Pigeon answers
+//!            without deciding (it'll let them know), and the decision comes to the user as a
+//!            card after (`agent::holding`). Never when they doubt who writes: that's the user's
+//!
+//! Recording and organizing have one: auto.
 
 use serde_json::Value as Json;
 use uuid::Uuid;
@@ -12,6 +22,8 @@ use crate::db::db::DbPool;
 pub enum Policy {
     Off,
     Ask,
+    /// replies only
+    Smart,
     Auto,
 }
 
@@ -20,6 +32,7 @@ impl Policy {
         match self {
             Policy::Off => "off",
             Policy::Ask => "ask",
+            Policy::Smart => "smart",
             Policy::Auto => "auto",
         }
     }
@@ -28,9 +41,15 @@ impl Policy {
         match s {
             "off" => Some(Policy::Off),
             "ask" => Some(Policy::Ask),
+            "smart" => Some(Policy::Smart),
             "auto" => Some(Policy::Auto),
             _ => None,
         }
+    }
+
+    /// What Pigeon proposes may go on its own (smart or auto), unless something holds it.
+    pub fn alone(self) -> bool {
+        matches!(self, Policy::Smart | Policy::Auto)
     }
 }
 
@@ -71,6 +90,9 @@ pub async fn set_auto_enabled(pool: &DbPool, user: &str, on: bool) -> anyhow::Re
 
 /// Set one; `None` removes a contact or conversation override (back to the wider scope).
 pub async fn set(pool: &DbPool, user: &str, scope: &str, scope_id: &str, kind: Kind, policy: Option<Policy>) -> anyhow::Result<()> {
+    if policy == Some(Policy::Smart) && kind != Kind::Reply {
+        anyhow::bail!("smart is for replies: {} is off, ask or auto", kind.as_str());
+    }
     match policy {
         Some(p) => {
             sqlx::query(
@@ -120,4 +142,19 @@ pub async fn list(pool: &DbPool, user: &str) -> anyhow::Result<Vec<(String, Stri
         .bind(user)
         .fetch_all(pool)
         .await?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn smart_and_auto_go_on_their_own() {
+        for p in [Policy::Off, Policy::Ask, Policy::Smart, Policy::Auto] {
+            assert_eq!(Policy::parse(p.as_str()), Some(p));
+        }
+        assert!(Policy::Smart.alone() && Policy::Auto.alone());
+        assert!(!Policy::Ask.alone() && !Policy::Off.alone());
+        assert_eq!(Policy::parse("always"), None);
+    }
 }

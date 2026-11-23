@@ -40,6 +40,7 @@ import {
 	channelLabel,
 	errorText,
 	POLICY_OPTIONS,
+	REPLY_OPTIONS,
 } from "./inboxText";
 import SwitchInfo from "./SwitchInfo";
 
@@ -271,7 +272,7 @@ export default function InboxSettings() {
 				>
 					<PvSegmented
 						size="sm"
-						options={POLICY_OPTIONS}
+						options={REPLY_OPTIONS}
 						value={s.defaults?.reply}
 						onChange={(v) => set({ reply: v })}
 					/>

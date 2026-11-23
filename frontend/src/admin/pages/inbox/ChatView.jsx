@@ -63,9 +63,10 @@ import {
 	mediaFiles,
 	mediaLinks,
 	mediaWords,
-	POLICY_OPTIONS,
+	ON_ITS_OWN,
 	placePoint,
 	placeUrl,
+	REPLY_OPTIONS,
 	reactionGroups,
 	senderLabel,
 	tagParts,
@@ -82,12 +83,22 @@ import Working from "./Working";
 // What the channels take in one file (the vault's limit too).
 const MAX_SEND_BYTES = 95 * 1024 * 1024;
 
-// Auto replies in a chat's bar, as on the phone: the word is their state, the
-// icon what a click does.
-//   AUTO ⏸   they answer here; pauses them (the chat's replies to ask)
+// Replies on their own in a chat's bar, as on the phone: the word is their
+// state, the icon what a click does. `mode`: smart or auto, what answers here
+// (or what was paused).
+//   AUTO ⏸   they answer here (SMART for smart); pauses them (the chat's
+//            replies to ask)
 //   PAUSED ▶ you paused them; puts auto back
 //   11:25 ▶  paused a while because you wrote here (`until`); back now
-function AutoPill({ until, off, onPause, onPlay, onResume, busy }) {
+function AutoPill({
+	mode = "auto",
+	until,
+	off,
+	onPause,
+	onPlay,
+	onResume,
+	busy,
+}) {
 	const [, tick] = useState(0);
 	// the timed pause ends without a refetch
 	useEffect(() => {
@@ -116,8 +127,8 @@ function AutoPill({ until, off, onPause, onPlay, onResume, busy }) {
 			: {
 					tone: "is-auto",
 					icon: <PauseOutlined />,
-					word: "AUTO",
-					label: "Auto replies on: pause them",
+					word: mode.toUpperCase(),
+					label: `${mode === "smart" ? "Smart" : "Auto"} replies on: pause them`,
 					onClick: onPause,
 				};
 	return (
@@ -390,14 +401,14 @@ function Switches({ switches, onSave, scope }) {
 				}
 				as="div"
 				hint={
-					reply === "auto" && !switches.auto_enabled
+					ON_ITS_OWN.includes(reply) && !switches.auto_enabled
 						? "Auto is switched off in the Inbox's settings: it asks instead."
 						: undefined
 				}
 			>
 				<PvSegmented
 					size="sm"
-					options={withInherit(POLICY_OPTIONS, switches.reply)}
+					options={withInherit(REPLY_OPTIONS, switches.reply)}
 					value={reply}
 					onChange={(v) => onSave({ reply: v })}
 				/>
@@ -468,6 +479,8 @@ export default function ChatView({ id, person }) {
 	const [text, setText] = useState("");
 	const [showSummary, setShowSummary] = useState(false);
 	const [switchesOpen, setSwitchesOpen] = useState(false);
+	// what the pill paused: smart or auto, back on play
+	const [pausedFrom, setPausedFrom] = useState(null);
 	const switchesRef = useRef(null);
 	const scrollRef = useRef(null);
 	const stickRef = useRef(true);
@@ -611,8 +624,9 @@ export default function ChatView({ id, person }) {
 	};
 
 	const sw = data.switches ?? {};
-	// auto replies answer this chat (the pill shows them, paused or on)
-	const autoOn = (sw.reply_own ?? sw.reply) === "auto" && sw.auto_enabled;
+	// replies go on their own here, smart or auto (the pill shows them, paused or on)
+	const replies = sw.reply_own ?? sw.reply;
+	const autoOn = ON_ITS_OWN.includes(replies) && sw.auto_enabled;
 	// paused from the pill: this chat's replies set to ask
 	const pausedByMe = sw.reply_own === "ask" && sw.auto_enabled;
 	const setSwitch = (patch) =>
@@ -696,10 +710,15 @@ export default function ChatView({ id, person }) {
 					</span>
 					{autoOn || pausedByMe ? (
 						<AutoPill
+							mode={autoOn ? replies : (pausedFrom ?? "smart")}
 							until={sw.auto_paused_until}
 							off={pausedByMe}
-							onPause={() => setSwitch({ reply: "ask" })}
-							onPlay={() => setSwitch({ reply: "auto" })}
+							onPause={() => {
+								setPausedFrom(replies);
+								setSwitch({ reply: "ask" });
+							}}
+							// back to what was paused (smart when the chat opened paused)
+							onPlay={() => setSwitch({ reply: pausedFrom ?? "smart" })}
 							onResume={onResume}
 							busy={
 								resume.isPending ||

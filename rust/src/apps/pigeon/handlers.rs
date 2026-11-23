@@ -519,7 +519,7 @@ pub async fn summary(st: web::Data<AppState>, u: InboxReader, path: web::Path<Uu
     reply(r)
 }
 
-/// A switch: a policy (off / ask / auto / inherit) or an alert level (all / smart / quiet / off /
+/// A switch: a policy (off / ask / smart / auto / inherit) or an alert level (all / smart / quiet / off /
 /// inherit), set by the user's own tap.
 #[derive(Deserialize)]
 pub struct Switches {
@@ -534,7 +534,7 @@ async fn set_switches(st: &AppState, user: &str, contact: Option<Uuid>, conversa
         (None, None) => ("default", String::new()),
     };
     if let Some(p) = s.reply.as_deref() {
-        let pol = if p == "inherit" { None } else { Some(Policy::parse(p).ok_or_else(|| anyhow::anyhow!("reply: off, ask, auto or inherit"))?) };
+        let pol = if p == "inherit" { None } else { Some(Policy::parse(p).ok_or_else(|| anyhow::anyhow!("reply: off, ask, smart, auto or inherit"))?) };
         tools::set_policy(st, user, Kind::Reply, pol, scope, &scope_id).await?;
     }
     if let Some(l) = s.alerts.as_deref() {
@@ -1074,7 +1074,7 @@ pub async fn set_settings(st: web::Data<AppState>, u: InboxWriter, body: web::Js
         }
         for (k, v) in [(Kind::Reply, &body.reply), (Kind::Record, &body.record), (Kind::Organize, &body.organize)] {
             if let Some(p) = v.as_deref() {
-                let pol = Policy::parse(p).ok_or_else(|| anyhow::anyhow!("{}: off, ask or auto", k.as_str()))?;
+                let pol = Policy::parse(p).ok_or_else(|| anyhow::anyhow!("{}: off, ask, smart or auto", k.as_str()))?;
                 tools::set_policy(&st, user, k, Some(pol), "default", "").await?;
             }
         }

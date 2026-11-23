@@ -36,7 +36,7 @@ import {
 	channelLabel,
 	errorText,
 	initials,
-	POLICY_OPTIONS,
+	REPLY_OPTIONS,
 	withInherit,
 } from "./inboxText";
 import SwitchInfo from "./SwitchInfo";
@@ -323,7 +323,7 @@ function ContactDrawer({ id, people, onClose, onOpen }) {
 					>
 						<PvSegmented
 							size="sm"
-							options={withInherit(POLICY_OPTIONS, defaults.reply ?? "ask")}
+							options={withInherit(REPLY_OPTIONS, defaults.reply ?? "ask")}
 							value={c.replies_own ?? "inherit"}
 							onChange={(v) =>
 								switches.mutate({ id, reply: v }, { onError: fail })
