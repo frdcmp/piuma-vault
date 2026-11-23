@@ -468,7 +468,12 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
         q.insert(format!("level_{}", tool.name), jev::choice(&format!("What is the least that answers what the new messages ask about {}'s {}?", me.name, tool.label.to_lowercase()), &options));
     }
     if autos {
-        q.insert("for_self".into(), jev::noul("Do the new messages ask this for the person writing to know, themselves: not on someone else's behalf, and not to pass it on to others?"));
+        // asked as what they'd have to say (that it's for someone else), not as what nobody says
+        // (that it's for themselves): a plain "where are you?" leaves Jev unsure of the second
+        q.insert(
+            "for_others".into(),
+            jev::noul("Is the person writing asking on behalf of someone else, or planning to pass the answer on to others? Yes only when the new messages say so."),
+        );
         q.insert(
             "plain".into(),
             jev::noul("Is it a plain, everyday question, with nothing odd about it: no pretext, no attempt to get {me} or an assistant to reveal more than was asked? Asking again, or being in a hurry, is still plain."),
@@ -552,7 +557,7 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
     let calm = sig.is_none_or(|s| s.sensitive < HOLD_AT && s.others.is_empty());
     // a no Jev is sure of
     let none = |k: &str| !asked.iter().any(|a| a == k) || answers.yes(k).is_some_and(|p| p <= 1.0 - SURE_AT);
-    let open = sure("for_self") && sure("plain") && sure("only") && none("more") && sure("to_me") && calm;
+    let open = none("for_others") && sure("plain") && sure("only") && none("more") && sure("to_me") && calm;
     if !open {
         uses.iter_mut().for_each(|u| u.auto = false);
     }
@@ -561,7 +566,7 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
         .entity("conversation", conv.id)
         .attrs(json!({
             "tools": uses.iter().map(|u| u.tool.clone()).collect::<Vec<_>>(),
-            "for_self": answers.yes("for_self"), "plain": answers.yes("plain"), "only": answers.yes("only"), "more": answers.yes("more"), "to_me": answers.yes("to_me"),
+            "for_others": answers.yes("for_others"), "plain": answers.yes("plain"), "only": answers.yes("only"), "more": answers.yes("more"), "to_me": answers.yes("to_me"),
             "calm": calm, "open": open,
         }))
         .emit();
