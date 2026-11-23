@@ -246,10 +246,17 @@ pub fn transcript(items: &[Item], them: &str, me: (&str, &[String]), max_body: u
     out
 }
 
-/// A message's words as a model reads them: a voice note's words in place of "[voice message]".
+/// A message's words as a model reads them: a voice note's words in place of "[voice message]",
+/// a shared post's or reel's caption in place of "[ig_post]" or "[ig_reel]".
 pub fn said(it: &Item) -> String {
     let mut body = it.body.clone();
     for m in it.media.as_array().into_iter().flatten() {
+        if let Some((kind, caption)) = shared(m) {
+            let tag = format!("[{}]", m["type"].as_str().unwrap_or_default());
+            let seen = format!("[{kind}: \"{caption}\"]");
+            body = if body.contains(&tag) { body.replacen(&tag, &seen, 1) } else { format!("{body}\n{seen}").trim().to_string() };
+            continue;
+        }
         let Some(words) = m["transcript"].as_str().map(str::trim).filter(|w| !w.is_empty()) else { continue };
         let label = m["label"].as_str().unwrap_or("voice message");
         let heard = format!("[{label}: \"{words}\"]");
@@ -258,6 +265,20 @@ pub fn said(it: &Item) -> String {
     }
     body
 }
+
+/// A shared Instagram post or reel: what it is and its caption (clipped), if it has one.
+fn shared(m: &Json) -> Option<(&'static str, String)> {
+    let kind = match m["type"].as_str()? {
+        "ig_post" => "shared post",
+        "ig_reel" => "shared reel",
+        _ => return None,
+    };
+    let caption = m["payload"]["title"].as_str().map(str::trim).filter(|c| !c.is_empty())?;
+    Some((kind, clip(caption, CAPTION_CHARS)))
+}
+
+/// How much of a shared post's caption a transcript shows.
+const CAPTION_CHARS: usize = 800;
 
 /// The message a reply answers, as the transcript shows it: ` (replying to Anna: "at 8?")`.
 fn answering(it: &Item, them: &str, me: &str) -> String {
@@ -341,6 +362,16 @@ mod tests {
             t,
             "[2026-11-01 14:05 UTC] Marco <marco@example.com> (to: luca@example.com, Alex; cc: boss@example.com): Can you two sort it out?\n"
         );
+    }
+
+    #[test]
+    fn a_shared_post_shows_its_caption() {
+        let mut post = item("me", None, "[ig_post]");
+        post.media = serde_json::json!([{ "type": "ig_post", "payload": { "url": "https://x/y", "title": "A fight\n\noutside a hotel" } }]);
+        assert_eq!(said(&post), "[shared post: \"A fight outside a hotel\"]");
+        let mut reel = item("them", None, "look\n[ig_reel]");
+        reel.media = serde_json::json!([{ "type": "ig_reel", "payload": { "url": "https://x/y", "title": "" } }]);
+        assert_eq!(said(&reel), "look\n[ig_reel]", "no caption, as it came");
     }
 
     #[test]
