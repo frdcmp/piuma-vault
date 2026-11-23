@@ -38,20 +38,27 @@ export const stopRecording = async (id) => {
 	return data;
 };
 
+// How long a summary may take: a long meeting's is minutes.
+const SUMMARY_TIMEOUT_MS = 5 * 60 * 1000;
+
 // Run the deferred summary on a saved ('ready') transcript → creates/refreshes
 // the vault note and flips the session to 'done'.
 export const summariseRecording = async (id) => {
 	const { data } = await axiosInstance.post(
 		`/recorder/sessions/${id}/summarise`,
+		undefined,
+		{ timeout: SUMMARY_TIMEOUT_MS },
 	);
 	return data;
 };
 
 // Merge this session's transcript into `targetId` and re-summarise the target.
 export const appendRecording = async ({ id, targetId }) => {
-	const { data } = await axiosInstance.post(`/recorder/sessions/${id}/append`, {
-		target_id: targetId,
-	});
+	const { data } = await axiosInstance.post(
+		`/recorder/sessions/${id}/append`,
+		{ target_id: targetId },
+		{ timeout: SUMMARY_TIMEOUT_MS },
+	);
 	return data;
 };
 

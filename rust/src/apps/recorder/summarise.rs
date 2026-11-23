@@ -20,8 +20,10 @@ transcript; do not invent decisions or names. Reply with ONLY the markdown \
 body — no preamble, no code fences. Use the transcript's language.";
 
 // Budget must cover the default model's reasoning tokens too (it's a reasoning
-// model), or `content` comes back empty. Generous cap for a full summary.
-const MAX_TOKENS: u32 = 4096;
+// model), or `content` comes back empty, and a long meeting's summary: 4096 cut a
+// 108-minute one off mid-sentence. A model that refuses a cap this big gets the
+// next one down.
+const MAX_TOKENS: [u32; 3] = [16384, 8192, 4096];
 
 const TITLE_SYSTEM: &str = "You generate a short title for a voice recording \
 from its summary. Reply with ONLY the title: 3-6 words, no quotes, no trailing \
@@ -280,15 +282,23 @@ async fn summarise(pool: &DbPool, transcript: &str) -> Result<String, String> {
         serde_json::json!({ "role": "user", "content": format!("Transcript:\n\n{transcript}") }),
     ];
 
-    let (raw, tokens_in, tokens_out) = providers::complete_usage(
-        &provider.kind,
-        &provider.api_key,
-        provider.base_url.as_deref(),
-        &model.model_id,
-        &messages,
-        MAX_TOKENS,
-    )
-    .await?;
+    let mut answer = Err("no summary".to_string());
+    for (n, max) in MAX_TOKENS.iter().enumerate() {
+        answer = providers::complete_usage(
+            &provider.kind,
+            &provider.api_key,
+            provider.base_url.as_deref(),
+            &model.model_id,
+            &messages,
+            *max,
+        )
+        .await;
+        match &answer {
+            Err(e) if n + 1 < MAX_TOKENS.len() => log::warn!("recorder summary with {max} tokens: {e}; trying fewer"),
+            _ => break,
+        }
+    }
+    let (raw, tokens_in, tokens_out) = answer?;
 
     // Log the spend to the same ledger the chat path uses (admin → Token Usage),
     // tagged source='recorder:summary' (mirrors the `embedding:*` namespacing).
