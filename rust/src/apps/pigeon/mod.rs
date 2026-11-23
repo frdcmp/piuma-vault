@@ -64,6 +64,7 @@ pub mod people;
 pub mod policy;
 pub mod routes;
 pub mod rules;
+pub mod see;
 pub mod shared;
 pub mod sign;
 pub mod slugs;

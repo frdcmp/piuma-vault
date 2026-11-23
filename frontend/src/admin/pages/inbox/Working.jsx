@@ -19,12 +19,16 @@ const WORD_MS = 6000;
 
 const STEPS = {
 	listening: "Pigeon is listening to the voice note",
+	looking: "Pigeon is looking at the photo",
 	reading: "Pigeon is reading",
 	analysing: "Pigeon is analysing",
 	deciding: "Pigeon is deciding",
 	typing: "Pigeon is typing",
 	waiting: "You're writing here: Pigeon answers in",
 };
+// Steps whose end is how long Pigeon waits at most, not when it's done: no
+// countdown.
+const WAITS_AT_MOST = ["listening", "looking"];
 const WORDS = {
 	nothing: "Pigeon read it: nothing to answer",
 	paused: "You're writing here: Pigeon stays out",
@@ -68,9 +72,10 @@ export default function Working({ threads, seed, on }) {
 		if (end ? now - end <= LATE_MS : age <= STALE_MS) {
 			const left = end ? Math.ceil((end - now) / 1000) : 0;
 			const dots = ".".repeat(1 + (Math.floor(now / 500) % 3));
-			// listening's end is how long it waits at most, not when it's done
 			const when =
-				left > 0 && latest.stage !== "listening" ? ` ${clock(left)}` : "";
+				left > 0 && !WAITS_AT_MOST.includes(latest.stage)
+					? ` ${clock(left)}`
+					: "";
 			text =
 				latest.stage === "waiting"
 					? `${STEPS.waiting} ${clock(left)}`

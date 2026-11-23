@@ -90,6 +90,21 @@ function Words({ file }) {
 	return <div className="inbox-media-words">{file.transcript}</div>;
 }
 
+// What a photo shows, as Pigeon saw it (it reads this instead of "[image]");
+// "looking" while it's at it.
+function Seen({ file }) {
+	if (file.seen_status === "looking")
+		return (
+			<div className="inbox-media-words is-listening">Pigeon is looking…</div>
+		);
+	if (!file.seen) return null;
+	return (
+		<div className="inbox-media-words inbox-media-seen" title="What Pigeon saw">
+			{file.seen}
+		</div>
+	);
+}
+
 // A photo in its bubble; a click shows it full size (Escape or a click outside
 // closes it).
 function Photo({ file }) {
@@ -132,7 +147,12 @@ function File({ file }) {
 	switch (file.kind) {
 		case "image":
 		case "sticker":
-			return <Photo file={file} />;
+			return (
+				<div className="inbox-media-photo">
+					<Photo file={file} />
+					<Seen file={file} />
+				</div>
+			);
 		case "video":
 			return (
 				// biome-ignore lint/a11y/useMediaCaption: their video, as it came: no captions to give

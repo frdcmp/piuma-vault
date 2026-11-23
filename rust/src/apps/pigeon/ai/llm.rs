@@ -21,6 +21,10 @@ pub const MODEL_SETTING: &str = "pigeon_model_id";
 /// `MODEL_SETTING`'s.
 pub const REPLY_MODEL_SETTING: &str = "pigeon_reply_model_id";
 
+/// The model that looks at the images in chats (`see`); unset: Pigeon's own (`MODEL_SETTING`'s,
+/// else the default), when it sees images.
+pub const VISION_MODEL_SETTING: &str = "pigeon_vision_model_id";
+
 /// What a model call writes: a reply as the user, or the rest (tasks, summaries, what Pigeon
 /// learns about people).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -81,6 +85,39 @@ async fn resolve_for(pool: &DbPool, writer: Writer) -> anyhow::Result<Resolved> 
         anyhow::bail!("provider kind '{}' is not supported", provider.kind);
     }
     Ok(Resolved { kind: provider.kind, api_key: provider.api_key, base_url: provider.base_url, model: model.model_id })
+}
+
+/// The model that looks at images: the one picked for it, else Pigeon's own; None: neither sees.
+async fn resolve_eyes(pool: &DbPool) -> anyhow::Result<Option<Resolved>> {
+    let picked: Option<Uuid> = match store::get(pool, VISION_MODEL_SETTING).await.and_then(|v| v.parse().ok()) {
+        Some(m) => Some(m),
+        None => store::get(pool, MODEL_SETTING).await.and_then(|v| v.parse().ok()),
+    };
+    let model: Option<ModelRow> = match picked {
+        Some(id) => sqlx::query_as("SELECT * FROM db_llm_models WHERE id = $1 AND enabled").bind(id).fetch_optional(pool).await?,
+        None => sqlx::query_as("SELECT * FROM db_llm_models WHERE is_default AND enabled LIMIT 1").fetch_optional(pool).await?,
+    };
+    let Some(model) = model.filter(|m| m.supports_vision) else { return Ok(None) };
+    let provider: Option<ProviderRow> = sqlx::query_as("SELECT * FROM db_llm_providers WHERE id = $1").bind(model.provider_id).fetch_optional(pool).await?;
+    Ok(provider
+        .filter(|p| providers::supported(&p.kind))
+        .map(|p| Resolved { kind: p.kind, api_key: p.api_key, base_url: p.base_url, model: model.model_id }))
+}
+
+/// Whether a model is there to look at images with.
+pub async fn can_see(pool: &DbPool) -> bool {
+    matches!(resolve_eyes(pool).await, Ok(Some(_)))
+}
+
+/// What an image shows (`image`: a `data:` URL), in the model's words: `system` says how to tell
+/// it, `about` what it is.
+pub async fn look(pool: &DbPool, system: &str, about: &str, image: &str) -> anyhow::Result<String> {
+    let r = resolve_eyes(pool).await?.ok_or_else(|| anyhow::anyhow!("no model that sees images"))?;
+    let messages = [
+        json!({ "role": "system", "content": system }),
+        json!({ "role": "user", "content": [{ "type": "text", "text": about }, { "type": "image", "url": image }] }),
+    ];
+    Ok(call(pool, &r, &messages, &[], "pigeon", "see").await?.text.trim().to_string())
 }
 
 /// One turn: a system prompt, the user's message, the tools (OpenAI function tools: `{type:

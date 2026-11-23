@@ -13,7 +13,8 @@
 //! Every file is fetched right after its message is stored (`fetch_soon`); what didn't make it
 //! is tried again by the worker's sweep (`retry`), each try later than the one before (`retry_at`
 //! on its entry) for some hours, then it is `failed`. A voice note, once stored, is
-//! heard (`listen`: its words on its entry). The apps get each stored file
+//! heard (`listen`: its words on its entry), a photo or a sticker looked at (`see`: what it
+//! shows). The apps get each stored file
 //! with a signed link (`sign`), or the file itself to save (`download`).
 //!
 //! What the user sends from the Inbox (a photo, a video, a file) is stored the same way first
@@ -177,15 +178,16 @@ pub fn kind_of(mime: &str) -> &'static str {
     }
 }
 
-/// A message's files as a tool tells them: what each is, a voice note's words, and its id (the
-/// file itself is `/admin/pigeon/items/{item}/media/{id}`); never where it's kept or fetched from.
+/// A message's files as a tool tells them: what each is, a voice note's words, what a photo
+/// shows, and its id (the file itself is `/admin/pigeon/items/{item}/media/{id}`); never where
+/// it's kept or fetched from.
 pub fn told(media: &Json) -> Vec<Json> {
     let Some(list) = media.as_array() else { return vec![] };
     list.iter()
         .filter(|m| m.is_object())
         .map(|m| {
             let mut o = serde_json::Map::new();
-            for k in ["id", "kind", "name", "mime", "size", "seconds", "status", "transcript"] {
+            for k in ["id", "kind", "name", "mime", "size", "seconds", "status", "transcript", "seen"] {
                 if !m[k].is_null() {
                     o.insert(k.into(), m[k].clone());
                 }

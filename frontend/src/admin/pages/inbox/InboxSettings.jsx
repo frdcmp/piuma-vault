@@ -375,6 +375,31 @@ export default function InboxSettings() {
 						/>
 					</PvField>
 				) : null}
+				{isAdmin ? (
+					<PvField
+						label="The model Pigeon looks at images with"
+						hint="Photos and stickers in chats: Pigeon reads what they show instead of “[image]”. Only models that see images. For everyone on this vault."
+					>
+						<PvSelect
+							value={s.vision_model_id ?? ""}
+							onChange={(v) => set({ vision_model_id: v ?? "" })}
+							options={[
+								{ value: "", label: "The one Pigeon writes with" },
+								...models
+									.filter((m) => m.supports_vision)
+									.map((m) => ({
+										value: m.id,
+										label: `${m.display_name || m.model_id} · ${m.provider}`,
+									})),
+							]}
+						/>
+						{!s.can_see ? (
+							<PvAlert type="warning" title="Pigeon can't see images">
+								The model it would use doesn't see images: pick one that does.
+							</PvAlert>
+						) : null}
+					</PvField>
+				) : null}
 				<PvField
 					label="What Pigeon knows about people"
 					as="div"

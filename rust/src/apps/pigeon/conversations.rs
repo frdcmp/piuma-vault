@@ -247,7 +247,8 @@ pub fn transcript(items: &[Item], them: &str, me: (&str, &[String]), max_body: u
 }
 
 /// A message's words as a model reads them: a voice note's words in place of "[voice message]",
-/// a shared post's or reel's caption in place of "[ig_post]" or "[ig_reel]".
+/// what a photo shows in place of "[image]" (`see`), a shared post's or reel's caption in place of
+/// "[ig_post]" or "[ig_reel]".
 pub fn said(it: &Item) -> String {
     let mut body = it.body.clone();
     for m in it.media.as_array().into_iter().flatten() {
@@ -257,8 +258,8 @@ pub fn said(it: &Item) -> String {
             body = if body.contains(&tag) { body.replacen(&tag, &seen, 1) } else { format!("{body}\n{seen}").trim().to_string() };
             continue;
         }
-        let Some(words) = m["transcript"].as_str().map(str::trim).filter(|w| !w.is_empty()) else { continue };
-        let label = m["label"].as_str().unwrap_or("voice message");
+        let Some(words) = m["transcript"].as_str().or(m["seen"].as_str()).map(str::trim).filter(|w| !w.is_empty()) else { continue };
+        let label = m["label"].as_str().unwrap_or(if m["seen"].is_string() { "image" } else { "voice message" });
         let heard = format!("[{label}: \"{words}\"]");
         let tag = format!("[{label}]");
         body = if body.contains(&tag) { body.replacen(&tag, &heard, 1) } else { format!("{body}\n{heard}").trim().to_string() };
@@ -372,6 +373,13 @@ mod tests {
         let mut reel = item("them", None, "look\n[ig_reel]");
         reel.media = serde_json::json!([{ "type": "ig_reel", "payload": { "url": "https://x/y", "title": "" } }]);
         assert_eq!(said(&reel), "look\n[ig_reel]", "no caption, as it came");
+    }
+
+    #[test]
+    fn a_photo_shows_what_it_shows() {
+        let mut it = item("them", None, "guess where\n[image]");
+        it.media = serde_json::json!([{ "kind": "image", "label": "image", "status": "stored", "seen": "A beach at sunset." }]);
+        assert_eq!(said(&it), "guess where\n[image: \"A beach at sunset.\"]");
     }
 
     #[test]

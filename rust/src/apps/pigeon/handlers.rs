@@ -1023,7 +1023,7 @@ pub async fn rule_runs(st: web::Data<AppState>, u: InboxReader, path: web::Path<
 // ── settings and connections ─────────────────────────────────────────────
 
 /// The user's defaults (reply / record / organize, alerts), the auto switch, their instructions
-/// for every chat, the model Pigeon writes with, and the channels.
+/// for every chat, the models Pigeon writes and sees images with, and the channels.
 pub async fn get_settings(st: web::Data<AppState>, u: InboxReader) -> HttpResponse {
     let user = &u.0.user_id;
     let r: anyhow::Result<Json> = async {
@@ -1040,6 +1040,8 @@ pub async fn get_settings(st: web::Data<AppState>, u: InboxReader) -> HttpRespon
             "timing": timing::view(&timing::get(&st.pool, user, st.cfg.triage_debounce).await?, st.cfg.triage_debounce),
             "model_id": store::get(&st.pool, llm::MODEL_SETTING).await,
             "reply_model_id": store::get(&st.pool, llm::REPLY_MODEL_SETTING).await,
+            "vision_model_id": store::get(&st.pool, llm::VISION_MODEL_SETTING).await,
+            "can_see": llm::can_see(&st.pool).await,
             "writer_available": llm::available(&st.pool).await,
             "jev_available": st.jev.is_some(),
             "console": st.cfg.console,
@@ -1069,6 +1071,8 @@ pub struct SettingsBody {
     model_id: Option<String>,
     /// the model replies are written with, drafts and auto replies ("" for Pigeon's): admins only
     reply_model_id: Option<String>,
+    /// the model that looks at the images in chats ("" for Pigeon's, when it sees images): admins only
+    vision_model_id: Option<String>,
 }
 
 pub async fn set_settings(st: web::Data<AppState>, u: InboxWriter, body: web::Json<SettingsBody>) -> HttpResponse {
@@ -1109,6 +1113,12 @@ pub async fn set_settings(st: web::Data<AppState>, u: InboxWriter, body: web::Js
                 anyhow::bail!("only an admin picks the model Pigeon writes replies with");
             }
             store::set(&st.pool, llm::REPLY_MODEL_SETTING, m.trim()).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        }
+        if let Some(m) = body.vision_model_id.as_deref() {
+            if !crate::apps::auth::middleware::check_permission(&u.0, "admin_access") {
+                anyhow::bail!("only an admin picks the model Pigeon looks at images with");
+            }
+            store::set(&st.pool, llm::VISION_MODEL_SETTING, m.trim()).await.map_err(|e| anyhow::anyhow!("{e}"))?;
         }
         events::publish(&st.pool, user, "settings", None).await;
         Ok(json!({ "ok": true }))
