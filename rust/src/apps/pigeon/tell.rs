@@ -487,20 +487,22 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
             .filter_map(|u| {
                 let tool = offer::find(&u.tool)?;
                 Some(match (u.note_id, u.label.split_once(" · ")) {
-                    (Some(_), Some((_, title))) => format!("what `the_note` ({{me}}'s note «{title}») answers"),
-                    _ => gives(tool, "{me}"),
+                    (Some(_), Some((_, title))) => format!("`the_note` ({{me}}'s note «{title}»)"),
+                    _ => format!("knowing {}", gives(tool, "{me}")),
                 })
             })
             .collect();
-        // whether they ask for anything more: asked of a note as anything apart from what it
-        // answers (an open ask, "tell me about the trip", is a request, so "nothing else" fails
-        // it), of the rest as nothing else (a plain "where are you?" is too short for an "apart")
+        // whether they ask for anything more: asked of a note as something it can't answer, with
+        // questions about what is in it named as a no (asked as "anything apart from what it
+        // answers", an open "what did you eat?" read as more: 0.31-0.59 against the 0.2 needed;
+        // this way 0.04-0.15, and a loan, a dinner, coming too, another subject 0.59-0.97); of
+        // the rest as nothing else (a plain "where are you?" is too short for an "apart")
         if uses.iter().any(|u| u.note_id.is_some()) {
             q.insert(
                 "more".into(),
                 jev::noul(&format!(
-                    "Apart from {}, do the new messages ask {{me}} for anything else, such as agreeing to a plan, a favour, money, a decision or an unrelated question? Greetings and small talk don't count.",
-                    gives.join(" and ")
+                    "Do the new messages also ask {{me}} for something {} can't answer (a favour, money, agreeing to a plan, a decision, or a question about something not in it)? Questions about what is in the note, greetings and small talk are no.",
+                    gives.join(" or ")
                 )),
             );
         } else {
