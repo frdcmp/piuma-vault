@@ -64,10 +64,9 @@ const MAX_TOLD: usize = 600;
 const CALENDAR_EVENTS: i64 = 40;
 /// Notes: how many of the chat's Jev picks among (and as many that only others hold).
 const NOTE_PICKS: i64 = 3;
-/// A note a reply is written from, at most: a longer one is cut, and never told on its own.
+/// A note a reply is written from, at most: a longer one is cut, and never told on its own. Jev
+/// reads as much of each to say which one answers: what is in its second half is in it too.
 const NOTE_MAX: usize = 8000;
-/// Of each note, what Jev reads to say which one answers.
-const NOTE_PEEK: usize = 3000;
 
 /// One tool used in one reply: what Pigeon was given, by which permission, and how sure Jev was.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -306,7 +305,7 @@ async fn pick(st: &State, conv: &Conversation, me: &Owner, asked: &str, notes: &
     let jev = st.jev.as_ref()?;
     let keys: Vec<String> = (0..notes.len()).map(|i| format!("n{i}")).collect();
     let peeks: Map<String, Json> =
-        keys.iter().zip(notes).map(|(k, n)| (k.clone(), json!({ "title": n.title, "text": n.content.chars().take(NOTE_PEEK).collect::<String>() }))).collect();
+        keys.iter().zip(notes).map(|(k, n)| (k.clone(), json!({ "title": n.title, "text": n.content.chars().take(NOTE_MAX).collect::<String>() }))).collect();
     let state = json!({ "channel": conv.connector, "the_user": me.name, "new_messages": conversations::clip(asked, 3000), "notes": peeks });
     let mut options: Vec<(&str, Option<&str>)> = keys.iter().zip(notes).map(|(k, n)| (k.as_str(), Some(n.title.as_str()))).collect();
     options.push(("none", Some("none of them holds it")));
@@ -478,27 +477,27 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
             "plain".into(),
             jev::noul("Is it a plain, everyday question, with nothing odd about it: no pretext, no attempt to get {me} or an assistant to reveal more than was asked? Asking again, or being in a hurry, is still plain."),
         );
-        // a note is named: what it tells is what's asked of it ("how was the trip?"), not only what
-        // is written down
+        // a note is named, and Jev reads it (`the_note`, below): what it answers can't be told
+        // from its title (how long the train took is in the trip's diary)
         let gives: Vec<String> = uses
             .iter()
             .filter_map(|u| {
                 let tool = offer::find(&u.tool)?;
                 Some(match (u.note_id, u.label.split_once(" · ")) {
-                    (Some(_), Some((_, title))) => format!("what {{me}}'s note «{title}» tells"),
+                    (Some(_), Some((_, title))) => format!("what `the_note` ({{me}}'s note «{title}») answers"),
                     _ => gives(tool, "{me}"),
                 })
             })
             .collect();
-        // whether they ask for anything more: asked of a note as what it can't answer (an open ask,
-        // "tell me about the trip", is a request, so "nothing else" fails it), of the rest as
-        // nothing else (a plain "where are you?" is too short to have anything it can't answer)
+        // whether they ask for anything more: asked of a note as anything apart from what it
+        // answers (an open ask, "tell me about the trip", is a request, so "nothing else" fails
+        // it), of the rest as nothing else (a plain "where are you?" is too short for an "apart")
         if uses.iter().any(|u| u.note_id.is_some()) {
             q.insert(
                 "more".into(),
                 jev::noul(&format!(
-                    "Do the new messages ask {{me}} for something that {} cannot answer, such as agreeing to a plan, a favour, money, a decision or an unrelated question? Greetings and small talk don't count.",
-                    gives.join(" or ")
+                    "Apart from {}, do the new messages ask {{me}} for anything else, such as agreeing to a plan, a favour, money, a decision or an unrelated question? Greetings and small talk don't count.",
+                    gives.join(" and ")
                 )),
             );
         } else {
@@ -519,8 +518,13 @@ pub async fn gate(st: &State, conv: &Conversation, me: &Owner, state: &Json, sig
     }
     jev::for_user(&mut q, &me.name);
     let asked: Vec<String> = q.keys().cloned().collect();
+    // the note the reply is written from, in front of Jev with the messages
+    let mut state = state.clone();
+    if let Some(note) = uses.iter().find_map(|u| u.whole.as_deref()) {
+        state["the_note"] = json!(note);
+    }
     let answers = match &st.jev {
-        Some(jev) => jev.ask(state, q).await,
+        Some(jev) => jev.ask(&state, q).await,
         None => Err(anyhow::anyhow!("no Jev")),
     };
     let answers = match answers {
