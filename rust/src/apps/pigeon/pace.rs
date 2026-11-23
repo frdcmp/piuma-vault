@@ -1,11 +1,13 @@
 //! How an auto reply goes out like a person writing it, on channels that show "typing…"
-//! (WhatsApp, Instagram). The reply is written first, unseen (the user reading their message); then:
+//! (WhatsApp, Instagram), by the user's timing (`timing`: its defaults in brackets). The reply is
+//! written first, unseen (the user reading their message); then:
 //!
-//!   - a pause before "typing…", 3–8 s (reading it); in a new chat (nobody on the user's side wrote
-//!     there in the last 15 minutes) longer, so the reply lands 35–70 s after their last message.
-//!     What they sent shows read (blue ticks, "Seen") those 3–8 s before "typing…"
+//!   - a pause before "typing…" (3–8 s, reading it); in a quiet chat (nobody on the user's side
+//!     wrote there in the last 15 minutes) longer, so the reply lands 35–70 s after their last
+//!     message. What they sent shows read (blue ticks, "Seen") at the start of the reading pause
 //!   - "typing…" in bursts, with short breaks where it goes off, for about as long as a person
-//!     takes to type the reply on a phone (3–15 s); it ends with the reply sent
+//!     takes to type the reply on a phone (6 characters a second, kept within 3–45 s); it ends
+//!     with the reply sent
 //!
 //! When they write again meanwhile, or the user writes there themselves, it stops and nothing goes
 //! out: the next round answers all of it (or the user did). A reply written on the user's answer to
@@ -20,27 +22,27 @@ use uuid::Uuid;
 
 use crate::apps::pigeon::connectors::Connector;
 use crate::apps::pigeon::state::State;
+use crate::apps::pigeon::timing::{self, Timing};
 
-/// Someone on the user's side wrote this recently: the chat is flowing, no pause first.
-const FLOWING_MINUTES: i32 = 15;
-/// Before "typing…" starts, always (seconds, at random).
-const READ_SECS: (f64, f64) = (3.0, 8.0);
-/// A new chat: the reply lands this long after their last message (seconds, at random).
-const COLD_SECS: (f64, f64) = (35.0, 70.0);
-/// Typing speed on a phone.
-const CHARS_PER_SEC: f64 = 6.0;
-/// The whole typing, bursts and breaks.
-const TYPING_SECS: (f64, f64) = (3.0, 15.0);
 /// One burst of "typing…", and a break between two.
-const BURST_SECS: (f64, f64) = (3.0, 7.0);
-const BREAK_SECS: (f64, f64) = (1.0, 2.5);
+const BURST_SECS: (f64, f64) = (timing::BURST_MIN, 7.0);
+const BREAK_SECS: (f64, f64) = (1.0, timing::BREAK_MAX);
 /// How often a wait looks for a new message.
 const CHECK_SECS: f64 = 1.0;
 
+/// A time at random within `[from, to]` (the user may set both the same).
+fn between(rng: &mut impl Rng, [from, to]: [f64; 2]) -> f64 {
+    if from < to {
+        rng.gen_range(from..to)
+    } else {
+        from
+    }
+}
+
 /// The bursts of "typing…" for a reply this long: (typing, then off) each; the last one's off is 0
 /// (the reply goes out at its end).
-pub fn bursts(chars: usize, rng: &mut impl Rng) -> Vec<(f64, f64)> {
-    let total = (chars as f64 / CHARS_PER_SEC * rng.gen_range(0.75..1.25)).clamp(TYPING_SECS.0, TYPING_SECS.1);
+pub fn bursts(chars: usize, t: &Timing, rng: &mut impl Rng) -> Vec<(f64, f64)> {
+    let total = (chars as f64 / t.chars_per_sec * rng.gen_range(0.75..1.25)).clamp(t.typing_secs[0], t.typing_secs[1]);
     let mut out = Vec::new();
     let mut left = total;
     while left > 0.0 {
@@ -103,16 +105,17 @@ async fn wait(st: &State, conversation: Uuid, since: DateTime<Utc>, theirs: bool
 /// for a reply on the user's answer). Ok(None): send it now ("typing…" still on); Some: why not
 /// (it's taken off).
 pub async fn before_send(st: &State, c: &dyn Connector, conversation: Uuid, text: &str, since: DateTime<Utc>, theirs: bool) -> anyhow::Result<Option<&'static str>> {
+    let t = timing::of_conversation(&st.pool, conversation, st.cfg.triage_debounce).await?;
     let flowing: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM db_pigeon_items WHERE conversation_id = $1 AND author IN ('me', 'pigeon') AND at > NOW() - make_interval(mins => $2))",
+        "SELECT EXISTS (SELECT 1 FROM db_pigeon_items WHERE conversation_id = $1 AND author IN ('me', 'pigeon') AND at > NOW() - make_interval(secs => $2))",
     )
     .bind(conversation)
-    .bind(FLOWING_MINUTES)
+    .bind(t.quiet_minutes * 60.0)
     .fetch_one(&st.pool)
     .await?;
     let (read, land, plan) = {
         let mut rng = rand::thread_rng();
-        (rng.gen_range(READ_SECS.0..READ_SECS.1), rng.gen_range(COLD_SECS.0..COLD_SECS.1), bursts(text.chars().count(), &mut rng))
+        (between(&mut rng, t.read_secs), between(&mut rng, t.cold_secs), bursts(text.chars().count(), &t, &mut rng))
     };
     let mut pause = read;
     if !flowing {
@@ -160,12 +163,15 @@ mod tests {
 
     #[test]
     fn bursts_add_up() {
+        let mut t = Timing::defaults(std::time::Duration::from_secs(20));
         for seed in 0..200 {
             let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+            // the user's typing, a short one too (a burst can't be shorter than its least)
+            t.typing_secs = if seed % 2 == 0 { [3.0, 45.0] } else { [1.0, 2.0] };
             for chars in [0, 10, 60, 200, 2000] {
-                let b = bursts(chars, &mut rng);
+                let b = bursts(chars, &t, &mut rng);
                 let typing: f64 = b.iter().map(|(on, _)| on).sum();
-                assert!((TYPING_SECS.0 - 1e-9..=TYPING_SECS.1 + 1e-9).contains(&typing), "{chars} chars: {typing}");
+                assert!((t.typing_secs[0] - 1e-9..=t.typing_secs[1] + 1e-9).contains(&typing), "{chars} chars: {typing}");
                 assert_eq!(b.last().unwrap().1, 0.0);
                 assert!(b[..b.len() - 1].iter().all(|(on, off)| *on >= BURST_SECS.0 && *off >= BREAK_SECS.0));
             }

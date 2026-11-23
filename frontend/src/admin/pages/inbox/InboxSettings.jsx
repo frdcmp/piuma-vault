@@ -34,6 +34,7 @@ import {
 } from "../../../queries";
 import { timeAgo } from "../../../utils/dateTime";
 import { SharingField } from "./InboxSharing";
+import InboxTiming from "./InboxTiming";
 import {
 	ALERT_HINT,
 	ALERT_OPTIONS,
@@ -324,6 +325,8 @@ export default function InboxSettings() {
 					/>
 				</PvField>
 			</PvPanel>
+
+			{s.timing ? <InboxTiming view={s.timing} /> : null}
 
 			<PvPanel title="Pigeon's brain">
 				{!s.writer_available ? (

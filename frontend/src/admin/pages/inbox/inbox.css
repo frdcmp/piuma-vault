@@ -1117,3 +1117,29 @@ a.inbox-mention:hover {
 	flex-wrap: wrap;
 	gap: 6px;
 }
+
+/* Reply timing (InboxTiming) */
+.inbox-timing-actions {
+	display: flex;
+	gap: 6px;
+}
+.inbox-timing-intro {
+	margin: 0 0 8px;
+}
+.inbox-timing-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.inbox-timing-num {
+	width: 84px;
+}
+.inbox-timing-preview {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding-top: 6px;
+}
+.inbox-timing-bad {
+	color: var(--vp-danger);
+}

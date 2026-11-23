@@ -17,8 +17,6 @@ use crate::apps::pigeon::state::State;
 
 /// Auto replies a conversation may get in an hour; past it, they wait for the user.
 const AUTO_REPLIES_PER_HOUR: i64 = 3;
-/// After the user writes in a conversation themselves, no auto reply there for this long.
-const QUIET_AFTER_ME_MINUTES: i64 = 10;
 const REPLY_EXPIRES_DAYS: i64 = 3;
 const OTHER_EXPIRES_DAYS: i64 = 7;
 
@@ -292,29 +290,37 @@ pub async fn propose(st: &State, mut p: Proposal) -> anyhow::Result<Outcome> {
     Ok(Outcome { id: Some(id), status: "pending".into(), detail: hold })
 }
 
-/// The user wrote in this conversation themselves in the last 10 minutes (since they last resumed
+/// After the user writes in a conversation themselves, how long Pigeon stays out of it (minutes:
+/// theirs, `timing`).
+async fn stay_out(st: &State, conversation: Uuid) -> anyhow::Result<f64> {
+    Ok(super::timing::of_conversation(&st.pool, conversation, st.cfg.triage_debounce).await?.stay_out_minutes)
+}
+
+/// The user wrote in this conversation themselves lately (`stay_out`, since they last resumed
 /// auto there): Pigeon doesn't answer there, and nothing about it reaches their phone (they're in it).
 pub async fn user_writing(st: &State, conversation: Uuid) -> anyhow::Result<bool> {
+    let minutes = stay_out(st, conversation).await?;
     Ok(sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM db_pigeon_items WHERE conversation_id = $1 AND author = 'me' AND at > NOW() - make_interval(mins => $2)
+        "SELECT EXISTS (SELECT 1 FROM db_pigeon_items WHERE conversation_id = $1 AND author = 'me' AND at > NOW() - make_interval(secs => $2)
              AND at > COALESCE((SELECT at FROM db_pigeon_auto_resumed WHERE conversation_id = $1), '-infinity'))",
     )
     .bind(conversation)
-    .bind(QUIET_AFTER_ME_MINUTES as i32)
+    .bind(minutes * 60.0)
     .fetch_one(&st.pool)
     .await?)
 }
 
-/// When Pigeon may answer again in a conversation the user is writing in: 10 minutes after their
+/// When Pigeon may answer again in a conversation the user is writing in: `stay_out` after their
 /// last message there. None when they aren't.
 pub async fn quiet_until(st: &State, conversation: Uuid) -> anyhow::Result<Option<DateTime<Utc>>> {
+    let minutes = stay_out(st, conversation).await?;
     Ok(sqlx::query_scalar(
-        "SELECT MAX(at) + make_interval(mins => $2) FROM db_pigeon_items WHERE conversation_id = $1 AND author = 'me'
+        "SELECT MAX(at) + make_interval(secs => $2) FROM db_pigeon_items WHERE conversation_id = $1 AND author = 'me'
            AND at > COALESCE((SELECT at FROM db_pigeon_auto_resumed WHERE conversation_id = $1), '-infinity')
-         HAVING MAX(at) + make_interval(mins => $2) > NOW()",
+         HAVING MAX(at) + make_interval(secs => $2) > NOW()",
     )
     .bind(conversation)
-    .bind(QUIET_AFTER_ME_MINUTES as i32)
+    .bind(minutes * 60.0)
     .fetch_optional(&st.pool)
     .await?
     .flatten())
@@ -361,7 +367,8 @@ async fn reply_guard(st: &State, c: &conversations::Conversation) -> anyhow::Res
     if c.window_until.is_some_and(|w| w < now) {
         return Ok(Some("the channel's reply window has closed".into()));
     }
-    if c.last_out_at.is_some_and(|t| now - t < chrono::Duration::minutes(QUIET_AFTER_ME_MINUTES)) && user_writing(st, c.id).await? {
+    let stay = chrono::Duration::milliseconds((stay_out(st, c.id).await? * 60_000.0) as i64);
+    if c.last_out_at.is_some_and(|t| now - t < stay) && user_writing(st, c.id).await? {
         return Ok(Some("you're writing in this conversation yourself".into()));
     }
     let sent: i64 = sqlx::query_scalar(

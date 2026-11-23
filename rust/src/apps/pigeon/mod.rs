@@ -69,6 +69,7 @@ pub mod sign;
 pub mod slugs;
 pub mod state;
 pub mod tell;
+pub mod timing;
 pub mod tools;
 pub mod triage;
 pub mod webhooks;

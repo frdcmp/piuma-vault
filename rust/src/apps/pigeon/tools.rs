@@ -299,7 +299,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
         ),
         (
             "pigeon_resume_auto",
-            "Let auto replies answer again now: after the user writes in a conversation they wait 10 minutes, and send at most 3 an hour; this starts both over. For one conversation, or with contact_id all of a person's.",
+            "Let auto replies answer again now: after the user writes in a conversation they wait (10 minutes, or the user's own Reply timing), and send at most 3 an hour; this starts both over. For one conversation, or with contact_id all of a person's.",
             json!({ "type": "object", "properties": {
                 "conversation_id": id("This conversation"),
                 "contact_id": id("All of this person's conversations"),

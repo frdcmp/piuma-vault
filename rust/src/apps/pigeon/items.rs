@@ -78,6 +78,8 @@ fn username(name: Option<&str>) -> Option<String> {
 
 /// Store one item. None when it was stored already.
 pub async fn ingest(pool: &DbPool, inc: &Incoming, debounce: Duration) -> anyhow::Result<Option<Ingested>> {
+    // for them to finish writing: the user's own wait (`timing`), the server's by default
+    let debounce = crate::apps::pigeon::timing::get(pool, &inc.user_id, debounce).await?.wait();
     let mut tx = pool.begin().await?;
     let (conversation_id, contact_id): (Uuid, Option<Uuid>) = sqlx::query_as(
         "INSERT INTO db_pigeon_conversations (user_id, connection_id, connector, external_id, title)
@@ -312,6 +314,7 @@ pub async fn mark_sent(pool: &DbPool, user: &str, conversation: Uuid, text: &str
 /// They're still writing (a channel that tells, WhatsApp): the triage waiting on the conversation
 /// waits for them to finish, a debounce from now.
 pub async fn still_writing(pool: &DbPool, user: &str, connector: &str, thread: &str, debounce: Duration) -> anyhow::Result<()> {
+    let debounce = crate::apps::pigeon::timing::get(pool, user, debounce).await?.wait();
     sqlx::query(
         "UPDATE db_pigeon_conversations SET triage_due_at = GREATEST(triage_due_at, NOW() + make_interval(secs => $3))
           WHERE user_id = $4 AND connector = $1 AND external_id = $2 AND triage_due_at IS NOT NULL",

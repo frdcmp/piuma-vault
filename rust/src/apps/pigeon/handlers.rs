@@ -16,7 +16,7 @@ use crate::apps::pigeon::ai::llm;
 use crate::apps::pigeon::connectors::{self, console, Kind};
 use crate::apps::pigeon::policy::{self, Policy};
 use crate::apps::pigeon::state::AppState;
-use crate::apps::pigeon::{actions, agent, alerts, avatars, cards, composing, connect, conversations, events, instructions, items, media, people, rules, tell, tools, triage};
+use crate::apps::pigeon::{actions, agent, alerts, avatars, cards, composing, connect, conversations, events, instructions, items, media, people, rules, tell, timing, tools, triage};
 use crate::apps::settings::store;
 
 pub struct InboxReader(pub AuthenticatedUser);
@@ -1037,6 +1037,7 @@ pub async fn get_settings(st: web::Data<AppState>, u: InboxReader) -> HttpRespon
             "alerts": alerts::resolve(&st.pool, user, None, None).await?.as_str(),
             "instructions": instructions::general(&st.pool, user).await?,
             "media_days": media::keep_days(&st.pool, user).await?,
+            "timing": timing::view(&timing::get(&st.pool, user, st.cfg.triage_debounce).await?, st.cfg.triage_debounce),
             "model_id": store::get(&st.pool, llm::MODEL_SETTING).await,
             "reply_model_id": store::get(&st.pool, llm::REPLY_MODEL_SETTING).await,
             "writer_available": llm::available(&st.pool).await,
@@ -1060,6 +1061,10 @@ pub struct SettingsBody {
     instructions: Option<String>,
     /// how long files are kept: 30, 90, 180 or 365 days
     media_days: Option<i64>,
+    /// how long Pigeon waits around an auto reply (`timing`)
+    timing: Option<timing::Timing>,
+    /// back to Pigeon's own timing
+    timing_reset: Option<bool>,
     /// the model Pigeon writes with (a vault model's id; "" for the default): admins only
     model_id: Option<String>,
     /// the model replies are written with, drafts and auto replies ("" for Pigeon's): admins only
@@ -1087,6 +1092,11 @@ pub async fn set_settings(st: web::Data<AppState>, u: InboxWriter, body: web::Js
         }
         if let Some(d) = body.media_days {
             media::set_keep_days(&st.pool, user, d).await?;
+        }
+        if body.timing_reset == Some(true) {
+            timing::set(&st.pool, user, None).await?;
+        } else if let Some(t) = &body.timing {
+            timing::set(&st.pool, user, Some(t)).await?;
         }
         if let Some(m) = body.model_id.as_deref() {
             if !crate::apps::auth::middleware::check_permission(&u.0, "admin_access") {
