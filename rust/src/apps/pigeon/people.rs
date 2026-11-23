@@ -85,6 +85,27 @@ pub async fn group_style(st: &State, conv: &conversations::Conversation) -> anyh
 /// the user writes.
 const WORDS_ONLY: &str = r"length(trim(i.body)) > 0 AND i.body !~ '^\s*\[[a-z_ ]+\]\s*$' AND i.body !~ '^\s*https?://\S+\s*$'";
 
+/// Whether a message shows how the user writes: not a link, a file, a command, an id or a key
+/// (what they paste, not what they say; and a password or a key must never become a sample, sent
+/// with every reply after it).
+fn writes(m: &str) -> bool {
+    let m = m.trim();
+    let tokens: Vec<&str> = m.split_whitespace().collect();
+    let digits = |t: &str| t.chars().any(|c| c.is_ascii_digit());
+    let letters = |t: &str| t.chars().any(|c| c.is_alphabetic());
+    let code = |t: &str| t.chars().all(|c| c.is_ascii_alphanumeric() || "_-+/=.".contains(c));
+    !(m.is_empty()
+        || (m.starts_with('[') && m.ends_with(']'))
+        || m.contains("://")
+        || m.contains("www.")
+        || m.starts_with('$')
+        || tokens.iter().any(|t| t.starts_with("--"))
+        // an id or a key: long, of code characters, with digits in it
+        || tokens.iter().map(|t| t.trim_matches(|c: char| "\"'()[]{}<>,;:".contains(c))).any(|t| t.chars().count() >= 16 && code(t) && digits(t))
+        // a word alone, of letters and digits: a password, a code
+        || (tokens.len() == 1 && m.chars().count() >= 5 && code(m) && digits(m) && letters(m)))
+}
+
 /// The user's own latest messages in a conversation, newest first (words, not attachments).
 async fn mine_in(st: &State, conversation: Uuid, n: i64) -> anyhow::Result<Vec<String>> {
     Ok(sqlx::query_scalar(&format!(
@@ -94,7 +115,10 @@ async fn mine_in(st: &State, conversation: Uuid, n: i64) -> anyhow::Result<Vec<S
     .bind(conversation)
     .bind(n)
     .fetch_all(&st.pool)
-    .await?)
+    .await?
+    .into_iter()
+    .filter(|m: &String| writes(m))
+    .collect())
 }
 
 /// The user's own latest messages to a person on a channel, newest first (words, not attachments).
@@ -108,7 +132,10 @@ async fn mine_to(st: &State, contact: Uuid, connector: &str, n: i64) -> anyhow::
     .bind(connector)
     .bind(n)
     .fetch_all(&st.pool)
-    .await?)
+    .await?
+    .into_iter()
+    .filter(|m: &String| writes(m))
+    .collect())
 }
 
 /// A style note's parts, after the description: the usual length, then the samples.
@@ -137,10 +164,19 @@ fn description_of(body: &str) -> &str {
     body[..end].trim()
 }
 
-/// The samples in a style note.
+/// The samples in a style note (those that show how the user writes: one kept before that
+/// doesn't goes).
 fn samples_of(body: &str) -> Vec<String> {
     let Some(at) = body.find(SAMPLES_HEAD) else { return Vec::new() };
-    body[at..].lines().filter_map(|l| l.trim().strip_prefix("- ")).map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
+    body[at..].lines().filter_map(|l| l.trim().strip_prefix("- ")).map(|l| l.trim().to_string()).filter(|l| writes(l)).collect()
+}
+
+/// A style note as a reply is written from: without the samples that don't show how the user
+/// writes (a note written before they were left out, or one the user edited).
+pub fn for_reply(body: &str) -> String {
+    let Some(at) = body.find(SAMPLES_HEAD) else { return body.to_string() };
+    let samples = body[at..].lines().filter(|l| l.trim().strip_prefix("- ").map_or(true, writes)).collect::<Vec<_>>().join("\n");
+    format!("{}{samples}", &body[..at])
 }
 
 /// A style note's words: the description, the usual length, the samples.
@@ -1046,6 +1082,27 @@ mod tests {
         assert_eq!(description_of(&text), "- Italian, short");
         assert_eq!(samples_of(&text), samples);
         assert!(text.contains("**Usual length:** about 13 characters"), "{text}");
+    }
+
+    #[test]
+    fn a_sample_is_what_they_say_not_what_they_paste() {
+        for m in ["Ciao dammi la location", "uela", "arrivo tra 10 min", "ok2", "Ci vediamo alle 21:30?", "Volo AB123 il 21"] {
+            assert!(writes(m), "{m}");
+        }
+        for m in [
+            "secret42",
+            "tool login --tenant 00000000-1111-2222-3333-444444444444",
+            "[document: notes.md]",
+            "guarda https://example.com/x",
+            "la chiave è abc_def_0123456789xyz",
+            "$ cargo check",
+            "",
+        ] {
+            assert!(!writes(m), "{m}");
+        }
+        let note = "- Italian\n\n## Samples\n\nMarta's own messages, as sent:\n\n- Ciao dammi la location\n- secret42\n- uela\n";
+        assert_eq!(samples_of(note), vec!["Ciao dammi la location", "uela"]);
+        assert_eq!(for_reply(note), "- Italian\n\n## Samples\n\nMarta's own messages, as sent:\n\n- Ciao dammi la location\n- uela");
     }
 
     #[test]

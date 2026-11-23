@@ -67,6 +67,9 @@ const NOTE_PICKS: i64 = 3;
 /// A note a reply is written from, at most: a longer one is cut, and never told on its own. Jev
 /// reads as much of each to say which one answers: what is in its second half is in it too.
 const NOTE_MAX: usize = 8000;
+/// A reply from a note, at most, in characters: more than the user's usual length, which is set
+/// by their chats ("ok", "ciao") and can't hold what they asked about.
+const NOTE_REPLY: usize = 350;
 
 /// One tool used in one reply: what Pigeon was given, by which permission, and how sure Jev was.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -283,7 +286,7 @@ fn of_note(u: &mut Use, tool: &Tool, n: &shared::Note, me: &Owner) -> bool {
     u.note_id = Some(n.id);
     u.told = conversations::clip(&text, MAX_TOLD);
     u.how = format!(
-        "{name}'s note «{title}»{}:\n«\n{}\n»\nAnswer what they ask with what this note says, and only that: nothing from it they didn't ask for, nothing that isn't in it, and no promise for {name}. Asked for a summary, the whole of it in a few short lines. Tell it as {name} would, from what they know: never send them to the note, or say it is written down. If it doesn't answer them, don't guess: say {name} will get back to them.",
+        "{name}'s note «{title}»{}:\n«\n{}\n»\nAnswer what they ask with what this note says, and only that: nothing from it they didn't ask for, nothing that isn't in it, and no promise for {name}. Asked for a summary, the whole of it in a few short lines. Write it as {name} telling them, from memory, in a chat: in the first person (\"we took…\", not a report), in whole sentences, as {name} talks to them; the note's facts, never its form (no arrows, lists, codes or headings, a number only as {name} would say it, \"a bit over two hours\" for two times); a word for what they said first is fine (\"yes\", \"right\"), no opinion the note doesn't hold. This reply may be longer than {name}'s usual length there: as long as it takes to answer them, up to about {NOTE_REPLY} characters. Never send them to the note, or say it is written down. If it doesn't answer them, don't guess: say {name} will get back to them.",
         if long { " (its start: the rest is cut)" } else { "" },
         text.trim(),
     );

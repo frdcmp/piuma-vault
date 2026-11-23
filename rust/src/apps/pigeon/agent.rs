@@ -533,7 +533,7 @@ fn system_prompt(me: &Owner, mode: &Mode<'_>, asking: bool, replies_off: bool, p
          dialect, length, tone, greetings and emoji use of {name}'s own messages there (the style and its samples below, \
          and {name}'s messages in the conversation), and follow {name}'s instructions for Pigeon below, when there are some, above all. One reply at most.\n\
          - Write it the way {name} would, not better: as long as {name}'s messages there usually are (the usual length \
-         in the style below; never twice it), one thing only, the answer to the newest messages. No joke, pun or callback added on top, \
+         in the style below; never twice it, but for an answer from one of {name}'s notes, as listed below), one thing only, the answer to the newest messages. No joke, pun or callback added on top, \
          no 'Ahah'/'Haha' opener, no exclamation runs, no summary or restating of the plan, no facts nobody asked about. \
          Emoji only as {name} uses them there (none if they don't). Plain and a little dry beats clever.\n\
          - A reply may acknowledge, thank, chat or ask, but accepting a request, a date, a price or a commitment is {name}'s \
@@ -690,7 +690,7 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
                 s.push_str(&format!(
                     "\nHow {name} writes to {them} on {} (the style, the usual length, and {name}'s own messages as samples):\n{}\n",
                     conv.connector,
-                    p.body()
+                    people::for_reply(p.body())
                 ));
             } else {
                 // none on this channel yet: how they write to them elsewhere, for language and warmth, not form
@@ -701,7 +701,7 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
                          warmth; the form and the length on {} may differ):\n{}\n",
                         conv.connector,
                         conv.connector,
-                        p.body()
+                        people::for_reply(p.body())
                     ));
                 }
             }
@@ -711,7 +711,7 @@ async fn context(st: &State, me: &Owner, conv: &Conversation, contact: Option<&C
         // a group: how the user writes in it
         if !away_mode {
             if let Some(p) = people::group_style(st, conv).await?.filter(|p| !p.profile.is_empty()) {
-                s.push_str(&format!("\nHow {name} writes in this group (the style, the usual length, and {name}'s own messages as samples):\n{}\n", p.profile));
+                s.push_str(&format!("\nHow {name} writes in this group (the style, the usual length, and {name}'s own messages as samples):\n{}\n", people::for_reply(&p.profile)));
             }
         }
     }
