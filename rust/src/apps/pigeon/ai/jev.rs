@@ -1,6 +1,8 @@
 //! Jev, the classifier (`POST {PIGEON_JEV_URL}/systemone`): it answers `noul` (yes/no), `choice`
 //! (pick one) and `score` questions about a `state`, with probabilities, and never writes text.
-//! One endpoint, no fallback chain (a gateway in front of it is where failing over belongs).
+//! One endpoint, no fallback chain (a gateway in front of it is where failing over belongs); a
+//! request that fails as an outage does (unreachable, timed out, 402 "endpoint unavailable", 429,
+//! 5xx) is tried again a couple of times (`AGAIN_AFTER`).
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -11,6 +13,15 @@ use crate::apps::pigeon::config::JevConf;
 
 /// The questions one request carries (OpenCode Zen takes 40).
 const MAX_QUESTIONS: usize = 40;
+/// A request that failed as an outage does is tried again after these (seconds).
+const AGAIN_AFTER: [u64; 2] = [2, 6];
+
+/// A failure that may pass: Jev or its gateway down for a moment, too busy, or overloaded
+/// (OpenCode Zen says 402 "Endpoint is unavailable" when its upstream is). Not a request it
+/// refuses (400, 401, 422).
+fn passing(status: u16) -> bool {
+    matches!(status, 402 | 408 | 429) || status >= 500
+}
 
 #[derive(Clone)]
 pub struct Jev {
@@ -68,19 +79,7 @@ impl Jev {
         for chunk in items.chunks(MAX_QUESTIONS) {
             let batch: Map<String, Json> = chunk.iter().cloned().collect();
             let body = json!({ "model": self.model, "state": state, "questions": batch });
-            let res = self
-                .http
-                .post(&self.url)
-                .bearer_auth(&self.api_key)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| anyhow::anyhow!("Jev unreachable: {e}"))?;
-            let status = res.status();
-            let text = res.text().await.unwrap_or_default();
-            if !status.is_success() {
-                anyhow::bail!("Jev request failed ({}): {}", status.as_u16(), text.chars().take(300).collect::<String>());
-            }
+            let text = self.post(&body).await?;
             let body: Json = serde_json::from_str(&text).map_err(|_| anyhow::anyhow!("Jev returned malformed JSON"))?;
             let got = body.get("answers").and_then(Json::as_object).ok_or_else(|| anyhow::anyhow!("Jev's answer has no `answers`"))?;
             for (k, a) in got {
@@ -89,6 +88,34 @@ impl Jev {
             }
         }
         Ok(Answers { answers, raw: Json::Object(raw) })
+    }
+}
+
+impl Jev {
+    /// One request, tried again while it fails as an outage does; its answer's text.
+    async fn post(&self, body: &Json) -> anyhow::Result<String> {
+        let mut tries = 0;
+        loop {
+            let failure = match self.http.post(&self.url).bearer_auth(&self.api_key).json(body).send().await {
+                Err(e) => anyhow::anyhow!("Jev unreachable: {e}"),
+                Ok(res) => {
+                    let status = res.status();
+                    let text = res.text().await.unwrap_or_default();
+                    if status.is_success() {
+                        return Ok(text);
+                    }
+                    let failure = anyhow::anyhow!("Jev request failed ({}): {}", status.as_u16(), text.chars().take(300).collect::<String>());
+                    if !passing(status.as_u16()) {
+                        return Err(failure);
+                    }
+                    failure
+                }
+            };
+            let Some(wait) = AGAIN_AFTER.get(tries) else { return Err(failure) };
+            log::info!("pigeon: {failure:#}; again in {wait} s");
+            tries += 1;
+            tokio::time::sleep(Duration::from_secs(*wait)).await;
+        }
     }
 }
 
@@ -130,6 +157,12 @@ impl Answers {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_is_tried_again() {
+        assert!(passing(402) && passing(429) && passing(503) && passing(408));
+        assert!(!passing(400) && !passing(401) && !passing(422));
+    }
 
     #[test]
     fn reads_the_answer_shapes() {

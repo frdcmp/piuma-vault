@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::apps::pigeon::ai::jev;
 use crate::apps::pigeon::{actions, agent, away, cards, conversations, instructions, owner, policy, rules, tell};
 use crate::apps::pigeon::state::{AppState, State};
+use crate::apps::telemetry::{Event, Severity};
 
 pub const REPLY_AT: f64 = 0.6;
 pub const ACTION_AT: f64 = 0.6;
@@ -85,6 +86,39 @@ const USERS_CALL: &str = "your call";
 const LEASE_SECS: f64 = 300.0;
 /// Triages run at once.
 const AT_ONCE: usize = 4;
+/// A failed triage is run again after these (minutes), then given up until a new message comes;
+/// only then is it a problem for the user (`health`).
+const AGAIN_AFTER_MINUTES: [i64; 3] = [2, 5, 15];
+
+/// How many times in a row each conversation's triage failed (this worker's count: a restart
+/// starts it again).
+fn failed_in_a_row() -> &'static std::sync::Mutex<std::collections::HashMap<Uuid, usize>> {
+    static F: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<Uuid, usize>>> = std::sync::OnceLock::new();
+    F.get_or_init(Default::default)
+}
+
+/// A triage failed: when it runs again (None: given up), and it goes to telemetry (the worker's
+/// log is gone with it at the next deploy).
+fn failed(id: Uuid, error: &str) -> Option<i64> {
+    let n = {
+        let mut f = failed_in_a_row().lock().unwrap_or_else(|e| e.into_inner());
+        let n = f.entry(id).or_insert(0);
+        *n += 1;
+        *n
+    };
+    let again = AGAIN_AFTER_MINUTES.get(n - 1).copied();
+    if again.is_none() {
+        failed_in_a_row().lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+    }
+    let severity = if again.is_some() { Severity::Warn } else { Severity::Error };
+    Event::new("pigeon", "triage_failed", severity)
+        .route("pigeon")
+        .entity("conversation", id)
+        .msg(conversations::clip(error, 500))
+        .attrs(json!({ "failed_in_a_row": n, "again_in_minutes": again }))
+        .emit();
+    again
+}
 
 /// Every conversation whose triage is due, a few at once (an auto reply waits while it's paced
 /// like a person's, `pace`: the others don't wait for it).
@@ -104,20 +138,35 @@ pub async fn run_due(st: &AppState) -> anyhow::Result<usize> {
         let (st, slots) = (st.clone(), slots.clone());
         running.spawn_local(async move {
             let _slot = slots.acquire_owned().await;
-            match triage(&st, id).await {
-                Ok(()) => crate::apps::pigeon::health::ok("triage"),
-                Err(e) => {
-                    log::warn!("triage of {id}: {e:#}");
-                    crate::apps::pigeon::health::failed("triage", format!("{e:#}"));
+            let again = match triage(&st, id).await {
+                Ok(()) => {
+                    failed_in_a_row().lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+                    crate::apps::pigeon::health::ok("triage");
+                    None
                 }
-            }
-            // ended (a failure too: it doesn't loop every 5 s): off the queue, unless a new message
-            // queued it again meanwhile
-            if let Err(e) = sqlx::query("UPDATE db_pigeon_conversations SET triage_due_at = NULL WHERE id = $1 AND triage_due_at = $2")
-                .bind(id)
-                .bind(lease)
-                .execute(&st.pool)
-                .await
+                Err(e) => {
+                    let again = failed(id, &format!("{e:#}"));
+                    match again {
+                        Some(m) => log::warn!("triage of {id}: {e:#}; again in {m} min"),
+                        None => {
+                            log::warn!("triage of {id}: {e:#}; given up");
+                            crate::apps::pigeon::health::failed("triage", format!("{e:#}"));
+                        }
+                    }
+                    again
+                }
+            };
+            // ended: off the queue (a failure: back on it in a few minutes, not every 5 s, until
+            // given up), unless a new message queued it again meanwhile
+            if let Err(e) = sqlx::query(
+                "UPDATE db_pigeon_conversations SET triage_due_at = CASE WHEN $3::bigint IS NULL THEN NULL ELSE NOW() + make_interval(mins => $3::int) END
+                  WHERE id = $1 AND triage_due_at = $2",
+            )
+            .bind(id)
+            .bind(lease)
+            .bind(again)
+            .execute(&st.pool)
+            .await
             {
                 log::warn!("triage of {id}: {e:#}");
             }

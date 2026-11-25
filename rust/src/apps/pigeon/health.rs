@@ -6,7 +6,8 @@
 //!   - WhatsApp not connected (logged out, phone offline)
 //!   - an Instagram token about to expire
 //!   - their conversations stuck waiting for triage
-//!   - a part of the worker failing over and over (triage: `failed` / `ok` from it)
+//!   - a part of the worker failing over and over (triage: `failed` once it gives up on a
+//!     conversation after its tries, `ok` from it)
 //!
 //! Alerts are kept in `db_pigeon_health_alerts`, per user.
 
