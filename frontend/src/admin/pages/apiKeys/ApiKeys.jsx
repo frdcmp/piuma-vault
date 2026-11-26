@@ -79,6 +79,18 @@ const SCOPE_OPTIONS = [
 			"Full control of calendar events: list, create, update, and delete",
 	},
 	{
+		label: "Recorder (read)",
+		value: "recorder.read",
+		description:
+			"Read-only: list recordings and read their transcripts and usage",
+	},
+	{
+		label: "Recorder",
+		value: "recorder.write",
+		description:
+			"Manage recordings: rename, summarise again, stop, join, and delete them",
+	},
+	{
 		label: "Agents (chat)",
 		value: "agents.chat",
 		description:
@@ -124,6 +136,8 @@ const SCOPE_TAG_CLASSES = {
 	"tasks.manage": "vp-tag--blue",
 	"calendar.read": "vp-tag--green",
 	"calendar.manage": "vp-tag--green",
+	"recorder.read": "vp-tag--green",
+	"recorder.write": "vp-tag--blue",
 	"agents.chat": "vp-tag--accent",
 	"sprites.manage": "vp-tag--green",
 	"inbox.read": "vp-tag--accent",
@@ -140,6 +154,8 @@ const SCOPE_LABELS = {
 	"calendar.manage": "Calendar",
 	"tasks.read": "Tasks (read)",
 	"calendar.read": "Calendar (read)",
+	"recorder.read": "Recorder (read)",
+	"recorder.write": "Recorder",
 	"agents.chat": "Agents (chat)",
 	"sprites.manage": "Sprites",
 	"inbox.read": "Inbox (read)",

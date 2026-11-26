@@ -46,6 +46,20 @@ is a scope that's missing (see *Scopes*), not a reason to go around it.
 | `calendar_list` · `calendar_get` | `from` / `to` (default the next 30 days) |
 | `calendar_create` · `calendar_update` · `calendar_delete` | `calendar_update`'s `clear_end: true` removes the end |
 
+**The recorder** (meetings, calls and voice notes recorded in the web app or the phone)
+
+| Tool | |
+|---|---|
+| `recorder_sessions` · `recorder_get` | the recordings, newest first (`query` on title and preview); each with its summary note (`final_note_id`) |
+| `recorder_transcript` | what was said, `[h:mm:ss] S1: …` per turn, paged: pass `next_offset` back as `offset` |
+| `recorder_usage` | transcription used per month |
+| `recorder_rename` · `recorder_summarise` · `recorder_stop` | `recorder_summarise` writes its summary note again |
+| `recorder_append` · `recorder_delete` | **permanent**: confirm with the user first |
+
+A recording is made in the web app or the phone, never over MCP. Its summary is a note in
+`/recordings`: read it there; for what was actually said, or a detail the summary dropped, read
+the transcript.
+
 **The Inbox (Pigeon)**: the `pigeon_*` tools (see *The Inbox*), with a message's file
 (`pigeon_file`) and a file to attach to an email (`pigeon_upload`).
 
@@ -249,6 +263,7 @@ What a caller may do is its scopes (a vault API key's, set in admin → API Keys
 | `calendar_*` | `calendar.read` or `calendar.manage` | `calendar.write` or `calendar.manage` |
 | `buckets_*` | any tasks or calendar read | any tasks or calendar write |
 | `agenda` | tasks or calendar read: it shows only the parts the caller may read | |
+| `recorder_*` | `recorder.read` | `recorder.write` |
 | `pigeon_*` (with `pigeon_file`, `pigeon_upload`) | `inbox.read` | `inbox.write` |
 
 Groups and grants (`pigeon_set_group`, `pigeon_grant`, `pigeon_revoke`, `pigeon_mark_wrong`)

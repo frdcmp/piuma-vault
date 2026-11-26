@@ -1,5 +1,6 @@
 //! The vault over MCP (`apps::pigeon::mcp_server`, next to Pigeon's tools): notes, tasks,
-//! recurring tasks, buckets, the calendar and the agenda, for an assistant outside the vault.
+//! recurring tasks, buckets, the calendar, the agenda and the recorder's sessions, for an
+//! assistant outside the vault.
 //! Each tool is one of Piuma's (this module's siblings), run as the caller, or — where Piuma has
 //! none (a note list, a search within a folder or tag, the trash, versions, a folder move, one
 //! recurring task) or hers can't do it (an update that clears a field) — the REST handler the web
@@ -15,7 +16,8 @@
 //! REST handlers check: `notes.read` / `notes.write`; `tasks.read` / `tasks.write` (or
 //! `tasks.manage`); `calendar.read` / `calendar.write` (or `calendar.manage`); buckets with any
 //! of the tasks or calendar ones; the agenda with either read, showing only what the caller may
-//! read.
+//! read; `recorder.read` / `recorder.write` for the recorder (its REST handlers, run as they are:
+//! a recording is made in the web app or the phone, never here).
 
 use actix_web::{web, HttpRequest, Responder};
 use serde_json::{json, Value as Json};
@@ -38,6 +40,7 @@ enum Area {
     Calendar,
     /// Buckets, shared by tasks and the calendar, and the agenda (read only).
     Both,
+    Recorder,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -63,6 +66,8 @@ fn area_scopes(area: Area, kind: Kind) -> &'static [&'static str] {
         (Area::Calendar, _) => CALENDAR_WRITE,
         (Area::Both, Kind::Read) => &["tasks.read", "tasks.manage", "calendar.read", "calendar.manage"],
         (Area::Both, _) => &["tasks.write", "tasks.manage", "calendar.write", "calendar.manage"],
+        (Area::Recorder, Kind::Read) => &["recorder.read"],
+        (Area::Recorder, _) => &["recorder.write"],
     }
 }
 
@@ -112,6 +117,10 @@ const WHEN: &str = "RFC 3339 with its offset (2026-11-07T18:00:00+01:00, or Z fo
 
 fn clear(d: &str) -> Json {
     json!({ "type": "boolean", "description": d })
+}
+
+fn session_id() -> Json {
+    s("The recording's id (a UUID from recorder_sessions)")
 }
 
 const BUCKET: &str = "The bucket (task group) by name, one of buckets_list's (an unknown name is an error: buckets_create makes one)";
@@ -378,6 +387,43 @@ pub fn defs() -> Vec<Tool> {
                 "from": s(&format!("Range start, {WHEN}; default now")),
                 "to": s(&format!("Range end, {WHEN}")),
             } })),
+        // ── Recorder ──
+        tool("recorder_sessions", Recorder, Read,
+            "The user's recordings (meetings, calls, voice notes), newest first, at most 200: id, title, status (recording, ready: saved and not summarised, summarising, done, failed), duration_secs, word_count, the start of what was said (preview), the summary note (final_note_id, a note's id: notes_get), error, created_at (UTC). What was said in full: recorder_transcript.",
+            json!({ "type": "object", "properties": {
+                "query": s("Only the recordings whose title or preview holds these words"),
+            } })),
+        tool("recorder_get", Recorder, Read,
+            "One recording in full: its fields as recorder_sessions lists them, and running_summary, the summary kept while it was recording.",
+            json!({ "type": "object", "properties": { "id": session_id() }, "required": ["id"] })),
+        tool("recorder_transcript", Recorder, Read,
+            "What was said in a recording, as lines `[h:mm:ss] S1: …` (S1, S2…: the speakers told apart, not named), paged: pass next_offset back as offset until it's null. ready false: nothing saved yet (still recording).",
+            json!({ "type": "object", "properties": {
+                "id": session_id(),
+                "offset": { "type": "integer", "description": "Characters to skip, from next_offset (default 0)" },
+                "max_chars": { "type": "integer", "description": "At most this many characters, 1000–50000 (default 20000)" },
+            }, "required": ["id"] })),
+        tool("recorder_usage", Recorder, Read,
+            "Transcription used per month and provider (sessions, seconds), and the providers' free hours a month.",
+            json!({ "type": "object", "properties": {} })),
+        tool("recorder_rename", Recorder, Write,
+            "Rename a recording.",
+            json!({ "type": "object", "properties": { "id": session_id(), "title": s("The new title") }, "required": ["id", "title"] })),
+        tool("recorder_summarise", Recorder, Write,
+            "Summarise a saved recording again (a minute or more for a long one): its summary note is written anew, or made if it has none. Returns the note's id.",
+            json!({ "type": "object", "properties": { "id": session_id() }, "required": ["id"] })),
+        tool("recorder_stop", Recorder, Write,
+            "Stop a recording that is recording now: it is saved, and summarised as the user set.",
+            json!({ "type": "object", "properties": { "id": session_id() }, "required": ["id"] })),
+        tool("recorder_append", Recorder, Delete,
+            "Join two recordings into one: `id`'s transcript goes on after `target_id`'s, then `id` is deleted for good (its transcript; its summary note to the trash) and the joined one is summarised again. Confirm with the user first.",
+            json!({ "type": "object", "properties": {
+                "id": s("The recording that goes on the end, and is then deleted"),
+                "target_id": s("The recording it joins, which stays"),
+            }, "required": ["id", "target_id"] })),
+        tool("recorder_delete", Recorder, Delete,
+            "Delete a recording for good: the session and its transcript (its summary note goes to the trash). Confirm with the user first.",
+            json!({ "type": "object", "properties": { "id": session_id() }, "required": ["id"] })),
     ]
 }
 
@@ -615,6 +661,69 @@ fn search_hits(out: &Json) -> Json {
     json!({ "count": results.len(), "results": results })
 }
 
+/// A recording as listed: the row without what's only the vault's (its owner, the transcript's
+/// storage key) or long (the running summary: recorder_get).
+fn session_row(row: &Json) -> Json {
+    let mut row = row.clone();
+    if let Some(o) = row.as_object_mut() {
+        for key in ["user_id", "transcript_storage_key", "running_summary"] {
+            o.remove(key);
+        }
+    }
+    row
+}
+
+fn clock(secs: f64) -> String {
+    let t = secs.max(0.0) as u64;
+    format!("{}:{:02}:{:02}", t / 3600, t / 60 % 60, t % 60)
+}
+
+/// A transcript as lines, one per turn (a speaker's consecutive segments joined), then one page
+/// of it: `offset` and `max_chars` in characters, cut at a line's end where one fits.
+fn transcript_page(out: &Json, offset: usize, max_chars: usize) -> Json {
+    let mut lines: Vec<String> = Vec::new();
+    let mut last: Option<String> = None;
+    for seg in out.get("segments").and_then(Json::as_array).into_iter().flatten() {
+        if seg.get("is_final").and_then(Json::as_bool) == Some(false) {
+            continue;
+        }
+        let text = seg.get("text").and_then(Json::as_str).unwrap_or("").trim();
+        if text.is_empty() {
+            continue;
+        }
+        let speaker = seg.get("speaker").and_then(Json::as_str).map(str::to_string);
+        match lines.last_mut() {
+            Some(line) if speaker == last => {
+                line.push(' ');
+                line.push_str(text);
+            }
+            _ => {
+                let at = clock(seg.get("t").and_then(Json::as_f64).unwrap_or(0.0));
+                lines.push(match &speaker {
+                    Some(who) => format!("[{at}] {who}: {text}"),
+                    None => format!("[{at}] {text}"),
+                });
+            }
+        }
+        last = speaker;
+    }
+    let all: Vec<char> = lines.join("\n").chars().collect();
+    let start = offset.min(all.len());
+    let mut end = (start + max_chars).min(all.len());
+    if end < all.len() {
+        if let Some(nl) = all[start..end].iter().rposition(|c| *c == '\n').filter(|nl| *nl > 0) {
+            end = start + nl + 1;
+        }
+    }
+    json!({
+        "ready": out.get("ready").and_then(Json::as_bool).unwrap_or(false),
+        "total_chars": all.len(),
+        "offset": start,
+        "next_offset": if end < all.len() { json!(end) } else { Json::Null },
+        "text": all[start..end].iter().collect::<String>(),
+    })
+}
+
 fn filter(args: &Json, key: &str) -> Option<String> {
     args.get(key).and_then(Json::as_str).map(str::trim).filter(|v| !v.is_empty()).map(str::to_string)
 }
@@ -622,6 +731,7 @@ fn filter(args: &Json, key: &str) -> Option<String> {
 /// Run a tool as the caller (who holds one of its scopes: the server checked).
 pub async fn call(req: &HttpRequest, user: &AuthenticatedUser, name: &str, args: &Json) -> Result<Json, String> {
     use crate::apps::notes::{handlers as nh, models::{ListNotesQuery, RenameFolderRequest}, versions};
+    use crate::apps::recorder::{handlers as rh, models::{AppendRequest, TitleRequest}, session::SessionRegistry};
     use crate::apps::{calendar::handlers as ch, tasks::handlers as th};
     check_times(args)?;
     let db = data::<DbPool>(req)?;
@@ -734,6 +844,63 @@ pub async fn call(req: &HttpRequest, user: &AuthenticatedUser, name: &str, args:
             let id = uuid(args, "id")?;
             return rest(req, th::get_recurring(user.clone(), web::Path::from(id), db).await).await;
         }
+        "recorder_sessions" => {
+            let out = rest(req, rh::list_sessions(user.clone(), db).await).await?;
+            let words = filter(args, "query").map(|q| q.to_lowercase());
+            let rows: Vec<Json> = out
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|row| {
+                    words.as_deref().is_none_or(|q| {
+                        ["title", "preview"].iter().any(|k| row.get(*k).and_then(Json::as_str).is_some_and(|v| v.to_lowercase().contains(q)))
+                    })
+                })
+                .map(session_row)
+                .collect();
+            return Ok(json!({ "count": rows.len(), "sessions": rows }));
+        }
+        "recorder_get" => {
+            let id = uuid(args, "id")?;
+            let mut out = rest(req, rh::get_session(user.clone(), db, web::Path::from(id)).await).await?;
+            if let Some(o) = out.as_object_mut() {
+                o.remove("user_id");
+                o.remove("transcript_storage_key");
+            }
+            return Ok(out);
+        }
+        "recorder_transcript" => {
+            let id = uuid(args, "id")?;
+            let offset = args.get("offset").and_then(Json::as_u64).unwrap_or(0) as usize;
+            let max_chars = args.get("max_chars").and_then(Json::as_u64).unwrap_or(20_000).clamp(1_000, 50_000) as usize;
+            let out = rest(req, rh::get_transcript(user.clone(), db, web::Path::from(id)).await).await?;
+            return Ok(transcript_page(&out, offset, max_chars));
+        }
+        "recorder_usage" => return rest(req, rh::usage(user.clone(), db).await).await,
+        "recorder_rename" => {
+            let id = uuid(args, "id")?;
+            let body = TitleRequest { title: super::req_str(args, "title")? };
+            return rest(req, rh::set_title(user.clone(), db, web::Path::from(id), web::Json(body)).await).await;
+        }
+        "recorder_summarise" => {
+            let id = uuid(args, "id")?;
+            return rest(req, rh::summarise_session(user.clone(), db, web::Path::from(id)).await).await;
+        }
+        "recorder_stop" => {
+            let id = uuid(args, "id")?;
+            return rest(req, rh::stop_session(user.clone(), db, data::<SessionRegistry>(req)?, web::Path::from(id)).await).await;
+        }
+        "recorder_append" => {
+            let id = uuid(args, "id")?;
+            let body = AppendRequest { target_id: uuid(args, "target_id")? };
+            let (registry, notes) = (data::<SessionRegistry>(req)?, data::<NotesEventBus>(req)?);
+            return rest(req, rh::append_session(user.clone(), db, registry, notes, web::Path::from(id), web::Json(body)).await).await;
+        }
+        "recorder_delete" => {
+            let id = uuid(args, "id")?;
+            let (registry, notes) = (data::<SessionRegistry>(req)?, data::<NotesEventBus>(req)?);
+            return rest(req, rh::delete_session(user.clone(), db, registry, notes, web::Path::from(id)).await).await;
+        }
         other => return Err(format!("no tool {other}")),
     };
     let out = out?;
@@ -802,6 +969,8 @@ mod tests {
         assert_eq!(scopes("buckets_update"), Some(&["tasks.write", "tasks.manage", "calendar.write", "calendar.manage"][..]));
         assert!(scopes("agenda").unwrap().contains(&"calendar.read"));
         assert!(scopes("agenda").unwrap().contains(&"tasks.read"));
+        assert_eq!(scopes("recorder_transcript"), Some(&["recorder.read"][..]));
+        assert_eq!(scopes("recorder_summarise"), Some(&["recorder.write"][..]));
         assert_eq!(scopes("pigeon_inbox"), None);
         // a read is read-only and asks only a read scope; a write asks no read scope
         for t in defs() {
@@ -815,7 +984,7 @@ mod tests {
     #[test]
     fn only_permanent_deletes_are_destructive() {
         let destructive: Vec<_> = defs().into_iter().filter(|t| t.destructive()).map(|t| t.name).collect();
-        assert_eq!(destructive, ["tasks_delete", "recurring_delete", "buckets_delete", "calendar_delete"]);
+        assert_eq!(destructive, ["tasks_delete", "recurring_delete", "buckets_delete", "calendar_delete", "recorder_append", "recorder_delete"]);
         assert!(!tool_named("notes_delete").destructive());
         assert!(!tool_named("notes_delete").read_only());
     }
@@ -906,6 +1075,32 @@ mod tests {
         for t in defs() {
             assert!(!t.description.contains("is created") && !t.description.contains("makes a bucket"), "{}", t.name);
         }
+    }
+
+    #[test]
+    fn a_transcript_in_turns_and_pages() {
+        let out = json!({ "ready": true, "segments": [
+            { "t": 0.0, "end": 2.0, "speaker": "S1", "is_final": true, "text": "Hello" },
+            { "t": 2.0, "end": 3.0, "speaker": "S1", "is_final": true, "text": "everyone." },
+            { "t": 3.0, "end": 4.0, "speaker": "S2", "is_final": false, "text": "partial" },
+            { "t": 3725.4, "end": 3727.0, "speaker": "S2", "is_final": true, "text": "Hi." },
+            { "t": 3728.0, "end": 3729.0, "is_final": true, "text": " " },
+        ] });
+        let all = transcript_page(&out, 0, 20_000);
+        assert_eq!(all["text"], "[0:00:00] S1: Hello everyone.\n[1:02:05] S2: Hi.");
+        assert_eq!((all["ready"].clone(), all["next_offset"].clone()), (json!(true), Json::Null));
+        // a page ends at a line's end, and the next one starts there
+        let first = transcript_page(&out, 0, 35);
+        assert_eq!(first["text"], "[0:00:00] S1: Hello everyone.\n");
+        let next = first["next_offset"].as_u64().unwrap() as usize;
+        assert_eq!(transcript_page(&out, next, 35)["text"], "[1:02:05] S2: Hi.");
+        assert_eq!(transcript_page(&json!({ "segments": [], "text": "", "ready": false }), 0, 1000)["ready"], false);
+    }
+
+    #[test]
+    fn a_session_row_without_the_vaults_own() {
+        let row = session_row(&json!({ "id": "1", "user_id": "u", "transcript_storage_key": "k", "running_summary": "long", "title": "Standup" }));
+        assert_eq!(row, json!({ "id": "1", "title": "Standup" }));
     }
 
     #[test]

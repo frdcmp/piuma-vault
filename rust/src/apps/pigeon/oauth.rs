@@ -6,8 +6,8 @@
 //! verified vault account with its email (any case); none: 403.
 //!
 //! What it may do is its scopes, as the vault's own: the read scope every read the MCP serves
-//! (`inbox.read`, `notes.read`, `tasks.read`, `calendar.read`), the write scope every write
-//! (`inbox.write`, `notes.write`, `tasks.write`, `calendar.write`). Never `inbox.access` (who may
+//! (`inbox.read`, `notes.read`, `tasks.read`, `calendar.read`, `recorder.read`), the write scope
+//! every write (`inbox.write`, `notes.write`, `tasks.write`, `calendar.write`, `recorder.write`). Never `inbox.access` (who may
 //! be told what): only a vault key that carries it decides that. The rules every caller is under
 //! (drafts, not sends; cards for big changes; never auto unless asked) are the tools' own and
 //! don't change.
@@ -137,9 +137,9 @@ fn check(token: &str, key: &DecodingKey, conf: &McpAuthConf) -> Result<Claims, R
 }
 
 /// What the read scope gives: every read the MCP serves.
-const READS: &[&str] = &["inbox.read", "notes.read", "tasks.read", "calendar.read"];
+const READS: &[&str] = &["inbox.read", "notes.read", "tasks.read", "calendar.read", "recorder.read"];
 /// What the write scope gives: every write it serves, but who may be told what (`inbox.access`).
-const WRITES: &[&str] = &["inbox.write", "notes.write", "tasks.write", "calendar.write"];
+const WRITES: &[&str] = &["inbox.write", "notes.write", "tasks.write", "calendar.write", "recorder.write"];
 
 /// The vault's scopes for the token's: its read scope reads, its write scope writes.
 fn permissions(scope: &str, conf: &McpAuthConf) -> Vec<String> {
@@ -300,12 +300,12 @@ mod tests {
     #[test]
     fn scopes_as_the_vaults() {
         let c = conf();
-        assert_eq!(permissions("suite:read", &c), vec!["inbox.read", "notes.read", "tasks.read", "calendar.read"]);
+        assert_eq!(permissions("suite:read", &c), vec!["inbox.read", "notes.read", "tasks.read", "calendar.read", "recorder.read"]);
         assert_eq!(
             permissions("suite:read suite:write", &c),
-            vec!["inbox.read", "notes.read", "tasks.read", "calendar.read", "inbox.write", "notes.write", "tasks.write", "calendar.write"]
+            vec!["inbox.read", "notes.read", "tasks.read", "calendar.read", "recorder.read", "inbox.write", "notes.write", "tasks.write", "calendar.write", "recorder.write"]
         );
-        assert_eq!(permissions("suite:write", &c), vec!["inbox.write", "notes.write", "tasks.write", "calendar.write"]);
+        assert_eq!(permissions("suite:write", &c), vec!["inbox.write", "notes.write", "tasks.write", "calendar.write", "recorder.write"]);
         assert!(permissions("other:read inbox.access notes.write", &c).is_empty());
         assert!(!permissions("suite:read suite:write", &c).iter().any(|p| p == "inbox.access" || p == "admin_access" || p.ends_with(".manage")));
     }

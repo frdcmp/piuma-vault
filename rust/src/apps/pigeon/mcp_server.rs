@@ -1,13 +1,13 @@
 //! The vault over MCP (`POST /mcp`, behind nginx `/api/v1/mcp`), for an assistant that speaks the
 //! Model Context Protocol (Claude, a desktop client), with a vault API key (`x-api-key`) or a
 //! sign-in: Pigeon's tools (`tools`, the Inbox, and `mcp_files`, its files) and the vault's notes,
-//! tasks, recurring tasks, buckets, calendar and agenda (`agents::tools::vault_mcp`).
+//! tasks, recurring tasks, buckets, calendar, agenda and recorder (`agents::tools::vault_mcp`).
 //!
 //! The Inbox's tools are the ones Piuma has, under the same two rules: a message goes only in
 //! words the user has seen, and a big change waits for their tap in the Inbox (`confirm`). A key
 //! sees and runs only what its scopes allow: for the Inbox `tools::scope` (`inbox.read` reads,
 //! `inbox.write` acts, `inbox.access` decides who may be told what), for the rest
-//! `vault_mcp::scopes` (the notes, tasks and calendar scopes the REST API checks). Here, and only
+//! `vault_mcp::scopes` (the notes, tasks, calendar and recorder scopes the REST API checks). Here, and only
 //! here, a person signed in through the suite's gateway comes in too, with its access token (`oauth`).
 //!
 //! Streamable HTTP, stateless: each POST is one JSON-RPC message (or a batch) answered as JSON;
@@ -29,7 +29,7 @@ use crate::apps::pigeon::{mcp_files, oauth, tools};
 /// The protocol versions answered as asked, newest first; anything else gets the newest.
 const VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
-const INSTRUCTIONS: &str = "The user's vault: notes, tasks, the calendar, and their Inbox. Notes: notes_search first (the vault likely \
+const INSTRUCTIONS: &str = "The user's vault: notes, tasks, the calendar, recordings, and their Inbox. Notes: notes_search first (the vault likely \
 has a note on it already: add to it rather than make another), notes_get before changing one; notes_update's content replaces the whole \
 body, notes_append adds, notes_replace_text changes one passage; notes_delete only moves a note to the trash (notes_restore). What's on: \
 agenda (tasks due, events, recurring occurrences), then tasks_list (overdue: true for what's late), recurring_list, calendar_list and \
@@ -37,6 +37,10 @@ buckets_list, each area with its get, create, update and delete tools. Times are
 changes only what it's given; it clears a field only when told (clear_due, clear_end, clear_until, bucket \"none\"). A bucket is named \
 from buckets_list: an unknown name is an error, and buckets_create makes a new one. tasks_delete, recurring_delete, calendar_delete and \
 buckets_delete are permanent: ask the user first.
+
+Recordings (meetings, calls, voice notes, made in the web app or the phone): recorder_sessions, newest first; each one's summary \
+is a note (final_note_id); what was said is recorder_transcript, paged by next_offset. recorder_summarise writes the summary note \
+again; recorder_append and recorder_delete are permanent: ask the user first.
 
 Pigeon is the user's Inbox: their WhatsApp, Instagram and Gmail in one place, with an agent that sorts what \
 comes in and answers where they let it. Start with pigeon_inbox (what needs them) or pigeon_pending (what waits for their yes). A message \
@@ -305,7 +309,7 @@ mod tests {
         // the suite's gateway prefixes each exact tool name in this text: a wildcard it can't
         assert!(!INSTRUCTIONS.contains("_*"), "a wildcard in the instructions");
         let all = names(&key(&["admin_access"]));
-        let areas = ["notes_", "tasks_", "recurring_", "calendar_", "buckets_", "pigeon_"];
+        let areas = ["notes_", "tasks_", "recurring_", "calendar_", "buckets_", "recorder_", "pigeon_"];
         let words = INSTRUCTIONS.split(|c: char| !(c.is_ascii_lowercase() || c == '_')).filter(|w| areas.iter().any(|a| w.starts_with(a)));
         for w in words {
             assert!(all.iter().any(|n| n == w), "{w} isn't a tool");

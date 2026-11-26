@@ -1,6 +1,7 @@
 //! REST surface for recording sessions. The streaming audio path is in `ws.rs`;
 //! these endpoints create/list/inspect/stop/rename/delete the session rows.
-//! Gated by `admin_access` (the recorder writes notes into the vault).
+//! Reads need `recorder.read`, everything else `recorder.write` (`admin_access` passes both);
+//! the audio socket (`ws.rs`) still asks `admin_access`.
 
 use actix_web::{web, HttpResponse, Responder};
 use uuid::Uuid;
@@ -18,8 +19,11 @@ use super::models::{
 use super::session::{self, SessionRegistry};
 use super::summarise;
 
-fn forbidden() -> HttpResponse {
-    HttpResponse::Forbidden().json(serde_json::json!({ "error": "admin_access required" }))
+const READ: &str = "recorder.read";
+const WRITE: &str = "recorder.write";
+
+fn forbidden(scope: &str) -> HttpResponse {
+    HttpResponse::Forbidden().json(serde_json::json!({ "error": format!("{scope} permission required") }))
 }
 
 const FIELDS: &str = "id, user_id, title, status, provider, duration_secs, \
@@ -33,8 +37,8 @@ pub async fn create_session(
     pool: web::Data<DbPool>,
     body: Option<web::Json<CreateSessionRequest>>,
 ) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, WRITE) {
+        return forbidden(WRITE);
     }
     let pool = pool.get_ref();
     let title = body
@@ -77,8 +81,8 @@ pub async fn create_session(
 
 /// GET /recorder/sessions — list this user's sessions, newest first.
 pub async fn list_sessions(user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, READ) {
+        return forbidden(READ);
     }
     let rows: Vec<RecordingSession> = sqlx::query_as(&format!(
         "SELECT {FIELDS} FROM db_recording_sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 200"
@@ -96,8 +100,8 @@ pub async fn get_session(
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, READ) {
+        return forbidden(READ);
     }
     match fetch(pool.get_ref(), path.into_inner(), &user.user_id).await {
         Some(s) => HttpResponse::Ok().json(s),
@@ -108,8 +112,8 @@ pub async fn get_session(
 /// GET /recorder/usage — transcription seconds per month + provider, so the UI
 /// can show usage against a provider's free-tier cap (e.g. Speechmatics 40h/mo).
 pub async fn usage(user: AuthenticatedUser, pool: web::Data<DbPool>) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, READ) {
+        return forbidden(READ);
     }
     let rows: Vec<(String, String, i64, i64)> = sqlx::query_as(
         "SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month, \
@@ -152,8 +156,8 @@ pub async fn get_transcript(
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, READ) {
+        return forbidden(READ);
     }
     let pool = pool.get_ref();
     let Some(session) = fetch(pool, path.into_inner(), &user.user_id).await else {
@@ -200,8 +204,8 @@ pub async fn stop_session(
     registry: web::Data<SessionRegistry>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, WRITE) {
+        return forbidden(WRITE);
     }
     let id = path.into_inner();
     if fetch(pool.get_ref(), id, &user.user_id).await.is_none() {
@@ -228,8 +232,8 @@ pub async fn set_title(
     path: web::Path<Uuid>,
     body: web::Json<TitleRequest>,
 ) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, WRITE) {
+        return forbidden(WRITE);
     }
     let id = path.into_inner();
     let res = sqlx::query(
@@ -260,8 +264,8 @@ pub async fn delete_session(
     notes_bus: web::Data<NotesEventBus>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, WRITE) {
+        return forbidden(WRITE);
     }
     let id = path.into_inner();
     let Some(session) = fetch(pool.get_ref(), id, &user.user_id).await else {
@@ -314,8 +318,8 @@ pub async fn summarise_session(
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, WRITE) {
+        return forbidden(WRITE);
     }
     let pool = pool.get_ref();
     let id = path.into_inner();
@@ -354,8 +358,8 @@ pub async fn append_session(
     path: web::Path<Uuid>,
     body: web::Json<AppendRequest>,
 ) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, WRITE) {
+        return forbidden(WRITE);
     }
     let pool = pool.get_ref();
     let src_id = path.into_inner();
@@ -472,8 +476,8 @@ pub async fn chat_conversation(
     pool: web::Data<DbPool>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
-    if !check_permission(&user, "admin_access") {
-        return forbidden();
+    if !check_permission(&user, WRITE) {
+        return forbidden(WRITE);
     }
     let pool = pool.get_ref();
     let id = path.into_inner();
