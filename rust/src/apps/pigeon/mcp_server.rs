@@ -45,7 +45,7 @@ again; recorder_append and recorder_delete are permanent: ask the user first.
 Pigeon is the user's Inbox: their WhatsApp, Instagram and Gmail in one place, with an agent that sorts what \
 comes in and answers where they let it. Start with pigeon_inbox (what needs them) or pigeon_pending (what waits for their yes). A message \
 to someone goes only in words the user has seen: draft it (pigeon_draft_reply), show them the full text, send on their word. A message's \
-photo or document is pigeon_file; a file to attach to an email is stored with pigeon_upload, its `file` then passed in `files`. Who may \
+photo or document is pigeon_file (what it can't show, a PDF or an Office file, it gives at a download_url to fetch); a file to attach to an email is stored with pigeon_upload, its `file` then passed in `files`. Who may \
 be told what (the user's place, their calendar, a note of theirs) is read with pigeon_access and pigeon_permissions; with a vault key \
 that holds inbox.access it is changed with pigeon_grant, pigeon_revoke and pigeon_set_group (not there without one). Grant only what the \
 user asked, for whom they said; never let Pigeon answer on its own (mode auto, a policy to auto) unless they ask, and then it still \

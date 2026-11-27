@@ -308,6 +308,19 @@ pub async fn link(pool: &DbPool, key: &str) -> anyhow::Result<String> {
     Ok(download_url(pool, &client, &bucket, key, 3600).await.map_err(|e| anyhow::anyhow!(e))?.0)
 }
 
+/// A stored file at a link signed by storage itself, for `secs`: for whoever the user's own
+/// assistant hands it to (`mcp_files`), so never the CDN's, which is open when it has no token.
+pub async fn signed_link(pool: &DbPool, key: &str, name: Option<&str>, secs: u64) -> anyhow::Result<String> {
+    let (client, bucket) = s3_client(pool).await.map_err(|e| anyhow::anyhow!(e))?;
+    let cfg = aws_sdk_s3::presigning::PresigningConfig::expires_in(Duration::from_secs(secs))?;
+    let mut get = client.get_object().bucket(&bucket).key(key);
+    // saved under its own name, kept to plain characters
+    if let Some(n) = name.map(|n| n.replace(|c: char| !(c.is_ascii_alphanumeric() || " ._-".contains(c)), "_")).filter(|n| !n.trim().is_empty()) {
+        get = get.response_content_disposition(format!("attachment; filename=\"{n}\""));
+    }
+    Ok(get.presigned(cfg).await.map_err(|e| anyhow::anyhow!("signing its link: {e}"))?.uri().to_string())
+}
+
 /// A file's extension: its name's, else its type's.
 fn extension(mime: Option<&str>, name: Option<&str>) -> String {
     if let Some(e) = name.and_then(|n| n.rsplit_once('.')).map(|(_, e)| e.to_lowercase()).filter(|e| !e.is_empty() && e.len() <= 8 && e.chars().all(|c| c.is_ascii_alphanumeric())) {

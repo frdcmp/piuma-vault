@@ -5,7 +5,8 @@
 //! `pigeon_file` (`inbox.read`, as `GET /admin/pigeon/items/{id}/media/{file}`): a message's
 //! stored file as MCP content: an image as an `image` block, a text-like file as its words (at
 //! most `TEXT_MAX`, saying when cut), anything else as what it is, its size and that it can't be
-//! shown here. `pigeon_upload` (`inbox.write`, as `POST /admin/pigeon/files`): a file sent up in
+//! shown here. Every answer carries `download_url`: the file itself, at a link storage signs for
+//! `LINK_SECS`, for an assistant that can fetch one (a PDF, a spreadsheet, a video). `pigeon_upload` (`inbox.write`, as `POST /admin/pigeon/files`): a file sent up in
 //! base64, stored as the user's to attach to an email: the `file` object the draft tools take.
 
 use base64::Engine;
@@ -21,6 +22,9 @@ const TEXT_MAX: usize = 200 * 1024;
 
 /// The largest image shown as one (a model takes up to 5 MB an image); a bigger one is told about.
 const IMAGE_MAX: usize = 5 << 20;
+
+/// How long a file's download link lasts.
+const LINK_SECS: u64 = 600;
 
 /// The images a model can see.
 const IMAGES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -48,7 +52,7 @@ pub fn defs() -> Vec<(&'static str, &'static str, Json)> {
     vec![
         (
             "pigeon_file",
-            "A message's file, to look at: an image (JPEG, PNG, GIF, WebP up to 5 MB) comes as the image itself; a text-like file (text, CSV, JSON, markdown, an .ics…) as its text, at most 200 KB (the answer says when it's cut); anything else (a PDF, a video, a voice note) as what it is and its size: it can't be shown here (a voice note's words are its `transcript` in the message's `files`). Only a `stored` file: an `expired` or `gone` one is no longer kept. The ids are under each message's `files` in pigeon_conversation or pigeon_search.",
+            "A message's file, to look at: an image (JPEG, PNG, GIF, WebP up to 5 MB) comes as the image itself; a text-like file (text, CSV, JSON, markdown, an .ics…) as its text, at most 200 KB (the answer says when it's cut); anything else (a PDF, a Word or Excel file, a video, a voice note) as what it is and its size: it can't be shown here (a voice note's words are its `transcript` in the message's `files`). Every answer has `download_url`, the file itself at a link good for 10 minutes: fetch it (`curl -sfL '<download_url>' -o <name>`) to open what can't be shown, or to keep a copy; call again for a fresh link, and never pass the link on to anyone. Only a `stored` file: an `expired` or `gone` one is no longer kept. The ids are under each message's `files` in pigeon_conversation or pigeon_search.",
             json!({ "type": "object", "properties": {
                 "item_id": { "type": "string", "description": "The message's id" },
                 "file_id": { "type": "string", "description": "The file's id, from the message's `files`" },
@@ -150,6 +154,14 @@ async fn file(st: &AppState, user: &str, args: &Json) -> anyhow::Result<Vec<Json
     let mut about = media::told(&json!([entry.clone()])).pop().unwrap_or_else(|| json!({}));
     let mime = entry["mime"].as_str().unwrap_or("application/octet-stream").to_string();
     let size = entry["size"].as_u64();
+    // the file itself, for an assistant that can fetch it; without a link the rest still stands
+    match media::signed_link(&st.pool, &key, entry["name"].as_str(), LINK_SECS).await {
+        Ok(url) => {
+            about["download_url"] = json!(url);
+            about["download_expires_in_seconds"] = json!(LINK_SECS);
+        }
+        Err(e) => log::warn!("pigeon_file: no link for {id}: {e:#}"),
+    }
     match shown_as(&mime, entry["name"].as_str()) {
         Shown::Image if size.is_none_or(|s| s as usize <= IMAGE_MAX) => {
             let (bytes, more) = first_bytes(st, &key, IMAGE_MAX).await?;
@@ -171,7 +183,7 @@ async fn file(st: &AppState, user: &str, args: &Json) -> anyhow::Result<Vec<Json
         }
         Shown::Not => {
             let kind = about["kind"].as_str().unwrap_or("file").to_string();
-            about["note"] = json!(format!("A {kind} ({mime}): it can't be shown here; the user can open it in the Inbox."));
+            about["note"] = json!(format!("A {kind} ({mime}): it can't be shown here: fetch download_url to open it, or the user can open it in the Inbox."));
         }
     }
     Ok(vec![text(pretty(&about))])
