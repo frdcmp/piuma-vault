@@ -380,21 +380,23 @@ export function useMarkPigeonRead() {
 	});
 }
 
-// A card's button. `conversationId` (null for General's) says what to refresh.
+// A card's button. `conversationId` (null for a card of no chat) says which chat
+// to refresh; Pigeon's own chat shows every chat's cards, so it always is.
+// Settled, not only succeeded: a card already decided elsewhere ("not pending")
+// leaves too.
 export function usePressPigeonCard() {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: ({ conversationId: _c, ...card }) => pressPigeonCard(card),
-		onSuccess: (_d, { conversationId }) => {
+		onSettled: (_d, _e, { conversationId }) => {
 			invalidateChats(qc);
 			qc.invalidateQueries({ queryKey: pigeonKeys.lists() });
+			qc.invalidateQueries({ queryKey: pigeonKeys.general() });
 			if (conversationId) {
 				qc.invalidateQueries({
 					queryKey: pigeonKeys.conversation(conversationId),
 				});
 				qc.invalidateQueries({ queryKey: pigeonKeys.items(conversationId) });
-			} else {
-				qc.invalidateQueries({ queryKey: pigeonKeys.general() });
 			}
 		},
 	});

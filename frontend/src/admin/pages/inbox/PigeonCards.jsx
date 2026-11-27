@@ -229,6 +229,7 @@ function PigeonCard({ card, conversationId }) {
 							plain
 							variant={b.value === "y" ? "primary" : "default"}
 							disabled={press.isPending}
+							loading={press.isPending && press.variables?.button === b.value}
 							onClick={() => onButton(b.value)}
 						>
 							{b.label}
